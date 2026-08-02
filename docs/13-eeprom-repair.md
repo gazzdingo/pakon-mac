@@ -112,3 +112,73 @@ its wValue/wIndex convention for an EEPROM write.**
   (`01 00 00 0c 37 59 f1`) and is not the boot EEPROM.
 - **Do not sweep writes across addresses whose meaning is unknown.** That is
   what caused this.
+
+## The vendor's EEPROM access protocol — [VERIFIED-FROM-BINARY]
+
+`FirmwareLoaderCom.dll` is a **native** COM DLL (the `mscoree` string is a red
+herring — its CLR data directory is empty and it has an `.orpc` section), so it
+disassembles directly.
+
+`fcn.10005730` is the generic vendor-request wrapper. It builds a 10-byte
+`VENDOR_OR_CLASS_REQUEST_CONTROL` from its arguments and issues
+`DeviceIoControl(0x222059)` at `0x10005822` with `nInBufferSize = 10`.
+
+Its only callers are `fcn.10005a40` and `fcn.10005bc0` — the EEPROM read and
+write paths. Each calls the wrapper **twice**: once with direction `0`, once
+with direction `1`, i.e. write-then-verify.
+
+The constants they pass:
+
+```
+    mov byte [var_8h], 0xA2        ; bRequest, one branch
+    mov byte [var_8h], 0xA9        ; bRequest, other branch
+    ...
+    push 0x1234                    ; wIndex   <-- MAGIC UNLOCK VALUE
+    push 0xA4                      ; wValue
+    push 2                         ; recipient
+    push 0   /   push 1            ; direction: 0 = OUT (write), 1 = IN (read)
+    call fcn.10005730
+```
+
+### `wIndex = 0x1234` is a safety interlock — [VERIFIED]
+
+**EEPROM access is gated behind a magic constant.** This is the single most
+important finding for the repair, and it explains every previous failure:
+
+- hand-rolled I2C bit-banging (`tools/i2c_eeprom.c`) bypasses the firmware's
+  own EEPROM routines entirely and does not work;
+- sweeping vendor requests with `wIndex = 0` is silently ignored, because the
+  unlock value is absent.
+
+It also means the boot EEPROM **cannot** have been damaged through vendor
+requests. The corruption came from the packet-protocol writes to I2C address
+`0xa2`, which reach the bus directly and are not gated.
+
+### Repair recipe
+
+On macOS this is a plain libusb control transfer — the `DeviceIoControl` layer
+does not exist:
+
+```python
+    # write (direction 0)
+    dev.ctrl_transfer(0x40,        # host->device, vendor, device
+                      0xA2,        # bRequest  (try 0xA9 if 0xA2 is refused)
+                      0x00A4,      # wValue
+                      0x1234,      # wIndex -- REQUIRED unlock value
+                      data)        # bytes of USB F135.bin
+
+    # verify (direction 1)
+    back = dev.ctrl_transfer(0xC0, 0xA2, 0x00A4, 0x1234, len(data))
+```
+
+with `data = c0 05 0f 35 f2 07 aa 04 02` from `USB F135.bin`.
+
+Sequence: load the vendor stage-1 loader first (it owns personality
+operations), then issue the write, then the verify read, then power-cycle and
+confirm the unit enumerates as `0f05:f235 rev aa07` without `--hex`.
+
+Remaining uncertainty: which of `0xA2` / `0xA9` is the write and which is the
+read, and whether `wValue` is fixed at `0xA4` or is an address. Both callers
+show the same constants, so trying `0xA2` first and falling back to `0xA9` is
+low risk — a wrong request code is refused, not destructive, and the data being
+written is the vendor's own official image for this exact model.

@@ -178,3 +178,42 @@ The enable is genuine; the lamp is simply held off by its thermal interlock.
   (`FN_GetCalibrateInfoLight`, and the `Config/` calibration data).
 - Whether `FN_bLampWarmUp` polls reg `0x84` against a threshold, and what
   that threshold is.
+
+## Where the setpoints come from — [VERIFIED-FROM-BINARY]
+
+`FN_bDrvInitLampTemperatures` sources its values from a **host-side global
+configuration structure**, not from a scanner read:
+
+```
+    esi = [0x10075554]            ; global config pointer
+    ax  = word [esi + 0x165c]     ; temperature value
+    esi += 0x15a0                 ; sub-structure
+    neg ax                        ; NEGATED
+    buf[0] = lo(ax)
+    buf[1] = hi(ax)               ; after sar eax, 8
+    buf[2] = byte [esi + 0xc4]    ; = [global + 0x1664]
+    buf[3] = byte [esi + 0xc5]    ; = [global + 0x1665]
+    PutRegister(log, addr, reg=0x8F, buf, n=4, nolock=0)
+```
+
+The remaining setpoint registers (`0x8C`, `0x8B`, `0x8D`, `0x8E`) follow the
+same pattern with different offsets into the same structure.
+
+**Implication:** the temperature setpoints are *configuration*, not per-unit
+calibration burned into the scanner. They are therefore recoverable from the
+vendor's defaults rather than requiring a live calibration read — a materially
+easier and safer problem than first assumed.
+
+Note the negation (`neg ax`): the value programmed into the register is the
+two's-complement negative of the configured temperature. Any reimplementation
+must reproduce that, or the thermal loop will be driven the wrong way.
+
+### Next decode
+
+1. Find where `[0x10075554 + 0x165c]` and `+0x1664/0x1665` are populated at
+   start-up — registry (`Software\Pakon\TLB`), a config file, or compiled-in
+   defaults.
+2. Recover the same for `0x8B`, `0x8C`, `0x8D`, `0x8E`.
+3. Determine the stability threshold `FN_bLampWarmUp` polls reg `0x84` against.
+
+Only then is it safe to program the loop and warm the lamp.

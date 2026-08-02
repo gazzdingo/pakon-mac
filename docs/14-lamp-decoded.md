@@ -316,3 +316,51 @@ scanner's initialisation and correction sequence, which programs the thermal
 setpoints, warms the LED array, then sets gain and exposure. Reproducing
 `InitializeScanner` is the actual remaining task — not finding a "lamp on"
 packet.
+
+## `FN_bInit2` decoded — board bring-up only
+
+`FN_bInit2` = `TLB.dll:fcn.1000b100`. Sequence:
+
+```
+    fcn.10008460                     open \\.\Pakon135
+    PutCommand(0x10, cmd=0x85)       host clear / ack
+    PutRegisterByte(0x10, 0x8F, ..)  bus/relay enable
+    PutRegisterByte(0x10, 0x8F, ..)  toggle
+    Sleep(100 ms)                    <-- note the delay
+    fcn.10008ba0(0x28, ..)           FindPicController, focus board (absent here)
+    PutRegisterByte(0x10, 0x8F, ..)  toggled around each probe (x4)
+    fcn.1000afd0                     board probe sweep (0x44,0x46,0x24,0x26,...)
+    fcn.10016a90                     
+    fcn.1000a0c0(0x10, ..)           GetRegisterWord, readback/verify
+    fcn.1001c3e0  x2                 firmware-update gate
+```
+
+This is **only the board bring-up layer**. It contains no lamp, CCD, gain or
+exposure work. Most of it was already replicated by hand in this project
+(host clear and the `0x8F` toggle), which is why board communication works.
+
+The illuminant is brought up **above** this, in the corrections chain that
+`InitializeScanner` runs — the four documented stages: start-up corrections,
+initial LED warm-up, gain and exposure control corrections, run-time
+corrections.
+
+### The remaining task, stated precisely
+
+Reproduce the corrections chain, not `FN_bInit2`. Entry points already
+identified:
+
+| Stage | Function |
+|---|---|
+| board bring-up | `FN_bInit2` `fcn.1000b100` — **done, replicated** |
+| CCD init | `FN_bDrvInitCcd` `fcn.1002d5c0` |
+| lamp thermal init | `FN_bDrvInitLampTemperatures` `fcn.1002d190` |
+| LED warm-up | `FN_bLampWarmUp`, `FN_bLampTemperatureStable` |
+| gain / offset / exposure | `fcn.100298b0`, `fcn.100299c0` (FN 117/118/119) |
+| FPGA settings | `FN_bDrvPutCcdFpgaSettings` `fcn.1002c340` |
+| lamp on | `FN_bDrvLampOn` `fcn.1002c5f0` |
+| before scan | `FN_bBeforeScan` `fcn.1002dbd0` |
+| scan | `FN_iScanStrips` `fcn.10029b80` |
+
+This is a bounded decode of roughly eight functions with known addresses, not
+an open-ended search. It is, however, real work — each one must be read for its
+register writes and their value sources, as was done for `FN_bDrvLampOn`.

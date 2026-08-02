@@ -364,3 +364,59 @@ identified:
 This is a bounded decode of roughly eight functions with known addresses, not
 an open-ended search. It is, however, real work — each one must be read for its
 register writes and their value sources, as was done for `FN_bDrvLampOn`.
+
+## `FN_bDrvInitCcd` — and why its LampOn call is not illumination
+
+`FN_bDrvInitCcd` = `fcn.1002d5c0`. Sequence with literal values:
+
+```
+    PutRegisterWord(reg=0x87, ..)
+    LampOn(log, visible=1, IR=0, 0,0,0,0, 0xFFD,          <- 4093
+           duty_R=0.0, duty_G=0.0, duty_B=0.0, duty_Ir=0.0)
+    LampOff (fcn.1000c4d0)
+    PutRegisterByte(reg=0x89, ..)
+    PutCcdFpgaSettings(0x7D0=2000, 0x3E=62, 0xFFD=4093)
+    PutRegisterCcd(reg=0x82, ..)      x3      FPGA register file
+    PutRegisterCcd(reg=0x82, idx=0x0A, val=0x400=1024)
+    PutRegisterCcd(reg=0x84, val=0x78=120)    CCD A/D register
+    PutRegisterCcd(reg=0x84, val=0x80=128)
+```
+
+The four duty cycles come from `.rdata:0x1005c1c8`, which is the double
+**`0.0`** — not a sentinel, an explicit zero. (Contrast `.rdata:0x10067008` =
+`-1.0`, the "not specified" sentinel used at `LampOn` entry.)
+
+**So this LampOn call deliberately enables the lamp with zero drive.** That is
+consistent with its purpose: CCD initialisation measures the **dark
+reference**, for which the illuminant must be enabled but producing no light.
+
+It is therefore *not* the call that illuminates film, and its literals must not
+be reused for that purpose.
+
+## Where the real illumination values come from
+
+`FN_bBeforeScan` (`fcn.1002dbd0`) calls `LampOn` with duty cycles read from a
+`CiConfigLight` structure at `[eax+0x90 / +0x98 / +0xa0 / +0xa8]`, plus five
+integer parameters from `[eax+0x58 / +0x5c / +0x60 / +0x64 / +0x28]`.
+
+That structure is populated by `FN_GetCalibrateInfoLight` from the scanner's
+**factory colour calibration** — which the F-135 user manual confirms is "set
+during the manufacturing process".
+
+**Decoding `FN_GetCalibrateInfoLight`'s read path is the next task.** Until
+those per-unit values are read, there is no legitimate source for the
+illumination drive levels, and inventing them risks the LED array.
+
+## Session summary of what is now known end to end
+
+| Stage | State |
+|---|---|
+| firmware load | working, automated |
+| command protocol | decoded, drives real hardware |
+| board identification | verified against shipped PIC firmware |
+| **motor / film transport** | **working — three speeds and reverse confirmed audibly** |
+| CCD stream | 30 MB/s, characterised |
+| CCD init sequence | decoded with literal values |
+| lamp enable path | decoded (`0x80`/`0x81`/`0x82`, thermal setpoints `0x8B`-`0x8F`) |
+| lamp drive values | **still needed** — read via `FN_GetCalibrateInfoLight` |
+| colour correction | implemented, verified exact to 0.000050 |

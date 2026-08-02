@@ -1,0 +1,28 @@
+=== FN_bDrvLampOn (0x1002c5f0) -> 0 emitter calls ===
+
+=== FN_bDrvLampOff (0x1000c4d0) -> 0 emitter calls ===
+
+=== FN_bDrvInitCcd (0x1002d5c0) -> 2 emitter calls ===
+    PutRegisterWord    addr=0x61000040 reg=0x87 u16=0x0000
+    PutRegisterByte    addr=0x40 reg=0x80 val=0x01
+
+=== FN_bInit2 (0x1000b100) -> 2 emitter calls ===
+    PutCommand         addr=0x10 cmd=0x85
+    PutRegisterByte    addr=0x10 reg=0x8f val=0x00
+
+=== FN_bDrvGetDevInfo (0x1000a370) -> 0 emitter calls ===
+
+=== FN_bDrvResetFifos (0x1000a730) -> 2 emitter calls ===
+    PutRegisterByte2   addr=0x10 reg=0x84 val=0x02
+    PutCommand2        addr=0x40 cmd=0x8a
+
+=== FN_bDrvCcdAcquireAndDxStart (0x10009bf0) -> 0 emitter calls ===
+
+=== FN_bDriveMotorAdvanceFilm (0x1000b6d0) -> 2 emitter calls ===
+    PutRegisterWord    addr=0x44 reg=0xa5 u16=0x03e8
+    PutCommand         addr=0x44 cmd=0xa0
+
+=== FN_bBeforeScan (0x1002dbd0) -> 0 emitter calls ===
+
+=== light-setup orchestrator (0x10020dc0) -> 0 emitter calls ===
+

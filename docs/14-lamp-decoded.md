@@ -111,3 +111,70 @@ EP 0x86 level dipped at `0xd8` and the stream stopped entirely from `0xdf`,
 requiring a power cycle to recover. This is the stream gate that could not be
 found by static analysis. The precise command boundaries are not yet
 established — narrowing them is eight targeted commands, not a sweep.
+
+## The real reason the lamp never lit — [VERIFIED-FROM-BINARY]
+
+The F-135 Plus illuminant is a **temperature-stabilised LED array**. TLB.dll
+carries a whole subsystem for it, recovered from the FN name table:
+
+```
+FN_bLampWarmUp              FN_bLampWarmupFromStandby
+FN_bLampTemperatureStable   FN_bSetLockedLampTemp
+FN_bSetLampStartingDifferential
+FN_bDrvInitLampTemperatures FN_bChangeLampTemperature{,Scanning,LampOff,AfterDelay}
+FN_bDrvPutLampLevel         FN_bDrvPutLampLevelIr
+FN_bLampDelayOff            FN_bLogHardwareStatusLamp
+```
+
+Corroborating hardware evidence: the built-in self test includes
+`EC_BistPiclTeCoolerFail` — there is a thermo-electric cooler on the light
+board.
+
+`FN_bDrvInitLampTemperatures` (`fcn.1002d190`) writes **seven** registers:
+
+| Reg | Emitter | Note |
+|---|---|---|
+| `0x8F` | `fcn.10009ae0` `PutRegister` | temperature setpoint block |
+| `0x8C` | `PutRegister` | temperature setpoint block |
+| `0x8B` | `PutRegister` | temperature setpoint block |
+| `0x8D` | `PutRegister` | temperature setpoint block |
+| `0x8E` | `fcn.1000a9e0` | separate emitter |
+| `0xD0` | `PutRegisterByte` | |
+| `0xD1` | `PutRegisterByte` | |
+
+**Every lamp attempt in this project wrote only `0xD0` and `0xD1`.** The four
+setpoint blocks `0x8B`–`0x8F` and `0x8E` were never written. With no setpoints
+programmed, the temperature loop is unconfigured, `FN_bLampTemperatureStable`
+can never be satisfied, and a temperature-locked LED array will not fire.
+
+This explains the entire pattern observed on hardware:
+
+- `02 04 40 01 80 01` returns `07 02 40 00` (the board accepts the enable)
+- lamp status reg `0x83` changes `00` → `0x10` (the board acts on it)
+- LED levels and duty cycles are programmed and non-zero
+- and the illuminant stays dark
+
+The enable is genuine; the lamp is simply held off by its thermal interlock.
+
+### Correct lamp-on sequence
+
+1. `FN_bDrvInitLampTemperatures` — write setpoints `0x8B`, `0x8C`, `0x8D`,
+   `0x8E`, `0x8F`, then `0xD0`, `0xD1`
+2. `FN_bLampWarmUp` — poll until `FN_bLampTemperatureStable`
+   (lamp temperature is readable at reg `0x84`, 2 bytes)
+3. `FN_bDrvPutLampLevel` / `FN_bDrvPutLampLevelIr`
+4. `FN_bDrvLampOn` — registers `0x81`, `0x82`, then `0x80`
+
+> **Do not invent temperature setpoints.** These drive a TEC controlling an LED
+> array. Wrong values risk thermal damage to the illuminant, which is not
+> recoverable. The setpoints are per-unit calibration and must be read from the
+> scanner (`FN_GetCalibrateInfoLight`) or recovered from the calibration
+> block, not guessed.
+
+### Still needed
+
+- The payload layout and source of the `0x8B`–`0x8F` setpoint blocks.
+- The read path for the unit's calibrated temperatures
+  (`FN_GetCalibrateInfoLight`, and the `Config/` calibration data).
+- Whether `FN_bLampWarmUp` polls reg `0x84` against a threshold, and what
+  that threshold is.

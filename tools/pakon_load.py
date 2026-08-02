@@ -101,12 +101,27 @@ class Fx2:
             raise usb.core.USBError("could not write either CPUCS register")
         time.sleep(0.05)
 
-    def personality(self) -> dict:
-        raw = bytes(self.dev.ctrl_transfer(VENDOR_IN, PAKON_GET_PERSONALITY,
-                                           0, 0, 8, 5000))
-        pid_, vid, prod, rev, unk = struct.unpack("<BHHHB", raw)
-        return {"raw": raw, "id": pid_, "vid": vid,
-                "pid": prod, "rev": rev, "unk": unk}
+    def personality(self, attempts: int = 4) -> dict:
+        """Query 0xA9 PAKON_GET_PERSONALITY.
+
+        The leading EEPROM-type byte is NOT reliable immediately after the
+        stage-1 loader starts: the same F-135 has returned 0xC0 and 0x5c on
+        successive runs, with the remaining seven bytes identical. Read it a
+        few times and prefer a result whose id is a documented EEPROM type.
+        Never select firmware on this byte alone -- see main().
+        """
+        last = None
+        for i in range(attempts):
+            time.sleep(0.15 * (i + 1))
+            raw = bytes(self.dev.ctrl_transfer(VENDOR_IN, PAKON_GET_PERSONALITY,
+                                               0, 0, 8, 5000))
+            pid_, vid, prod, rev, unk = struct.unpack("<BHHHB", raw)
+            last = {"raw": raw, "id": pid_, "vid": vid,
+                    "pid": prod, "rev": rev, "unk": unk, "settled": False}
+            if pid_ in (0xC0, 0xC2):
+                last["settled"] = True
+                return last
+        return last
 
     def download(self, img: HexImage, verbose: bool = False) -> None:
         """Two-pass download, external first. See module docstring."""

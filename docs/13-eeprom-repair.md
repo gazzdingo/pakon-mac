@@ -182,3 +182,48 @@ read, and whether `wValue` is fixed at `0xA4` or is an address. Both callers
 show the same constants, so trying `0xA2` first and falling back to `0xA9` is
 low risk — a wrong request code is refused, not destructive, and the data being
 written is the vendor's own official image for this exact model.
+
+## CORRECTION — the recipe above is NOT confirmed
+
+The control transfers derived above were tested on hardware and **do not
+return the personality image**. Every combination of
+
+```
+  bRequest  0xA0 0xA2 0xA5 0xA6 0xA7 0xA8 0xA9
+  wValue/wIndex  (0x1234,0x00A4) (0x00A4,0x1234) (0x1234,0)
+                 (0,0x1234) (0,0) (0x00A4,0)
+```
+
+was tried read-only. None returned `c0 05 0f 35 f2 07 aa 04 02`.
+
+### What is still solid
+
+- `fcn.10005730` **is** the vendor-request wrapper: it builds a 10-byte
+  `VENDOR_OR_CLASS_REQUEST_CONTROL` and issues `DeviceIoControl(0x222059)`
+  with `nInBufferSize = 10`. [VERIFIED]
+- Its only callers are the EEPROM read and write paths, each calling it twice
+  (write then verify). [VERIFIED]
+- The literals `0xA2`, `0xA9`, `0x1234`, `0x00A4` and `2` appear in those
+  callers. [VERIFIED]
+- `USB F135.bin` = `c0 05 0f 35 f2 07 aa 04 02` is the correct image for this
+  unit, matching the pre-damage capture. [VERIFIED]
+
+### What was wrong
+
+The mapping from the callers' **push order** to the struct fields. I assumed
+`push 0x1234` → `wIndex` and `push 0xa4` → `wValue`. The wrapper is a
+multi-argument stdcall that shuffles its parameters into the struct
+(`arg_40h` → `struct[0]`, `arg_44h` → `struct[1]`, `arg_48h` → `struct[2]`,
+`arg_50h` → `struct[3]`, …), so the pushed constants do **not** map positionally
+onto `bRequest`/`wValue`/`wIndex`. Deriving the real mapping requires working
+out the full stdcall signature and which argument lands in `struct[4]`
+(`request`), `struct[5..6]` (`value`) and `struct[7..8]` (`index`).
+
+`0x1234` may also not be an unlock value at all — it could be a buffer size, a
+timeout, or a sentinel. **Treat the "magic interlock" reading as unproven.**
+
+### Correct next step
+
+Fully decode `fcn.10005730`'s prologue and the argument→struct assignment, then
+re-derive the transfer from the actual field mapping rather than from push
+order. This is static work and needs no hardware.

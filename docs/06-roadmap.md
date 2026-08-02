@@ -104,3 +104,52 @@ would collapse the remaining unknowns immediately.
 Failing that, the second most useful is a decode of the `TLB.dll` command
 builders — the packet plumbing is fully understood, so it is purely a question
 of which bytes mean which operation.
+
+## Appendix — the lamp flash, and why it was not the lamp command
+
+During a write sweep across boards `0xa2`-`0xa5`, one measurement recorded a
+genuine illumination event: EP 0x86 level jumped from a dark baseline of 1244
+to a mean of 17539 with a peak of 53400, and the operator independently
+observed the lamp **flicker**. The apparent trigger was:
+
+```
+02 05 a2 02 08 01 01     Type 2 write, board 0xa2, reg 0x08, data 01 01
+```
+
+**This does not reproduce, and should not be treated as the lamp command.**
+Ruled out by:
+
+- re-sending the packet immediately afterwards: dark
+- sweeping every value 0x01..0xff in that register: dark
+- firing it in a tight loop for 4 s (366 samples): no illumination at all
+- replaying the exact preceding write order: dark
+- replaying the **entire** 384-write history plus the trigger: dark
+
+The most likely explanation is that the light board performed a spontaneous
+self-test or warm-up attempt that coincided with the write. The API supports
+this reading: `EC_LampWarmUpFailure`, `WTO_LampWarmUpProgress` and
+`FILM_COLOR_LAMP_STANDBY` all describe a lamp state machine that can act
+without host prompting.
+
+### What the episode did establish
+
+1. **The illumination was real** — peak 53400 against a 1244 dark baseline is
+   bright-field data, not noise.
+2. **The light meter method works**, but only with a correct detector. The CCD
+   FIFO is free-running and stalls full of stale data, so EP 0x86 must be
+   flushed (~384 KB) immediately before each measurement. Every earlier
+   "no change in illumination" result taken without flushing is unreliable and
+   was re-run.
+3. **Four previously undocumented board addresses exist**: `0xa2`, `0xa3`,
+   `0xa4`, `0xa5`, plus `0x41`/`0x45` as alternate views of `0x40`/`0x44`.
+   A Type 4 ping sweep across all 256 addresses found exactly nine responders.
+4. **The FX2 reports its firmware as `"F235 Boot"`** (AD_HOST register 0x02),
+   which suggests the operational firmware layer is not started by the
+   firmware download alone.
+
+### Lesson
+
+Blind register writes on these boards return "accepted" almost unconditionally,
+so acceptance carries no information, and any effect observed once may be
+coincidental. Reproduce before believing. The reliable route to lamp control is
+the static decode of `TLB.dll`, not further sweeping.

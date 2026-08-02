@@ -4,6 +4,12 @@ Most of this document is now **[VERIFIED]** — confirmed either by disassemblin
 `TLB.dll` (the F-135 client library) or by exchanging real packets with a real
 F-135 Plus over libusb on macOS. Where something is still a guess it says so.
 
+> **Semantics live in [`12-command-protocol.md`](12-command-protocol.md).** This
+> file covers the transport and framing. Doc 12 decodes what the packets *mean*
+> — the per-board register and command maps, and the exact byte layouts for
+> lamp, motor, scan and identity — with the `TLB.dll` evidence for each.
+> Builders for all of it: [`../tools/pakon_commands.py`](../tools/pakon_commands.py).
+
 ## Transport — [VERIFIED]
 
 Command packets travel over the bulk endpoint pair on interface 0:

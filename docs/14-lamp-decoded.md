@@ -420,3 +420,45 @@ illumination drive levels, and inventing them risks the LED array.
 | lamp enable path | decoded (`0x80`/`0x81`/`0x82`, thermal setpoints `0x8B`-`0x8F`) |
 | lamp drive values | **still needed** — read via `FN_GetCalibrateInfoLight` |
 | colour correction | implemented, verified exact to 0.000050 |
+
+## Duty cycles are derived, not stored — [VERIFIED-FROM-BINARY]
+
+`fcn.1001e020` computes the four duty cycles into the light config:
+
+```
+    n = [cfg + 0x58]                       per-channel current (iCurrent_R)
+    if (n >= 3)  duty = ((n - 1) * base) / n
+    else         duty = base * 0.5         ; .rdata:0x1005d348 = 0.5
+    [cfg + 0x90] = duty                    ; duty_R
+```
+
+and identically for `+0x5c → +0x98`, `+0x60 → +0xa0`, `+0x64 → +0xa8`
+(G, B, IR). `base` is a double held in a local, loaded earlier in the function.
+
+So the duty cycles passed to `LampOn` are **derived at run time** from:
+
+- the four per-channel **current** integers (`iCurrent_R/_G/_B/_Ir`), and
+- a **base exposure** value
+
+Neither is a stored duty cycle. Chasing "the duty cycle values" was therefore
+the wrong target — the real inputs are the currents and the base exposure, both
+of which come from the calibration read further up the call chain.
+
+### Remaining chain to decode
+
+```
+    FN_GetCalibrateInfoLight            reads factory calibration
+        -> populates CiConfigLight: currents at +0x58/+0x5c/+0x60/+0x64,
+           and the base exposure
+    fcn.1001e020                        derives duty cycles into +0x90..+0xa8
+    FN_bBeforeScan (fcn.1002dbd0)       passes both to LampOn
+    FN_bDrvLampOn (fcn.1002c5f0)        writes regs 0x81, 0x82, 0x80
+```
+
+Two links are decoded (the derivation and the LampOn writes). The unresolved
+link is the calibration read itself.
+
+Note: the FN name table is **not** index-linear with FN ids — a calibration
+attempt using `FN_bDrvLampOn` (id 112, table index 247) produced negative and
+inconsistent predictions for other entries. Do not rely on table position to
+recover FN ids; find each function by its logger call site instead.

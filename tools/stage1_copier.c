@@ -51,6 +51,7 @@
 #define MB_DST_HI   MB(3)
 #define MB_LEN_LO   MB(4)
 #define MB_LEN_HI   MB(5)
+#define MB_MODE     MB(6)      /* 0 = copy then verify, 1 = verify only */
 
 /* status, written by the device */
 #define ST_MARK     ((__xdata unsigned char *)0xE001)
@@ -83,8 +84,10 @@ void main(void)
               (((unsigned int)*MB_DST_HI << 8) | *MB_DST_LO);
     len = ((unsigned int)*MB_LEN_HI << 8) | *MB_LEN_LO;
 
-    for (i = 0; i < len; i++)
-        dst[i] = src[i];
+    if (*MB_MODE == 0) {
+        for (i = 0; i < len; i++)
+            dst[i] = src[i];
+    }
 
     *ST_MARK = MARK_COPIED;
 

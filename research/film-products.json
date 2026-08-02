@@ -1,0 +1,5228 @@
+{
+  "_meta": {
+    "generated": "2026-08-02",
+    "description": "Film product database recovered from Kodak/Pakon F-X35 scanner software, cross-referenced with public DX code tables.",
+    "id_scheme": "Pakon 'film product' = DX number Part 1 (I3A/PIMA combination code, 0-127); 'film specifier' = DX number Part 2 (generation code, 0-15). Composite 4-digit DX number = part1*16 + part2.",
+    "pakon_sources": {
+      "defaults.ini": "fx35install/program files/Pakon/F-X35 COM SERVER/Config/ColorCorrection/defaults.ini (per-product user color-slider defaults; all sections empty = zero adjustment; groups product IDs by manufacturer)",
+      "common-ProdCodeTable.dpi": "fx35install/.../anselinstalldir/dataPathItems/common/common-ProdCodeTable.dpi ((part1 0-127) x (part2 0-15) -> film ISO speed; 'Part1/Part2 PIMA code' per its header)",
+      "sba.map + SbaDPI": "per-(product,gen) scene-balance overrides: 78-13, 79-15 (chromogenic B&W), 96-*, 43-*",
+      "pnr.map + FPS scrub dpi": "per-(product,gen) noise-reduction profiles: 26-3, 35-1/2/3, 43-1/2, 78-2, 79-7, 82-3, 87-2, 113-12",
+      "pnr/profiles/*.pf": "film-family fpim_to_rpd color profiles: a200 c200 f200 f400 f800 ferr200 k200 k400 k800 kvr200",
+      "filmLut": "filmLut-scanner-prod-gen-*.lut hook; only identity default shipped"
+    },
+    "community_source": "https://github.com/ffindr/dxcode-film-db (LGPL-3.0); product names are community-compiled from the I3A 'DX Codes for 135-Size Film' list and film-edge decodes, NOT from the Pakon install",
+    "verification": "Pakon ISO table matches community names gen-for-gen on rows 26 (Centuria), 35 (Superia), 78 (Gold), 79 (VR/Portra), 110 (XP1/XP2 all ISO 400); Flickr crowd-sourced cartridge decodes agree (FP4+=109-12, HP5+=109-9, Delta 400=109-8, Delta 3200=108-10, XP2 Super=110-4, Tri-X=64-5)."
+  },
+  "pakon_pseudo_products": {
+    "BnW": "Black and White (C41 and regular) - defaults.ini section",
+    "POSITIVE": "Color reversal film and kodachrome - defaults.ini section",
+    "IMPORTED": "Imported images such as from file - defaults.ini section"
+  },
+  "pakon_per_stock_corrections": {
+    "sba_overrides": {
+      "78-13": {
+        "file": "sba-CN-default-78-13.dpi",
+        "film": "Kodak Black-and-White +400 (chromogenic)",
+        "note": "fpa = -94 -94 -94; created 03/03/04 for chromogenic B&W ITS #13396; 1.25-button adjustment from print judging"
+      },
+      "79-15": {
+        "file": "sba-CN-default-79-15.dpi",
+        "film": "Kodak Portra 400BW (chromogenic)",
+        "note": "fpa = -94 -94 -94; created 02/11/04, same ITS"
+      },
+      "96-*": {
+        "file": "sba-CN-default-96-1.dpi",
+        "film": "Kodak Gold 400 Gen 9",
+        "note": "fpa = -75 -50 -25 (default is -70 -55 -45); created 5/17/05 after Pakon 135 tests in DPS900"
+      },
+      "43-*": {
+        "file": "sba-CN-default-43-1.dpi",
+        "film": "Kodak Max Zoom 800 / Supra 800",
+        "note": "fpa = -75 -50 -25; same origin"
+      }
+    },
+    "pnr_scrub_profiles": [
+      "26-3",
+      "35-1",
+      "35-2",
+      "35-3",
+      "43-1",
+      "43-2",
+      "78-2",
+      "79-7",
+      "82-3",
+      "87-2",
+      "113-12"
+    ],
+    "film_family_profiles": {
+      "a200": "Agfa 200 family",
+      "c200": "unknown (possibly Konica) 200",
+      "f200": "Fuji 200",
+      "f400": "Fuji 400",
+      "f800": "Fuji 800",
+      "ferr200": "Ferrania 200",
+      "k200": "Kodak 200",
+      "k400": "Kodak 400",
+      "k800": "Kodak 800",
+      "kvr200": "Kodak VR 200"
+    }
+  },
+  "ilford": {
+    "present": true,
+    "defaults_ini_ids": [
+      105,
+      106,
+      107,
+      108,
+      109,
+      110
+    ],
+    "prodcodetable_row_110_iso": [
+      0,
+      400,
+      400,
+      400,
+      400,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "target_stocks": {
+      "HP5 Plus": {
+        "dx_part1": 109,
+        "dx_part2": 9,
+        "dx_number": 1753
+      },
+      "FP4 Plus": {
+        "dx_part1": 109,
+        "dx_part2": 12,
+        "dx_number": 1756
+      },
+      "Delta 3200 Professional": {
+        "dx_part1": 108,
+        "dx_part2": 10,
+        "dx_number": 1738
+      },
+      "XP2 Super": {
+        "dx_part1": 110,
+        "dx_part2": 4,
+        "dx_number": 1764
+      }
+    }
+  },
+  "dx_part1_entries": [
+    {
+      "dx_part1": 1,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 3,
+          "name": "AGFAPAN APX 400 Professional",
+          "dx_number": 19,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "AGFAORTHO 25 Professional",
+          "dx_number": 20,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "AGFAPAN APX 25 Professional",
+          "dx_number": 22,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "AGFAPAN APX 100 Professional",
+          "dx_number": 23,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "AGFA SCALA 200 Professional",
+          "dx_number": 24,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "AGFA SCALA 200x Professional",
+          "dx_number": 24,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 2,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": "KONICA",
+      "pakon_iso_by_gen": [
+        100,
+        100,
+        100,
+        100,
+        200,
+        200,
+        200,
+        100,
+        400,
+        400,
+        1600,
+        3200,
+        100,
+        100,
+        100,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 3,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 6,
+          "name": "AGFACHROME CT 100i",
+          "dx_number": 54,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "AGFACHROME RS 100 Plus Professional",
+          "dx_number": 54,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "AGFACHROME CT precisa 100",
+          "dx_number": 57,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "AGFACHROME CTX 100",
+          "dx_number": 57,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "AGFACHROME RSX 100 Professional",
+          "dx_number": 57,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "AGFACHROME RSX II 100 Professional",
+          "dx_number": 57,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "Perutz CR 100 Chrome",
+          "dx_number": 57,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 4,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK Technical Pan Film",
+          "dx_number": 65,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 5,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 6,
+          "name": "AGFACHROME RS 50 Plus Professional",
+          "dx_number": 86,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "AGFACHROME RSX 50 Professional",
+          "dx_number": 89,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "AGFACHROME RSX II 50 Professional",
+          "dx_number": 89,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 6,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK High Speed Infrared Film",
+          "dx_number": 97,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK EKTACHROME Infrared",
+          "dx_number": 98,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODAK EKTACHROME Professional Infrared EIR Film",
+          "dx_number": 99,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 7,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 5,
+          "name": "AGFACHROME 200 RS Professional",
+          "dx_number": 117,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "AGFACHROME CT 200",
+          "dx_number": 117,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "AGFACHROME CT precisa 200",
+          "dx_number": 118,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "AGFACHROME CTX 200",
+          "dx_number": 118,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "AGFACHROME RSX 200 Professional",
+          "dx_number": 118,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "AGFACHROME RSX II 200 Professional",
+          "dx_number": 118,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 8,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": "FUJICOLOR SUPERIA HR",
+      "pakon_iso_by_gen": [
+        0,
+        200,
+        0,
+        0,
+        100,
+        100,
+        160,
+        100,
+        0,
+        200,
+        0,
+        0,
+        100,
+        200,
+        100,
+        100
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "FUJICOLOR 200",
+          "dx_number": 129,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "FUJICOLOR SUPERIA 100",
+          "dx_number": 133,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "FUJICOLOR 100",
+          "dx_number": 135,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "FUJICOLOR SUPERIA 200",
+          "dx_number": 137,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "FUJICOLOR SUPERIA 200",
+          "dx_number": 141,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "FUJICOLOR SUPERIA 100",
+          "dx_number": 142,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "FUJICOLOR SUPER V 100",
+          "dx_number": 143,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 9,
+      "manufacturer_pakon": "SVEMA Production Assoc.",
+      "manufacturer_community": "SVEMA Production Assoc.",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "SVEMA DS-100",
+          "dx_number": 145,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 10,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": "FUJICOLOHR      REALA",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        400,
+        200,
+        100,
+        100,
+        100,
+        100,
+        1600,
+        400,
+        400,
+        200,
+        100,
+        100,
+        100,
+        100
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 5,
+          "name": "FUJICOLOR SUPER CN-2",
+          "dx_number": 165,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "FUJICOLOR SUPER HG 100",
+          "dx_number": 165,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "FUJICOLOR REALA CS-3",
+          "dx_number": 166,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "FUJICOLOR CU-1",
+          "dx_number": 168,
+          "pakon_iso": 1600,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "FUJICOLOR HG 1600",
+          "dx_number": 168,
+          "pakon_iso": 1600,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "FUJICOLOR 400 PROFESSIONAL HG",
+          "dx_number": 169,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "FUJICOLOR 400 PROFESSIONAL NHG",
+          "dx_number": 169,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "FUJICOLOR REALA CS-2",
+          "dx_number": 174,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 11,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK Rapid Process Copy",
+          "dx_number": 177,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK Recording Film",
+          "dx_number": 178,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODAK Professional Traffic Surveillance Film",
+          "dx_number": 179,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 12,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": "FUJICOLOR SUPER",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        400,
+        200,
+        100,
+        0,
+        160,
+        100,
+        0,
+        800,
+        400,
+        200,
+        100,
+        100,
+        160,
+        400
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "FUJICOLOR 400",
+          "dx_number": 193,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "FUJICOLOR SUPER G 400 Type Y",
+          "dx_number": 194,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "FUJICOLOR SUPER G 100 Type Y",
+          "dx_number": 196,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "FUJICOLOR SUPERIA X-TRA 400",
+          "dx_number": 197,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "FUJICOLOR NPS 160 PROFESSIONAL",
+          "dx_number": 198,
+          "pakon_iso": 160,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "FUJICOLOR SUPER HG II 100",
+          "dx_number": 199,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "FUJICOLOR SUPERIA VENUS 400",
+          "dx_number": 200,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "FUJICOLOR 800",
+          "dx_number": 201,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "FUJICOLOR SUPER G 400",
+          "dx_number": 202,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "FUJICOLOR SUPER HGV 200",
+          "dx_number": 203,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "FUJICOLOR SUPER HGV 100",
+          "dx_number": 205,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "FUJICOLOR 160 NS",
+          "dx_number": 206,
+          "pakon_iso": 160,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "FUJICOLOR SUPER HGV 400",
+          "dx_number": 207,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 13,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK Traffic Flow Recording Film",
+          "dx_number": 209,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 14,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK Vericolor Slide Film",
+          "dx_number": 225,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 15,
+      "manufacturer_pakon": "Ferrania Imaging",
+      "manufacturer_community": "Ferrania Imaging",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 16,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 0,
+          "name": "Konica Chrome MC100",
+          "dx_number": 256,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "Konica Chrome R100",
+          "dx_number": 259,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Konica Chrome SHINRA100",
+          "dx_number": 260,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Konica Chrome R200",
+          "dx_number": 261,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "Konica Chrome Professional",
+          "dx_number": 262,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "Konica Chrome SINBI100",
+          "dx_number": 262,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "Konica Chrome CENTURIA100",
+          "dx_number": 263,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "Konica Chrome SINBI100",
+          "dx_number": 263,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Konica Chrome CENTURIA200",
+          "dx_number": 264,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Konica Chrome SINBI200",
+          "dx_number": 264,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 17,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": "AGFACOLOR OPTIMA  HDC",
+      "pakon_iso_by_gen": [
+        100,
+        100,
+        100,
+        50,
+        200,
+        0,
+        200,
+        400,
+        400,
+        0,
+        1000,
+        200,
+        100,
+        200,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "Agfacolor XRS 100 Professional",
+          "dx_number": 273,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "AGFACOLOR Optima 125 Professional",
+          "dx_number": 274,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "AGFACOLOR Portrait 160 Professional",
+          "dx_number": 274,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "AGFACOLOR XRG 100",
+          "dx_number": 274,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "AGFACOLOR ULTRA 50 Professional",
+          "dx_number": 275,
+          "pakon_iso": 50,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "AGFACOLOR HDC 200",
+          "dx_number": 278,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "AGFACOLOR XRG 400",
+          "dx_number": 279,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "AGFACOLOR HDC 400",
+          "dx_number": 280,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "AGFACOLOR XRS 1000 Professional",
+          "dx_number": 282,
+          "pakon_iso": 1000,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "AGFACOLOR HDC 200-2",
+          "dx_number": 283,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "AGFACOLOR HDC 100",
+          "dx_number": 284,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "AGFACOLOR XRG 200",
+          "dx_number": 285,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "AGFACOLOR XRG 200-2",
+          "dx_number": 287,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 18,
+      "manufacturer_pakon": "Ferrania Imaging",
+      "manufacturer_community": "Ferrania Imaging",
+      "pakon_brand_comment": "SCOTCH",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        400,
+        100,
+        100,
+        0,
+        200,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 7,
+          "name": "SCOTCH COLOR 100 AT",
+          "dx_number": 295,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "SCOTCH COLOR 200 AT",
+          "dx_number": 297,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "SCOTCH COLOR 400 AT",
+          "dx_number": 298,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 19,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 20,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK PROFESSIONAL EKTACHROME Duplicating Film EDUPE",
+          "dx_number": 321,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK EKTACHROME Slide Duplicating Film",
+          "dx_number": 322,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "KODAK EKTACHROME 160 Film (Tungsten)",
+          "dx_number": 325,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "KODAK EKTACHROME SE Duplicating Film",
+          "dx_number": 327,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "KODAK EKTACHROME Elite 400 Slide Film (Daylight)",
+          "dx_number": 333,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 23,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 5,
+          "name": "KODAK EKTACHROME Professional E100SW Film",
+          "dx_number": 373,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "KODAK EKTACHROME Professional E100S Film",
+          "dx_number": 374,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "KODAK EKTACHROME ELITE II 100 Film",
+          "dx_number": 377,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "KODAK PROFESSIONAL EKTACHROME E200 Film",
+          "dx_number": 378,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "KODAK Elite CHROME 200 Film",
+          "dx_number": 379,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "KODAK EKTACHROME Professional E100VS Film",
+          "dx_number": 380,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "KODAK Elite CHROME Extra Color 100 Film",
+          "dx_number": 381,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "KODAK EliteCHROME 100 Film",
+          "dx_number": 382,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "KODAK Professional EKTACHROME E100G Film",
+          "dx_number": 382,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "KODAK Professional EKTACHROME E100GX Film",
+          "dx_number": 383,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 24,
+      "manufacturer_pakon": "Ferrania Imaging",
+      "manufacturer_community": "Ferrania Imaging",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "IMATION CHROME 100",
+          "dx_number": 385,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "IMATION CHROME 400",
+          "dx_number": 388,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "IMATION CHROME 640T",
+          "dx_number": 390,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 25,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 26,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": "KONICA CENTURIA",
+      "pakon_iso_by_gen": [
+        400,
+        800,
+        100,
+        200,
+        1600,
+        400,
+        800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 0,
+          "name": "Konica Color New CENTURIA400",
+          "dx_number": 416,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "Konica Color New CENTURIA800",
+          "dx_number": 417,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "Konica Color CENTURIA SUPER100",
+          "dx_number": 418,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "Konica Color CENTURIA SUPER200",
+          "dx_number": 419,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Konica Color CENTURIA SUPER1600",
+          "dx_number": 420,
+          "pakon_iso": 1600,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Konica Color CENTURIA SUPER400",
+          "dx_number": 421,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "Konica Color CENTURIA SUPER800",
+          "dx_number": 422,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 28,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": "KONICA COLOR VX",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        0,
+        400,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        100,
+        200,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 4,
+          "name": "Konica Color VX400",
+          "dx_number": 452,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Konica Color VX100 SUPER",
+          "dx_number": 453,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "Konica Color VX200 SUPER",
+          "dx_number": 454,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "Konica Color VX400 SUPER",
+          "dx_number": 455,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "Konica Color VX100",
+          "dx_number": 460,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "Konica Color VX-200",
+          "dx_number": 461,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 30,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 31,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": "AGFACOLOR   TURA HR",
+      "pakon_iso_by_gen": [
+        0,
+        200,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "Perutz Primera 200 (until 12/2001)",
+          "dx_number": 497,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "Perutz Primera 800 (until 12/2001)*",
+          "dx_number": 498,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 32,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 3,
+          "name": "FUJICHROME SENSIA 100",
+          "dx_number": 515,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "FUJICHROME ASTIA 100F",
+          "dx_number": 516,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "FUJICHROME VELVIA RVP",
+          "dx_number": 517,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "FUJICHROME DUPLICATING FILM CDU",
+          "dx_number": 518,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "FUJICHROME RTP",
+          "dx_number": 519,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "FUJICHROME PROVIA 400",
+          "dx_number": 522,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "FUJICHROME VELVIA 100",
+          "dx_number": 523,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "FUJICHROME RDP",
+          "dx_number": 524,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "FUJICHROME RFP",
+          "dx_number": 525,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "FUJICHROME DUPLICATING FILM CDU II",
+          "dx_number": 526,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "FUJICHROME VELVIA 100F",
+          "dx_number": 527,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 33,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": "FUJI    NEXIA   APS",
+      "pakon_iso_by_gen": [
+        800,
+        400,
+        400,
+        200,
+        100,
+        200,
+        100,
+        100,
+        800,
+        400,
+        400,
+        200,
+        100,
+        200,
+        0,
+        400
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 34,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 2,
+          "name": "FUJICHROME SENSIA 400",
+          "dx_number": 546,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "FUJICHROME SENSIA 200",
+          "dx_number": 547,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "FUJICHROME PROVIA 100 PROFESSIONAL",
+          "dx_number": 548,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "FUJICHROME SENSIA 100",
+          "dx_number": 549,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "FUJICHROME ASTIA 100 PROFESSIONAL",
+          "dx_number": 550,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "FUJICHROME SENSIA II 100",
+          "dx_number": 551,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "FUJICHROME TREBI 100C",
+          "dx_number": 553,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "FUJICHROME PROVIA 400F PROFESSIONAL",
+          "dx_number": 554,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "FUJICHROME SENSIA 200",
+          "dx_number": 555,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "FUJICHROME MS 100/1000 PROFESSIONAL",
+          "dx_number": 556,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "FUJICHROME PROVIA 100F PROFESSIONAL",
+          "dx_number": 557,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "FUJICHROME 64T",
+          "dx_number": 558,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "FUJICHROME TYPE II PROFESSIONAL",
+          "dx_number": 558,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "FUJICHROME DIGITAL OUTPUT FILM",
+          "dx_number": 559,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 35,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": "FUJI    SUPERIA 135",
+      "pakon_iso_by_gen": [
+        1600,
+        800,
+        400,
+        200,
+        160,
+        100,
+        100,
+        100,
+        1600,
+        800,
+        400,
+        400,
+        100,
+        100,
+        100,
+        400
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 0,
+          "name": "FUJICOLOR SUPERIA 1600",
+          "dx_number": 560,
+          "pakon_iso": 1600,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "FUJICOLOR SUPERIA XTRA 800",
+          "dx_number": 561,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "FUJICOLOR SUPERIA 400",
+          "dx_number": 562,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "FUJICOLOR SUPERIA 200",
+          "dx_number": 563,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "FUJICOLOR NPC 160 PROFESSIONAL",
+          "dx_number": 564,
+          "pakon_iso": 160,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "FUJICOLOR SUPERIA 100",
+          "dx_number": 565,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "FUJICOLOR SUPERIA 100",
+          "dx_number": 566,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "FUJICOLOR 100",
+          "dx_number": 567,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "FUJICOLOR SUPERIA 1600",
+          "dx_number": 568,
+          "pakon_iso": 1600,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "FUJICOLOR SUPERIA 800",
+          "dx_number": 569,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "FUJICOLOR SUPER 400",
+          "dx_number": 570,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "FUJICOLOR PRO 400",
+          "dx_number": 571,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "FUJICOLOR SUPERIA 100",
+          "dx_number": 572,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "FUJICOLOR SUPER 100",
+          "dx_number": 573,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "FUJICOLOR SUPER 100",
+          "dx_number": 574,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "FUJICOLOR SUPERIA 400",
+          "dx_number": 575,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 36,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": "FUJICOLOR REALA ACE SUPER NPZ",
+      "pakon_iso_by_gen": [
+        800,
+        400,
+        400,
+        200,
+        100,
+        800,
+        100,
+        100,
+        400,
+        800,
+        400,
+        0,
+        100,
+        100,
+        100,
+        100
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 0,
+          "name": "FUJICOLOR NPZ 800",
+          "dx_number": 576,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "FUJICOLOR NPH 400",
+          "dx_number": 577,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "FUJICOLOR SUPER G PLUS 400",
+          "dx_number": 578,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "FUJICOLOR SUPER G 200",
+          "dx_number": 579,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "FUJICOLOR SUPER G PLUS 100",
+          "dx_number": 580,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "FUJICOLOR SUPER G PLUS 800 Type Y",
+          "dx_number": 581,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "FUJICOLOR REALA",
+          "dx_number": 582,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "FUJICOLOR SUPERIA REALA",
+          "dx_number": 583,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "FUJICOLOR NPH 400",
+          "dx_number": 584,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "FUJICOLOR SUPER G ACE 800",
+          "dx_number": 585,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "FUJICOLOR SUPER G ACE 400",
+          "dx_number": 586,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "FUJICOLOR PRO 400",
+          "dx_number": 587,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "FUJICOLOR SUPER G 100",
+          "dx_number": 588,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "FUJICOLOR SUPER G ACE 100",
+          "dx_number": 589,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "FUJICOLOR REALA ACE",
+          "dx_number": 590,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "FUJICOLOR SUPER V 100",
+          "dx_number": 591,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 37,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": "FUJI NEXIA APS",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 38,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 39,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 8,
+          "name": "FUJICOLOR SUPERIA VENUS 1600",
+          "dx_number": 632,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "FUJICOLOR SUPERIA VENUS 800",
+          "dx_number": 633,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 40,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": "KONICA",
+      "pakon_iso_by_gen": [
+        100,
+        100,
+        100,
+        50,
+        200,
+        200,
+        400,
+        400,
+        400,
+        200,
+        200,
+        200,
+        100,
+        200,
+        100,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 3,
+          "name": "Konica Color IMPRESA50",
+          "dx_number": 643,
+          "pakon_iso": 50,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 42,
+      "manufacturer_pakon": "Fuji Photo Film",
+      "manufacturer_community": "FUJIFILM Corporation",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 8,
+          "name": "FUJICHROME RSP",
+          "dx_number": 680,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 43,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": "KODAK MAX/SUPRA 800",
+      "pakon_iso_by_gen": [
+        0,
+        800,
+        800,
+        800,
+        800,
+        800,
+        800,
+        800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK MAX ZOOM 800 Film - Loose Roll",
+          "dx_number": 689,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK MAX ZOOM 800 Film - One-Time-Use Cameras",
+          "dx_number": 690,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODAK PROFESSIONAL SUPRA 800 Film",
+          "dx_number": 691,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 44,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": "AGFACOLOR IX240 FUTURA/II",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        0,
+        0,
+        200,
+        100,
+        200,
+        0,
+        0,
+        400,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "Agfacolor Futura 100",
+          "dx_number": 705,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Agfacolor Futura 200",
+          "dx_number": 708,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Agfacolor Futura II 100",
+          "dx_number": 709,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "Agfacolor Futura II 200",
+          "dx_number": 710,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Agfacolor APS star 200",
+          "dx_number": 712,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "Agfacolor Futura 400",
+          "dx_number": 713,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "Agfacolor Futura II 400",
+          "dx_number": 714,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "Agfacolor APS star 400",
+          "dx_number": 715,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 45,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": "AGFACOLOR-PRIVATE TURA COLOR",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        0,
+        0,
+        200,
+        0,
+        200,
+        0,
+        0,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 6,
+          "name": "Perutz Primera 200 APS",
+          "dx_number": 726,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Perutz Primera 200 APS-N",
+          "dx_number": 728,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 46,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "Agfacolor Ultra 100",
+          "dx_number": 737,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "Agfacolor Optima 100-N",
+          "dx_number": 738,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "Agfacolor Optima 200-N",
+          "dx_number": 739,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Agfacolor Optima 400-N",
+          "dx_number": 740,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Polaroid 100 Plus",
+          "dx_number": 741,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "Polaroid 200 Plus",
+          "dx_number": 742,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "Polaroid 400 Plus",
+          "dx_number": 743,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Polaroid 800 Plus",
+          "dx_number": 744,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 47,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "Perutz Primera 200 (from 01/2002 on)",
+          "dx_number": 753,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "Perutz Primera 800 (from 01/2002 on)",
+          "dx_number": 754,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "Agfacolor 100-N",
+          "dx_number": 755,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Agfacolor 200-N",
+          "dx_number": 756,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Perutz Primera 200-N",
+          "dx_number": 756,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Agfacolor 400-N",
+          "dx_number": 757,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Perutz Primera 400-N",
+          "dx_number": 757,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "Perutz Primera 800-N",
+          "dx_number": 758,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Perutz Primera 100-A",
+          "dx_number": 760,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 48,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 49,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": "AGFACOLOR",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        160,
+        100,
+        200,
+        200,
+        0,
+        400,
+        400,
+        400,
+        0,
+        200,
+        100,
+        200,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "AGFACOLOR OPTIMA 100-2",
+          "dx_number": 785,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "AGFACOLOR XPS 160 Professional",
+          "dx_number": 786,
+          "pakon_iso": 160,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "AGFACOLOR OPTIMA 100-3 Professional",
+          "dx_number": 787,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "AGFACOLOR OPTIMA 200-3 Professional",
+          "dx_number": 788,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "AGFACOLOR OPTIMA 200 Professional",
+          "dx_number": 789,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "AGFACOLOR OPTIMA 400 Professional",
+          "dx_number": 791,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "AGFACOLOR OPTIMA 400 Professional",
+          "dx_number": 792,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "AGFACOLOR OPTIMA 400-2 Professional",
+          "dx_number": 793,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "AGFACOLOR OPTIMA 200-2 Professional",
+          "dx_number": 795,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "AGFACOLOR OPTIMA 100 Professional",
+          "dx_number": 796,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "AGFACOLOR OPTIMA 200-4 Professional",
+          "dx_number": 797,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 50,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": "KONICA VX JX CENTURIA",
+      "pakon_iso_by_gen": [
+        400,
+        400,
+        400,
+        100,
+        200,
+        400,
+        100,
+        400,
+        400,
+        200,
+        100,
+        160,
+        100,
+        200,
+        800,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 0,
+          "name": "Konica Color XG400",
+          "dx_number": 800,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "Konica Monochrome VX400",
+          "dx_number": 801,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "Konica Color LV400",
+          "dx_number": 802,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "Konica Color LV100",
+          "dx_number": 803,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "Konica Color VX100",
+          "dx_number": 803,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Konica Color LV200",
+          "dx_number": 804,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Konica Color VX200",
+          "dx_number": 804,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Konica Color VX400",
+          "dx_number": 805,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "Konica Color JX100",
+          "dx_number": 806,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "Konica Color CENTURIA400",
+          "dx_number": 807,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Konica Monochrome SEPIA400",
+          "dx_number": 808,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Konica Monochrome VX400",
+          "dx_number": 808,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "Konica Color IMPRESA200",
+          "dx_number": 809,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "Konica Color JX200M",
+          "dx_number": 809,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "Konica Color IMPRESA100",
+          "dx_number": 810,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "Konica Color PROFESSIONAL160",
+          "dx_number": 811,
+          "pakon_iso": 160,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "Konica Color CENTURIA100",
+          "dx_number": 812,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "Konica Color CENTURIA200",
+          "dx_number": 813,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "Konica Color CENTURIA800",
+          "dx_number": 814,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 51,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 52,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK EKTACHROME 64 Professional Film (Daylight)",
+          "dx_number": 833,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK EKTACHROME 50 Professional Film (Tungsten)",
+          "dx_number": 834,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODAK EKTACHROME 200 Professional Film (Daylight)",
+          "dx_number": 835,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "KODAK EKTACHROME 160 Professional Film (Tungsten)",
+          "dx_number": 836,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "KODAK EKTACHROME 100 Professional Film (Daylight)",
+          "dx_number": 839,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "KODAK PROFESSIONAL EKTACHROME 100 HC Film",
+          "dx_number": 839,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "KODAK EKTACHROME 64 Professional Film (Tungsten)",
+          "dx_number": 841,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "KODAK EKTACHROME 400 Professional Film",
+          "dx_number": 842,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "KODAK EKTACHROME 320 Professional Film",
+          "dx_number": 843,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 53,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 10,
+          "name": "KODAK EKTACHROME P1600 Professional Film",
+          "dx_number": 858,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "KODAK Dental Photographic Slide Film",
+          "dx_number": 860,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "KODAK EKTACHROME 100 Professional Film (Daylight)",
+          "dx_number": 860,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "KODAK EKTACHROME 100 Electronic Output Film",
+          "dx_number": 861,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 60,
+      "manufacturer_pakon": "China Lucky Film",
+      "manufacturer_community": "China Lucky Film",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 4,
+          "name": "LUCKY COLOR CHROME 100CH",
+          "dx_number": 964,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 64,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 2,
+          "name": "KODAK PLUS-X Pan Film",
+          "dx_number": 1026,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODAK TRI-X Pan Film",
+          "dx_number": 1027,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "KODAK PLUS-X Pan Film",
+          "dx_number": 1028,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "KODAK TRI-X Pan Film",
+          "dx_number": 1029,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 66,
+      "manufacturer_pakon": "Ferrania Imaging",
+      "manufacturer_community": "Ferrania Imaging",
+      "pakon_brand_comment": "SCOTCH",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        200,
+        100,
+        0,
+        0,
+        0,
+        400,
+        200,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 5,
+          "name": "SCOTCH 200 ATG1/SCOTCH COLOR EXL",
+          "dx_number": 1061,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "SCOTCH 100 ATG1/SCOTCH COLOR EXL",
+          "dx_number": 1062,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "SCOTCH 400 ATG1/SCOTCH COLOR EXL",
+          "dx_number": 1066,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "SCOTCH 200 ATG2/SCOTCH COLOR EXH",
+          "dx_number": 1067,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 67,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK T-MAX 100 Professional Film",
+          "dx_number": 1073,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK T-MAX 400 Professional Film",
+          "dx_number": 1074,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODAK T-MAX 3200 Professional Film",
+          "dx_number": 1075,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "KODAK COSMOS 400 Film",
+          "dx_number": 1076,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "KODAK Black-and-White Film",
+          "dx_number": 1077,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "KODAK Panchromatic Black-and-White Film",
+          "dx_number": 1078,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "KODAK T-MAX 100 Professional Film",
+          "dx_number": 1079,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "KODAK Black-and-White Film",
+          "dx_number": 1080,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "KODAK T-MAX 400 Professional Film",
+          "dx_number": 1080,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "KODAK T-MAX 3200 Professional Film",
+          "dx_number": 1081,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 68,
+      "manufacturer_pakon": "ERA",
+      "manufacturer_community": "ERA",
+      "pakon_brand_comment": "ERA",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        100,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 8,
+          "name": "ERA Color ER 100",
+          "dx_number": 1096,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 70,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK EKTAGRAPHIC HC Slide Film",
+          "dx_number": 1121,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 72,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": "KONICA  JX CENTURIA      APS",
+      "pakon_iso_by_gen": [
+        400,
+        200,
+        400,
+        400,
+        200,
+        800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 77,
+      "manufacturer_pakon": "Konica",
+      "manufacturer_community": "KONICA MINOLTA",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 78,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": "KODAK GOLD MAX VR B&W PJ",
+      "pakon_iso_by_gen": [
+        400,
+        100,
+        200,
+        400,
+        100,
+        200,
+        400,
+        800,
+        400,
+        100,
+        100,
+        200,
+        200,
+        400,
+        200,
+        800
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 0,
+          "name": "KODAK PROFESSIONAL T-MAX Black-and-White Film T400 CN",
+          "dx_number": 1248,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "KODAK GOLD 100 Film",
+          "dx_number": 1249,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK GOLD 200 Film",
+          "dx_number": 1250,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "KODAK Dental Photographic Print Film",
+          "dx_number": 1252,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "KODAK ROYAL GOLD 100 Film",
+          "dx_number": 1252,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "KODAK ROYAL GOLD 200 Film",
+          "dx_number": 1253,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "KODAK PROFESSIONAL Law Enforcement Film LE400",
+          "dx_number": 1254,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "KODAK PROFESSIONAL PROIMAGE 100 Color Negative Film",
+          "dx_number": 1257,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "KODAK Black-and-White + 400 Film",
+          "dx_number": 1261,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "KODAK Professional Colour Negative 200 Film",
+          "dx_number": 1262,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 79,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": [
+        0,
+        200,
+        200,
+        100,
+        400,
+        100,
+        100,
+        200,
+        400,
+        400,
+        100,
+        160,
+        100,
+        400,
+        800,
+        400
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 5,
+          "name": "KODAK Professional EKTAR 64 Film",
+          "dx_number": 1269,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "KODACOLOR VR100 Film",
+          "dx_number": 1270,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "KODACOLOR VR 200 Film",
+          "dx_number": 1271,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "KODAK ISO 400 Color Negative Film",
+          "dx_number": 1272,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "KODAK Professional Profoto 400 Colour Negative Film",
+          "dx_number": 1273,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "KODAK Colour Negative 100 Film",
+          "dx_number": 1274,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "KODAK Professional PORTRA 160 Film",
+          "dx_number": 1275,
+          "pakon_iso": 160,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "KODAK Professional PORTRA 100T Film",
+          "dx_number": 1276,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "KODAK Professional PORTRA 400 Film",
+          "dx_number": 1277,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "KODAK Professional PORTRA 800 Film",
+          "dx_number": 1278,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "KODAK Professional PORTRA 400BW Film",
+          "dx_number": 1279,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 80,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": "KODAKCOLGOLD",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        100,
+        400,
+        200,
+        1600,
+        100,
+        100,
+        200,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 81,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": "KODAKCOLGOLD",
+      "pakon_iso_by_gen": [
+        0,
+        25,
+        125,
+        1000,
+        400,
+        400,
+        1600,
+        400,
+        25,
+        0,
+        100,
+        100,
+        0,
+        400,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 4,
+          "name": "KODAK EKTAPRESS GOLD 100 Professional Film",
+          "dx_number": 1300,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "KODAK EKTAPRESS GOLD 400 Professional Film",
+          "dx_number": 1301,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "KODAK EKTAPRESS GOLD 1600 Professional Film",
+          "dx_number": 1302,
+          "pakon_iso": 1600,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "KODAK EKTAPRESS GOLD 400 Professional Film",
+          "dx_number": 1306,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "KODAK EKTAPRESS GOLD 400 Professional Film",
+          "dx_number": 1309,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 82,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": "KODAK   GOLD",
+      "pakon_iso_by_gen": [
+        0,
+        400,
+        400,
+        400,
+        400,
+        200,
+        100,
+        200,
+        400,
+        200,
+        400,
+        400,
+        0,
+        200,
+        100,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK ROYAL GOLD 400 Film",
+          "dx_number": 1313,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK Professional SUPRA 400 Film",
+          "dx_number": 1314,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODAK MAX 400 Film",
+          "dx_number": 1315,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "KODAK GOLD 400 Film",
+          "dx_number": 1316,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "KODAK SUPER GOLD 400 Film",
+          "dx_number": 1316,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 83,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": "KODAK   GOLD    ROYAL   GOLD",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        1000,
+        0,
+        100,
+        200,
+        400,
+        0,
+        100,
+        100,
+        400,
+        200,
+        100,
+        200,
+        800,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 2,
+          "name": "KODAK ROYAL GOLD 1000 Film",
+          "dx_number": 1330,
+          "pakon_iso": 1000,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 84,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODACHROME 64 Film (Daylight)",
+          "dx_number": 1345,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODACHROME 40 Film (Type A)",
+          "dx_number": 1346,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODACHROME 25 Film (Daylight)",
+          "dx_number": 1347,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "KODACHROME 200 Film",
+          "dx_number": 1348,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "KODACHROME 64 Film (PCI)",
+          "dx_number": 1350,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "KODACHROME 25 Film (PCI)",
+          "dx_number": 1351,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "KODACHROME 200 Film (PCI)",
+          "dx_number": 1352,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 85,
+      "manufacturer_pakon": "Ferrania Imaging",
+      "manufacturer_community": "Ferrania Imaging",
+      "pakon_brand_comment": "IMATION HP-FERRANIA",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        200,
+        0,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "IMATION COLOR HP100",
+          "dx_number": 1361,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "IMATION COLOR HP200",
+          "dx_number": 1362,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "IMATION COLOR HP400",
+          "dx_number": 1364,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 86,
+      "manufacturer_pakon": "Ferrania Imaging",
+      "manufacturer_community": "Ferrania Imaging",
+      "pakon_brand_comment": "IMATION IX240",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        200,
+        0,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        200,
+        0,
+        400,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 87,
+      "manufacturer_pakon": "Ferrania Imaging",
+      "manufacturer_community": "Ferrania Imaging",
+      "pakon_brand_comment": "IMATION-FERRANIA SOLARIS",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        200,
+        0,
+        400,
+        400,
+        0,
+        0,
+        800,
+        800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "Ferrania Imaging Color FG100",
+          "dx_number": 1393,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "Ferrania Imaging Color FG200",
+          "dx_number": 1394,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "Ferrania Imaging Color FG Plus 100",
+          "dx_number": 1395,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Ferrania Imaging Color FG400",
+          "dx_number": 1396,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Ferrania Imaging Color FG400i",
+          "dx_number": 1397,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "Ferrania Imaging Color FG Plus 200",
+          "dx_number": 1398,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "Ferrania Imaging Color FG Plus 400",
+          "dx_number": 1399,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Ferrania Imaging Color FG800",
+          "dx_number": 1400,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "Ferrania Imaging Color FG800i",
+          "dx_number": 1401,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "Ferrania Imaging Color FG Plus 800",
+          "dx_number": 1402,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 88,
+      "manufacturer_pakon": "Shanghai General Photo",
+      "manufacturer_community": "Shanghai General Photo",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 0,
+          "name": "RAINBOW",
+          "dx_number": 1408,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 0,
+          "name": "SEAGULL",
+          "dx_number": 1408,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 0,
+          "name": "SHANGHAI",
+          "dx_number": 1408,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 0,
+          "name": "SHENGUANG",
+          "dx_number": 1408,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "RAINBOW",
+          "dx_number": 1409,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "SEAGULL",
+          "dx_number": 1409,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "SHANGHAI",
+          "dx_number": 1409,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "SHENGUANG",
+          "dx_number": 1409,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "RAINBOW",
+          "dx_number": 1410,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "SEAGULL",
+          "dx_number": 1410,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "SHANGHAI",
+          "dx_number": 1410,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "SHENGUANG",
+          "dx_number": 1410,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "RAINBOW",
+          "dx_number": 1411,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "SEAGULL",
+          "dx_number": 1411,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "SHANGHAI",
+          "dx_number": 1411,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "SHENGUANG",
+          "dx_number": 1411,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "RAINBOW",
+          "dx_number": 1412,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "SEAGULL",
+          "dx_number": 1412,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "SHANGHAI",
+          "dx_number": 1412,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "SHENGUANG",
+          "dx_number": 1412,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "RAINBOW",
+          "dx_number": 1413,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "SEAGULL",
+          "dx_number": 1413,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "SHANGHAI",
+          "dx_number": 1413,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "SHENGUANG",
+          "dx_number": 1413,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "RAINBOW",
+          "dx_number": 1414,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "SEAGULL",
+          "dx_number": 1414,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "SHANGHAI",
+          "dx_number": 1414,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "SHENGUANG",
+          "dx_number": 1414,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "RAINBOW",
+          "dx_number": 1415,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "SEAGULL",
+          "dx_number": 1415,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "SHANGHAI",
+          "dx_number": 1415,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "SHENGUANG",
+          "dx_number": 1415,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "RAINBOW",
+          "dx_number": 1416,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "SEAGULL",
+          "dx_number": 1416,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "SHANGHAI",
+          "dx_number": 1416,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "SHENGUANG",
+          "dx_number": 1416,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "RAINBOW",
+          "dx_number": 1417,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "SEAGULL",
+          "dx_number": 1417,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "SHANGHAI",
+          "dx_number": 1417,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "SHENGUANG",
+          "dx_number": 1417,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "RAINBOW",
+          "dx_number": 1418,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "SEAGULL",
+          "dx_number": 1418,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "SHANGHAI",
+          "dx_number": 1418,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "SHENGUANG",
+          "dx_number": 1418,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "RAINBOW",
+          "dx_number": 1419,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "SEAGULL",
+          "dx_number": 1419,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "SHANGHAI",
+          "dx_number": 1419,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "SHENGUANG",
+          "dx_number": 1419,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "RAINBOW",
+          "dx_number": 1420,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "SEAGULL",
+          "dx_number": 1420,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "SHANGHAI",
+          "dx_number": 1420,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "SHENGUANG",
+          "dx_number": 1420,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "RAINBOW",
+          "dx_number": 1421,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "SEAGULL",
+          "dx_number": 1421,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "SHANGHAI",
+          "dx_number": 1421,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "SHENGUANG",
+          "dx_number": 1421,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "RAINBOW",
+          "dx_number": 1422,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "SEAGULL",
+          "dx_number": 1422,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "SHANGHAI",
+          "dx_number": 1422,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "SHENGUANG",
+          "dx_number": 1422,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "RAINBOW",
+          "dx_number": 1423,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "SEAGULL",
+          "dx_number": 1423,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "SHANGHAI",
+          "dx_number": 1423,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "SHENGUANG",
+          "dx_number": 1423,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 90,
+      "manufacturer_pakon": "China Lucky Film",
+      "manufacturer_community": "China Lucky Film",
+      "pakon_brand_comment": "-8 Lucky B/W SHD100 New, 90-10 Lucky B/W SHD400, 90-12 Lucky B/W SHD400, 100-2 Lucky Color Super 100, 100-11 Lucky Super GBR200, 87-5 Ferrania Imaging Color 400i",
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        100,
+        0,
+        400,
+        0,
+        400,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 8,
+          "name": "LUCKY B/W SHD100 NEW",
+          "dx_number": 1448,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "LUCKY B/W SHD400 NEW",
+          "dx_number": 1450,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "LUCKY B/W SHD400 CN",
+          "dx_number": 1452,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 91,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": "KODAK ADVANTIX",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        200,
+        400,
+        0,
+        100,
+        200,
+        400,
+        200,
+        200,
+        200,
+        400,
+        100,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 92,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 93,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 94,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": "KODAK ADVANTIX B&W",
+      "pakon_iso_by_gen": [
+        0,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 95,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": "KODAK ROYAL GOLD 135",
+      "pakon_iso_by_gen": [
+        0,
+        200,
+        400,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK Dental Photographic Print Film",
+          "dx_number": 1521,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "KODAK ROYAL GOLD 200 Film",
+          "dx_number": 1521,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "KODAK ROYAL SUPRA 200 Film",
+          "dx_number": 1521,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 1,
+          "name": "KODAK SUPRA 200 Film",
+          "dx_number": 1521,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK High Definition 400 Film",
+          "dx_number": 1522,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK ROYAL GOLD 400 Film",
+          "dx_number": 1522,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODAK ROYAL SUPRA 400 Film",
+          "dx_number": 1523,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "KODAK Portra 400UC Film",
+          "dx_number": 1524,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "KODAK High Definition 200 Film",
+          "dx_number": 1525,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 96,
+      "manufacturer_pakon": null,
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": "KODAK GOLD 400 GEN 9",
+      "pakon_iso_by_gen": [
+        0,
+        400,
+        400,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": false,
+      "products": []
+    },
+    {
+      "dx_part1": 98,
+      "manufacturer_pakon": "Xia]men FUDA",
+      "manufacturer_community": "Xiamen FUDA",
+      "pakon_brand_comment": "FUDA",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        100,
+        100,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "135 PAN",
+          "dx_number": 1569,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "FUDA GA-100",
+          "dx_number": 1570,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "FUDA 135 COLOR",
+          "dx_number": 1571,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 100,
+      "manufacturer_pakon": "China Lucky Film",
+      "manufacturer_community": "China Lucky Film",
+      "pakon_brand_comment": "LUCKYCOLOR",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        100,
+        200,
+        100,
+        400,
+        200,
+        0,
+        400,
+        100,
+        100,
+        200,
+        0,
+        400,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 2,
+          "name": "LUCKY COLOR SUPER 100",
+          "dx_number": 1602,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "LUCKY COLOR SUPER 200",
+          "dx_number": 1606,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "LUCKY COLOR SUPER 400",
+          "dx_number": 1608,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "LUCKY COLOR SUPER GBR100",
+          "dx_number": 1609,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "LUCKY COLOR SUPER GBR 200",
+          "dx_number": 1611,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "LUCKY COLOR SUPER GBR400",
+          "dx_number": 1613,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 105,
+      "manufacturer_pakon": "Ilford Imaging",
+      "manufacturer_community": "Harman Technologies",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 106,
+      "manufacturer_pakon": "Ilford Imaging",
+      "manufacturer_community": "Harman Technologies",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 107,
+      "manufacturer_pakon": "Ilford Imaging",
+      "manufacturer_community": "Harman Technologies",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": []
+    },
+    {
+      "dx_part1": 108,
+      "manufacturer_pakon": "Ilford Imaging",
+      "manufacturer_community": "Harman Technologies",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "H 125",
+          "dx_number": 1729,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "H 400",
+          "dx_number": 1730,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "A 125",
+          "dx_number": 1731,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "A 400",
+          "dx_number": 1732,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "SP816T POLY",
+          "dx_number": 1733,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "OPTHALMIC",
+          "dx_number": 1734,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "SFX 200",
+          "dx_number": 1735,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "UNIVERSAL 400",
+          "dx_number": 1736,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "UNIVERSAL 100",
+          "dx_number": 1737,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "DELTA 3200 PRO",
+          "dx_number": 1738,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 109,
+      "manufacturer_pakon": "Ilford Imaging",
+      "manufacturer_community": "Harman Technologies",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "PAN F (P1)",
+          "dx_number": 1745,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "PAN 100",
+          "dx_number": 1746,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "PAN 400",
+          "dx_number": 1747,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "SP815T",
+          "dx_number": 1748,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "PAN F",
+          "dx_number": 1749,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "FP4/O PAN",
+          "dx_number": 1750,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "HP5",
+          "dx_number": 1751,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Delta 400 Pro / 400 Delta Pro",
+          "dx_number": 1752,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "HP5 PLUS",
+          "dx_number": 1753,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "BLACK 400",
+          "dx_number": 1754,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "400 DELTA",
+          "dx_number": 1755,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "FP4 PLUS",
+          "dx_number": 1756,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "PAN F PLUS",
+          "dx_number": 1757,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 14,
+          "name": "100 DELTA",
+          "dx_number": 1758,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 15,
+          "name": "100 DELTA PRO",
+          "dx_number": 1759,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 110,
+      "manufacturer_pakon": "Ilford Imaging",
+      "manufacturer_community": "Harman Technologies",
+      "pakon_brand_comment": "Illford",
+      "pakon_iso_by_gen": [
+        0,
+        400,
+        400,
+        400,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "XP1 400 (P1)",
+          "dx_number": 1761,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "XP1 400",
+          "dx_number": 1762,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "XP2",
+          "dx_number": 1763,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "XP2 SUPER",
+          "dx_number": 1764,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 112,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": [
+        0,
+        0,
+        0,
+        400,
+        160,
+        0,
+        400,
+        400,
+        400,
+        100,
+        0,
+        400,
+        100,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODAK VERICOLOR III Professional Film Type S",
+          "dx_number": 1793,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODAK Professional Color Negative Film Type S",
+          "dx_number": 1794,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODAK VERICOLOR 400 Professional Film",
+          "dx_number": 1795,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "KODAK EKTACOLOR GOLD 160 Professional Film",
+          "dx_number": 1796,
+          "pakon_iso": 160,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "KODAK Professional Color Negative Film",
+          "dx_number": 1797,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "KODAK EKTACOLOR GOLD 400 Professional Film",
+          "dx_number": 1798,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "KODAK Professional Color Negative 400 Film",
+          "dx_number": 1799,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "KODAK EKTACOLOR GOLD 400 Professional Film",
+          "dx_number": 1800,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "KODAK PRO 100 Film",
+          "dx_number": 1801,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "KODAK VERICOLOR 400 Professional Film",
+          "dx_number": 1803,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "KODAK PROFESSIONAL PORTRA 100T Film",
+          "dx_number": 1804,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 113,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": "AGFACOLOR HDC/VISTA",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        100,
+        200,
+        200,
+        100,
+        200,
+        800,
+        400,
+        400,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "AGFACOLOR HDC 100 Plus",
+          "dx_number": 1809,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "AGFACOLOR HDC 100 Plus-2",
+          "dx_number": 1810,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "AGFACOLOR HDC 200 Plus-2",
+          "dx_number": 1811,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "AGFACOLOR HDC 200 Plus",
+          "dx_number": 1812,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "AGFACOLOR Vista 100",
+          "dx_number": 1813,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "AGFACOLOR Vista 200",
+          "dx_number": 1814,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "AGFACOLOR Vista 800",
+          "dx_number": 1815,
+          "pakon_iso": 800,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Agfacolor Vista 800-N",
+          "dx_number": 1816,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "AGFACOLOR HDC 400-2",
+          "dx_number": 1817,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "AGFACOLOR Vista 400",
+          "dx_number": 1818,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "Agfacolor Vista 100-N",
+          "dx_number": 1819,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "Agfacolor Vista 200-N",
+          "dx_number": 1820,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 13,
+          "name": "Agfacolor Vista 400-N",
+          "dx_number": 1821,
+          "pakon_iso": 0,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 115,
+      "manufacturer_pakon": "Agfa-Gevaert",
+      "manufacturer_community": "Agfa-Gevaert",
+      "pakon_brand_comment": "AGFA-Private label-PERUTZ-KIRKLAND-TURA HR",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        800,
+        200,
+        200,
+        200,
+        200,
+        200,
+        400,
+        400,
+        400,
+        200,
+        100,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "Perutz SC 100-2 Color",
+          "dx_number": 1841,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "Perutz SC 100-3 Color",
+          "dx_number": 1843,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Perutz SC 200-3 Color",
+          "dx_number": 1844,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Perutz SC 200-4 Color",
+          "dx_number": 1845,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "PERUTZ 200 Color",
+          "dx_number": 1846,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "Perutz Primera 100",
+          "dx_number": 1847,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 8,
+          "name": "Perutz SC 400 Color",
+          "dx_number": 1848,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 9,
+          "name": "Perutz SC 400-2 Color",
+          "dx_number": 1849,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 10,
+          "name": "Perutz Primera 400",
+          "dx_number": 1850,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 11,
+          "name": "Perutz SC 200-2 Color",
+          "dx_number": 1851,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 12,
+          "name": "PERUTZ SC 100 Color",
+          "dx_number": 1852,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 116,
+      "manufacturer_pakon": "Eastman Kodak",
+      "manufacturer_community": "Eastman Kodak",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "KODACHROME 64 Professional Film (Daylight)",
+          "dx_number": 1857,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "KODACHROME 25 Professional Film (Daylight)",
+          "dx_number": 1858,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "KODACHROME 200 Professional Film",
+          "dx_number": 1859,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "Kodak Splicer Test Film KODACHROME 200",
+          "dx_number": 1860,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "Kodak Splicer Test Film Process K-14",
+          "dx_number": 1861,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 120,
+      "manufacturer_pakon": "ORWO Media",
+      "manufacturer_community": "ORWO Media",
+      "pakon_brand_comment": "ORWO",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "ORWO COLOR CNS 100",
+          "dx_number": 1921,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 121,
+      "manufacturer_pakon": "ORWO Media",
+      "manufacturer_community": "ORWO Media",
+      "pakon_brand_comment": "ORWO",
+      "pakon_iso_by_gen": [
+        0,
+        200,
+        0,
+        0,
+        0,
+        0,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "ORWO COLOR CNS 200",
+          "dx_number": 1937,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 6,
+          "name": "ORWO COLOR CNS 400",
+          "dx_number": 1942,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 122,
+      "manufacturer_pakon": "ORWO Media",
+      "manufacturer_community": "ORWO Media",
+      "pakon_brand_comment": "ORWO",
+      "pakon_iso_by_gen": [
+        0,
+        100,
+        200,
+        100,
+        400,
+        200,
+        0,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "ORWO COLOR CNN 100",
+          "dx_number": 1953,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "ORWO COLOR CNN 200",
+          "dx_number": 1954,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "ORWO COLOR OCN 100",
+          "dx_number": 1955,
+          "pakon_iso": 100,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 4,
+          "name": "ORWO COLOR CNN 400",
+          "dx_number": 1956,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 5,
+          "name": "ORWO COLOR OCN 200",
+          "dx_number": 1957,
+          "pakon_iso": 200,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 7,
+          "name": "ORWO COLOR OCN 400",
+          "dx_number": 1959,
+          "pakon_iso": 400,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    },
+    {
+      "dx_part1": 123,
+      "manufacturer_pakon": "ORWO Media",
+      "manufacturer_community": "ORWO Media",
+      "pakon_brand_comment": null,
+      "pakon_iso_by_gen": null,
+      "in_pakon_defaults_ini": true,
+      "products": [
+        {
+          "dx_part2": 1,
+          "name": "ORWOPAN 100",
+          "dx_number": 1969,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 2,
+          "name": "ORWOPAN 125",
+          "dx_number": 1970,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        },
+        {
+          "dx_part2": 3,
+          "name": "ORWOPAN 400",
+          "dx_number": 1971,
+          "pakon_iso": null,
+          "source": "ffindr/dxcode-film-db (community, LGPL-3.0)"
+        }
+      ]
+    }
+  ]
+}

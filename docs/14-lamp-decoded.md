@@ -217,3 +217,44 @@ must reproduce that, or the thermal loop will be driven the wrong way.
 3. Determine the stability threshold `FN_bLampWarmUp` polls reg `0x84` against.
 
 Only then is it safe to program the loop and warm the lamp.
+
+## Hunting the setpoint defaults — where the trail currently ends
+
+Searched and ruled out:
+
+- **Shipped config files** — no `TempSetpoint`, `LampTempWorking` or
+  `UseTemperatureSetpoints` in any `.ini`/`.txt`/`.cfg`/`.dat`/`.def`/`.dpi`
+  under the distribution.
+- **Both MSIs** — the installer Registry tables contain none of these names, so
+  they are not installed registry defaults.
+- `TempMB TempLB TempSetpoint VisOn IrOn Curr…` in TLB.dll is a **CSV log
+  header** for `PakonLampLog.txt` / `PakonCalibrationLog_*.csv`, not a set of
+  config keys. Do not mistake it for one.
+
+Still live:
+
+- `LampTempWorking`, `UseTemperatureSetpoints`, `LampTempFaultHigh/Low`,
+  `LampTempWarningHigh/Low` exist as **UTF-16** strings in TLB.dll, which is
+  the encoding used for registry value names elsewhere in the binary
+  (`Software\Pakon\TLB`). They are most likely read at runtime with
+  compiled-in fallbacks.
+- The config structure at `[0x10075554]` has **155 references** across TLB.dll,
+  so isolating the routine that initialises offset `+0x165c` needs targeted
+  work rather than a pattern search.
+
+### The specific next step
+
+Find the initialiser for `[0x10075554] + 0x165c`, `+0x1664`, `+0x1665` and the
+equivalents feeding registers `0x8B`, `0x8C`, `0x8D`, `0x8E`. Two viable
+routes:
+
+1. Set a data breakpoint conceptually — trace which function writes those
+   offsets, by disassembling the config-allocation path and following the
+   defaults it stores.
+2. Read the values off a **working** F-135 running the vendor software, via the
+   lamp log (`PakonLampLog.txt`), which records `TempMB`, `TempLB` and
+   `TempSetpoint` per scan. That file would give real, in-service values
+   directly, and is the lowest-effort path if any Pakon user can supply one.
+
+Route 2 is worth pursuing first — a single lamp log from a working scanner
+would settle the setpoints empirically without any further disassembly.

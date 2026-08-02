@@ -462,3 +462,52 @@ Note: the FN name table is **not** index-linear with FN ids — a calibration
 attempt using `FN_bDrvLampOn` (id 112, table index 247) produced negative and
 inconsistent predictions for other entries. Do not rely on table position to
 recover FN ids; find each function by its logger call site instead.
+
+## Duty-cycle formula fully resolved — [VERIFIED-FROM-BINARY]
+
+Constants recovered from `.rdata`:
+
+| RVA | Value | Role |
+|---|---|---|
+| `0x10065c78` | `1.0` | base, loaded once per channel |
+| `0x1005d348` | `0.5` | multiplier for the `n < 3` branch |
+| `0x1005c3b8` | `4294967296.0` | 2^32 — the standard `fild` signed→unsigned fixup, **not** a tuning constant |
+| `0x1005c1c8` | `0.0` | InitCcd's explicit zero duty (dark reference) |
+| `0x10067008` | `-1.0` | `LampOn` "not specified" sentinel |
+
+With `base = 1.0` the derivation in `fcn.1001e020` reduces to:
+
+```
+    duty_channel =  (n - 1) / n      if n >= 3
+                    0.5              if n < 3
+```
+
+where `n` is the per-channel current, read as an **unsigned** integer.
+
+So the duty-cycle computation is completely solved. Given the four currents,
+the four duty cycles follow deterministically.
+
+## The single remaining unknown
+
+**The four per-channel current values** (`iCurrent_R/_G/_B/_Ir`), which are
+per-unit factory calibration. Everything else in the lamp chain is now decoded:
+
+| Link | State |
+|---|---|
+| register writes `0x80`/`0x81`/`0x82` | decoded |
+| thermal setpoints `0x8B`–`0x8F`, `0xD0`/`0xD1` | decoded (values still from config) |
+| duty-cycle derivation | **fully solved** — `(n-1)/n` |
+| CCD init literals | decoded (FPGA 2000/62/4093, A/D 120→128, idx 0x0A = 1024) |
+| orchestrator `fcn.10020dc0` | identified; calls FpgaSettings, LampOff, gain setters, LampOn |
+| **per-channel currents** | **UNKNOWN — the last link** |
+
+Route to the currents: `FN_GetCalibrateInfoLight`, reached from
+`fcn.10021590 → fcn.10020dc0`. It is a read, so obtaining them is safe once the
+path is decoded.
+
+Context from the SDK release notes: "Reduce IR light level from 60,000 to
+40,000 to prevent lag issues seen with newer CCD chips" — light *levels* are
+five-figure numbers. Whether the `n` in the duty formula is that same quantity
+or a separate small integer is not yet established; if `n` were 40000 the duty
+would be 0.999975, which seems unlikely to be the intent. Resolve this before
+using any assumed value.

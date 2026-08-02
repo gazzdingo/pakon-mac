@@ -258,3 +258,61 @@ routes:
 
 Route 2 is worth pursuing first — a single lamp log from a working scanner
 would settle the setpoints empirically without any further disassembly.
+
+## What the vendor documentation says — [VERIFIED from PSI.chm and UserManualF135.pdf]
+
+Extract `PSI.chm` with `7z x PSI.chm` (172 topics). The F-135 user manual PDF
+text is recoverable by inflating its content streams.
+
+### The documented start-up sequence
+
+From `UserManualF135.pdf`:
+
+> "There are two types of calibration for the F-135. Color calibration is set
+> during the manufacturing process, as well as any service that involves the
+> CCD or any optical filter. They consist of a series of steps performed when
+> the scanner is first turned on, as shown below:
+> **Start-up corrections → Initial LED warm-up → Gain and exposure Control
+> Corrections → Run Time Corrections**"
+
+**This is the missing system-level piece.** The illuminant is brought up as part
+of an initialisation sequence — `InitializeScanner` — not by a standalone lamp
+command. Every attempt in this project sent isolated register writes to a
+scanner that had never been initialised.
+
+`FN_bInit2` (`fcn.1000b100`) is the driver-level entry point; the corrections
+above map onto `ForceCorrections`, `FN_bDrvInitCcd`, `FN_bDrvInitLampTemperatures`
+and the gain/exposure setters (`fcn.100298b0` / `fcn.100299c0`).
+
+### Panel LEDs — red is not documented
+
+The manual lists only:
+
+| LED | States |
+|---|---|
+| Power | solid green = +5 V present; off = not |
+| Status | solid green = ready; blinking green = scanning; blinking yellow = cannot scan |
+| Film | green = safe to load film |
+
+**No red state is documented for any panel LED.** The red glow the operator
+reports is inside the machine, which is consistent with the illumination bar or
+an internal indicator rather than a fault lamp.
+
+### Lamp warm-up topic is F-235 only
+
+`Lamp_Warm-Up_Time.htm` is explicitly titled "(F-235 Only)" and describes an
+incandescent **bulb** with a lamp-saver timeout (`Setup → General`, settable to
+9999 to disable). There is also `Light_Bulb_Replacement.htm`.
+
+That is the F-235's illuminant. The F-135 uses an **LED array** — hence
+"Initial LED warm-up" in its manual, and hence the temperature-stabilised
+control path (`FN_bDrvInitLampTemperatures`, TEC, `WaitForLamp_*`). Do not
+apply F-235 lamp guidance to an F-135.
+
+## Revised conclusion
+
+The lamp is not lit by a command. It is lit as a consequence of running the
+scanner's initialisation and correction sequence, which programs the thermal
+setpoints, warms the LED array, then sets gain and exposure. Reproducing
+`InitializeScanner` is the actual remaining task — not finding a "lamp on"
+packet.

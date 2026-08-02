@@ -511,3 +511,47 @@ five-figure numbers. Whether the `n` in the duty formula is that same quantity
 or a separate small integer is not yet established; if `n` were 40000 the duty
 would be 0.999975, which seems unlikely to be the intent. Resolve this before
 using any assumed value.
+
+## Complete illumination call chain — [VERIFIED-FROM-BINARY]
+
+```
+  FN_bBeforeScan            fcn.1002dbd0
+    -> fcn.10021590         per-film-type light setup
+                            (references m_iFilmColor, m_iFilmFormat;
+                             delays of 1000 / 2000 via fcn.10032580)
+       -> fcn.10020dc0      orchestrator
+                            calls PutCcdFpgaSettings (fcn.1002c340),
+                            LampOff (fcn.1000c4d0), gain setters (fcn.100298b0),
+                            and LampOn (fcn.1002c5f0)
+          -> fcn.1001e020   duty derivation:  duty = (n-1)/n, or 0.5 if n < 3
+          -> FN_bDrvLampOn  fcn.1002c5f0
+                            writes reg 0x81 (levels, 5 B),
+                                   reg 0x82 (duty cycles, 12 B),
+                                   reg 0x80 (enable bitmask)
+```
+
+**The illumination settings are per-film-type.** `fcn.10021590` selects them
+from film colour and format, which is consistent with the API exposing
+`FILM_COLOR_*` and `FILM_FORMAT_*` and with the film-product database.
+
+That also explains why no single "lamp on" packet exists and never could: the
+drive levels depend on what film is being scanned.
+
+## Status of the decode
+
+Solved:
+
+- register-level lamp writes (`0x80`, `0x81`, `0x82`)
+- thermal setpoint registers (`0x8B`–`0x8F`, `0xD0`, `0xD1`)
+- duty-cycle formula, with every constant resolved
+- CCD init literals
+- the full call chain above
+
+Unresolved:
+
+- the per-channel current values `n`, which are per-unit factory calibration
+  selected by film type, reachable via `FN_GetCalibrateInfoLight`
+
+Obtaining them is a **read**, so it is safe. It requires decoding the
+calibration read path, which is the single remaining task before the lamp can
+legitimately be lit.

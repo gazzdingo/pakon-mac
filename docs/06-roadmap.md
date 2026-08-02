@@ -153,3 +153,56 @@ Blind register writes on these boards return "accepted" almost unconditionally,
 so acceptance carries no information, and any effect observed once may be
 coincidental. Reproduce before believing. The reliable route to lamp control is
 the static decode of `TLB.dll`, not further sweeping.
+
+## Appendix — lamp bring-up attempts, all negative
+
+Every documented step below was executed on hardware. All returned success
+(`07 02 40 00`). **None produced illumination**, measured with a correctly
+flushed EP 0x86 light meter against a ~1242 dark baseline.
+
+| Step | Packet | Result |
+|---|---|---|
+| host fault clear to convergence | `04 03 10 00 85` | status `0xa8` → `0x88`, error bits cleared in 1 iteration |
+| bus/relay enable | `02 04 10 01 8F 01` / `00` | accepted |
+| FIFO reset | `02 04 10 01 84 02` | accepted |
+| lamp temperature init | `02 04 40 01 D0 00`, `02 04 40 01 D1 01` | accepted; temp reads `0x0280` |
+| lamp enable, visible | `02 04 40 01 80 01` | accepted, dark |
+| lamp enable, visible+IR | `02 04 40 01 80 03` | accepted, dark |
+| FPGA acquire | `02 06 44 03 82 00 01 00` | accepted, dark |
+| DX start | `02 06 40 03 91 01 00 00` | accepted, dark |
+
+Supporting reads, all healthy:
+
+```
+LED levels    reg 0x81 -> 40 06 00 40 25          non-zero
+duty cycles   reg 0x82 -> 40 06 00 40 25 10 ...   non-zero
+lamp status   reg 0x83 -> 00 / 0x10 after enable  changes with state
+lamp temp     reg 0x84 -> 80 02
+device info   0x40 -> hw 05 fw 0A, 0x44 -> hw 05 fw 06
+```
+
+So the enable register does latch and change state, the levels are programmed,
+and the boards are healthy and correctly identified. The lamp still does not
+light.
+
+### Leading hypotheses, untested
+
+1. **The LEDs are strobed per scan line**, synchronised to CCD integration by
+   the FPGA, so "enabled" never means "continuously lit" outside a real scan.
+   This fits a line-scan design and would explain success responses with no
+   light. It also means the correct test is a full scan sequence, not a static
+   lamp toggle.
+2. **The corrupted boot EEPROM leaves the unit in a fault state** that inhibits
+   the lamp. The unit lights a red LED after every firmware load. Restoring the
+   EEPROM byte would eliminate this variable.
+
+Both are worth resolving before any further lamp experiments. Resolve (2)
+first — it is one byte, the correct value is known, and it removes a confound.
+
+### Do not
+
+Continue sweeping registers hoping to find the lamp. That approach is what
+corrupted the boot EEPROM in the first place: the "board addresses" being swept
+were I2C addresses, and the writes landed in an EEPROM. Any further hardware
+experimentation should send only packets with specific binary evidence behind
+them.

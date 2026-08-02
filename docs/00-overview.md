@@ -92,24 +92,49 @@ the kext-signing and Reduced Security dance that a DriverKit port would require.
 This is the key reason a native port is realistic in 2026 rather than a
 Windows-VM-with-USB-passthrough workaround.
 
-### The imaging pipeline is a rewrite, not a port
+### The imaging pipeline is a first-class goal, not an optional extra
 
-`TLA/TLB/TLC.dll` implement dark-point/white-point correction, the CCD colour
-matrix, negative inversion, scene balance, scratch removal (DICE), and framing.
-Reproducing them bit-exactly is neither necessary nor desirable — the scanner
-delivers linear CCD data, and a modern pipeline can do better. What *is* needed
-from the vendor side is the **calibration data and correction coefficients**,
-which are recoverable:
+**Project priority: the Pakon colour rendering must be ported faithfully.**
 
-- per-unit values live in the scanner's EEPROM (readable via the protocol —
-  see `CalibrationPutEEProm`, `EC_EEPromAddress` in
-  [`04-api-surface.md`](04-api-surface.md))
-- the colour profiles ship as data files, not code, in
-  `F-X35 COM SERVER/Config/ColorCorrection/` — [VERIFIED]
+An earlier draft of this document recommended emitting raw linear data and
+delegating inversion to Negative Lab Pro or darktable. That was the wrong call.
+Pakon's negative rendering is the *reason* these scanners are still sought after
+two decades after discontinuation; a port that produces technically-correct raw
+scans but loses the colour has missed the point.
 
-A reasonable target is **raw linear output** (DNG or 16-bit planar TIFF), leaving
-inversion and colour to existing tools like Negative Lab Pro or `darktable`.
-That sidesteps the hardest and least valuable part of the port.
+The encouraging finding is that **Pakon's colour science ships as data, not
+code** — so it can largely be transplanted rather than reverse-engineered:
+
+| Asset | What it is |
+|---|---|
+| `_ClientColNegMat.txt` | the 3×4 negative colour matrix, in plain text |
+| `_ClientColNegLut.txt` | a 16,384-entry (14-bit) inversion curve |
+| `defaults.ini` | **per-film-stock corrections keyed by film product ID**, grouped by manufacturer |
+| `*.pf`, `*.lut` | 22 profiles: saturation ±3…±15, warm/cold B&W, sepia, sRGB, ROMM, RPD |
+
+All live in `F-X35 COM SERVER/Config/ColorCorrection/`. **[VERIFIED]**
+
+The film-stock database is the interesting part: the scanner reads the DX code
+off the film edge, identifies the exact emulsion, and applies stock-specific
+correction. That is a capability no generic inversion tool has, and it is
+reproducible because the data is right there.
+
+Two things still have to come from the hardware rather than the files:
+
+- **Per-unit calibration in the scanner's EEPROM** — dark/white points, CCD gain
+  and offset, the per-unit colour matrix. Unique to your physical scanner and
+  recoverable only over the protocol (`CalibrationGetColorMatrix3By4`,
+  `CalibrationPutEEProm` — see [`04-api-surface.md`](04-api-surface.md)).
+- **The order of operations** in `TLA/TLB/TLC.dll` — the sequence of dark
+  subtraction, matrix, LUT and scene balance. Getting the maths right but the
+  order wrong will not reproduce the look.
+
+Recommended output strategy: emit **both** a raw linear 16-bit planar file
+(lossless, future-proof, lets the pipeline be re-run offline) and the
+Pakon-rendered result. That keeps the colour work verifiable — you can always
+re-derive the rendering from the raw without rescanning the film.
+
+See [`07-color.md`](07-color.md) for the detailed analysis.
 
 ## Recommended implementation order
 

@@ -74,31 +74,78 @@ Pakon7.hex (F-135)  — 10,355 bytes across 11 segments
   0x2000-0x47AC  10157 B  main 8051 program
 ```
 
-### Caveat: the image exceeds FX2 internal RAM — [UNKNOWN]
+### The image exceeds FX2 internal RAM — [VERIFIED on hardware]
 
 The FX2 (CY7C68013A) has **16 KB of internal RAM at `0x0000–0x3FFF`**. The main
-code segment runs to `0x47AC` (`Pakon7`) / `0x492E` (`PknInit`) — past the end of
-internal RAM.
+code segment runs to `0x47AC` (`Pakon7`) / `0x492E` (`PknInit`) — 1,965 bytes
+past the end of internal RAM.
 
-Two possible explanations, not yet distinguished:
+This was resolved empirically against a real F-135 Plus (`0F05:F235 rev AA07`).
 
-1. **External code memory on the Pakon USB board.** The reference ezusb driver
-   uses request `0xA0` (`ANCHOR_LOAD_INTERNAL`) for internal RAM and `0xA3`
-   (`ANCHOR_LOAD_EXTERNAL`) for external RAM. The INF's service names
-   ("Gated Fifo Write Enable", "Rev E FX2") describe a custom FIFO board that
-   plausibly carries external SRAM.
-2. **A smaller-RAM FX2 variant with a two-stage load**, where `PknInit.hex`
-   is a stage-1 loader that implements the `0xA3` handler.
+#### What was measured
 
-**This must be resolved empirically before the loader can be trusted.** The
-safe implementation is to send `0xA0` for addresses below `0x4000` and `0xA3`
-at or above it, and to verify by reading back. `tools/pakon_fw.py` implements
-exactly this with a `--split-at` flag so the boundary can be moved during
-bring-up.
+Using `0xA0` upload (read-back) with the 8051 alternately held in and released
+from reset:
 
-Getting this wrong is not dangerous — a failed download simply leaves the device
-unenumerated, and a power cycle resets it. The FX2's RAM is volatile; nothing is
-written permanently by this step.
+| Address | `CPUCS`=1 (8051 halted) | `CPUCS`=0 (8051 running) |
+|---|---|---|
+| `0x0000` | `02 3d e3 42 …` — matches HEX | `f3 04 f3 04 …` |
+| `0x2000` | `e5 08 24 cd …` — matches HEX | `f3 04 f3 04 …` |
+| `0x3FF0` | `e9 f0 e4 90 …` — matches HEX | `f3 04 f3 04 …` |
+| `0x4000` | `bf dd bf dd …` | `bf dd bf dd …` |
+| `0xE000` | real scratch RAM, writable, persistent | same |
+
+Toggling `CPUCS` flips the `0x0000–0x3FFF` rows back and forth reproducibly.
+
+#### Conclusions
+
+1. **`CPUCS` is at `0xE600` and reset control works.** Confirms FX2, and
+   confirms the download sequence in this document is correct.
+2. **Internal RAM `0x0000–0x3FFF` loads correctly** — byte-exact against the
+   HEX image.
+3. **The 8051 executes when reset is released.** Internal RAM only reads back
+   while the CPU is halted; a running CPU returns `f3 04` filler. This is a
+   useful liveness test in its own right.
+4. **`0x4000+` is unreachable from the boot loader in *either* CPU state.**
+   Writes are ACKed but discarded (a `DEADBEEF` probe did not stick), and it is
+   not an alias of low memory. The `bf dd` pattern is an undriven bus.
+5. Register space (`0xE200+`) also reads `bf dd` — the hardwired loader
+   services **writes** to registers but not reads. Do not use read-back to
+   verify register writes.
+
+#### What this means
+
+The hardwired FX2 boot loader implements **only `0xA0`, and only to internal
+RAM**. `0xA3` (`ANCHOR_LOAD_EXTERNAL`) is not a hardware feature — it must be
+serviced by 8051 firmware that is already running, which is why `0xA3` requests
+time out against a halted CPU.
+
+Therefore loading these images requires a **two-stage sequence**:
+
+```
+1. hold 8051 in reset
+2. 0xA0 → load a small stage-1 loader into internal RAM
+3. release 8051 — stage-1 runs and services 0xA3
+4. 0xA3 → write 0x4000-0x47AC into external memory
+5. hold 8051 in reset
+6. 0xA0 → load the real firmware into internal RAM (clobbers stage-1)
+7. release 8051 — the real firmware runs; external memory still holds step 4
+```
+
+Step 6 is safe because external SRAM retains its contents across an 8051 reset.
+
+The stage-1 loader can live in either of the image's unused gaps —
+`0x0056–0x0FFF` or `0x10BE–0x1FFF` — so it need not be positioned carefully.
+
+> **Still [UNKNOWN]:** whether external SRAM is actually present at `0x4000` and
+> wired for writes. The boot loader never drives the external bus, so its `bf dd`
+> reads say nothing either way. This can only be answered once a stage-1 loader
+> is running. If no external SRAM exists, these images cannot run on this board
+> at all — which would contradict the hardware having shipped working, so
+> external SRAM is strongly expected.
+
+Nothing in this process is destructive: FX2 RAM is volatile and a power cycle
+restores the unloaded state.
 
 ---
 

@@ -212,20 +212,41 @@ def main() -> int:
           f"pid={p['pid']:04x} rev={p['rev']:04x} -> key {key}")
     print(f"             raw={p['raw'].hex(' ')}")
 
+    # Firmware selection.
+    #
+    # The USB identity of the UNLOADED device is authoritative: the INF maps
+    # PID_REV directly to an image (F235_AA07 -> Pakon7.hex), and that mapping
+    # cannot be wrong for a device that enumerated with those IDs.
+    #
+    # The 0xA9 personality query is only a cross-check. It is NOT reliable
+    # enough to select firmware on its own: observed returning something other
+    # than 0xC0 on an otherwise healthy F-135, which sent an earlier version of
+    # this code down the PknInit.hex path and loaded *F-235* firmware onto an
+    # F-135. The scanner lit a fault LED. Never let that happen again.
+    usb_key = f"{dev.idProduct:04X}_{dev.bcdDevice:04X}"
+
     if args.hex:
         fw_path = args.hex
     elif p["id"] == 0xC2:
         print("EEPROM type C2: firmware is already resident, nothing to load")
         return 0
-    elif p["id"] != 0xC0:
-        fw_path = locate("PknInit.hex", args.fw_dir)
-    else:
-        name = FIRMWARE_BY_PERSONALITY.get(key)
-        if name is None:
-            print(f"no firmware mapping for personality key {key}",
-                  file=sys.stderr)
-            return 1
+    elif usb_key in FIRMWARE_BY_PERSONALITY:
+        name = FIRMWARE_BY_PERSONALITY[usb_key]
+        if key != usb_key:
+            print(f"  note: personality key {key} disagrees with USB identity "
+                  f"{usb_key}; trusting USB identity")
         fw_path = locate(name, args.fw_dir)
+    elif key in FIRMWARE_BY_PERSONALITY:
+        fw_path = locate(FIRMWARE_BY_PERSONALITY[key], args.fw_dir)
+    else:
+        # Deliberately do NOT fall back to PknInit.hex. It carries the F-235
+        # descriptor, so loading it onto another model produces a scanner that
+        # enumerates as the wrong device and faults.
+        print(f"refusing to guess: USB identity {usb_key} and personality "
+              f"{key} both unrecognised.\n"
+              f"Known: {', '.join(sorted(FIRMWARE_BY_PERSONALITY))}.\n"
+              f"Use --hex to force a specific image.", file=sys.stderr)
+        return 1
 
     if not fw_path or not os.path.exists(fw_path):
         print(f"firmware image not found under {args.fw_dir}", file=sys.stderr)
@@ -245,6 +266,19 @@ def main() -> int:
     while time.time() < deadline:
         new = find_loaded()
         if new is not None:
+            # Sanity check: the loaded PID must match the image we chose.
+            # Loading e.g. PknInit.hex (F-235) onto an F-135 makes the scanner
+            # enumerate as an F-235 and raises a fault LED on the unit.
+            expected = {"pakon5.hex": 0x35F2, "pknInit.hex".lower(): 0x35F2,
+                        "pakon7.hex": 0xF135, "pakon8.hex": 0xF335}
+            want = expected.get(os.path.basename(fw_path).lower())
+            if want is not None and new.idProduct != want:
+                print(f"WARNING: loaded {os.path.basename(fw_path)} but the "
+                      f"device came up as {new.idProduct:04x}, expected "
+                      f"{want:04x}.", file=sys.stderr)
+                print("         This is a MODEL MISMATCH. Power-cycle the "
+                      "scanner before using it.", file=sys.stderr)
+                return 1
             print(f"SUCCESS  {new.idVendor:04x}:{new.idProduct:04x} "
                   f"bcdDevice={new.bcdDevice:04x}  "
                   f"{LOADED[(new.idVendor, new.idProduct)]}")

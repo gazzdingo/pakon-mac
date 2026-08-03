@@ -281,3 +281,61 @@ Not yet safe to act on:
 - command 8's meaning
 - erase semantics, row alignment, and interrupted-write behaviour
 - the verify comparison and its failure reporting
+
+## Command 2 decoded — write 16 bytes at an address
+
+The 19-byte payload is assembled across several pushes, so the offsets only
+line up once the stack is tracked. Taking `S` as esp before the push sequence,
+`lea eax, [esp+0x2c]` at `0x1001bd0c` (esp = S-4) puts the **buffer base at
+S+0x28**. The stores then land as:
+
+```
+base+0   = S+0x28  bl              address bits  0..7      (0x1001bd29)
+base+1   = S+0x29  (ebx >> 8)      address bits  8..15     (0x1001bca3)
+base+2   = S+0x2a  dl = ebx >> 16  address bits 16..23     (0x1001bd2d)
+base+3,4   = S+0x2b,2c   word [esi + eax*2 + 0x0]
+base+5,6   = S+0x2d,2e   word [esi + eax*2 + 0x2]
+base+7,8   = S+0x2f,30   word [esi + eax*2 + 0x4]
+base+9,10  = S+0x31,32   word [esi + eax*2 + 0x6]
+base+11,12 = S+0x33,34   word [esi + eax*2 + 0x8]
+base+13,14 = S+0x35,36   word [esi + eax*2 + 0xa]
+base+15,16 = S+0x37,38   word [esi + eax*2 + 0xc]
+base+17,18 = S+0x39,3a   word [esi + eax*2 + 0xe]
+                         ----
+                         3 + 16 = 19 bytes
+```
+
+with `eax = ebx >> 1`, so `ebx` is a **byte** address and `esi` is the firmware
+image addressed as 16-bit words. Eight words = 16 bytes per packet.
+
+```
+command 2, dataLen 19 = <24-bit LE address> + <16 bytes of program data>
+```
+
+After each write the code sleeps 10 ms (`push 0xa` at `0x1001bd3a` into
+`fcn.10022f70`), and `FN_bLoadPicLarge` sleeps 1 ms between iterations
+elsewhere.
+
+So the write loop is:
+
+```
+command 4  set address (24-bit LE)          once, region start
+repeat:
+    command 2  address + 16 bytes of data
+    sleep 10 ms
+```
+
+That resolves the question that was blocking any write: the length does not
+disambiguate a mode, the payload simply carries its own address.
+
+### Still unresolved
+
+- **command 8** (`FN_bUpdate`, `0x1001cba7`) -- likely erase or reset, and if
+  an erase is mandatory before writing, this is it
+- whether addresses must be row-aligned, and the row size
+- the verify comparison in `fcn.1001bdf0` and how a mismatch is reported
+- behaviour if a write is interrupted
+
+Command 8 is the remaining risk. Writing program data without a required
+erase, or skipping a required reset afterwards, are both plausible ways to
+leave the PIC worse than it is now.

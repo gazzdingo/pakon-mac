@@ -119,3 +119,36 @@ table is at `fcn.10006270`, and the logger takes
 writing PIC flash from an incompletely understood protocol is exactly the
 class of action that damaged this unit's boot EEPROM, and it should not be
 attempted from a partial reading.
+
+## The address evidence points at the bootloader hypothesis
+
+The addresses that ACK, expressed as 7-bit I2C devices:
+
+| 8-bit pair | 7-bit | interpretation |
+|------------|-------|----------------|
+| `0x40`/`0x41` | `0x20` | light board — responds fully, stable reads |
+| `0x44`/`0x45` | `0x22` | motor board application — **no ACK at all** |
+| `0x46`/`0x47` | `0x23` | **ACKs, but no application behaviour** |
+| `0xa2`/`0xa3` | `0x51` | EEPROM |
+| `0xa4`/`0xa5` | `0x52` | EEPROM |
+
+`0x22` and `0x23` are adjacent. PIC bootloaders conventionally answer on a
+different I2C address from the application, and a bootloader implements
+neither the register file nor the motor commands. That accounts for every
+otherwise-odd observation about `0x46`:
+
+- it ACKs writes (status 0) — a device is there
+- register reads from it are unstable — no register file behind them
+- motor commands are accepted and do nothing — no application to run them
+- the application address `0x22` does not ACK — no application present
+
+So the working hypothesis is that **the motor PIC is alive and sitting in its
+bootloader at 7-bit 0x23, having lost its application flash**. If so the board
+is not damaged and is recoverable by reloading `nm0506.HEX`.
+
+This is a hypothesis, not a conclusion. What would confirm it is the vendor
+loader reporting `iPIC_VERSION_BOOT_FOUND` for the motor PIC.
+
+Note that `status = 0` on a write means only that a device ACKed the I2C
+transaction; the known-good light board accepts nonsense registers just as
+readily. Do not read an ACK as evidence that a command was understood.

@@ -418,3 +418,29 @@ command 8 runs last, and no erase step exists to omit.
 - whether flash addresses must be row-aligned, and the row size
 - parsing `nm0506.HEX` (Intel HEX) into the word array `FN_bLoadPicLarge`
   expects, and confirming the PCB revision matches the image
+
+## The read-back payload offset is deliberately left to be measured
+
+`fcn.10008f80` (behind `FN_bFirmwareGetProgramWords8`) issues command 1. Its
+request is built as a Type 2 packet with `var_20h = 1` as the command and the
+address bytes following, and a **separate** response buffer is passed alongside
+the request (`lea ecx, [var_34h]` at `0x10008fb5`, pushed before
+`lea edx, [var_14h]` which is the request).
+
+Deriving the response payload offset from the disassembly means tracking r2's
+stack labels across several intervening pushes, and r2 names the same slot
+differently at different esp values. That is exactly the trap that produced the
+earlier, wrong "memcpy destination is base+9" reading, which the review
+corrected to base+5.
+
+Rather than risk a third arithmetic error on the one assumption that matters
+for verification, `tools/flash_picm.py` treats the offset as unproven and
+measures it:
+
+- it reads back the **first** written block and compares against known content
+- a mismatch aborts before command 8 is sent
+
+So a wrong offset produces a clean abort with the PIC still in its bootloader,
+not a false pass. The recommended first run is `--limit 4`, which erases,
+writes and verifies four chunks and never sends command 8 regardless of the
+outcome.

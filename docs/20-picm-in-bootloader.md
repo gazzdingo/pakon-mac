@@ -76,3 +76,55 @@ status 2  unsupported packet type
 Also fixed: register 0x89 in the InitCcd prologue is a **byte** write
 (`02 04 <board> 01 89 <val>`, via `fcn.10009ba0`), not the word write used
 previously.
+
+## Progress on the flash protocol (incomplete)
+
+`FN_bLoadPicLarge` = `fcn.1001bb10`. It sends through
+`FN_bFirmwarePutProgramData` = `fcn.10008ee0` (enum 162), which builds a packet
+and hands it to `fcn.10008e30`, which fills in the Type and PktLen bytes before
+calling the usual `fcn.10008530` transport.
+
+Layout recovered so far, relative to the buffer base:
+
+```
+base+0   Type            written by fcn.10008e30
+base+1   PktLen          written by fcn.10008e30
+base+2   board address
+base+3..5   not yet identified
+base+6   arg2
+base+7   data length     (the memcpy count)
+base+8   arg3
+base+9.. program data    rep movsd/movsb from the caller's buffer
+```
+
+`FN_bLoadPicLarge` itself shifts a 24-bit value (`shr eax, 0x10`, `shr ecx, 8`)
+into separate bytes before the call, which is the flash address being split
+into high/mid/low. It also sleeps 1 ms between packets and re-reads for
+verification.
+
+Related entry points, all in TLB.dll:
+
+| enum | name | address |
+|-----:|------|---------|
+| 159 | `FN_bFirmwareGetByteArrayNL` | — |
+| 160 | `FN_bFirmwareGetProgramWord` | — |
+| 161 | `FN_bFirmwareGetProgramWords8` | — |
+| 162 | `FN_bFirmwarePutProgramData` | `fcn.10008ee0` |
+| 163 | `FN_bFirmwarePutProgramWord` | — |
+| 164 | `FN_bFirmwareWritePacketNL` | — |
+| 245 | `FN_bPicToBootLoaderState` | `fcn.1001b9b0` |
+| — | `FN_bLoadPicLarge` | `fcn.1001bb10` |
+| — | `FN_bUpdate` | `fcn.1001c3e0` |
+
+**Not yet determined**, and all of it is required before writing anything:
+
+- the meaning of header bytes 2..5 and 8
+- the flash address encoding and page/row size
+- whether an erase must precede a write, and its command
+- the verify sequence (`FN_bVerifyPicLarge`) and what a failure looks like
+- what happens if a write is interrupted mid-flash
+
+**Do not send anything to 0x46 until these are known.** The PICM is currently
+in a clean, recoverable bootloader state. A partially-understood flash write is
+the one action that could turn a recoverable board into a dead one, and this
+project has already twice demonstrated what improvising a protocol costs.

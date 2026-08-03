@@ -165,3 +165,74 @@ rather than in the header.
 Still required before any write: the specific command codes for
 enter-bootloader / erase / write / verify, the page or row size, and the
 behaviour on an interrupted write.
+
+## Bootloader commands recovered
+
+`FN_bLoadPicLarge` (enum 238, `fcn.1001bb10`) makes two calls to
+`FN_bFirmwarePutProgramData` (enum 162, `fcn.10008ee0`), whose signature is:
+
+```
+PutProgramData(ctx, board, command, dataPtr, dataLen)
+   arg2 = board       [esp+0x2c] at entry
+   arg3 = command     [esp+0x30]
+   arg4 = dataPtr     [esp+0x40] after three pushes
+   arg5 = dataLen     [esp+0x3c] after one push
+```
+
+### Command 4 — set address
+
+```asm
+mov byte [esp + 0x58], al      ; S+0x58  address bits 0..7
+shr eax, 0x10
+push edx                       ; edx = &S+0x58
+mov byte [esp + 0x5e], al      ; S+0x5a  address bits 16..23
+push 4                         ; command
+shr ecx, 8
+push eax                       ; board
+mov byte [esp + 0x65], cl      ; S+0x59  address bits 8..15
+```
+
+Accounting for the intervening pushes, the three stores land on **consecutive**
+bytes S+0x58, S+0x59, S+0x5a, low byte first. So:
+
+```
+command 4, dataLen 3, payload = 24-bit flash address, little-endian
+```
+
+### Command 2 — write program data
+
+```
+command 2, dataLen 0x13 (19), payload built byte-by-byte before the call
+```
+
+The 19 bytes are assembled from a run of `mov byte [var_XX], cl/ch` stores,
+consistent with 16 bytes of program data plus a 3-byte address or count.
+
+### Register 0x0a — bootloader command register
+
+`FN_bPicToBootLoaderState` (enum 245, `fcn.1001b9b0`) writes register `0x0a`
+with a 2-byte payload whose second byte is `0x55`, then sleeps 100 ms:
+
+```asm
+push 0 ; push 2          ; dataLen 2
+push eax                 ; data
+push 0xa                 ; register 0x0a
+push ebx                 ; board
+mov byte [arg_14h], 0    ; data[0] = 0
+mov byte [arg_41h], 0x55 ; 0x55 magic
+call fcn.10009ae0
+...
+push 0x64                ; Sleep(100)
+cmp bl, 0x24             ; board 0x24 is special-cased
+```
+
+This unit's PICM is already in the bootloader, so the entry command is not
+needed for recovery -- only the flash commands.
+
+### Still missing before any write
+
+- what command 2's 19-byte payload contains exactly, field by field
+- whether an erase command exists and must precede writing
+- the verify path (`FN_bVerifyPicLarge`) and how failure is reported
+- the row/page size and whether addresses must be aligned
+- the behaviour if a write is interrupted

@@ -123,3 +123,37 @@ Neither is confirmed at the time of writing.
 `~/pakon-eeprom-backup/verified/` holds the damaged content as read before the
 repair (`5c b5 db 05 d9 47 d7 04`), together with a README explaining it. The
 other two directories hold quarantined artifacts that must not be restored.
+
+## Result — confirmed after power cycle
+
+The repair worked, and firmware auto-selection is restored:
+
+```
+before repair:  04b4:8613                    bare Cypress default
+after  repair:  0f05:f235  rev aa07          the real pre-load identity
+
+personality: id=0xc0 vid=0f05 pid=f235 rev=aa07 -> key F235_AA07
+             raw=c0 05 0f 35 f2 07 aa 04
+stage 2: Pakon7.hex   (auto-selected)
+SUCCESS  0f05:f135  F-135 / F-135 Plus
+```
+
+`pakon_load.py` no longer needs `--hex`. That damage is fully undone.
+
+### What the repair did NOT fix
+
+- **The status LEDs are still red** (operator-confirmed). So the red LEDs were
+  never caused by the EEPROM, and `docs/13`'s suggestion that they were is
+  wrong.
+- **The main board is still absent.** Board 0x44 returns status 1 to a command
+  and no data to a register read, exactly as before.
+
+```
+0x10 host   status=0   stable data
+0x40 light  status=0   responds
+0x44 main   status=1   no data
+```
+
+So the two faults were independent: a corrupted boot EEPROM (self-inflicted,
+now repaired) and a main board that does not communicate (cause unknown, and
+not addressed by any software change).

@@ -29,6 +29,8 @@ scanner firmware until a physical power cycle. ``_check_type`` enforces this.
 
 from __future__ import annotations
 
+import math
+
 __all__ = [
     # packet types
     "TYPE_READ", "TYPE_WRITE", "TYPE_POLL", "TYPE_COMMAND", "TYPE_RESPONSE_ACK",
@@ -49,6 +51,18 @@ __all__ = [
     "lamp_on", "lamp_off", "lamp_set_mask",
     "read_lamp_status", "read_lamp_temperature",
     "read_led_levels", "read_led_duty_cycles",
+    # lamp drive (docs/15-calibration-read.md)
+    "LED_SLOT_ORDER", "LED_LEVEL_MAX", "EXPOSURE_MAX", "LAMP_PWM_CLOCK_HZ",
+    "BASE_EXPOSURE", "LAMP_DENSITY_EXPONENTS",
+    "led_level_max", "led_levels", "lamp_pwm_period", "lamp_on_count",
+    "led_pwm", "lamp_duty_from_current", "lamp_duty_bases",
+    "lamp_bring_up_sequence",
+    # lamp temperature (NOT on the lamp-on path -- see docs 15 section 7.0)
+    "LAMP_TEMP_UNITS_PER_C", "LAMP_TEMP_WORKING_MIN", "LAMP_TEMP_WORKING_MAX",
+    "LAMP_TEMP_BAND_MIN", "LAMP_TEMP_BAND_MAX",
+    "lamp_temp_c", "lamp_temp_warning_band", "lamp_temp_fault_band",
+    "mainboard_temp_warning_band", "mainboard_temp_fault_band",
+    "lamp_temp_working", "lamp_temp_latch",
     "CMD_LIGHT_FIFO_RESET", "CMD_LIGHT_DX_STOP",
     "dx_stop",
     # motor board
@@ -349,16 +363,311 @@ def read_led_duty_cycles(address: int = AD_LIGHT) -> bytes:
 
 
 def set_led_levels(levels: bytes, address: int = AD_LIGHT) -> bytes:
-    """Write the 5-byte LED level array.
+    """Write the raw 5-byte LED level array.
 
-    INFERRED: the driver builds this as ``[a6, a7, a4, 0x00, a5]`` from four
-    CiConfigLight values; which slot is R/G/B/IR and the scale are UNKNOWN.
-    Read the register first.
+    Slot order is ``[B, Ir, R, 0x00, G]`` -- see :func:`led_levels` for a
+    named-argument builder that also enforces the hardware maxima. Prefer that.
     """
     levels = bytes(levels)
     if len(levels) != 5:
         raise ValueError(f"LED level array must be 5 bytes, got {len(levels)}")
     return write_register(address, REG_LIGHT_LED_LEVELS, levels)
+
+
+# --------------------------------------------------------------------------
+# Lamp drive: levels (0x81) and PWM (0x82)
+#
+# Derived in docs/15-calibration-read.md from TLB.dll fcn.1002c5f0
+# (FN_bDrvLampOn), fcn.100203c0 (per-channel maxima) and fcn.1001e020 /
+# fcn.10020230 (duty derivation). Everything in this block is
+# VERIFIED-FROM-BINARY unless a comment says otherwise.
+# --------------------------------------------------------------------------
+
+#: Slot order shared by register 0x81 (bytes) and register 0x82 (u16 pairs).
+#: fcn.1002c5f0 @ 0x1002cc04..0x1002cc38 and @ 0x1002cd2f..0x1002ce04.
+#: Slot 3 is a hard-coded zero in both registers.
+LED_SLOT_ORDER = ("B", "Ir", "R", None, "G")
+
+#: Per-channel level maxima, clamped by fcn.1002c5f0 @ 0x1002c6fb..0x1002c736
+#: using the values returned by fcn.100203c0. Keyed by (board_is_0x44, ir_on).
+LED_LEVEL_MAX = {
+    (True, True):   {"R": 8, "G": 24, "B": 24, "Ir": 8},   # F-135 Plus, IR on
+    (True, False):  {"R": 4, "G": 20, "B": 20, "Ir": 0},   # F-135 Plus, IR off
+    (False, True):  {"R": 8, "G": 8, "B": 8, "Ir": 8},     # non-0x44 board
+    (False, False): {"R": 6, "G": 8, "B": 8, "Ir": 0},
+}
+
+#: Maximum accepted by the exposure clamp at fcn.1002c5f0 @ 0x1002c739.
+EXPOSURE_MAX = 0xFFD  # 4093
+
+#: Light-board PWM tick clock, .rdata:0x1005db68, used at 0x1002cb83.
+LAMP_PWM_CLOCK_HZ = 833333.3
+
+#: Compiled-in base exposures, fcn.10010760 @ 0x10010778..0x100107df.
+#: Keyed by the dpiObj[+0x5c] mode selector; value is (non_ir, ir).
+BASE_EXPOSURE = {
+    0: (2323, 1549),
+    1: (3485, 2323),
+    None: (4080, 3098),   # the `else` branch
+}
+
+#: Per-film-type optical-density exponents from fcn.10020230, keyed by
+#: [this+0x374]. base_ch = 10 ** -D_ch. Order is (R, G, B, Ir).
+LAMP_DENSITY_EXPONENTS = {
+    1: (0.144, 0.4, 0.715, 0.0),
+    8: (0.1, 0.25, 0.25, 0.08),
+    None: (0.0, 0.03, 0.0, 0.08),   # the `else` branch
+}
+
+
+def led_level_max(ir_on: bool, board_is_main: bool = True) -> dict:
+    """Return the per-channel level maxima the firmware will clamp to."""
+    return dict(LED_LEVEL_MAX[(bool(board_is_main), bool(ir_on))])
+
+
+def led_levels(r: int = 0, g: int = 0, b: int = 0, ir: int = 0,
+               ir_on: bool | None = None, board_is_main: bool = True,
+               address: int = AD_LIGHT) -> bytes:
+    """Build the register 0x81 write from named channel levels.
+
+    Payload is ``[B, Ir, R, 0x00, G]``.
+
+    Levels are small integers -- a drive-step index, not a DAC code. They are
+    validated against :data:`LED_LEVEL_MAX`; exceeding a maximum raises rather
+    than silently clamping, because a caller that overshoots has misunderstood
+    the units.
+
+    ``ir_on`` defaults to ``ir > 0``.
+    """
+    if ir_on is None:
+        ir_on = ir > 0
+    limits = led_level_max(ir_on, board_is_main)
+    for name, value in (("R", r), ("G", g), ("B", b), ("Ir", ir)):
+        if not 0 <= value <= limits[name]:
+            raise ValueError(
+                f"level_{name}={value} outside [0, {limits[name]}] "
+                f"(board_is_main={board_is_main}, ir_on={ir_on})")
+    return write_register(address, REG_LIGHT_LED_LEVELS,
+                          bytes((b, ir, r, 0x00, g)))
+
+
+def lamp_pwm_period(exposure: int) -> int:
+    """PWM period N for register 0x82, from the exposure value.
+
+    ``N = round(exposure * 1e6 / (2 * 833333.3))`` -- i.e. ``exposure * 0.6``.
+    fcn.1002c5f0 @ 0x1002cb6d..0x1002cb97.
+    """
+    if not 0 <= exposure <= EXPOSURE_MAX:
+        raise ValueError(
+            f"exposure must be in [0, {EXPOSURE_MAX}], got {exposure}")
+    return int(exposure * 1_000_000.0 / (2.0 * LAMP_PWM_CLOCK_HZ))
+
+
+def lamp_on_count(period: int, duty: float) -> int:
+    """On-count for one channel: ``floor(N * duty)``, clamped to ``N - 2``.
+
+    The ``N - 2`` ceiling is fcn.1002c5f0 @ 0x1002cd17 (``lea edi,[ebx-2]``);
+    it means 100% duty is not representable and the LED always gets at least
+    two ticks of off-time. Do not remove it.
+    """
+    if not 0.0 <= duty <= 1.0:
+        raise ValueError(f"duty must be in [0.0, 1.0], got {duty}")
+    return max(0, min(int(math.floor(period * duty)), period - 2))
+
+
+def led_pwm(exposure: int, duty_r: float = 0.0, duty_g: float = 0.0,
+            duty_b: float = 0.0, duty_ir: float = 0.0,
+            address: int = AD_LIGHT) -> bytes:
+    """Build the register 0x82 write (12 B) from an exposure and four duties.
+
+    Layout is six little-endian u16:
+    ``[on_B, on_Ir, on_R, 0x0000, on_G, N]``.
+    """
+    period = lamp_pwm_period(exposure)
+    on_b = lamp_on_count(period, duty_b)
+    on_ir = lamp_on_count(period, duty_ir)
+    on_r = lamp_on_count(period, duty_r)
+    on_g = lamp_on_count(period, duty_g)
+    payload = b"".join(
+        v.to_bytes(2, "little")
+        for v in (on_b, on_ir, on_r, 0x0000, on_g, period))
+    return write_register(address, REG_LIGHT_LED_DUTY, payload)
+
+
+def lamp_duty_from_current(current: int, base: float = 1.0) -> float:
+    """The fcn.1001e020 duty derivation for one channel.
+
+    ``duty = base * (n-1)/n`` for ``n >= 3``, else ``base * 0.5``.
+
+    ``base`` is *not* 1.0 in the driver -- it is ``10 ** -D`` for the film
+    type, see :data:`LAMP_DENSITY_EXPONENTS` and :func:`lamp_duty_bases`.
+    Writes ``DutyCycleOpenGate_*`` (CiConfigLight +0x90/98/a0/a8).
+    """
+    if current < 0:
+        raise ValueError(f"current must be >= 0, got {current}")
+    return base * ((current - 1) / current) if current >= 3 else base * 0.5
+
+
+def lamp_duty_bases(film_mode: int | None = None) -> dict:
+    """Per-channel ``base`` factors from fcn.10020230: ``10 ** -D``."""
+    exps = LAMP_DENSITY_EXPONENTS.get(film_mode, LAMP_DENSITY_EXPONENTS[None])
+    names = ("R", "G", "B", "Ir")
+    return {n: 10.0 ** -d for n, d in zip(names, exps)}
+
+
+def lamp_bring_up_sequence(exposure: int, r: int = 0, g: int = 0, b: int = 0,
+                           ir: int = 0, duty_r: float = 0.0,
+                           duty_g: float = 0.0, duty_b: float = 0.0,
+                           duty_ir: float = 0.0,
+                           board_is_main: bool = True,
+                           address: int = AD_LIGHT) -> list:
+    """The safe ordered packet list to bring the lamp up.
+
+    ``lamp off -> PWM (0x82) -> levels (0x81) -> lamp on (0x80)``.
+
+    FN_bDrvLampOn itself writes 0x80 first, but it caches previous state and
+    skips unchanged registers, so its levels are already correct when it
+    asserts the enable. A host starting from unknown firmware state has no
+    such guarantee, so this order programs the drive while the lamp is
+    provably dark. Same end state, strictly safer.
+
+    Returns ``[(label, packet), ...]``. Sends nothing.
+
+    NOTE: thermal registers 0x8B/0x8C/0x8D/0x8E/0x8F/0xD0/0xD1 are
+    deliberately absent. FN_bDrvLampOn never touches them and
+    FN_bDrvInitLampTemperatures is not on the lamp-on path, so the lamp
+    lights without them. LampTempWorking is a per-unit registry value that
+    is UNKNOWN here, and it drives a TEC.
+    """
+    ir_on = ir > 0
+    return [
+        ("lamp off", lamp_set_mask(LAMP_OFF, address)),
+        ("PWM 0x82", led_pwm(exposure, duty_r, duty_g, duty_b, duty_ir,
+                             address)),
+        ("levels 0x81", led_levels(r, g, b, ir, ir_on=ir_on,
+                                   board_is_main=board_is_main,
+                                   address=address)),
+        ("lamp on", lamp_on(visible=True, ir=ir_on, address=address)),
+    ]
+
+
+# --------------------------------------------------------------------------
+# Lamp temperature -- setpoint encoders.
+#
+# NOT part of the lamp-on path. FN_bDrvInitLampTemperatures (fcn.1002d190) is
+# called only from fcn.10028d30. Do not send these without a real
+# LampTempWorking read from a calibrated install's registry: they command a
+# TEC and a wrong value can cook the LED array.
+# --------------------------------------------------------------------------
+
+#: Register unit is 1/16 degC (.rdata:0x1005c3b0 = 0.0625, used at 0x10020a31).
+LAMP_TEMP_UNITS_PER_C = 16
+
+#: Clamps applied unconditionally after the registry read, fcn.10010cc0
+#: @ 0x100110a3..0x10011151. No registry value can escape these.
+LAMP_TEMP_WORKING_MIN = 0x250   # 592 = 37.0 degC
+LAMP_TEMP_WORKING_MAX = 0x300   # 768 = 48.0 degC
+LAMP_TEMP_BAND_MIN = 8          # 0.5 degC
+LAMP_TEMP_BAND_MAX = 32         # 2.0 degC
+
+
+def lamp_temp_c(raw: int) -> float:
+    """Convert a raw register-0x84 reading to degrees C."""
+    return raw / LAMP_TEMP_UNITS_PER_C
+
+
+def _temp_pair(low: int, high: int) -> bytes:
+    """``[i16 LE(-low), i16 LE(+high)]`` -- the 0x8C / 0x8F payload shape."""
+    return ((-low) & 0xFFFF).to_bytes(2, "little") + \
+           (high & 0xFFFF).to_bytes(2, "little")
+
+
+def lamp_temp_warning_band(warning_low: int, warning_high: int,
+                           address: int = AD_LIGHT) -> bytes:
+    """Register 0x8F: signed warning offsets around the working setpoint.
+
+    Payload ``[i16 -LampTempWarningLow, i16 +LampTempWarningHigh]``.
+    Both bounds must be in [8, 32] (0.5 - 2.0 degC).
+    """
+    for name, v in (("warning_low", warning_low), ("warning_high", warning_high)):
+        if not LAMP_TEMP_BAND_MIN <= v <= LAMP_TEMP_BAND_MAX:
+            raise ValueError(
+                f"{name}={v} outside [{LAMP_TEMP_BAND_MIN}, "
+                f"{LAMP_TEMP_BAND_MAX}]")
+    return write_register(address, REG_LIGHT_TEMP_SET_8F,
+                          _temp_pair(warning_low, warning_high))
+
+
+def lamp_temp_fault_band(fault_low: int, fault_high: int,
+                         warning_low: int, warning_high: int,
+                         address: int = AD_LIGHT) -> bytes:
+    """Register 0x8C: signed fault offsets around the working setpoint.
+
+    Payload ``[i16 -LampTempFaultLow, i16 +LampTempFaultHigh]``.
+    Each fault bound must sit 8..32 units beyond its warning bound.
+    """
+    if not warning_low + 8 <= fault_low <= warning_low + 32:
+        raise ValueError(
+            f"fault_low={fault_low} must be in "
+            f"[{warning_low + 8}, {warning_low + 32}]")
+    if not warning_high + 8 <= fault_high <= warning_high + 32:
+        raise ValueError(
+            f"fault_high={fault_high} must be in "
+            f"[{warning_high + 8}, {warning_high + 32}]")
+    return write_register(address, REG_LIGHT_TEMP_SET_8C,
+                          _temp_pair(fault_low, fault_high))
+
+
+def mainboard_temp_warning_band(low: int, high: int,
+                                address: int = AD_LIGHT) -> bytes:
+    """Register 0x8B: absolute motherboard warning limits, ``[i16 lo, i16 hi]``.
+
+    Unlike 0x8C/0x8F these are NOT negated -- they are absolute readings.
+    """
+    return write_register(
+        address, REG_LIGHT_TEMP_SET_8B,
+        (low & 0xFFFF).to_bytes(2, "little") +
+        (high & 0xFFFF).to_bytes(2, "little"))
+
+
+def mainboard_temp_fault_band(low: int, high: int,
+                              address: int = AD_LIGHT) -> bytes:
+    """Register 0x8D: absolute motherboard fault limits, ``[i16 lo, i16 hi]``."""
+    return write_register(
+        address, REG_LIGHT_TEMP_SET_8D,
+        (low & 0xFFFF).to_bytes(2, "little") +
+        (high & 0xFFFF).to_bytes(2, "little"))
+
+
+def lamp_temp_working(setpoint: int, address: int = AD_LIGHT) -> bytes:
+    """Register 0x8E: the absolute working setpoint, u16 LE.
+
+    Only written when UseTemperatureSetpoints != 0. Must be in
+    [592, 768] = [37.0, 48.0] degC -- the driver clamps to this range and so
+    do we.
+
+    DANGER: the correct per-unit value is UNKNOWN from static analysis. Read
+    it from ``HKLM\\Software\\Pakon\\TLB\\Test\\LampTempWorking`` on a
+    calibrated install. Do not guess.
+    """
+    if not LAMP_TEMP_WORKING_MIN <= setpoint <= LAMP_TEMP_WORKING_MAX:
+        raise ValueError(
+            f"LampTempWorking={setpoint} outside "
+            f"[{LAMP_TEMP_WORKING_MIN}, {LAMP_TEMP_WORKING_MAX}] "
+            f"({lamp_temp_c(LAMP_TEMP_WORKING_MIN):.1f}-"
+            f"{lamp_temp_c(LAMP_TEMP_WORKING_MAX):.1f} degC)")
+    return write_register_u16(address, 0x8E, setpoint)
+
+
+def lamp_temp_latch(address: int = AD_LIGHT) -> list:
+    """The 0xD0=0 / 0xD1=1 pair that closes FN_bDrvInitLampTemperatures.
+
+    INFERRED: these latch/enable the setpoints just loaded.
+    """
+    return [
+        ("0xD0 := 0", write_register_u8(address, REG_LIGHT_TEMP_D0, 0)),
+        ("0xD1 := 1", write_register_u8(address, REG_LIGHT_TEMP_D1, 1)),
+    ]
 
 
 def dx_stop(address: int = AD_LIGHT) -> bytes:

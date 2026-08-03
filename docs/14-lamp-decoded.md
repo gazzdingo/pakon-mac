@@ -555,3 +555,62 @@ Unresolved:
 Obtaining them is a **read**, so it is safe. It requires decoding the
 calibration read path, which is the single remaining task before the lamp can
 legitimately be lit.
+
+## THE LAMP WORKS — operator-confirmed [VERIFIED ON HARDWARE]
+
+**The operator visually confirmed a bright blueish light inside the scanner
+during the lamp bring-up sequence.** The LED illuminator lights.
+
+This inverts the entire diagnosis. Every conclusion in this project that
+treated "no light detected on EP 0x86" as "the lamp is not lighting" was wrong.
+The lamp responds correctly to:
+
+```
+02 04 40 01 80 00                                    lamp off
+02 0F 40 0C 82 <on_B><on_Ir><on_R><0000><on_G><N>    PWM  (reg 0x82, 12 B)
+02 08 40 05 81 <B><Ir><R><00><G>                     levels (reg 0x81, 5 B)
+02 04 40 01 80 01                                    enable visible
+```
+
+with N = round(exposure * 0.6), on = N/2, and levels within the clamps
+R<=8, G<=24, B<=24, Ir<=8.
+
+### What this means
+
+The blocker is **not** illumination. It is that the CCD data arriving on
+EP 0x86 does not respond to light. The sensor stream is live (successive
+captures differ) but its mean sits at a constant ~1239 regardless of:
+
+- lamp on or off (now known to be genuinely on)
+- LED level 1 through 24 on every channel
+- CCD A/D gains and offsets (indices 0x02-0x04 and 0x05-0x07)
+- FPGA exposure window (idx 4/5) and control word (idx 0)
+
+So EP 0x86 is delivering data that is **not** the illuminated sensor readout.
+
+### Remaining hypotheses, in order
+
+1. **Blocked optical path.** `FILM_COLOR_FILTER_WHEEL_BLOCKED` exists as an
+   enum value, and `FN_bDrvMoveFilterWheel` / `EC_MotorFault_FilterWheel` are
+   in the binary. If the filter wheel is parked in the blocked position, the
+   lamp can be lit and the CCD still sees nothing. **This is the strongest
+   candidate and has never been tested.** A full emulator sweep of the driver
+   layer did not surface a filter-wheel command, so it likely lives behind a
+   guard or on the absent focus board -- needs targeted decoding.
+2. **The FPGA is not clocking the sensor into the FIFO**, so EP 0x86 carries
+   free-running readout unrelated to the programmed integration window. This
+   is consistent with the data being invariant to every FPGA register write.
+
+### Commands the emulator proved exist (full driver-layer sweep)
+
+```
+Type 4:  addr 0x10 cmd 0x85     host clear
+         addr 0x40 cmd 0x8A     light-board FIFO/DX reset
+         addr 0x44 cmd 0xA0     motor advance forward
+         addr 0x44 cmd 0xA2     motor stop
+Registers: 0x10 -> 0x84, 0x8F
+           0x40 -> 0x80, 0x81, 0x87, 0x8B, 0x8C, 0x8D, 0x8F, 0xD0, 0xD1
+           0x44 -> 0xA5
+```
+
+No filter-wheel command appears in this set, which is itself informative.

@@ -152,3 +152,52 @@ loader reporting `iPIC_VERSION_BOOT_FOUND` for the motor PIC.
 Note that `status = 0` on a write means only that a device ACKed the I2C
 transaction; the known-good light board accepts nonsense registers just as
 readily. Do not read an ACK as evidence that a command was understood.
+
+## Retraction: 0x46 is not a PIC in bootloader mode
+
+The bootloader-at-0x23 hypothesis above does not survive a proper look at the
+data. Reading registers 0x00-0x1f and 0x80-0xaf on each address:
+
+| board | readable regs | distinct payloads | status bytes | verdict |
+|-------|--------------:|------------------:|--------------|---------|
+| `0x40` light | 16 | 1 | 88, a8 | real device, discriminates |
+| `0x44` motor | 0 | — | — | silent |
+| `0x41` | 80 | 1 | 9c | echoes one value for every register |
+| `0x46` | 80 | 49 | 00, 02 | varies -- noise |
+| `0x47` | 80 | 56 | 04 | varies -- noise |
+
+A real board answers a limited set of registers with stable values. The light
+board answers 16. `0x46` and `0x47` answer *all eighty* probed registers with
+values that differ between reads of the same register, which is the signature
+of a floating bus, not a device.
+
+The ACK at 0x46 and its occasional clean-looking response were over-read. The
+motor board is not present at any address, in application or bootloader state.
+
+That removes the software recovery route: there is nothing on the bus to send
+a bootloader command to. Reloading `nm0506.HEX` requires a PIC that answers,
+and none does.
+
+The remaining explanation is electrical, which is where the vendor's own PICM
+self-tests point:
+
+```
+EC_BistPicmVinFail   EC_BistPicm13VFail  EC_BistPicm12VFail
+EC_BistPicm6VFail    EC_BistPicm5VFail   EC_BistPicm3VFail
+EC_BistPicmMotorFail
+```
+
+## Why FirmwareLoader.exe cannot be run on this machine
+
+```
+FirmwareLoader.exe : PE32, Intel 80386, MS Windows GUI
+this machine       : arm64 (Apple Silicon), no Wine or CrossOver
+```
+
+Wine would not help even if installed. The application reaches the scanner
+through the `ezusb.sys` **kernel driver** via `DeviceIoControl`; Wine
+implements Win32, not a Windows kernel driver stack, so there is no path from
+it to the USB device. This is the same constraint that motivated this port.
+
+Porting the loader's logic is feasible -- it speaks the same packet protocol
+decoded here -- but pointless while no PIC answers on the bus.

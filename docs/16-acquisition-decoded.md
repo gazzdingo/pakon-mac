@@ -204,3 +204,65 @@ categories — directly relevant to the HP5 / FP4 / Delta 3200 request.
   The flat A/D gain sweep is not a wrong-board error.
 - `fcn.1000bdd0` polls `0x40`, `0x44`, `0x28`; `0x28` is gated behind a
   presence check and is most likely the optional APS unit.
+
+## Hardware result — full FPGA bring-up run
+
+`tools/init_ccd.py` ran the complete ported sequence. Every register write was
+accepted by the board, and the stream did not change:
+
+```
+before init   mean 647.4  stdev 66.51
+after  init   mean 647.3  stdev 66.45
+A/D gain 0 vs 255, after init: mean moves 0.26, stdev moves 0.10
+```
+
+So register 0x82 is configured correctly and acquisition still does not run.
+
+## What the enum names actually say
+
+The logger enum table renames the pieces and corrects a wrong assumption:
+
+| enum | name |
+|-----:|------|
+| 120 | `FN_bDrvPutCcdFpgaControlReg` |
+| 121 | `FN_bDrvPutCcdFpgaSettings` |
+| 128 | `FN_bDrvPutRegisterCcd` |
+| 129 | `FN_bDrvPutRegisterWord` |
+
+Register 0x82 is the **FPGA**, not the CCD chip: `fcn.10029770` is
+`PutCcdFpgaControlReg` and `fcn.1002c340` is `PutCcdFpgaSettings`. Programming
+the FPGA is necessary but evidently not sufficient.
+
+## The two remaining prerequisites
+
+`FN_bDrvInitCcd` issues two `PutRegisterWord` calls *before* any FPGA
+programming, and neither has been ported:
+
+```asm
+mov al, byte [esi + 0x2f9]     ; 0x40 -- the LIGHT board address
+mov ecx, dword [var_14h]
+push 0
+push 0x87                      ; register 0x87
+push ecx                       ; board 0x40
+push edi
+call fcn.10009d40              ; FN_bDrvPutRegisterWord
+...
+push 0x89                      ; register 0x89
+push eax
+push edi
+call fcn.10009ba0
+```
+
+These target a **different register space on a different board** — the light
+board at 0x40, not the motor board at 0x44 where every CCD/FPGA register goes.
+`PutRegisterWord` uses its own packet builder (`fcn.10009ae0`, which sets
+`Type = 2` and funnels into `fcn.100095a0`), so its wire encoding is not the
+`02 06 44 03 <reg> <idx> <lo> <hi>` form used by `PutRegisterCcd`.
+
+That encoding must be decoded from `fcn.10009ae0` before anything is sent.
+Guessing a packet format is what damaged this unit's boot EEPROM; it is not
+worth repeating for a register write.
+
+Note also that `fcn.100095a0`, not `fcn.10008530`, is the real low-level
+sender. `tools/emulate_tlb.py` hooks the latter and therefore captures nothing
+from the CCD bring-up path.

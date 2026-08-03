@@ -157,3 +157,33 @@ SUCCESS  0f05:f135  F-135 / F-135 Plus
 So the two faults were independent: a corrupted boot EEPROM (self-inflicted,
 now repaired) and a main board that does not communicate (cause unknown, and
 not addressed by any software change).
+
+## Fully repaired and persistent — confirmed
+
+Byte 0 reverted twice before finally holding. The pattern was: the write would
+read back correctly in-session and after a stage-1 reload, then revert on the
+next power cycle. That looked like a worn cell, but it was simpler than that —
+the earlier writes had not committed, and the read-back was not proving what it
+appeared to.
+
+After rewriting byte 0 once more and power-cycling:
+
+```
+enumerated: 0f05:f235 bcd=aa07
+```
+
+The scanner self-identifies with its real pre-load identity, and
+`pakon_load.py --fw-dir` selects `Pakon7.hex` from the device's own personality
+with no `--hex` override:
+
+```
+personality: id=0xc0 vid=0f05 pid=f235 rev=aa07 -> key F235_AA07
+SUCCESS  0f05:f135  F-135 / F-135 Plus
+```
+
+All nine bytes now match Kodak's `USB F135.bin`, and they survive power cycles.
+This damage is fully undone.
+
+**Lesson for verifying EEPROM writes:** a read-back in the same session proves
+nothing, and even a read after a stage-1 reload proved nothing here. Only a
+power cycle confirms an EEPROM write has committed.

@@ -23,21 +23,38 @@ The flash path reuses the ordinary packet transport
     command packet  04 3           <board> 0         <cmd>
 
 FN_bFirmwarePutProgramData (fcn.10008ee0, enum 162) takes
-(ctx, board, command, dataPtr, dataLen). Commands used by FN_bLoadPicLarge
-(fcn.1001bb10, enum 238):
+(ctx, board, command, dataPtr, dataLen). The command set is read/write/
+erase/exit:
 
-    command 4, dataLen 3    set address, 24-bit little-endian
-    command 2, dataLen 19   <24-bit LE address> + <16 bytes of program data>
+    command 1, dataLen 3    read 16 bytes at a 24-bit LE address
+    command 2, dataLen 19   write: <24-bit LE address> + 16 bytes
+    command 4, dataLen 3    ERASE the 64-byte row at a 24-bit LE address
+    command 8, dataLen 0    finalise / reset into the application
 
-FN_bUpdate's control flow gives the whole sequence:
+FN_bLoadPicLarge (fcn.1001bb10, enum 238) makes TWO passes over the image:
 
-    FN_bLoadPicLarge        command 4, then a loop of command 2, 10 ms apart
-    wait 3000 ms
-    fcn.1001bdf0            verify
-    command 8               finalise (its response byte is read and logged)
+    pass 1  0x1001bb62-0x1001bc4b   command 4 per 64-byte row, Sleep(1)
+                                     (address += 0x40, index += 4)
+    pass 2  0x1001bc4d-0x1001bd90   command 2 per 16 bytes, 10 ms apart
+                                     (never issues command 4)
 
-Command 8 runs *after* the write and verify, so it is not an erase, and no
-separate erase command exists anywhere in the sequence.
+Command 4 cannot be "set address": command 2 carries its own address, and
+pass 2 works without it. A 3-byte address at exactly 64-byte granularity,
+emitted only for rows about to be written and only before any write, is an
+erase -- PIC18 erases in 64-byte rows.
+
+FN_bVerifyPicLarge (fcn.1001bdf0) then reads every block back with command 1
+and applies, at 0x1001bea2:
+
+    (actual & expected) == expected  ? rewrite and retry : abort
+
+A bit needing 1->0 can be fixed by rewriting; a bit needing 0->1 needs an
+erase that has already been spent, so it aborts. That rule only makes sense
+on freshly erased flash, which is further proof the erase pass is mandatory.
+
+Only after every block verifies does FN_bUpdate send command 8. Note that the
+0xbb8 seen near these calls is a progress value passed to a client callback
+(fcn.10032580), not a delay.
 
 SAFETY
 ------
@@ -50,8 +67,12 @@ SAFETY
   given explicitly.
 * Verifies the PICM is actually in its bootloader, and that the control
   addresses are empty, before writing anything.
-* Every packet's status byte is checked. Status 0 is the only success;
-  1 is a NAK and 2 is an unsupported packet type.
+* Erases every affected 64-byte row before writing, as the vendor does.
+  Writing unerased PIC flash is AND-only and silently corrupts it.
+* Reads every block back and compares. Command 8 is sent only if all of them
+  verify, because command 8 resets the PIC into whatever is in flash.
+* Aborts on the FIRST rejected or unanswered packet. Status 0 is the only
+  success; 1 is a NAK, 2 a format error, 3 a checksum error.
 
 The PCB revision decides the image: nm0306 = PCB #125430A, nm0406 = #125430B,
 nm0506 = #125430C. ReadmeF135.txt warns against using these on PCB #125039A.
@@ -72,8 +93,9 @@ HOST = 0x10
 PICM_APP, PICM_BOOT = 0x44, 0x46
 CONTROLS = (0x48, 0x4A, 0x60, 0x62, 0x50, 0x52)
 
-CMD_WRITE, CMD_SET_ADDR, CMD_FINALISE = 2, 4, 8
+CMD_READ, CMD_WRITE, CMD_ERASE, CMD_FINALISE = 1, 2, 4, 8
 CHUNK = 16                      # bytes per command 2 packet
+ROW = 64                        # PIC18 erase row, and command 4's granularity
 BOOTLOADER_END = 0x000400       # application starts here; never write below
 CONFIG_BASE = 0x300000          # PIC config words; never write at or above
 
@@ -118,7 +140,8 @@ def status_text(r):
         return f"short {r.hex(' ')}"
     if r[0] != 0x07:
         return f"type {r[0]} {r[:4].hex(' ')}"
-    return {0: "ok", 1: "NAK", 2: "unsupported"}.get(r[3], f"status {r[3]}")
+    return {0: "ok", 1: "NAK", 2: "format error",
+            3: "checksum error"}.get(r[3], f"status {r[3]}")
 
 
 def put_program_data(d, board, command, data=b""):
@@ -203,6 +226,28 @@ def writable_chunks(mem, chunk=CHUNK):
     return out
 
 
+def erase_rows(chunks, row=ROW):
+    """The 64-byte-aligned rows touched by the write set.
+
+    Mirrors pass 1 of FN_bLoadPicLarge, which walks the image in 64-byte
+    steps and erases a row only when one of its four 16-byte blocks carries
+    data.
+    """
+    return sorted({base - (base % row) for base, _ in chunks})
+
+
+def read_block(d, board, addr):
+    """Command 1: read 16 bytes at a 24-bit LE address.
+
+    The response payload offset is not proven from the binary, so the caller
+    must confirm it against a known block before any comparison is trusted.
+    """
+    r = put_program_data(d, board, CMD_READ, struct.pack("<I", addr)[:3])
+    if not r or len(r) < 4 or r[0] != 0x01:
+        return None, r
+    return bytes(r[4:4 + CHUNK]), r
+
+
 # ---------------------------------------------------------------- main
 
 def main() -> int:
@@ -266,34 +311,79 @@ def main() -> int:
             return 0
 
         todo = chunks[:args.limit] if args.limit else chunks
-        print(f"\nwriting {len(todo)} chunk(s) to {board:#04x} ...")
+        rows = erase_rows(todo)
 
-        r = put_program_data(d, board, CMD_SET_ADDR,
-                             struct.pack("<I", todo[0][0])[:3])
-        print(f"  set address {todo[0][0]:#08x}: {status_text(r)}")
-        if not accepted(r):
-            sys.exit("  refusing to continue: set-address was not accepted")
-
-        failed = 0
-        for i, (base, blk) in enumerate(todo):
-            payload = struct.pack("<I", base)[:3] + blk
-            r = put_program_data(d, board, CMD_WRITE, payload)
+        # ---- pass 1: erase, exactly as FN_bLoadPicLarge does first --------
+        print(f"\npass 1 -- erasing {len(rows)} row(s) of {ROW} bytes")
+        for i, addr in enumerate(rows):
+            r = put_program_data(d, board, CMD_ERASE,
+                                 struct.pack("<I", addr)[:3])
             if not accepted(r):
-                failed += 1
-                print(f"  {base:#08x}: {status_text(r)}")
-                if failed > 4:
-                    sys.exit("  too many failures -- stopping")
-            elif i % 32 == 0:
-                print(f"  {base:#08x}  ok  ({i + 1}/{len(todo)})")
-            time.sleep(0.010)
+                sys.exit(f"  {addr:#08x}: {status_text(r)}\n"
+                         f"  ABORT -- erase failed. Nothing has been written, "
+                         f"so the board is no worse than before.")
+            if i % 32 == 0:
+                print(f"  {addr:#08x}  erased  ({i + 1}/{len(rows)})")
+            time.sleep(0.001)
+        print(f"  all {len(rows)} row(s) erased")
 
-        print(f"\n  {len(todo) - failed}/{len(todo)} chunks accepted")
-        print("  waiting 3 s as the vendor does ...")
-        time.sleep(3.0)
+        # ---- pass 2: write -------------------------------------------------
+        print(f"\npass 2 -- writing {len(todo)} chunk(s) of {CHUNK} bytes")
+        for i, (base, blk) in enumerate(todo):
+            r = put_program_data(d, board, CMD_WRITE,
+                                 struct.pack("<I", base)[:3] + blk)
+            if not accepted(r):
+                sys.exit(f"  {base:#08x}: {status_text(r)}\n"
+                         f"  ABORT -- write failed at chunk {i + 1}. Command 8 "
+                         f"has NOT been sent, so the PIC stays in its "
+                         f"bootloader and can be reflashed.")
+            if i % 64 == 0:
+                print(f"  {base:#08x}  written  ({i + 1}/{len(todo)})")
+            time.sleep(0.010)
+        print(f"  all {len(todo)} chunk(s) written")
+
+        # ---- pass 3: verify, as FN_bVerifyPicLarge does --------------------
+        print(f"\npass 3 -- verifying {len(todo)} chunk(s)")
+        probe, raw = read_block(d, board, todo[0][0])
+        if probe is None:
+            sys.exit(f"  read-back returned {status_text(raw)}\n"
+                     f"  ABORT -- cannot verify, so command 8 will not be sent. "
+                     f"The PIC stays in its bootloader.")
+        print(f"  read-back of {todo[0][0]:#08x}: {raw[:8].hex(' ')} ...")
+        if probe != todo[0][1]:
+            print(f"    expected {todo[0][1].hex(' ')}")
+            print(f"    got      {probe.hex(' ')}")
+            sys.exit("  ABORT -- first block does not match. Either the write "
+                     "failed or the read payload offset is wrong; either way "
+                     "command 8 will not be sent.")
+
+        bad = 0
+        for i, (base, blk) in enumerate(todo):
+            got, raw = read_block(d, board, base)
+            if got is None or got != blk:
+                bad += 1
+                print(f"  {base:#08x} MISMATCH")
+                print(f"    expected {blk.hex(' ')}")
+                print(f"    got      {got.hex(' ') if got else status_text(raw)}")
+                if bad > 3:
+                    sys.exit("  ABORT -- too many mismatches; command 8 not sent.")
+            elif i % 64 == 0:
+                print(f"  {base:#08x}  verified  ({i + 1}/{len(todo)})")
+        if bad:
+            sys.exit(f"\n  {bad} block(s) failed to verify. Command 8 NOT sent; "
+                     f"the PIC remains in its bootloader and can be reflashed.")
+        print(f"  all {len(todo)} chunk(s) verified")
+
+        # ---- finalise ------------------------------------------------------
+        if args.limit:
+            print("\n  --limit was used, so this is a partial image. NOT "
+                  "sending command 8.")
+            return 0
+        print("\nfinalise -- command 8 resets the PIC into the application")
         r = put_program_data(d, board, CMD_FINALISE)
-        print(f"  finalise (command 8): {status_text(r)}"
+        print(f"  command 8: {status_text(r)}"
               + (f"   response {r[:6].hex(' ')}" if r else ""))
-        print("\n  power-cycle the scanner, then check whether 0x44 answers.")
+        print("\n  Power-cycle the scanner, then check whether 0x44 answers.")
     finally:
         usb.util.release_interface(d, 0)
     return 0

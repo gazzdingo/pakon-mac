@@ -396,3 +396,39 @@ name the rest of the family:
 
 So a CCD board with its own PIC does exist in the family, consistent with the
 version string reporting a CCD version for every model.
+
+### Verified three ways, and not recoverable in software
+
+The silence of 0x44 is not an artifact of the wrong register range or the
+wrong packet type:
+
+| test | 0x10 host | 0x40 light | 0x44 motor |
+|------|-----------|------------|------------|
+| read regs 0x00-0x1f | data | data | none |
+| read regs 0x80-0xaf | -- | -- | none |
+| Type 4 command 0x00 | status 0 | status 0 | **status 1** |
+
+A basic Type 4 command is accepted by the host and the light board and
+rejected by the motor board, so the board is not answering at all rather than
+lacking a particular register.
+
+A USB-level `reset()` does not help, and firmware survives it -- the loader
+reports "already loaded; power-cycle it to reload firmware". So restoring the
+motor board needs a physical power cycle at minimum; it cannot be done from
+the host.
+
+### Reading the status byte
+
+For future tooling: byte 3 of a Type 7 response is the status, and it is not
+optional to check.
+
+```
+07 02 40 00     status 0   accepted
+07 02 44 01     status 1   rejected
+07 02 40 02     status 2   unsupported packet type
+```
+
+Byte 3 of a Type 1 data response carries flags, where `0x20` is the fault bit
+(the same bit `clear_fault` polls). Host registers 0x0a-0x1f all return
+`01 04 10 20 00 00`, i.e. fault -- those registers do not exist. Only the low
+host registers are real.

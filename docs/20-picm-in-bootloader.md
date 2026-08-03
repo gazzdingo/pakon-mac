@@ -380,3 +380,41 @@ tells us the PIC's version, a mistaken erase ends the software recovery route.
 The remaining work is to trace the path into `0x1001cba0` and establish
 `dataLen`, and to confirm that the byte read at `[esp+0x1c]` is a version
 rather than a status code.
+
+## The full flash sequence, from FN_bUpdate's control flow
+
+Tracing `FN_bUpdate` (`fcn.1001c3e0`) settles both the ordering and the
+erase question:
+
+```
+0x1001cad7   call fcn.1001bb10   FN_bLoadPicLarge
+                                   command 4  set address
+                                   loop: command 2  address + 16 bytes
+                                         sleep 10 ms
+0x1001caf9   push 0xbb8          wait 3000 ms
+0x1001cb49   call fcn.1001bdf0   verify (reads back, same address encoding)
+0x1001cb54   jne 0x1001cba0      on success ->
+0x1001cba7   command 8           finalise; response byte read and logged
+```
+
+Two conclusions follow directly:
+
+1. **Command 8 is not an erase.** It is issued *after* the write and after a
+   successful verify, and its response byte is read immediately. It is a
+   finalise, reset or status step.
+2. **There is no separate erase command anywhere in the sequence.** Nothing is
+   issued before `FN_bLoadPicLarge` except entering the bootloader. So erasing
+   is either implicit in command 2 or unnecessary for this part.
+
+That removes the main hazard identified earlier -- the fear was writing into
+un-erased flash, or that command 8 might erase the bootloader. Neither applies:
+command 8 runs last, and no erase step exists to omit.
+
+### Remaining before a write is proposed
+
+- `dataLen` for command 8 (its arguments are pushed on the path into
+  `0x1001cba0`), and whether its response byte is a version or a status
+- the comparison inside `fcn.1001bdf0` and how a verify mismatch is reported
+- whether flash addresses must be row-aligned, and the row size
+- parsing `nm0506.HEX` (Intel HEX) into the word array `FN_bLoadPicLarge`
+  expects, and confirming the PCB revision matches the image

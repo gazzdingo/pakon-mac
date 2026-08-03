@@ -339,3 +339,44 @@ disambiguate a mode, the payload simply carries its own address.
 Command 8 is the remaining risk. Writing program data without a required
 erase, or skipping a required reset afterwards, are both plausible ways to
 leave the PIC worse than it is now.
+
+## Command 8 — probably a query, not an erase
+
+At `0x1001cba7` in `FN_bUpdate` (enum 317, `fcn.1001c3e0`), with r2's argument
+labels confirming the mapping:
+
+```asm
+mov ecx, dword [esi + 8]
+push 8                    ; arg_30h -> command
+push edi                  ; arg_2ch -> board
+push ebp                  ; ctx
+call fcn.10008ee0
+test eax, eax
+jne ...
+movzx edx, byte [esp + 0x1c]   ; <-- reads a RESPONSE BYTE
+...
+push 0x13d                     ; logs it under FN_bUpdate
+```
+
+The immediate read of a response byte after the call is what a query looks
+like; an erase would have nothing to return. That fits `FN_bUpdate`'s job of
+deciding whether a PIC needs flashing, and it is consistent with the
+`iPIC_VERSION_BOOT_FOUND` / `iPIC_VERSION_PROGRAM_FOUND` distinction in
+`FirmwareLoaderCom.dll`.
+
+**But this is not certain.** `0x1001cba0` is a branch target and the `dataPtr`
+and `dataLen` arguments are pushed on the path leading into it, outside the
+window disassembled here, so the payload length is unconfirmed. If `dataLen`
+is 0 the packet would be `04 03 <board> 00 08`.
+
+### Why this is not safe to just try
+
+If command 8 were an erase rather than a query, sending it could erase the
+**bootloader** itself. The PICM is currently in a clean bootloader state, which
+is precisely what makes it recoverable; losing the bootloader would make it
+unrecoverable over I2C entirely. The asymmetry is severe: a successful query
+tells us the PIC's version, a mistaken erase ends the software recovery route.
+
+The remaining work is to trace the path into `0x1001cba0` and establish
+`dataLen`, and to confirm that the byte read at `[esp+0x1c]` is a version
+rather than a status code.

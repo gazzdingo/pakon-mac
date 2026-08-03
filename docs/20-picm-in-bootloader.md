@@ -236,3 +236,48 @@ needed for recovery -- only the flash commands.
 - the verify path (`FN_bVerifyPicLarge`) and how failure is reported
 - the row/page size and whether addresses must be aligned
 - the behaviour if a write is interrupted
+
+## All PutProgramData call sites
+
+`fcn.10008ee0` has exactly five callers:
+
+| site | function | command | dataLen |
+|------|----------|--------:|--------:|
+| `0x1001bbd7` | `FN_bLoadPicLarge` | 4 | 3 |
+| `0x1001bd31` | `FN_bLoadPicLarge` | 2 | 19 |
+| `0x1001bf4b` | `fcn.1001bdf0` (verify path) | 2 | 3 |
+| `0x1001bfb7` | `fcn.1001bdf0` | 2 | 19 |
+| `0x1001cba7` | `FN_bUpdate` (`fcn.1001c3e0`) | 8 | — |
+
+So the bootloader command set in use is **{2, 4, 8}**:
+
+- **4** — set address. Payload is a 24-bit little-endian address, confirmed by
+  the three consecutive byte stores after accounting for intervening pushes.
+- **2** — the bulk command, used with both 3-byte and 19-byte payloads, in the
+  write path and the verify path alike.
+- **8** — issued once from `FN_bUpdate`; semantics not yet established.
+
+`fcn.1001bdf0` splits an address the same way (`shr edx, 0x10`, stores at
+`+0x54` and `+0x56`), which fits a read-back-and-compare verify.
+
+**Open question that matters most:** command 2 appears with two different
+payload lengths, so either the length disambiguates it or a mode byte inside
+the payload does. Writing a 19-byte command 2 without knowing which would be
+guessing, and this is the one command that modifies flash.
+
+## Status of the port
+
+Decoded and confident:
+
+- the transport (ordinary packet family, `PktLen = dataLen + 3`)
+- `PutProgramData` argument order
+- command 4 as a 24-bit little-endian set-address
+- register `0x0a` as the bootloader command register, magic `0x55`
+- the PICM is in its bootloader at 0x46, proven with control addresses
+
+Not yet safe to act on:
+
+- command 2's payload layout, field by field
+- command 8's meaning
+- erase semantics, row alignment, and interrupted-write behaviour
+- the verify comparison and its failure reporting

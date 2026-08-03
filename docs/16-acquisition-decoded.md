@@ -515,3 +515,49 @@ not survive: two devices answer and one does not.
 
 The existence of PICM power-rail BIST codes suggests supply rails to that board
 are worth checking, since a rail failure would produce exactly this signature.
+
+## Correction: what the status byte actually means
+
+Status 0 on a write means only that **a device ACKed the I2C transaction at
+that address**. It does not mean the register was valid. The known-good light
+board accepts nonsense registers exactly as readily as real ones:
+
+```
+board 0x40  reg 0x80 (valid lamp) : status 0
+board 0x40  reg 0x99 (nonsense)   : status 0
+board 0x40  reg 0xf0 (nonsense)   : status 0
+board 0x46  reg 0x82 (valid FPGA) : status 0
+board 0x46  reg 0x99 (nonsense)   : status 0
+```
+
+So "16/16 config writes accepted on 0x46" is not evidence that 0x46 is the
+main board. It is evidence that *something* ACKs there.
+
+What survives:
+
+- nothing ACKs at 0x44 (7-bit 0x22)
+- something ACKs at 0x46/0x47 (7-bit 0x23), 0x40/0x41 (0x20), and
+  0xa2-0xa5 (0x51, 0x52)
+- reads from 0x46 are unstable, which does not fit a healthy board
+
+The board address is read from device info at `[esi+0x130]`, not hardcoded, so
+0x44 was always an assumption inherited from the emulator setup in this
+project. Whether the main board is at 0x46 or simply absent is still open.
+
+## EP 0x86 changes character across power cycles
+
+Three different idle patterns have now been observed on the same endpoint:
+
+```
+mean 1240      before one power cycle
+593/608/740    three-level interleave, after the next
+65534 (0xFFFE) after the most recent
+```
+
+A sensor readout would not change because the host power-cycled. This is
+further evidence the endpoint is emitting FX2-side filler rather than data.
+
+## EEPROM: still no valid backup
+
+Do not trust any dump taken so far. See ~/pakon-eeprom-backup, where both
+attempts are quarantined with READMEs. Nothing has been written to any EEPROM.

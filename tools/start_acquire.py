@@ -73,10 +73,19 @@ def send(d, pkt, timeout=1200):
         return None
 
 
+def accepted(r):
+    """Type 7 with status 0 only. Status 1 is a NAK, 2 is unsupported."""
+    return bool(r) and len(r) > 3 and r[0] == 0x07 and r[3] == 0x00
+
+
 def put_ccd(d, reg, idx, u16):
-    """PutRegisterCcd: 02 06 44 03 <reg> <idx> <lo> <hi>"""
-    return send(d, bytes([0x02, 0x06, MOTOR, 0x03, reg, idx,
-                          u16 & 0xFF, (u16 >> 8) & 0xFF]))
+    """PutRegisterCcd: 02 06 44 03 <reg> <idx> <lo> <hi>
+
+    Returns the response only when the board actually accepted it.
+    """
+    r = send(d, bytes([0x02, 0x06, MOTOR, 0x03, reg, idx,
+                       u16 & 0xFF, (u16 >> 8) & 0xFF]))
+    return r if accepted(r) else None
 
 
 def clear_fault(d):

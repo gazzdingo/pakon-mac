@@ -95,14 +95,35 @@ def send(d, pkt, timeout=1500):
         return None
 
 
+def accepted(r):
+    """A write is accepted only on a Type 7 response with status 0.
+
+    Status 1 is a NAK and status 2 is an unsupported packet type. Treating any
+    response as success is what let a whole day of writes to a non-responding
+    board be reported as working.
+    """
+    return bool(r) and len(r) > 3 and r[0] == 0x07 and r[3] == 0x00
+
+
+def verdict(r):
+    if not r:
+        return "NO RESPONSE"
+    if len(r) < 4:
+        return f"SHORT {r.hex(' ')}"
+    if r[0] != 0x07:
+        return f"type {r[0]} {r[:4].hex(' ')}"
+    return {0: "ok", 1: "REJECTED (NAK)", 2: "UNSUPPORTED"}.get(
+        r[3], f"status {r[3]}") + f"  {r[:4].hex(' ')}"
+
+
 def put(d, reg, idx, u16, label="", quiet=False):
     pkt = bytes([0x02, 0x06, MOTOR, 0x03, reg, idx, u16 & 0xFF, (u16 >> 8) & 0xFF])
     r = send(d, pkt)
+    ok = accepted(r)
     if not quiet:
-        ok = "ok" if r else "NO RESPONSE"
         print(f"  reg {reg:#04x} idx {idx:<3} = {u16:<6} {label:<20} "
-              f"{pkt.hex(' ')}  -> {ok}")
-    return r
+              f"{pkt.hex(' ')}  -> {verdict(r)}")
+    return r if ok else None
 
 
 def put_word(d, board, reg, u16, label="", quiet=False):
@@ -119,12 +140,21 @@ def put_word(d, board, reg, u16, label="", quiet=False):
     """
     pkt = bytes([0x02, 0x05, board, 0x02, reg, u16 & 0xFF, (u16 >> 8) & 0xFF])
     r = send(d, pkt)
+    ok = accepted(r)
     if not quiet:
-        ok = "ok" if r else "NO RESPONSE"
-        resp = r[:4].hex(' ') if r else ""
         print(f"  board {board:#04x} reg {reg:#04x} = {u16:<6} {label:<16} "
-              f"{pkt.hex(' ')}  -> {ok} {resp}")
-    return r
+              f"{pkt.hex(' ')}  -> {verdict(r)}")
+    return r if ok else None
+
+
+def put_byte(d, board, reg, u8, label="", quiet=False):
+    """FN_bDrvPutRegisterByte -- dataLen 1: 02 04 <board> 01 <reg> <val>"""
+    pkt = bytes([0x02, 0x04, board, 0x01, reg, u8 & 0xFF])
+    r = send(d, pkt)
+    if not quiet:
+        print(f"  board {board:#04x} reg {reg:#04x} = {u8:<6} {label:<16} "
+              f"{pkt.hex(' ')}  -> {verdict(r)}")
+    return r if accepted(r) else None
 
 
 def clear_fault(d):
@@ -213,7 +243,9 @@ def main() -> int:
         # where every CCD/FPGA register lives.
         print("--- prerequisites (FN_bDrvPutRegisterWord) ---")
         put_word(d, LIGHT, 0x87, 0, "pre-init 0x87")
-        put_word(d, LIGHT, 0x89, 0, "pre-init 0x89")
+        # 0x89 is a BYTE write in the vendor code (fcn.10009ba0), not a word:
+        #   02 04 <board> 01 89 <value>
+        put_byte(d, LIGHT, 0x89, 0, "pre-init 0x89")
 
         print("\n--- geometry (fcn.1002c340) ---")
         put(d, REG_CCD, 4, PIXEL_OFFSET, "pixel offset")

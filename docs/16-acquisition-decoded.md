@@ -561,3 +561,45 @@ further evidence the endpoint is emitting FX2-side filler rather than data.
 
 Do not trust any dump taken so far. See ~/pakon-eeprom-backup, where both
 attempts are quarantined with READMEs. Nothing has been written to any EEPROM.
+
+## Final hardware verdict
+
+Operator-confirmed with application firmware loaded and running:
+
+- **all three front LEDs red** -- so red is not merely "not yet initialised";
+  the boards report a fault with firmware up
+- **the motor does not run** on any address. The sequence that physically
+  worked earlier in this project -- `PutRegisterWord(0xa5, speed)` then
+  `PutCommand(0xa0)` -- was retried at several speeds and with commands
+  0xa0/0xa1/0xa2 on both 0x44 (rejected, status 1) and 0x46 (ACKed, status 0).
+  Nothing moved.
+
+The ACK at 0x46 therefore does not indicate a working main board. Something on
+the bus acknowledges the transaction, but nothing acts on it.
+
+Working: USB/FX2, the light board (bright blue lamp, operator-confirmed), and
+the I2C bus itself (EEPROM addresses ACK).
+
+Not working: the main board. It hosts the motor, the CCD A/D registers and the
+FPGA, so no scan is possible.
+
+This is a hardware failure, not a porting gap. The motor ran earlier in this
+project, so the board has failed since. TLB.dll's own discovery routine would
+report `EC_PicM_NotFound`, and its self-test suite checks exactly the things
+that would produce this signature:
+
+```
+EC_BistPicmVinFail  EC_BistPicm13VFail  EC_BistPicm12VFail
+EC_BistPicm6VFail   EC_BistPicm5VFail   EC_BistPicm3VFail
+EC_BistPicmMotorFail
+```
+
+Recommended next step is physical: measure the supply rails on the main board.
+A failed rail explains every observation -- fault LEDs lit, board absent from
+the bus, motor dead, light board unaffected on its own supply.
+
+Honest note on cause: early in this project a sweep of roughly 384 blind writes
+was made across addresses believed to be board addresses but which were in fact
+I2C device addresses. That sweep damaged the boot EEPROM. It cannot be ruled
+out as a contributor here, though the motor worked afterwards, so it is not a
+simple cause and effect.

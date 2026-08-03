@@ -128,3 +128,40 @@ Related entry points, all in TLB.dll:
 in a clean, recoverable bootloader state. A partially-understood flash write is
 the one action that could turn a recoverable board into a dead one, and this
 project has already twice demonstrated what improvising a protocol costs.
+
+## The flash protocol reuses the ordinary packet format
+
+`FN_bFirmwareWritePacketNL` (enum 164, `fcn.10008e30`) is the last stop before
+the transport, and it shows the flash path is not a separate protocol:
+
+```asm
+mov al, byte [esi + 3]     ; dataLen, already placed in the buffer
+test al, al
+sete cl                    ; cl = 1 when dataLen == 0
+add al, 3
+mov byte [esi + 1], al     ; PktLen = dataLen + 3
+lea ecx, [ecx + ecx + 2]   ; ecx = 4 when dataLen == 0, else 2
+mov byte [esi], cl         ; Type
+call fcn.10008530          ; the usual transport
+```
+
+So flashing uses the same family already decoded here:
+
+```
+data packet:     02 <dataLen+3> <board> <dataLen> <cmd> <data...>
+command packet:  04 3            <board> 0         <cmd>
+```
+
+`PktLen = dataLen + 3` is the same rule confirmed earlier for
+`PutRegisterCcd` and `PutRegisterWord`. This is a large simplification: no new
+transport is needed, only the bootloader's command codes and its address
+encoding.
+
+`FN_bLoadPicLarge` splits a 24-bit flash address into bytes (`shr eax, 0x10`,
+`shr ecx, 8`) inside its own buffer before calling
+`FN_bFirmwarePutProgramData`, so the address travels as part of the payload
+rather than in the header.
+
+Still required before any write: the specific command codes for
+enter-bootloader / erase / write / verify, the page or row size, and the
+behaviour on an interrupted write.

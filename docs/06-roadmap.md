@@ -7,8 +7,8 @@
 | 1. Enumerate and load firmware | ✅ **working, automated** |
 | 2. Command round-trip | ✅ **working** |
 | 3. Read scanner identity | 🟡 partial — boards respond, registers not decoded |
-| 4. Lamp on / motor move | ❌ **the blocker** |
-| 5. Acquire raw scan lines | 🟡 stream works; needs illumination + film motion |
+| 4. Lamp on / motor move | ✅ **both working** — lamp visually confirmed |
+| 5. Acquire raw scan lines | ❌ **THE BLOCKER** — EP 0x86 does not respond to light |
 | 6. Full strip scan → file | ❌ |
 | 7. Imaging pipeline | ✅ **implemented and verified** |
 
@@ -206,3 +206,59 @@ corrupted the boot EEPROM in the first place: the "board addresses" being swept
 were I2C addresses, and the writes landed in an EEPROM. Any further hardware
 experimentation should send only packets with specific binary evidence behind
 them.
+
+---
+
+# CORRECTED SUMMARY (end of first session)
+
+The operator visually confirmed **a bright blue light** from the LED
+illuminator during the lamp bring-up. **The lamp works.**
+
+That invalidates the bulk of this session's diagnosis. For most of the session
+"EP 0x86 stays dark" was read as "the lamp is not lighting", which drove a
+long and wrong investigation: a thermal interlock theory, a hunt for
+per-unit calibration currents, and an assumption that illumination could not
+work without values from a calibrated Windows registry. None of that was the
+problem. The compiled-in defaults light the lamp.
+
+## Actual state
+
+| | |
+|---|---|
+| firmware loading | ✅ userspace, automated, no kext |
+| command protocol | ✅ decoded, verified against hardware |
+| board identification | ✅ matches shipped PIC firmware exactly |
+| film transport | ✅ three commanded speeds + reverse, confirmed by ear |
+| **lamp** | ✅ **confirmed lit — bright blue** |
+| EP 0x86 stream | ✅ live, 30 MB/s, 3-channel 16-bit |
+| **illuminated image** | ❌ **the blocker** |
+| colour correction | ✅ implemented, exact to 0.000050 |
+
+## The one remaining problem
+
+EP 0x86 carries data that does not respond to illumination. Mean pinned at
+~1239 across: lamp on/off (genuinely on), LED levels 1-24 on every channel,
+CCD A/D gains and offsets, FPGA exposure window and control word.
+
+Two candidate causes, in order:
+
+1. **Blocked optical path.** `FILM_COLOR_FILTER_WHEEL_BLOCKED`,
+   `FN_bDrvMoveFilterWheel`, `EC_MotorFault_FilterWheel` all exist. A lit lamp
+   behind a parked filter wheel yields exactly these observations. **Untested.**
+   A full emulator sweep found no reachable filter-wheel command, so it sits
+   behind a state guard.
+2. **The FPGA is not clocking the sensor into the FIFO**, so EP 0x86 carries
+   readout unrelated to the programmed integration window.
+
+## Method note for whoever continues
+
+`tools/emulate_tlb.py` runs the vendor's own x86 code under Unicorn and logs
+the packets it would emit. It is validated: emulating
+`FN_bDriveMotorAdvanceFilm` reproduces byte-for-byte the motor sequence
+confirmed to physically move this scanner. Use it rather than hand-decoding —
+hand-decoding in this session produced four confidently-stated conclusions that
+were later shown wrong.
+
+Note also: the FN name table is a packed UTF-16 blob indexed by computed
+offset, not an array of pointers. Pointer searches for it return nothing, and
+name-table *position* does not equal FN id.

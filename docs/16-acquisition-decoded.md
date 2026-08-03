@@ -467,3 +467,51 @@ worked earlier via 0x44 -- but the address should be discovered, not assumed.
 This cannot be repaired from the host. A USB reset does not help and firmware
 survives it. Next steps require the physical unit: a power cycle, confirmation
 of whether the motor still runs, and the LED state.
+
+## Confirmed with the vendor's own discovery routine
+
+`FN_bDrvFindPicController` (enum 92, `fcn.10008ba0`) builds:
+
+```asm
+mov byte [var_10h], 4      ; Type 4, command
+mov byte [var_11h], 3      ; PktLen
+mov byte [var_12h], cl     ; board address
+mov byte [var_13h], 0
+mov byte [var_14h], 0      ; command 0x00
+mov edi, 2                 ; two attempts
+call fcn.10008530
+```
+
+which is `04 03 <addr> 00 00` — byte for byte the probe used here. The vendor
+discovers PIC boards with exactly this packet, and board 0x44 fails it after a
+clean power cycle with the physical connections confirmed intact.
+
+TLB.dll carries a dedicated error for this state: **`EC_PicM_NotFound`**
+(enum 236). There is also `EC_PicF_NotFound`, `FN_bPicToBootLoaderState`,
+`FN_bLoadPic`, `FN_bVerifyPic`, and a built-in self-test suite for the PICM
+power rails:
+
+```
+EC_BistPicmVinFail   EC_BistPicm13VFail  EC_BistPicm12VFail
+EC_BistPicm6VFail    EC_BistPicm5VFail   EC_BistPicm3VFail
+EC_BistPicmMotorFail EC_BistPiclMotherBdFpgaCommFail
+```
+
+So the real Windows driver, run against this unit as it stands, would report
+`EC_PicM_NotFound`. This is not a porting gap.
+
+## State of the machine
+
+| subsystem | state |
+|-----------|-------|
+| USB / FX2 (0x10) | working — enumerates, stable register reads |
+| light board (0x40) | **fully working** — every command status 0, lamp lights bright blue, operator-confirmed |
+| main board / PICM (0x44) | **not on the bus** — fails the vendor's own discovery |
+| boot EEPROM | damaged earlier in this project; needs `--hex` to load |
+
+The light board being perfect isolates the fault cleanly. Both boards share the
+same I²C bus and the same master, so a bus or firmware-side explanation does
+not survive: two devices answer and one does not.
+
+The existence of PICM power-rail BIST codes suggests supply rails to that board
+are worth checking, since a rail failure would produce exactly this signature.

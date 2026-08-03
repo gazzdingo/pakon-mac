@@ -55,7 +55,7 @@ import usb.core
 import usb.util
 
 EP_OUT, EP_IN, EP_DATA = 0x01, 0x81, 0x86
-HOST, MOTOR = 0x10, 0x44
+HOST, LIGHT, MOTOR = 0x10, 0x40, 0x44
 REG_CCD, REG_AD = 0x82, 0x84
 
 # fcn.1002d5c0 / fcn.1002c340 constants
@@ -102,6 +102,28 @@ def put(d, reg, idx, u16, label="", quiet=False):
         ok = "ok" if r else "NO RESPONSE"
         print(f"  reg {reg:#04x} idx {idx:<3} = {u16:<6} {label:<20} "
               f"{pkt.hex(' ')}  -> {ok}")
+    return r
+
+
+def put_word(d, board, reg, u16, label="", quiet=False):
+    """FN_bDrvPutRegisterWord.
+
+    fcn.10009ae0 is the generic packet builder behind both this and
+    PutRegisterCcd:
+
+        02 <PktLen> <board> <dataLen> <reg> <data...>      PktLen = dataLen + 3
+
+    With dataLen = 3 that reproduces the PutRegisterCcd packets already known
+    to work (02 06 44 03 82 00 63 01), which is what validates the encoding.
+    A word write is dataLen = 2.
+    """
+    pkt = bytes([0x02, 0x05, board, 0x02, reg, u16 & 0xFF, (u16 >> 8) & 0xFF])
+    r = send(d, pkt)
+    if not quiet:
+        ok = "ok" if r else "NO RESPONSE"
+        resp = r[:4].hex(' ') if r else ""
+        print(f"  board {board:#04x} reg {reg:#04x} = {u16:<6} {label:<16} "
+              f"{pkt.hex(' ')}  -> {ok} {resp}")
     return r
 
 
@@ -184,6 +206,14 @@ def main() -> int:
         show("before init", before)
         print("\n  A/D gain response before init:")
         m0, s0 = gain_tracks(d)
+
+        # FN_bDrvInitCcd issues these two PutRegisterWord calls before any FPGA
+        # programming. The board address comes from [esi+0x2f9], which is the
+        # light board (0x40) -- a different register space from the motor board
+        # where every CCD/FPGA register lives.
+        print("--- prerequisites (FN_bDrvPutRegisterWord) ---")
+        put_word(d, LIGHT, 0x87, 0, "pre-init 0x87")
+        put_word(d, LIGHT, 0x89, 0, "pre-init 0x89")
 
         print("\n--- geometry (fcn.1002c340) ---")
         put(d, REG_CCD, 4, PIXEL_OFFSET, "pixel offset")

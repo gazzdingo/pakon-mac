@@ -94,3 +94,60 @@ against a board that responds, rather than a dead board.
 Do not sweep an unknown command space on a live controller. This one cost the
 project twice: the boot EEPROM via an address sweep, and the PICM's vectors via
 a command sweep. Both times the answer was already in `TLB.dll`.
+
+## After a cold boot — the application runs but does not answer I2C
+
+The flash repair is real and persistent. From a cold power-on the front LEDs
+now read **green / orange / orange**, where before the repair all three were
+red. The board starts on its own, so the restored reset vector is being used.
+
+But from a cold boot neither address answers:
+
+```
+0x10 host       07 02 10 00   PRESENT
+0x40 light      07 02 40 00   PRESENT
+0x44 main APP   07 02 44 01   absent
+0x46 main BOOT  07 02 46 01   absent
+```
+
+Note this differs from the pre-repair state, where the **bootloader** answered
+at 0x46. Nothing answering there now is consistent with the application having
+started and the bootloader having correctly stood down.
+
+Immediately after the in-session restart (`picm_run_app.py --run`) the
+application *did* answer at 0x44 and accepted the entire CCD bring-up. After a
+power cycle it does not. So the application starts, and then stops responding.
+
+### Working hypothesis
+
+The application boots, runs its built-in self test, fails something, and halts
+or declines to service I2C. The two orange LEDs are consistent with that, and
+the vendor has error codes for exactly this class of failure:
+
+```
+EC_BistPicmVinFail  EC_BistPicm13VFail  EC_BistPicm12VFail
+EC_BistPicm6VFail   EC_BistPicm5VFail   EC_BistPicm3VFail
+EC_BistPicmMotorFail
+EC_BistPiclMotherBdFpgaCommFail   (the light board testing the motherboard)
+```
+
+This is a hypothesis, not a conclusion. What would confirm it is finding where
+the application reports BIST results and reading them.
+
+### Host and light board status, cold boot (reads only)
+
+```
+host 0x10  reg 0x00  88 03 00     reg 0x03  88 0f 03   (fault bit clear)
+           reg 0x02  88 46 32     reg 0x07  88 0f 03
+           reg 0x09  88 02 03     reg 0x0a+ status 0x20 = does not exist
+light 0x40 reg 0x00  88 00 80
+```
+
+Both boards are healthy. Neither obviously reports why the PICM is quiet.
+
+### The EEPROM byte 0 reverted again
+
+The scanner enumerated as bare `04b4:8613` after this power cycle, so the
+format signature has gone back to `0x5c` a second time. Bytes 1-8 have held
+both times; only byte 0 reverts. `pakon_load.py` works around it, but the write
+is evidently not committing durably the way the others did.

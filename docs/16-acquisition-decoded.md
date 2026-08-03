@@ -266,3 +266,72 @@ worth repeating for a register write.
 Note also that `fcn.100095a0`, not `fcn.10008530`, is the real low-level
 sender. `tools/emulate_tlb.py` hooks the latter and therefore captures nothing
 from the CCD bring-up path.
+
+## What EP 0x86 actually contains
+
+Statistics hid this for a long time. The raw bytes have a **period-3
+interleave**:
+
+```
+604 590 736 | 602 596 742 | 612 594 746 | 606 592 748 | 606 588 738
+```
+
+Three streams at roughly 608, 593 and 741, with only 36 distinct values across
+4096 samples. Every mean computed before this — the famous "constant 1240",
+later "647" — was the average of three separate levels, which is why it looked
+featureless.
+
+It is still not sensor data. Sampling each stream separately with the lamp off,
+on, and off again gives the same three numbers every time:
+
+```
+lamp OFF   608.3  593.4  740.7
+lamp ON    740.5  608.2  593.3
+lamp OFF   593.4  740.7  608.3
+```
+
+Those are one set of values, rotated — the de-interleave phase shifts with the
+FIFO flush alignment, nothing more. Illumination changes none of them.
+
+So EP 0x86 carries a static three-level pattern. Combined with the A/D gain
+having no effect, the conclusion is unchanged: the FPGA is not clocking the
+sensor, and what reaches the endpoint is generated downstream of it.
+
+## Endpoint map — confirmed on hardware
+
+```
+ep 0x01 OUT BULK 512    commands
+ep 0x81 IN  BULK 512    responses
+ep 0x86 IN  BULK 512    data
+```
+
+There is no second data endpoint, so 0x86 is the only place a scan can arrive.
+
+## FN_bDrvPutRegisterWord — encoding derived and confirmed
+
+`fcn.10009ae0` is the generic builder behind every register write:
+
+```
+02 <PktLen> <board> <dataLen> <reg> <data...>      PktLen = dataLen + 3
+```
+
+With `dataLen = 3` this reproduces the known-good `PutRegisterCcd` packets
+(`02 06 44 03 82 00 63 01`), which is what validates it. A word write is
+`dataLen = 2`.
+
+Both `InitCcd` prerequisites were then sent and **accepted with status 0**:
+
+```
+02 05 40 02 87 00 00   ->  07 02 40 00
+02 05 40 02 89 00 00   ->  07 02 40 00
+```
+
+The full sequence — prerequisites, geometry, FPGA settings, A/D config and
+control word 0x163 — now runs end to end with every packet accepted, and EP
+0x86 is still unchanged. Whatever starts the sensor clock is not in
+`FN_bDrvInitCcd`.
+
+Next: `FN_bDrvCcdAcquireAndDxStart` (enum 333, `fcn.10029b80`) and
+`FN_bDrvReadScanLine` (enum 130). InitCcd only configures; those two are what
+the scan loop calls per line, and `EC_DRV_CannotFindStartOfScanLine` implies
+the data carries a line-start marker to synchronise on.

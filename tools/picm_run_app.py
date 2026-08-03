@@ -10,24 +10,30 @@ entire Type 4 command space of board 0x44 hunting for the lamp -- 256 blind
 commands to the live PICM. Commands 0x01-0x0d were accepted and their effects
 were never established. A mode switch would look exactly like that.
 
-Register 0x0a is the bootloader mode switch in TLB.dll:
+ENTERING the bootloader is two steps, both aimed at the APPLICATION address:
 
-    {0x00, 0x55}   enter bootloader    FN_bPicToBootLoaderState, fcn.1001b9b0
-    {0x00, 0xAA}   exit, run the app   FN_bUpdate, 0x1001cc6d-0x1001cc72
+    02 05 44 02 0a 00 55     register 0x0a, {00,0x55}
+    04 03 44 00 01           Type 4 command 1
 
-The exit form, byte for byte from 0x1001cc60:
+That second packet is what tools/find_light_path.py sent while walking all 256
+Type 4 commands at board 0x44 hunting for the lamp. It was logged as
+"accepted" and nothing more, because the tool only watched EP 0x86 for light.
+So this is a deliberate vendor mode change, precisely reproducible, not damage.
 
-    push 0 ; push 2 ; push edx ; push 0xa ; push edi
-    mov byte [esp + 0x4c], 0
-    mov byte [esp + 0x4d], 0xaa
-    call fcn.10009ae0
+LEAVING the bootloader is three steps, and an earlier version of this tool got
+all three wrong. Confirmed independently from both TLB.dll and
+FirmwareLoaderCom.dll:
 
-which on the wire is the ordinary register write:
+    1.  04 03 46 00 08          Type 4 command 8 to the BOOTLOADER address:
+                                exit and run the application
+    2.  wait 8 x 1000 ms        the settling loop at TLB.dll 0x1001cc20,
+                                sent unconditionally on the success path
+    3.  02 05 44 02 0a 00 aa    register 0x0a {00,0xAA} to the APPLICATION
+                                address: the post-restart hand-off
 
-    02 05 <board> 02 0a 00 aa
-
-FN_bUpdate sends this after flashing, to boot the PIC into the firmware it has
-just written.
+The earlier attempt sent step 3's payload as a register write to 0x46 with no
+command 8 and no wait, which is why it was accepted (status 0) yet did
+nothing.
 
 Why this is safe to try:
 
@@ -37,9 +43,14 @@ Why this is safe to try:
   bootloader, which is where it already is
 * the counterpart {0x00, 0x55} switches back, so it is reversible
 
+Why this is worth trying before flashing: a comparison of the register backup
+against the vendor image showed a 93.2% firmware-word match, against 2.31% for
+a blank comparison. That indicates the application flash is still PROGRAMMED,
+so this is most likely still only a mode problem.
+
     ./picm_run_app.py              # report state only, send nothing
-    ./picm_run_app.py --run        # send the exit-bootloader packet
-    ./picm_run_app.py --enter      # send {00,0x55} instead, to go back
+    ./picm_run_app.py --run        # the full three-step restart
+    ./picm_run_app.py --enter      # deliberately re-enter the bootloader
 """
 from __future__ import annotations
 
@@ -152,35 +163,65 @@ def main() -> int:
 
         if not (args.run or args.enter):
             print("\n  Report only -- nothing sent.")
-            print(f"  --run    would send  02 05 {board:02x} 02 0a 00 aa")
-            print(f"  --enter  would send  02 05 {board:02x} 02 0a 00 55")
+            print("  --run would send, in order:")
+            print(f"      04 03 {PICM_BOOT:02x} 00 08          exit bootloader, run app")
+            print( "      (wait 8 x 1000 ms)")
+            print(f"      02 05 {PICM_APP:02x} 02 0a 00 aa    post-restart hand-off")
+            print("  --enter would send:")
+            print(f"      02 05 {PICM_APP:02x} 02 0a 00 55    arm")
+            print(f"      04 03 {PICM_APP:02x} 00 01          enter bootloader")
             return 0
 
-        payload = ENTER_BOOTLOADER if args.enter else EXIT_BOOTLOADER
-        what = "enter bootloader" if args.enter else "exit bootloader, run app"
-        pkt = bytes([0x02, 0x05, board, 0x02, REG_MODE, payload[0], payload[1]])
-        print(f"\n  sending {what}: {pkt.hex(' ')}")
-        r = send(d, pkt)
-        print(f"  -> {status_text(r)}")
+        if args.enter:
+            # The vendor's two-step entry, both aimed at the application.
+            for pkt, what in ((bytes([0x02, 0x05, PICM_APP, 0x02, REG_MODE,
+                                      *ENTER_BOOTLOADER]), "arm {00,0x55}"),
+                              (bytes([0x04, 0x03, PICM_APP, 0x00, 0x01]),
+                               "Type 4 command 1")):
+                print(f"\n  {what}: {pkt.hex(' ')}")
+                print(f"  -> {status_text(send(d, pkt))}")
+                time.sleep(0.1)
+        else:
+            # Step 1 -- Type 4 command 8 to the BOOTLOADER address.
+            pkt = bytes([0x04, 0x03, board, 0x00, 0x08])
+            print(f"\n  step 1  exit bootloader, run app: {pkt.hex(' ')}")
+            r = send(d, pkt)
+            print(f"          -> {status_text(r)}")
+            if not accepted(r):
+                sys.exit("          the bootloader did not accept command 8; "
+                         "stopping.")
 
-        # FN_bPicToBootLoaderState sleeps 100 ms after the mode write.
-        time.sleep(0.5)
+            # Step 2 -- the settling loop at TLB.dll 0x1001cc20.
+            print("  step 2  settling wait, 8 x 1000 ms")
+            for i in range(8):
+                time.sleep(1.0)
+                print(f"          {i + 1}/8", end="\r", flush=True)
+            print("          done   ")
+
+            # Step 3 -- hand-off, to the APPLICATION address.
+            pkt = bytes([0x02, 0x05, PICM_APP, 0x02, REG_MODE, *EXIT_BOOTLOADER])
+            print(f"  step 3  hand-off to {PICM_APP:#04x}: {pkt.hex(' ')}")
+            print(f"          -> {status_text(send(d, pkt))}")
+            time.sleep(1.0)
+
         print("\nstate after:")
         app2, boot2, _ = report(d, "")
 
         print()
         if app2 and not app:
-            print("  THE APPLICATION IS RUNNING -- 0x44 now answers.")
+            print("  *** THE APPLICATION IS RUNNING -- 0x44 now answers. ***")
             print("  The PICM never lost its firmware; it was only in the")
             print("  bootloader. No flashing is needed.")
-        elif args.enter and boot2:
-            print("  back in the bootloader.")
+        elif args.enter and boot2 and not app2:
+            print("  back in the bootloader, as asked.")
         elif not app2:
             print("  0x44 still does not answer.")
-            print("  Power-cycle and re-check: the switch may only take effect")
-            print("  on reset. If it still does not answer after a power cycle,")
-            print("  the application firmware really is gone and flashing")
-            print("  (tools/flash_picm.py) is the remaining route.")
+            print("  Try a power cycle and re-run the report: the restart may")
+            print("  only take effect on reset. If it still does not answer,")
+            print("  read the flash back with picm_read_flash.py before")
+            print("  considering flash_picm.py -- a 93% word match against the")
+            print("  vendor image would mean the firmware is present and the")
+            print("  problem is the restart, not the contents.")
     finally:
         usb.util.release_interface(d, 0)
     return 0

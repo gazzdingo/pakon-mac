@@ -432,3 +432,38 @@ Byte 3 of a Type 1 data response carries flags, where `0x20` is the fault bit
 (the same bit `clear_fault` polls). Host registers 0x0a-0x1f all return
 `01 04 10 20 00 00`, i.e. fault -- those registers do not exist. Only the low
 host registers are real.
+
+### Full board discovery — only two boards are alive
+
+Sweeping every address 0x00-0xff with a Type 1 read finds five responders, but
+a repeatability test separates real boards from a floating bus. Reading the
+same register five times:
+
+```
+0x10 reg 0x00: 0300 0300 0300 0300 0300   STABLE   host / FX2
+0x40 reg 0x00: 0000 0000 0000 0000 0000   STABLE   light board
+0x46 reg 0x00: c7cf c483 c481 c6b5 c71f   VARIES   noise
+0x47 reg 0x00: 0be3 ea6e e96e ff0a 1508   VARIES   noise
+0x41           same value for every register       alias/echo
+```
+
+0x41, 0x46 and 0x47 are pickup on unterminated addresses, not boards. **The
+only live boards are the host at 0x10 and the light board at 0x40.**
+
+The motor/main board is absent from the bus entirely. That board hosts:
+
+- the motor and film transport
+- CCD registers 0x84 (A/D gains, offsets, mode)
+- FPGA registers 0x82 (geometry, integration time, acquire control)
+
+which is why none of the acquisition work could take effect, and why EP 0x86
+emits a static pattern. It is not a missing register sequence and never was.
+
+Note the board address is not a constant: the driver reads it from the device
+object at `[esi+0x130]`, populated from device info. This project assumed 0x44
+throughout, and on a healthy unit that is presumably right -- film transport
+worked earlier via 0x44 -- but the address should be discovered, not assumed.
+
+This cannot be repaired from the host. A USB reset does not help and firmware
+survives it. Next steps require the physical unit: a power cycle, confirmation
+of whether the motor still runs, and the LED state.

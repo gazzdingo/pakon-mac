@@ -335,3 +335,64 @@ Next: `FN_bDrvCcdAcquireAndDxStart` (enum 333, `fcn.10029b80`) and
 `FN_bDrvReadScanLine` (enum 130). InitCcd only configures; those two are what
 the scan loop calls per line, and `EC_DRV_CannotFindStartOfScanLine` implies
 the data carries a line-start marker to synchronise on.
+
+## The motor board is not answering — root cause
+
+A read-register sweep across board addresses shows the problem that every
+other experiment was downstream of:
+
+```
+board  response to Type 1 read
+0x10   01 04 10 88 46 32     Type 1 -- real data (host / FX2)
+0x40   01 04 40 88 22 00     Type 1 -- real data (light board)
+0x44   07 02 44 01           Type 7, status 1
+0x20   07 02 20 01           Type 7, status 1
+0x28   07 02 28 01           Type 7, status 1
+0x48   07 02 48 01           Type 7, status 1
+```
+
+Board 0x44 answers exactly like an address with nothing attached. Sweeping
+registers 0x00-0x1f on 0x44 yields **zero** data responses; the same sweep on
+0x40 returns data.
+
+**Status byte 1 is an error.** Successful writes to the light board return
+`07 02 40 00` -- status 0. Every CCD and FPGA register write in this project
+goes to board 0x44 and comes back status 1, i.e. rejected. The tooling printed
+"ok" merely because a response arrived; it never checked the status byte.
+
+So the whole chain of reasoning about registers 0x82 and 0x84 was sound but
+untestable: the board that owns those registers was never listening. Setting
+the acquire bit, the geometry, the integration time and the edge-triggered
+0->1 transition all wrote into a void.
+
+This also explains the static three-level pattern on EP 0x86. With the motor
+board silent the FPGA is never configured, so nothing clocks the sensor and
+the endpoint emits whatever the FX2 has in its FIFO.
+
+Note the motor board *did* work earlier in this project -- film transport at
+three speeds plus reverse was confirmed by ear. So this is a change in the
+unit's state, not a permanent absence.
+
+Open question, and the next thing to establish: whether the PICM board needs
+its firmware downloaded (Config/Firmware/nm0506.HEX for an F-135 Plus, per
+ReadmeF135.txt, with FirmwareLoader.exe as the vendor's tool), or whether it
+is held in reset until something enables it. Until 0x44 answers a read, no
+amount of register programming can start a scan.
+
+## Board firmware prefixes, from ReadmeF235/F335
+
+`ReadmeF135.txt` documents only PICL and PICM, but the other model readmes
+name the rest of the family:
+
+| prefix | board |
+|--------|-------|
+| `PL` / `NL` | light board (PICL) |
+| `PM` / `NM` | motor board (PICM) |
+| `CE` / `CD` | **CCD board** |
+| `DX` / `DY` | DX board |
+| `LP` / `LQ` | LED / lamp board |
+| `MC` / `MD` | motor board (F-335) |
+| `AP` | APS board |
+
+So a CCD board with its own PIC does exist in the family, consistent with the
+version string reporting a CCD version for every model.

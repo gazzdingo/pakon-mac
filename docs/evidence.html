@@ -1,0 +1,682 @@
+<title>Pakon F-135 — Evidence Log</title>
+<style>
+:root{
+  --bg:#f7f8fa; --panel:#ffffff; --ink:#161a20; --ink-2:#4a5462; --ink-3:#78838f;
+  --rule:#dfe3e9; --rule-2:#eef1f5;
+  --accent:#a86a14; --accent-bg:#fdf5e7;
+  --ok:#1f7a4d; --ok-bg:#eaf6f0;
+  --no:#a3302c; --no-bg:#fbedec;
+  --maybe:#5b5560; --maybe-bg:#f2f0f3;
+  --code-bg:#f0f2f6;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0e1116; --panel:#161b22; --ink:#e6e9ee; --ink-2:#a8b2be; --ink-3:#727d8a;
+    --rule:#252c36; --rule-2:#1c222a;
+    --accent:#e0a54a; --accent-bg:#241c0e;
+    --ok:#4dbb85; --ok-bg:#10241a;
+    --no:#e2726d; --no-bg:#2a1514;
+    --maybe:#9c94a4; --maybe-bg:#1e1b21;
+    --code-bg:#1b212a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1116; --panel:#161b22; --ink:#e6e9ee; --ink-2:#a8b2be; --ink-3:#727d8a;
+  --rule:#252c36; --rule-2:#1c222a;
+  --accent:#e0a54a; --accent-bg:#241c0e;
+  --ok:#4dbb85; --ok-bg:#10241a;
+  --no:#e2726d; --no-bg:#2a1514;
+  --maybe:#9c94a4; --maybe-bg:#1e1b21;
+  --code-bg:#1b212a;
+}
+:root[data-theme="light"]{
+  --bg:#f7f8fa; --panel:#ffffff; --ink:#161a20; --ink-2:#4a5462; --ink-3:#78838f;
+  --rule:#dfe3e9; --rule-2:#eef1f5;
+  --accent:#a86a14; --accent-bg:#fdf5e7;
+  --ok:#1f7a4d; --ok-bg:#eaf6f0;
+  --no:#a3302c; --no-bg:#fbedec;
+  --maybe:#5b5560; --maybe-bg:#f2f0f3;
+  --code-bg:#f0f2f6;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:60rem;margin:0 auto;padding:3rem 1.5rem 6rem;display:flex;flex-direction:column;gap:2.5rem}
+header{display:flex;flex-direction:column;gap:.6rem;border-bottom:2px solid var(--ink);padding-bottom:1.4rem}
+.eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+h1{margin:0;font-size:1.9rem;line-height:1.15;letter-spacing:-.02em;text-wrap:balance}
+.sub{color:var(--ink-2);max-width:62ch}
+.legend{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.3rem}
+h2{font-size:1.15rem;margin:0 0 .1rem;letter-spacing:-.01em;text-wrap:balance}
+h2 .n{font-family:var(--mono);color:var(--accent);font-size:.85rem;margin-right:.5rem}
+section{display:flex;flex-direction:column;gap:1rem}
+.sec-note{color:var(--ink-2);font-size:.92rem;max-width:66ch;margin:0}
+.claim{background:var(--panel);border:1px solid var(--rule);border-radius:3px;
+  display:flex;flex-direction:column;gap:.75rem;padding:1.1rem 1.2rem}
+.claim > .top{display:flex;gap:.7rem;align-items:flex-start;flex-wrap:wrap}
+.claim .what{font-weight:600;flex:1 1 22rem;min-width:0;text-wrap:balance}
+.chip{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+  padding:.24rem .5rem;border-radius:2px;white-space:nowrap;font-weight:600}
+.c-ok{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok)}
+.c-no{background:var(--no-bg);color:var(--no);border:1px solid var(--no)}
+.c-maybe{background:var(--maybe-bg);color:var(--maybe);border:1px solid var(--maybe)}
+.c-acc{background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent)}
+dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:.45rem 1rem;align-items:baseline}
+dt{font-family:var(--mono);font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);white-space:nowrap;padding-top:.15rem}
+dd{margin:0;color:var(--ink-2);min-width:0}
+dd strong{color:var(--ink);font-weight:600}
+code{font-family:var(--mono);font-size:.86em;background:var(--code-bg);
+  padding:.08em .34em;border-radius:2px;color:var(--ink)}
+pre{font-family:var(--mono);font-size:.8rem;line-height:1.5;background:var(--code-bg);
+  border:1px solid var(--rule);border-radius:3px;padding:.8rem .9rem;margin:0;
+  overflow-x:auto;color:var(--ink);font-variant-numeric:tabular-nums}
+.src{font-family:var(--mono);font-size:.76rem;color:var(--ink-3);word-break:break-word}
+table{border-collapse:collapse;width:100%;font-size:.87rem}
+.tw{overflow-x:auto;border:1px solid var(--rule);border-radius:3px;background:var(--panel)}
+th,td{text-align:left;padding:.55rem .8rem;border-bottom:1px solid var(--rule-2);vertical-align:top}
+th{font-family:var(--mono);font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;border-bottom:1px solid var(--rule)}
+tbody tr:last-child td{border-bottom:none}
+td.m{font-family:var(--mono);font-size:.82rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+footer{border-top:1px solid var(--rule);padding-top:1.2rem;color:var(--ink-3);font-size:.85rem}
+.caveat{border-left:3px solid var(--accent);background:var(--accent-bg);padding:.85rem 1rem;
+  border-radius:0 3px 3px 0;color:var(--ink-2);font-size:.92rem}
+.caveat strong{color:var(--ink)}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Kodak Pakon F-135 Plus · macOS port · evidence log</div>
+  <h1>Every claim, how we know it, and where to check</h1>
+  <p class="sub">Each entry states a claim, the method that established it, and the exact file,
+  address or measurement it rests on. Nothing here asks to be taken on trust — the
+  point is that you can go and verify it.</p>
+  <div class="legend">
+    <span class="chip c-ok">Verified</span>
+    <span class="chip c-no">Refuted</span>
+    <span class="chip c-maybe">Inferred</span>
+  </div>
+</header>
+
+<section>
+  <h2><span class="n">01</span>What broke it</h2>
+  <p class="sec-note">A single packet, sent blind during a sweep of an unidentified command space.
+  What follows is the attempt that sent it, why it looked safe at the time, and why that
+  reasoning was wrong.</p>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">The attempt: hunting for a command that would open the optical path</div>
+      <span class="chip c-acc">The goal</span>
+    </div>
+    <dl>
+      <dt>Situation</dt>
+      <dd>The lamp was lit — <strong>bright blue, operator-confirmed</strong> — but the sensor
+      endpoint <code>EP 0x86</code> sat at a constant mean of ~1240 and would not move. Light was
+      being produced but was not reaching the sensor.</dd>
+      <dt>Hypothesis</dt>
+      <dd>The F-135 has a filter wheel, and a wheel parked in the blocked position produces exactly
+      that. Three separate symbols in <code>TLB.dll</code> supported it:
+      <code>FN_bDrvMoveFilterWheel</code>, <code>EC_MotorFault_FilterWheel</code>, and the enum
+      value <code>FILM_COLOR_FILTER_WHEEL_BLOCKED</code>.</dd>
+      <dt>Plan</dt>
+      <dd>Light the lamp, then walk the motor board's entire Type 4 command space watching the
+      sensor level. If a command opened the path, the level would jump immediately and
+      unambiguously. Quoting the tool's own header: <em>"walk the motor board's Type 4 command
+      space watching the sensor."</em></dd>
+      <dt>Ran</dt>
+      <dd><code>./find_light_path.py</code> — default board <code>0x44</code>, the motor board.
+      All 256 commands, skipping only <code>{0x00, 0xA0, 0xA1, 0xA2}</code> as already-known
+      transport commands. <strong><code>0x0D</code> was not on that skip list.</strong></dd>
+      <dt>Source</dt>
+      <dd class="src">tools/find_light_path.py:2-25 (intent) · :40 (skip list) · :130-133 (the sweep)</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">Why it looked safe — and why that reasoning was wrong</div>
+      <span class="chip c-no">Bad assumption</span>
+    </div>
+    <dl>
+      <dt>The claim</dt>
+      <dd>Written into the tool's header as its safety argument, verbatim:
+<pre>Only Type 4 commands are used. They are the vendor's own
+command form, and the board rejects unknown ones with
+status 2 rather than acting on them.</pre></dd>
+      <dt>The flaw</dt>
+      <dd>That is true of <em>unknown</em> commands — and <code>0x01</code> through
+      <code>0x0D</code> were not unknown. They were <strong>real, implemented vendor commands</strong>
+      whose effects had simply never been established. The tool logged them as "accepted" and moved
+      on, which is precisely what a command doing something drastic looks like.</dd>
+      <dt>The gap</dt>
+      <dd>The sweep's only success test was <em>does the sensor level jump</em>
+      (<code>mn &gt; base * threshold</code>). It had no test for <em>did that command do something
+      irreversible</em>. A board reset and a bootloader jump both register as "accepted, no light."</dd>
+      <dt>The lesson</dt>
+      <dd>"The board rejects what it doesn't recognise" protects against
+      <strong>invalid</strong> input. It offers no protection whatsoever against
+      <strong>valid</strong> input whose meaning you haven't looked up. Sweeping a command space
+      is only safe once you know what the commands in it do — which is the thing a sweep is
+      being used to avoid finding out.</dd>
+      <dt>Source</dt>
+      <dd class="src">tools/find_light_path.py:18-20 (the assumption) · :140-150 (the success test)</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">The breaking packet was <code>04 03 44 00 0d</code> — Type 4 command <code>0x0D</code> to the main board</div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>How</dt>
+      <dd>The sweep's own log recorded <strong>"commands 0x01–0x0d accepted"</strong> and nothing after.
+      That does not mean only low commands are valid — it means the board answered up to
+      <code>0x0d</code> and then stopped. Everything from <code>0x0e</code> to <code>0xff</code> was
+      NAKed because nothing was left to answer.</dd>
+      <dt>Firmware</dt>
+      <dd>In <code>nm0506.HEX</code>, command <code>0x0D</code> dispatches
+      <code>0x001DAC → 0x001ABE → GOTO 0x000000</code> — a jump into the bootloader.
+      Command <code>0x01</code> is <code>0x001DA8 → 0x001AAE → RESET</code>.</dd>
+      <dt>Damage</dt>
+      <dd>Bootloader entry erases the application's vector rows. Exactly
+      <code>0x000400–0x00047F</code> was later found blank — 128 bytes, two 64-byte rows,
+      which is the only shape a PIC18 row erase produces.</dd>
+      <dt>Source</dt>
+      <dd class="src">tools/find_light_path.py:130-133 · Config/Firmware/nm0506.HEX · docs/25</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">Two bugs in my own tooling hid the damage for hours</div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>Bug 1</dt>
+      <dd>Writes were reported <code>ok</code> on <em>any</em> response, without checking the status
+      byte. After the board went silent, every CCD register write was being NAKed while the
+      tools printed success. A write is accepted only when
+      <code>resp[0] == 0x07 and resp[3] == 0x00</code>.</dd>
+      <dt>Bug 2</dt>
+      <dd>Register reads are <strong>two packets</strong>, not one. Every dump taken before the fix
+      recorded the request echoing back rather than data.
+<pre>01 03 &lt;board&gt; &lt;n&gt; &lt;reg&gt;   request
+01 03 &lt;board&gt; &lt;n&gt; 07      fetch → 01 &lt;n+3&gt; &lt;board&gt; &lt;status&gt; &lt;data...&gt;</pre></dd>
+      <dt>Proof</dt>
+      <dd>With the correct form, host <code>0x10</code> register 3 returns
+      <code>01 04 10 88 0f 03</code> = FX2 firmware v3.15. The single-packet form returned the
+      request echo. Visible in the old dump: board <code>0x40</code> reg <code>0x94</code> read
+      <code>82 94</code>, reg <code>0x95</code> read <code>82 95</code>.</dd>
+      <dt>Source</dt>
+      <dd class="src">TLB.dll fcn.10009410 (FN_bDrvGetByteArrayNL) · ~/pakon-full-dump-*/scanner/boards_registers.json</dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">02</span>What the hardware is doing now</h2>
+  <p class="sec-note">All measured on the device, repeatedly.</p>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">The PIC is executing code — its processor, crystal, PLL and timers all work</div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>How</dt>
+      <dd>A diagnostic LED on the main board blinks a stable repeating pattern indefinitely.
+      Frame-by-frame video analysis measured the pulse widths, and they match the firmware's
+      internally-computed constants four times over:</dd>
+      <dt>Match</dt>
+      <dd>
+        <div class="tw"><table>
+          <thead><tr><th>Firmware constant</th><th>Computed</th><th>Measured</th></tr></thead>
+          <tbody>
+            <tr><td class="m">0x030D40 ÷ 0xD055</td><td class="m">210 ms</td><td class="m">234 ms</td></tr>
+            <tr><td class="m">0x0927C0 ÷ 0xD055</td><td class="m">629 ms</td><td class="m">635–700 ms</td></tr>
+            <tr><td class="m">0x061A80 ÷ 0xD055</td><td class="m">419 ms</td><td class="m">368–401 ms</td></tr>
+            <tr><td class="m">0x2DC6C0 ÷ 0xD055</td><td class="m">2 989 ms</td><td class="m">~3 000 ms</td></tr>
+          </tbody>
+        </table></div>
+      </dd>
+      <dt>Why it matters</dt>
+      <dd>Those constants are derived from a 40 MHz clock (10 MHz crystal × 4 PLL). Matching all
+      four means the oscillator and PLL are running correctly and the resident firmware really is
+      <code>nm0506</code>.</dd>
+      <dt>Source</dt>
+      <dd class="src">nm0506.HEX:0x00168E (constant computation) · video PXL_20260803_155551949.mp4</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">The I²C slave <em>was</em> armed at address <code>0x44</code> — and still doesn't acknowledge</div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>Boot order</dt>
+      <dd>Hand-decoded from raw instruction words:
+<pre>0x2C6A  GOTO 0x1A8C
+0x1A8C  MOVLW 0x36 ; MOVWF SSPCON1    SSPEN=1, I²C 7-bit slave
+0x1A90  MOVFF 0x134, SSPADD           = 0x44
+0x2C6E  BSF PIE1,3                    SSPIE
+0x2C76  IORWF INTCON,F                GIE + PEIE
+0x2C8C  BCF PORTA,4                   ← first modulated LED activity
+0x2C8E  main loop head
+0x2D78  BRA 0x2C8E                    loop closes</pre></dd>
+      <dt>Uniqueness</dt>
+      <dd class="src" style="color:var(--no)"><strong>RETRACTED 2026-08-04.</strong> This claim
+      previously read: "<code>0x1A8C</code> is reachable only from <code>0x2C6A</code> … there is
+      no bypass path, so a stable repeating blink proves the I²C peripheral was armed."
+      <strong>It does not hold.</strong> See below.</dd>
+      <dt>Why it fails</dt>
+      <dd>A full control-flow analysis (<code>analysis/cfg_v3.py</code>) found:
+      <ul style="margin:.3rem 0 0 1rem;padding:0">
+        <li><code>0x1A8C</code> has <strong>two</strong> incoming edges, not one — the
+        <code>GOTO</code> from <code>0x2C6A</code> <em>and</em> a fall-through from
+        <code>0x1A8A</code>.</li>
+        <li>The blink routine at <code>0x1682</code> has <strong>no incoming edge at all</strong> in
+        the static graph, so "the blink engine is called only from the main loop" is unverified.</li>
+        <li>Backward tracing from <code>0x1A8C</code> reaches 44 nodes and <strong>never connects to
+        the reset vector</strong>. Forward reachability from every vector covers only ~6% of the
+        image (321 of ~5,300 words).</li>
+        <li><code>0x408</code> holds <code>MOVWF 0x05</code> — plain code, not a vector jump. The
+        real ISR entries are at <code>0x0008</code>/<code>0x0018</code>, <strong>inside the
+        bootloader we cannot read</strong>, and are forwarded from there. So "no interrupt handler
+        touches RA4" is not establishable by static analysis at all.</li>
+      </ul></dd>
+      <dt>Consequence</dt>
+      <dd>The inference <em>"it blinks, therefore MSSP was armed, therefore the fault is
+      electrical"</em> is <strong>not supported</strong>. That inference was part of why the
+      hardware hypothesis was leading. Removing it moves weight back toward firmware or persistent
+      state — the direction the owner argued for repeatedly. Only the flash read settles it.</dd>
+      <dt>Yet</dt>
+      <dd>Every probe returns <code>07 02 44 01</code>. Status <code>1</code> is
+      <code>EC_DRV_PacketHostErrorNoAck</code> — no I²C acknowledgement at all. That is a
+      hardware-level fact, not an application decision.</dd>
+      <dt>Source</dt>
+      <dd class="src">nm0506.HEX · TLB.dll fcn.100087a0 (status decode)</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">The I²C bus itself is good</div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>How</dt>
+      <dd>The light board sits on the <em>same two wires</em>, reached across a cable connector,
+      and answers everything — commands, register reads, lamp control. The PIC is on the same
+      board as the FX2, inches away, and doesn't.</dd>
+      <dt>Readings</dt>
+      <dd>Light board <code>0x40</code>: reg <code>0x02</code> → <code>0x02</code>;
+      reg <code>0x83</code> → <code>0x12</code>; reg <code>0x84</code> → <code>0x0280</code>;
+      reg <code>0x88</code> → <code>0x0282</code>, <code>0x01F2</code>. Plausible, distinct,
+      repeatable values.</dd>
+      <dt>Also</dt>
+      <dd>Because the light board ACKs, neither SCL nor SDA is being held low by anything —
+      including the PIC.</dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">03</span>Eliminated by evidence</h2>
+  <p class="sec-note">Each of these was a working hypothesis at some point. Each was killed by a
+  measurement or a fact in the binary, not by argument.</p>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">Flash corruption</div>
+      <span class="chip c-no">Refuted</span>
+    </div>
+    <dl>
+      <dt>Why</dt>
+      <dd>The application <strong>physically cannot write flash</strong>: <code>nm0506</code>
+      contains no <code>TBLWT</code> instruction and never sets <code>EEPGD</code>. The flasher
+      cannot emit an address below <code>0x400</code>. Pre-repair reads matched
+      <em>factory-programmed</em> content at <code>0x800</code>, <code>0x1000</code> and
+      <code>0x2000</code>.</dd>
+      <dt>Source</dt>
+      <dd class="src">nm0506.HEX (instruction scan) · tools/flash_picm.py:209-236</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">Wrong firmware revision — the reset vector jumping to the wrong entry point</div>
+      <span class="chip c-no">Refuted</span>
+    </div>
+    <dl>
+      <dt>Why</dt>
+      <dd>Diffing all five <code>nm*</code> images shows <code>0x480</code> is identical in every
+      one, and <code>0x800</code> only separates the oldest two. <strong><code>0x1000</code> and
+      <code>0x2000</code> are the addresses that discriminate <code>nm0406</code> from
+      <code>nm0506</code></strong> — and both were read and both matched <code>nm0506</code>.</dd>
+      <dt>Corroboration</dt>
+      <dd>The PCB is silkscreened <code>#125430 REV C</code>. Per <code>ReadmeF135.txt</code>,
+      <code>NM05yy</code> is the image for PCB #125430C.</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">The deliberate EEPROM write <code>02 05 44 02 0a 00 aa</code> broke it</div>
+      <span class="chip c-no">Refuted</span>
+    </div>
+    <dl>
+      <dt>What it actually is</dt>
+      <dd>A raw write of <code>0xAA</code> to PIC internal EEPROM address 0 — the bootloader's
+      "application is valid, run it" flag. It is exactly what Kodak's own updater sends after
+      every firmware update.</dd>
+      <dt>Why it can't be the cause</dt>
+      <dd>The application <strong>never reads EEPROM addresses 0 or 1</strong>. Every
+      <code>EEADR</code> load in the image comes from a literal, and the literals are 2, 3, 4, 5, 6.
+      Exhaustive, not sampled.</dd>
+      <dt>Source</dt>
+      <dd class="src">TLB.dll FN_bUpdate ~0x1001CC56 · nm0506.HEX EEADR literal scan</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">The stray EEPROM write from the sweep broke the I²C</div>
+      <span class="chip c-no">Refuted as the cause</span>
+    </div>
+    <dl>
+      <dt>The write is real</dt>
+      <dd>Command <code>0x0A</code> is an EEPROM write taking address and data from packet bytes a
+      Type 4 command doesn't populate — so the sweep wrote
+      <code>EEPROM[stale] = stale</code> from leftover buffer contents. Best reconstruction:
+      <code>EEPROM[4] = 0x0D</code>, from the gain-restore packet
+      <code>02 06 44 03 84 04 0d 00</code> sent just before.
+      <strong>Corroborated:</strong> <code>probe_sensor_path.py:115</code> restores "default gain
+      13" on exit — and 13 is <code>0x0D</code>. The stray value in the buffer is accounted for
+      exactly, by a different tool, run just beforehand.</dd>
+      <dt>But</dt>
+      <dd>On a <em>cold</em> boot the application never reads EEPROM before arming the I²C
+      peripheral, and no fault state anywhere touches <code>SSPCON1</code> or <code>SSPADD</code>.
+      It likely explains the fault code and the orange front-panel LEDs. It cannot explain the
+      missing acknowledgement.</dd>
+      <dt>Source</dt>
+      <dd class="src">tools/probe_sensor_path.py:115-117 · nm0506.HEX:0x1956 (cold/warm branch)</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">A corrupted address literal — the chip answering somewhere unexpected</div>
+      <span class="chip c-no">Refuted</span>
+    </div>
+    <dl>
+      <dt>Test 1</dt>
+      <dd>Type 4 <strong>write</strong> sweep, all 256 addresses → only <code>0x10</code>,
+      <code>0x40</code>, <code>0x41</code>, <code>0xa2</code>–<code>0xa5</code>. All accounted for.</dd>
+      <dt>Test 2</dt>
+      <dd>Type 1 <strong>read</strong> sweep, all 256 addresses → only <code>0x10</code>,
+      <code>0x40</code>, <code>0x41</code>. Both transaction directions, every address.</dd>
+      <dt>Test 3</dt>
+      <dd>The board <em>answered correctly at <code>0x44</code></em> immediately after the vector
+      repair and accepted a full CCD bring-up. That can only happen if <code>SSPADD</code> was
+      loaded with <code>0x44</code> — so the literal at <code>0x2C62</code> was intact, and nothing
+      has written flash since.</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">Our own probing during boot poisoned the I²C module</div>
+      <span class="chip c-no">Refuted</span>
+    </div>
+    <dl>
+      <dt>The mechanism</dt>
+      <dd>Genuine and worth testing: on PIC18 a byte left in <code>SSPBUF</code> sets
+      <code>BF</code>, and <code>BF</code> makes the module NAK its own address. The application's
+      I²C init never reads <code>SSPBUF</code> and never toggles <code>SSPEN</code>.</dd>
+      <dt>The test</dt>
+      <dd>Powered on and sent <strong>nothing</strong> for 60 seconds, then a single firmware load
+      and one probe. With the FX2 unloaded there is no I²C traffic at all during the PIC's boot,
+      so nothing could poison the buffer.</dd>
+      <dt>Result</dt>
+      <dd><code>07 02 44 01</code> — still NAK. <strong>Refuted.</strong></dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">3b</span>Raw I²C scan — 2026-08-04</h2>
+  <p class="sec-note">Custom FX2 firmware, bypassing the vendor protocol entirely.
+  The most sensitive test available without a programmer.</p>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">U11 does not acknowledge at <em>any</em> of the 128 I²C addresses</div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>Why this differs</dt>
+      <dd>Every earlier sweep used the vendor packet protocol, whose presence test needs a
+      <strong>complete well-formed response</strong> (<code>resp[0]==7 &amp;&amp; resp[3]==0</code>).
+      A chip that ACKs its address but fails later reads as absent — indistinguishable from
+      silence. A raw scan needs only the address ACK. Far lower bar, far more sensitive.
+      It also covers 7-bit <code>0x08</code> (board <code>0x10</code>), which the FX2 answers
+      itself and had therefore never physically been on the wire.</dd>
+      <dt>Method</dt>
+      <dd>Purpose-built FX2 firmware (<code>fx2/i2c_scan.c</code>, 375 bytes) driving the FX2's
+      own I²C controller. Each probe: START, device address with R/W <strong>set</strong>
+      (read direction), STOP. Exactly one write to <code>I2DAT</code> in the whole source, and it
+      is the address — no data byte is ever transmitted. Results read out of RAM over vendor
+      request <code>0xA0</code> with the 8051 halted.</dd>
+      <dt>Result</dt>
+      <dd>Marker <code>c0 de f1 35</code> — all 128 addresses probed.
+        <div class="tw"><table>
+          <thead><tr><th>7-bit</th><th>Board byte</th><th>Device</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td class="m">0x20</td><td class="m">0x40</td><td>Light board</td><td class="m">ACK</td></tr>
+            <tr><td class="m">0x51</td><td class="m">0xA2</td><td>Boot EEPROM</td><td class="m">ACK</td></tr>
+            <tr><td class="m">0x52</td><td class="m">0xA4</td><td>Boot EEPROM</td><td class="m">ACK</td></tr>
+            <tr><td class="m">0x22</td><td class="m">0x44</td><td>PICM application</td><td class="m">silent</td></tr>
+            <tr><td class="m">0x23</td><td class="m">0x46</td><td>PICM bootloader</td><td class="m">silent</td></tr>
+            <tr><td class="m">all others</td><td class="m">—</td><td>—</td><td class="m">silent</td></tr>
+          </tbody>
+        </table></div>
+      </dd>
+      <dt>Kills</dt>
+      <dd>The <strong>corrupted address literal</strong> hypothesis. If the <code>MOVLW 0x44</code>
+      at <code>0x002C62</code> had been altered, U11 would ACK at whatever address that produced.
+      It ACKs nowhere. Also confirms the earlier refutation of the "PICM at <code>0x10</code>"
+      idea by direct measurement rather than disassembly.</dd>
+      <dt>Does NOT distinguish</dt>
+      <dd>"MSSP peripheral dead" from "firmware never reaches the MSSP init at
+      <code>0x1A8C</code>". Both produce identical silence. Only the flash read separates them.</dd>
+      <dt>Caveat</dt>
+      <dd>Runs 1–3 were polluted: a read-direction probe leaves an ACKing slave owning SDA, which
+      wedged the bus from <code>0x52</code> onward, and an attempted fix that issued STOP before
+      START set BERR on everything. Only the fourth run — after a power cycle, with LASTRD
+      byte-clocking recovery and no pre-STOP — is clean. That is the one tabulated above.</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">The boot EEPROM is blank — all <code>0xFF</code></div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>Symptom</dt>
+      <dd>The scanner enumerates as <code>04b4:8613</code>, the Cypress hardwired default, not
+      <code>0f05:f235</code>. It was already in that state before any of today's work.</dd>
+      <dt>Read</dt>
+      <dd><code>fx2/eeprom_read.c</code>, read completed cleanly (marker <code>c0 de f1 35</code>,
+      status <code>0x13</code> = ACK+DONE on all three phases):
+<pre>bytes 0-15:  ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+expected:    c0 05 0f 35 f2 07 aa 04</pre></dd>
+      <dt>Meaning</dt>
+      <dd>Byte 0 is the format signature; it must be <code>0xC0</code> for the FX2 to take VID/PID
+      from the EEPROM. At <code>0xFF</code> the FX2 ignores it entirely. Fully explains the
+      enumeration. <strong>Erased, not corrupted</strong> — this is not the same failure as the
+      earlier <code>0x5C</code> signature damage.</dd>
+      <dt>Impact</dt>
+      <dd>Cosmetic for diagnosis. The EEPROM supplies only USB identity; it has no bearing on U11
+      or the I²C fault. <code>pakon_load.py</code> works with an explicit firmware choice.</dd>
+      <dt>Note</dt>
+      <dd>The repair was previously verified persistent across power cycles. It is now blank, so
+      something erased it since — unexplained, and worth understanding before rewriting it.</dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">04</span>Repaired and verified</h2>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">Boot EEPROM — restored to Kodak's exact personality</div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>Damage</dt>
+      <dd>An earlier blind sweep across <code>0xa2</code>–<code>0xa5</code> — which are I²C EEPROM
+      addresses, not board addresses — corrupted it. Byte 0 is the FX2 format signature;
+      <code>0xC0</code> means "take VID/PID from this EEPROM", and it had become <code>0x5C</code>.</dd>
+      <dt>Repair</dt>
+      <dd>Written back byte-by-byte to <code>c0 05 0f 35 f2 07 aa 04 02</code>, matching Kodak's
+      shipped <code>USB F135.bin</code>.</dd>
+      <dt>Proof</dt>
+      <dd>Survives power cycles. The scanner now self-identifies as
+      <code>0f05:f235 rev aa07</code> and <code>pakon_load.py</code> selects
+      <code>Pakon7.hex</code> from the device's own personality with no override.</dd>
+      <dt>Lesson</dt>
+      <dd>A read-back in the same session proves nothing, and neither does a read after a loader
+      reload. <strong>Only a power cycle confirms an EEPROM write committed.</strong> It took three
+      attempts to learn that.</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">PICM vectors — 128 bytes restored, verified 8/8</div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>What</dt>
+      <dd>Two 64-byte rows at <code>0x000400–0x00047F</code>, the reset and interrupt vectors,
+      erased by the bootloader-entry command. Rewritten from <code>nm0506.HEX</code>.</dd>
+      <dt>Proof</dt>
+      <dd>All 8 blocks read back byte-identical to the vendor image. The board now boots on its own
+      with a green power LED, where previously all three front LEDs were red.</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">Colour correction — exact against Kodak's own data</div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>Density LUT</dt>
+      <dd><code>LUT[i] = -3500 · log₁₀(i / 16383)</code> reproduces the shipped 16,384-entry
+      <code>_ClientColNegLut.txt</code> with a <strong>worst deviation of 0.000050</strong> — which
+      is the file's own 4-decimal rounding. Best-fit constant 3500.000155.</dd>
+      <dt>Matrix</dt>
+      <dd>Loaded directly from <code>_ClientColNegMat.txt</code>:
+<pre>R' =  1.11882·R − 0.10130·G − 0.01161·B −  82.60334
+G' = −0.20096·R + 1.10082·G + 0.11698·B − 586.90975
+B' = −0.11657·R + 0.04834·G + 1.08274·B − 707.78706</pre></dd>
+      <dt>Kernel</dt>
+      <dd>Verified against the vendor's MMX code: <code>and 0x3fff</code> → LUT →
+      <code>pmulhw</code> ×3 → <code>paddsw</code> offset → clamp to 0–4092 (12-bit).</dd>
+      <dt>Film IDs</dt>
+      <dd>92 parsed from <code>defaults.ini</code>. Ilford at 105–110.</dd>
+      <dt>Caveat</dt>
+      <dd>Verified against vendor tables, <strong>not yet against a photograph</strong> — no frame
+      has been scanned.</dd>
+      <dt>Source</dt>
+      <dd class="src">Config/ColorCorrection/ · PakonIMAu.dll:0x1001C563 · tools/pakon_color.py</dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">05</span>The board</h2>
+  <div class="tw"><table>
+    <thead><tr><th>Item</th><th>Value</th><th>How we know</th></tr></thead>
+    <tbody>
+      <tr><td>PCB</td><td class="m">#125430 REV C</td><td>Silkscreen, visible in photo</td></tr>
+      <tr><td>Correct image</td><td class="m">nm0506.HEX</td><td>ReadmeF135.txt maps NM05yy → PCB #125430C</td></tr>
+      <tr><td>U11</td><td class="m">PIC18F452, 44-TQFP</td><td>Relabelled <code>125507A 2208</code>; firmware declares <code>;PIC18F452</code></td></tr>
+      <tr><td>U6</td><td class="m">CY7C68013A-128AXC</td><td>Chip marking, readable in photo</td></tr>
+      <tr><td>JM11</td><td class="m">5-pin ICSP header</td><td>Beside U11 and its crystal; 5 pins is the PIC programming footprint</td></tr>
+      <tr><td>JM10</td><td class="m">2×5 FPGA JTAG</td><td>Beside the Xilinx Spartan XC3S150E — not the one to use</td></tr>
+      <tr><td>MCLR/VPP</td><td class="m">U11 pin 18</td><td>Microchip DS39564B pinout · bottom edge</td></tr>
+      <tr><td>PGC / PGD</td><td class="m">U11 pins 16 / 17</td><td>Microchip DS39564B pinout · bottom edge</td></tr>
+      <tr><td>SCL / SDA</td><td class="m">U11 pins 37 / 42</td><td>RC3 and RC4; not adjacent · top edge</td></tr>
+      <tr><td>Identifying U11</td><td class="m">125507A 2208</td><td>Kodak relabelled it — it does <strong>not</strong> say PIC18F452 or Microchip. 44-pin TQFP beside JM11, with its own crystal.</td></tr>
+      <tr><td>Pin numbering</td><td class="m">CCW from the dot</td><td>Viewed from above: 1–11 left edge top→bottom, 12–22 bottom L→R, 23–33 right edge bottom→top, 34–44 top edge R→L</td></tr>
+      <tr><td>Code protection</td><td class="m">OFF</td><td><code>CONFIG5L=0x0f CONFIG5H=0xc0 CONFIG6H=0xe0</code></td></tr>
+      <tr><td>Low-voltage prog.</td><td class="m">disabled</td><td><code>CONFIG4L=0x81</code> → needs an HV programmer</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2><span class="n">06</span>What remains, honestly</h2>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">The fault is confined to the PIC's I²C responding — cause not yet determined</div>
+      <span class="chip c-maybe">Open</span>
+    </div>
+    <dl>
+      <dt>Remaining</dt>
+      <dd>Either <code>RC3</code>/<code>RC4</code> are electrically open (a cracked joint or a broken
+      trace), or the MSSP peripheral itself is damaged, or there is flash damage in the ~3 KB above
+      <code>0x2000</code> that has never been read back.</dd>
+      <dt>Why it's stuck</dt>
+      <dd>Reading that flash requires the chip to answer, which is the thing that's broken. Circular
+      — and why a programmer is the way out.</dd>
+    </dl>
+  </div>
+
+  <div class="claim">
+    <div class="top">
+      <div class="what">No copy of the PICM bootloader exists anywhere</div>
+      <span class="chip c-ok">Verified</span>
+    </div>
+    <dl>
+      <dt>How</dt>
+      <dd>All 348 HEX files across every install tree were parsed. Every PICM image starts at
+      <code>0x400</code>, every PICL image at <code>0x340</code>. No embedded Intel HEX in any DLL or
+      EXE, ASCII or UTF-16. A PIC18 code-density scan across 2,992 files returned zero hits.</dd>
+      <dt>Consequence</dt>
+      <dd><code>0x0000–0x03FF</code> was factory-programmed and never shipped. <strong>Reading it out
+      is worth doing regardless of how this ends</strong> — no copy is known to exist.</dd>
+    </dl>
+  </div>
+
+  <div class="caveat">
+    <strong>On the "90%" figure.</strong> That was an estimate, not a measurement. What the evidence
+    actually supports is narrower and firmer: the failure is confined to one chip that is
+    unprotected, still in production, costs about $5, and sits on a board where everything else
+    demonstrably works — with a programming header beside it. No fact in evidence indicates this is
+    unrecoverable. Converting that into a percentage is judgment, and softer than the facts beneath it.
+  </div>
+</section>
+
+<footer>
+  Repository <code>/Users/guy/www/pakon-mac</code> · 67 commits ·
+  <code>docs/26-HANDOFF.md</code> is the authoritative summary.
+  Vendor material under <code>~/Downloads/Pakon Update 2/</code>.
+  Backups in <code>~/pakon-eeprom-backup/</code> and <code>~/pakon-full-dump-*/</code>.
+  Two directories there are quarantined as artifacts and labelled as such.
+</footer>
+
+</div>

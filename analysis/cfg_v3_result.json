@@ -1,0 +1,26 @@
+{
+  "mssp_incoming": [
+    [
+      "0x1a8a",
+      "fall"
+    ],
+    [
+      "0x2c6a",
+      "GOTO"
+    ]
+  ],
+  "reset_reaches_mssp": false,
+  "backward_nodes": 44,
+  "2c6a_incoming": [
+    [
+      "0x2c68",
+      "fall"
+    ]
+  ],
+  "2c62_incoming": [
+    [
+      "0x1a5c",
+      "GOTO"
+    ]
+  ]
+}

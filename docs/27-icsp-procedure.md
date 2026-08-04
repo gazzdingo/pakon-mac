@@ -108,13 +108,31 @@ subsequent reads. If they don't, believe nothing and debug.
 |---|---|---|---|
 | 1 | `0x0000`–`0x03FF` bootloader | 1 KB | **Irreplaceable — no copy exists** |
 | 2 | Full flash `0x0000`–`0x7FFF` | 32 KB | Complete picture |
-| 3 | Internal EEPROM | 256 B | Holds the suspected stray `0x0D` at addr 4 |
+| 3 | Internal EEPROM | 256 B | See index map below |
+
+**Internal EEPROM index map** (recovered from the boot path — read these, they
+are diagnostic):
+
+| Index | Meaning |
+|---|---|
+| 0 | Bootloader "application valid" gate. Should be `0xAA` |
+| 2 | Gates the fault-code clear on the warm path (`0x0019AC`) |
+| 4 | → RAM `0x135`/`0x138`. The suspected stray `0x0D` |
+| **5** | **The persisted fault code** (`0x0019EC` → RAM `0x02A`). **Should match the nibble read off the LED.** |
+| 6 | → RAM `0x027` (`0x0019FA`) |
 
 Save all three to `~/pakon-icsp-backup-<date>/`, take checksums, and **verify the
 files are non-empty and plausible before proceeding.** Copy them somewhere off
 this machine.
 
 ---
+
+## 4b. Read the device ID and RECORD it
+
+Before anything else, read `0x3FFFFE`/`0x3FFFFF` and write the value down. If it
+is not a PIC18F452, every downstream assumption changes — including the
+merged-image rule. The firmware analysis is consistent with a 452, but the
+device ID is the only actual proof.
 
 ## 5. The diff that might end this without any test firmware
 
@@ -128,7 +146,18 @@ found, with nothing written.
 Vendor image:
 `/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/Config/Firmware/nm0506.HEX`
 
-Also check EEPROM address 4 for `0x0D` — the reconstructed stray write.
+**Two 20-byte windows to check FIRST** — if either differs from `nm0506.HEX`,
+that is the fault, found, with nothing written:
+
+* `0x001A8C`–`0x001A96` — `MOVLW 0x36` → SSPCON1, and `MOVFF 0x134` → SSPADD.
+  If the `0x36` literal loses bit 5 it becomes `0x16`: **SSPEN = 0**, the module
+  is disabled, and RC3/RC4 revert to plain inputs. Nothing would ACK at any
+  address — exactly what we observe.
+* `0x002C62`–`0x002C6C` — the `0x44` address literal. Note `0x44 → 0x40` (one
+  bit) would put the PICM at 7-bit `0x20`, **colliding with the light board and
+  invisible to an address scan** — the one gap in our 128-address sweep.
+
+Also check EEPROM index 4 for `0x0D` — the reconstructed stray write.
 `probe_sensor_path.py:115` restores "default gain 13", and 13 is `0x0D`, so a
 match corroborates that reconstruction exactly.
 
@@ -154,6 +183,24 @@ That distinction decides everything downstream. If only the MSSP is dead, a
 firmware fix — reimplementing the I²C slave as bit-bang — becomes possible
 without touching hardware. Speculative, and the slave side is timing-sensitive,
 but it is a real road and it only exists if Test B is run.
+
+### THE WATCHDOG IS ENABLED IN HARDWARE
+
+`CONFIG2H = 0x0D` at `0x300003` → **WDTEN = 1**, postscaler 1:64, ≈1.15 s typical.
+It **cannot be disabled in software** on this part.
+
+So `BRA $` — an infinite loop — will be reset by the watchdog roughly once a
+second, forever. A pin-hold test written that way reads as a *flicker*, not a
+static level, and would be misread as "the pin does nothing".
+
+**Every test program must `CLRWDT` inside its loop.** Alternatively reprogram
+CONFIG2H — but then you must remember to restore it, and that is one more thing
+to get wrong.
+
+`CONFIG2L = 0x06` → BOR enabled at 4.2 V, PWRT enabled. A sagging PIC supply
+therefore produces a reset loop, not a steady blink — which, combined with the
+clock being verified correct from the blink timing, rules out the PIC's own
+supply as a cause.
 
 ### Two traps in the test firmware
 

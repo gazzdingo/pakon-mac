@@ -1,0 +1,21 @@
+-muwx
+-i eeprom_read.ihx
+-M
+-I 0x0080
+-X 0x0300
+-C 0x0400
+-b HOME = 0x0000
+-b XSEG = 0x0500
+-b PSEG = 0x0500
+-b ISEG = 0x0000
+-b BSEG = 0x0000
+-k /opt/homebrew/bin/../share/sdcc/lib/small
+-k /opt/homebrew/Cellar/sdcc/4.6.0/share/sdcc/lib/small
+-l mcs51
+-l libsdcc
+-l libint
+-l liblong
+-l libfloat
+eeprom_read.rel
+
+-e

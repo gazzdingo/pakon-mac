@@ -1,0 +1,492 @@
+   F-135
+
+Service Manual
+                               Scanner Specifications
+Minimum Host Computer Specifications
+•   Pentium III or Athlon CPU, 700 MHz or higher, with MMX support
+•   4GB of free hard drive space, capable of a sustained transfer rate of 30MB/sec. If IDE, it must
+    either be a Primary or Secondary Master drive or connected using a serial ATA connection.
+•   Windows 2000 and Windows XP
+•   256 MB of RAM
+•   USB 2.0
+•   Screen resolution of 1024x768 or higher
+
+Power
+•   External power supply
+•   15V, 2.4 amps,
+•   50-60 Hz Input voltage frequency
+•   Plug polarity is plus center, minus outside
+•   5.5mm outer diameter, 2.5mm inner diameter
+
+Contents of Box
+•   F-135 Film Scanner
+•   6ft. USB 2.0 Cable
+•   Software and User Manual CD
+•   External power supply and power cord
+
+Size
+•   6.75” x 8.5” x 14.75” (H x W x D)
+•   17.15cm x 21.6cm x 37.5cm (H x W x D)
+
+Resolutions
+       The F-135 has two supported resolutions:
+       4Base 1000 x 1500
+       8Base 1500 x 2250
+
+       The F-135 Plus has three supported resolutions:
+       4Base 1000 x 1500
+       8Base 1500 x 2250
+       16Base 2000 x 3000
+
+
+
+
+Pakon Part#125279-C                   January 27, 2006                                         1
+Light Source
+          The F-135 uses an LED light source which should outlast the life span of the scanner
+itself.
+
+Film Types and Variations
+•   The F-135 is designed to scan 35 MM. color negative film. 35 MM. cut strips are supported in
+    sizes from 3 frames to 40 frames. However, to ensure DX code reading, the strips must be a
+    minimum of 4 frames.
+
+DX Code Reading
+•   35 MM. DX codes are read using the ISO 1007 specifications and are used by the host man-
+    ager.
+
+
+
+
+Pakon Part#125279-C                   January 27, 2006                                      2
+                                 Installing the F-135
+The F-135 is a peripheral device. It must be connected to a computer that meets the required spec-
+ifications listed on page 1 of this manual.
+
+1. Install the software for the F-135, if it is not already installed on the PC.
+2. Clear a space near your computer system to place the F-135 scanner. The USB 2.0 cable must
+   be able to reach the PC, so it cannot be more than 6 feet (2m) from the computer.
+3. Connect the power cord to the power supply plug on the back of the scanner.
+
+
+
+
+4. Connect the USB 2.0 cable to the back of the scanner.
+
+5. Connect the USB 2.0 cable to the back of the computer, in a USB 2.0 port. Do not plug in to
+   a USB 1.0 connector!
+
+
+
+
+Pakon Part#125307-A                  January 27, 2006                                         3
+6. While the computer is on and Windows is loaded, turn the scanner power switch into the ‘on’
+   position.
+7. Windows will prompt you to click “Next” to continue the driver installation.
+
+
+
+
+8. Then click on “Finish” to finish the driver installation.
+
+
+
+
+9. The process will repeat twice before finishing.
+10. After the driver is finished installing, verify that the scanner driver is properly installed, by
+    viewing the scanner properties in the Device Manager under the heading, “Imaging Devices.”
+
+
+
+
+Pakon Part#125307-A                   January 27, 2006                                           4
+11. Clean the F-135 from any dust that may be inside the scanner. Please refer to these procedures
+    in the “Operator Maintenance” chapter.
+
+
+BIOS Configuration
+The following BIOS options are used on systems configured by Pakon, and are recommended to
+be configured as outlined below.
+
+
+                                        Option            Setting
+
+                               Plug and Play O/S          Disable
+                               AGP Aperture Size          32MB
+                               PCI Latency Timer          248
+                               ACPI Suspend State         S1 State
+                               USB Boot                   Disable
+                               PXE Boot to Lan            Disable
+                               PCI to DRAM Prefetch       Disable
+
+
+
+
+Pakon Part#125307-A                  January 27, 2006                                         5
+                                    Scanner Theory
+       The F-135 film scanner is a stand alone USB 2.0 device, designed to convert 35 MM. film
+into digital images. It is highly flexible, and can easily be integrated into a larger digital photo
+processing system, or operated as an independent scanning device, attached to a host computer.
+
+
+
+
+Transport Assembly
+       The F-135 transport assembly houses the film transport, light assembly, DX sensors, and
+Digital ICE hardware. There is only one roller in the transport assembly, so the film must be
+pushed by hand in far enough to reach this roller.
+       The film will then be transported through this assembly, past the light source which will
+project the image of the film through the lens to the CCD sensor. There are two DX sensors, that
+are staggered.
+       A skew in the film transport assembly will cause scanned images to be skewed. The result
+would turn “Skew” into “Skew.” (The image would appear slanted, as the italicized “skew” dem-
+onstrates.) A skew adjustment procedure is performed during the scanner’s original manufactur-
+
+
+
+
+Pakon Part#125307-A                   January 27, 2006                                         6
+ing calibration process to properly align the CCD board. Shims are used to ensure the film
+transport is in the proper skew position.
+
+
+
+
+CCD Chip and Assembly
+       The CCD chip is trilinear - it senses three colors: red, green, and blue. The CCD chip
+requires a tilt adjustment be done to ensure that the distance from one end of the CCD is the same
+as the opposite end. If these distances are not equal, then one edge of a scanned picture will be in
+focus, and the other edge of the picture will be out of focus. This procedure is performed during
+the scanner’s original manufacturing calibration process. As the film is scanned, the data is con-
+verted into raw digital data through the 14 bit A/D chip on the CCD board. This data is transferred
+from the CCD board to the USB interface board and sent to the host PC. Shims are used to ensure
+proper alignment of the CCD Chip in relation to the film transport.
+
+
+
+
+Pakon Part#125307-A                   January 27, 2006                                         7
+Light Source
+       The F-135 light source is made of LEDs, or Light Emitting Diodes. This light source’s life
+expectancy is longer than that of the scanner’s, meaning there is no light bulb to replace in the
+scanner.
+
+
+
+
+Lens
+       The lens is mounted to a bracket between the transport assembly and CCD chip. During
+the manufacturing process, a focus fixture is used to position the lens in the proper alignment with
+the film track and CCD chip. Once the proper position is determined, the lens clamp is glued so
+the lens cannot move after the manufacturing calibration process. Once the lens position is set, the
+focal length of the scanner is fixed, and the scanner should not lose focus unless the optical path is
+manipulated manually by removing the CCD board, lens, or film transport assembly.
+
+
+
+Pakon Part#125307-A                    January 27, 2006                                          8
+Scanner Motherboard
+       The scanner motherboard houses most of the scanner’s electronic circuitry. It houses the
+motor control, DX, USB communication, and power regulation. This board controls all motors,
+sensors, and communication with the host PC.
+
+
+
+
+Pakon Part#125307-A                 January 27, 2006                                       9
+Motor Speed
+      The calibration wizard sets the film speed in the final phase of the calibration procedure.
+Each resolution, film type, and 3 channel and 4 channel setting must have its own film speed.
+These settings, as all calibration settings are stored in the EEPROM of the scanner, on the scanner
+main board.
+
+DX Sensors
+      The film track has DX sensors built into the assembly. These sensors are positioned so
+they have the ability to read DX code on both sides of the film. The DX codes will report film
+type and film specifier values. They also determine index numbers for each frame. To see require-
+ments for DX code reading, please refer to the “Scanner Specifications” chapter.
+       There are two DX sensors that are staggered in the film track. The DX sensor on the film
+exit side of the scanner also acts as a film sensor, which will warn the operator that there is still
+film inside the scanner if a new scan is initiated.
+
+
+
+
+Pakon Part#125307-A                    January 27, 2006                                        10
+USB Connection
+       The F-135 scanner communicates to a host PC via a USB 2.0 interface. The scanner has a
+USB interface board built into the scanner motherboard. This board communicates with the scan-
+ner, and then relays that information to the host PC.
+       The motherboard has an EEPROM chip built into it to store calibration information. The
+Calibration Wizard program writes all calibration data to this EEPROM chip. When the scanner
+interface software is launched, this calibration data in the EEPROM is written to the Windows
+registry. This means that a F-135 scanner will be properly calibrated and functional when attached
+to any PC that meets the Computer Requirements outlined in the first chapter.
+
+
+
+
+Pakon Part#125307-A                   January 27, 2006                                      11
+                            Operational Information
+Powering On
+       Power on the host PC, and allow it to finish loading Windows before turning the F-135
+scanner on. This will ensure that the scanner can properly communicate with the host computer.
+
+Operation and Film Insertion
+       When scanning film, do not load film until the film status LED is green.
+        Inserting the film properly will ensure that the DX codes are read and that the fram-
+ing will be done correctly. Insert the film with the emulsion to the inside of the scanner, DX
+Code up, and starting with the lowest number first, as shown below:
+
+
+
+
+        Do not attempt to remove film from the scanner while the scanner motor is moving! This
+will cause damage to both the film and the scanner.
+
+Calibration
+       There are two types of calibration for the F-135.
+       Color calibration is set during the manufacturing process, as well as any service that
+involves the CCD or any optical filter. This is to be performed by trained and authorized service
+personnel only.
+       Scanner corrections are performed automatically. They consist of a series of steps per-
+formed when the scanner is first turned on, as shown below:
+• Start-up corrections
+• Initial LED warm-up
+• Gain and exposure Control Corrections
+• Run Time Corrections
+
+
+
+
+Pakon Part#125307-A                  January 27, 2006                                      12
+LED Indicator Lights
+
+
+                                Power LED     Function
+
+                                Solid Green   +5V is functioning
+                                Off           +5V is not functioning
+
+
+                                Status LED               Function
+
+                            Solid Green         Scanner Ready
+                            Blinking Green      Scanner is Scanning
+                            Blinking Yellow     Scanner is unable to
+                                                scan at the moment
+                            Blinking Red        Scanner Error
+                            Off                 Scanner not Functioning
+
+
+
+
+                              Film LED                   Function
+
+                          Solid Green          Film is being scanned
+                          Blinking Green       Insert film to be scanned
+                          Blinking Yellow      Remove film from scanner
+                          Off                  No film in the scanner
+
+Digital ICE
+        Digital ICE is designed to assist in removing scratches, dust, and debris artifacts from
+scanned film. It should be used as a complement to a photo lab’s normal cleaning procedures.
+Customers are still advised to clean the floors and work surfaces regularly to keep the lab environ-
+ment as dust-free as possible.
+        It is also recommended to clean all film with a lint-free cloth before attempting to make
+prints 8”x10” or higher.
+        If a lab is having persistent dust problems, it is recommended to perform the following
+regularly:
+        •Clean all customer film with a lint-free cloth before scanning it.
+        •When the scanner is turned off, cover it with a plastic, or lint-free cover.
+        •Use a lint-free cloth daily to clean the cover of the scanner and the surface of the table it
+          is positioned on.
+
+
+
+Pakon Part#125307-A                    January 27, 2006                                         13
+                              Operator Maintenance
+Cleaning the Film Track
+
+       It is recommended to clean the film track every two weeks, along with the illumination
+cleaning. Keeping the film track clean will ensure that DX code reading remains reliable. It will
+also maintain the proper motor speed for each resolution. We recommend ensuring the film is
+clean before putting it into the scanner.
+1. Position the tip of the compressed air hose in the film track entrance, and blow, moving the
+    hose up and down while blowing inside.
+
+
+
+
+2. Follow the cleaning instructions for cleaning the scanner cover below.
+3. After cleaning the film track, run the ‘Film Track Test’ in the client interface program.
+
+Cleaning the Scanner Cover
+
+1. Aim the hose of a can of compressed air into the film path--blowing the air away from the film
+   entrance.
+
+
+
+
+Pakon Part#125307-A                   January 27, 2006                                         14
+2. On the film exit side, blow the air away from the film exit.
+
+
+
+
+Pakon Part#125307-A                  January 27, 2006             15
+                                    Troubleshooting
+Basics
+       The scanner will not work properly unless the scanner is turned on after Windows 2000 or
+XP has finished the loading process. Ensure this is done before attempting more advanced trou-
+bleshooting.
+
+ Error Logs
+        There are four primary error logs generated by the scanner software. These error logs are a
+very important tool to determine the cause of any reported error codes. When contacting technical
+support, it is advisable to provide these logs to ensure a more informed response. Dealers and dis-
+tributors can request a list of the error codes with information on troubleshooting them.
+        These logs can be located in C:\Program Files\Pakon\F-135\TLX COM Server\Logs.
+        These logs include:
+
+   PakonErrorLogMain
+      Logs any errors associated with scanner communications with the host PC.
+   PakonErrorLogScan
+      Logs any errors associated with the scan process.
+   PakonErrorLogSave
+      Logs any errors associated with the save process.
+   PakonErrorLogPI
+      Logs any errors associated with the color correction process.
+
+Scanning stops after one frame
+       The scanner calibrations may need to be re-done every two hours because the lamp tem-
+perature may vary throughout the day.
+
+DX code reading is not working
+        The film track should be cleaned every two weeks to ensure proper DX code reading. This
+procedure can be found in the “Service” chapter in this manual. When finished, run the 'Track
+Test” calibration in the client interface program.
+        This requires a four frame strip of film with DX codes on it. Be sure to insert the film
+emulsion up, starting with the lowest number first, with the DX codes to the back of the scanner.
+        If DX code reading does not improve after cleaning and running the client film track test,
+the film track test should be run using the Calibration Wizard program.
+
+
+
+
+Pakon Part#125307-B                   January 27, 2006                                       16
+Vertical Banding through Images
+        If images appear to have strange vertical banding through them, position the scanner so
+that no light is shining directly into the film entrance or exit slots.
+        This banding is caused by light shining directly into the scanner, through the sprocket
+holes of the film, and onto the CCD chip.
+        The images would appear as follows:
+
+
+
+
+Pakon Part#125307-B                 January 27, 2006                                     17
+                        Contacting Technical Support
+
+When contacting support by phone, please follow these guidelines to ensure
+timely assistance:
+•   Have the computer and scanner on.
+•   Have PSI loaded, if possible.
+•   Have any reported error codes written down for quick reference.
+•   Know the version of PSI being used.
+•   Know the serial number of your scanner.
+
+If you prefer to email support, please include the following information in your
+email request:
+•   Any applicable error log files.
+•   Version number of PSI.
+•   Serial number of your F-135 scanner.
+•   A sample image, if helpful.
+•   Your company name and location.
+•   Details on the problem and what has been attempted so far to resolve the problem.
+
+Pakon Contact Information
+Phone:
+Within the United States - 877.217.2566
+Outside the United States - 952.936.4390
+
+Email:
+support@pakon.com
+
+On the Web:
+http://www.pakon.com
+ftp://ftp.pakon.com
+
+
+
+
+Pakon Part#125307-A                  January 27, 2006                                   18
+                               Regulatory Information
+
+
+
+
+Warning:
+        This is a class A product. In a domestic environment this product may cause radio interfer-
+ence in which case the user may be required to take adequate measures.
+
+Note:
+        This equipment has been tested and found to comply with the limits for a Class A digital
+device, pursuant to part 15 of the FCC rules. These limits are designed to provide reasonable pro-
+tection against harmful interference when the equipment is operated in a commercial environ-
+ment. This equipment generates, uses and can radiate radio frequency energy and, if not installed
+and used in accordance with the instruction manual, may cause harmful interference to radio com-
+munications. Operation of this equipment in a residential area is likely to cause harmful interfer-
+ence in which case the user will be required to correct the interference at his own expense.
+
+Site Conditions:
+Not for use in a computer room as defined in the Standard for the Protection of Electronic
+Computer/Data Processing Equipment, ANSI/NFPA 75.
+
+Ne peut être utilisé dans une salle d'ordinateurs telle que définie dans la norme ANSI/ NFPA 75
+Standard for Protection of Electronic Computer/Data Processing Equipment.
+
+
+
+                    Temperature                   15-29 degrees Celsius
+                    Humidity                      30-75% (non-condensing)
+                    Vibration                     Not to Exceed 0.05G RMS
+                                                  5-200Hz
+                    Ventilation                   A 4” clearance above and
+                                                  behind the scanners venti-
+                                                  lation duct is necessary
+                    Lighting                      <1000 LUX ambient light
+                    Noise                         < 70db(A)
+
+
+
+
+Pakon Part#125307-A                   January 27, 2006                                       19
+Shipping and Storage Conditions
+Temperature: -25 to 60 degrees Celsius
+
+
+
+
+Pakon Part#125307-A                 January 27, 2006   20
+                               Part Numbers
+                      Part Number           Description
+
+                      125040        Motherboard
+                      125038        CCD Board
+                      125035        CCD Spring
+                      123528        CCD Chip
+                      125166        Lens
+                      125034        Lens Clamp
+                      125159        TE Cooler
+                      125055        Film Transport
+                      125154        DX Sensor
+                      125115        Plastic Cover
+                      125158        CCD Cable
+
+
+
+
+Pakon Part#125307-A            January 27, 2006           21
+

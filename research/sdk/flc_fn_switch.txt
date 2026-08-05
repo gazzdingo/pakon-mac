@@ -1,0 +1,1144 @@
+  ; CALL XREF from fcn.100077c0 @ 0x10007954(x)
+3195: fcn.10006270 (int32_t arg_14h_3, int32_t arg_4h, int32_t arg_8h, int32_t arg_ch, int32_t arg_14h, int32_t arg_14h_2, int32_t arg_18h);
+`- args(sp[0x0..0x18]) vars(66:sp[0x4..0x108])
+0x10006270      8b442404       mov eax, dword [arg_4h]
+0x10006274      83f809         cmp eax, 9                              ; 9
+0x10006277      0f87b0000000   ja case.default.0x1000627d
+;-- switch:
+0x1000627d      ff2485ec6e..   jmp dword [eax*4 + 0x10006eec]          ; switch table (10 cases) at 0x10006eec
+;-- case 0:                                                            ; from 0x1000627d
+; CODE XREF from fcn.10006270 @ 0x1000627d(x)
+0x10006284      8b4c2410       mov ecx, dword [arg_14h]
+0x10006288      68003e0210     push str.CN_CiCmdComm                   ; 0x10023e00 ; "CN_CiCmdComm"
+0x1000628d      e83ea00000     call fcn.100102d0
+0x10006292      e9a9000000     jmp 0x10006340
+;-- case 1:                                                            ; from 0x1000627d
+; CODE XREF from fcn.10006270 @ 0x1000627d(x)
+0x10006297      8b4c2410       mov ecx, dword [arg_ch]
+0x1000629b      68e83d0210     push str.CN_CiConfig                    ; 0x10023de8 ; "CN_CiConfig"
+0x100062a0      e82ba00000     call fcn.100102d0
+0x100062a5      e996000000     jmp 0x10006340
+;-- case 2:                                                            ; from 0x1000627d
+; CODE XREF from fcn.10006270 @ 0x1000627d(x)
+0x100062aa      8b4c2410       mov ecx, dword [arg_8h]
+0x100062ae      68c83d0210     push str.CN_CiConfigMain                ; 0x10023dc8 ; "CN_CiConfigMain"
+0x100062b3      e818a00000     call fcn.100102d0
+0x100062b8      e983000000     jmp 0x10006340
+;-- case 3:                                                            ; from 0x1000627d
+; CODE XREF from fcn.10006270 @ 0x1000627d(x)
+0x100062bd      8b4c2410       mov ecx, dword [arg_4h]
+0x100062c1      68a83d0210     push str.CN_CiConfigScan                ; 0x10023da8 ; "CN_CiConfigScan"
+0x100062c6      e805a00000     call fcn.100102d0
+0x100062cb      eb73           jmp 0x10006340
+;-- case 4:                                                            ; from 0x1000627d
+; CODE XREF from fcn.10006270 @ 0x1000627d(x)
+0x100062cd      8b4c2410       mov ecx, dword [arg_14h_3]
+0x100062d1      687c3d0210     push str.CN_CiDlgLoadFirmware           ; 0x10023d7c ; "CN_CiDlgLoadFirmware"
+0x100062d6      e8f59f0000     call fcn.100102d0
+0x100062db      eb63           jmp 0x10006340
+;-- case 5:                                                            ; from 0x1000627d
+; CODE XREF from fcn.10006270 @ 0x1000627d(x)
+0x100062dd      8b4c2410       mov ecx, dword [var_14h]
+0x100062e1      68603d0210     push str.CN_CiFirmware                  ; 0x10023d60 ; "CN_CiFirmware"
+0x100062e6      e8e59f0000     call fcn.100102d0
+0x100062eb      eb53           jmp 0x10006340
+;-- case 6:                                                            ; from 0x1000627d
+; CODE XREF from fcn.10006270 @ 0x1000627d(x)
+0x100062ed      8b4c2410       mov ecx, dword [var_14h_2]
+0x100062f1      683c3d0210     push str.CN_CiFWLoaderMain              ; 0x10023d3c ; "CN_CiFWLoaderMain"
+0x100062f6      e8d59f0000     call fcn.100102d0
+0x100062fb      eb43           jmp 0x10006340
+;-- case 7:                                                            ; from 0x1000627d
+; CODE XREF from fcn.10006270 @ 0x1000627d(x)
+0x100062fd      8b4c2410       mov ecx, dword [var_14h_3]
+0x10006301      68283d0210     push str.CN_Global                      ; 0x10023d28 ; "CN_Global"
+0x10006306      e8c59f0000     call fcn.100102d0
+0x1000630b      eb33           jmp 0x10006340
+;-- case 9:                                                            ; from 0x1000627d
+; CODE XREF from fcn.10006270 @ 0x1000627d(x)
+0x1000630d      8b4c2410       mov ecx, dword [var_14h_5]
+0x10006311      68f43c0210     push str.CN_CiThreadDataScanDriver      ; 0x10023cf4 ; "CN_CiThreadDataScanDriver"
+0x10006316      e8b59f0000     call fcn.100102d0
+0x1000631b      eb23           jmp 0x10006340
+;-- case 8:                                                            ; from 0x1000627d
+; CODE XREF from fcn.10006270 @ 0x1000627d(x)
+0x1000631d      8b4c2410       mov ecx, dword [var_14h_4]
+0x10006321      68c43c0210     push str.CN_CiThreadDataLongOps         ; 0x10023cc4 ; "CN_CiThreadDataLongOps"
+0x10006326      e8a59f0000     call fcn.100102d0
+0x1000632b      eb13           jmp 0x10006340
+;-- default:                                                           ; from 0x1000627d
+; CODE XREFS from fcn.10006270 @ 0x10006277(x), 0x1000627d(x)
+0x1000632d      50             push eax
+0x1000632e      8b442414       mov eax, dword [arg_14h]
+0x10006332      68bc3c0210     push 0x10023cbc
+0x10006337      50             push eax
+0x10006338      e873a20000     call fcn.100105b0
+0x1000633d      83c40c         add esp, 0xc
+; XREFS: CODE 0x10006292  CODE 0x100062a5  CODE 0x100062b8  
+; XREFS: CODE 0x100062cb  CODE 0x100062db  CODE 0x100062eb  
+; XREFS: CODE 0x100062fb  CODE 0x1000630b  CODE 0x1000631b  
+; XREFS: CODE 0x1000632b  
+0x10006340      8b442408       mov eax, dword [arg_8h]
+0x10006344      83f848         cmp eax, 0x48                           ; 'H' ; 72
+0x10006347      0f874a050000   ja case.default.0x1000634d
+;-- switch:
+0x1000634d      ff2485146f..   jmp dword [eax*4 + 0x10006f14]          ; switch table (73 cases) at 0x10006f14
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006354      8b4c2414       mov ecx, dword [arg_14h_2]
+0x10006358      68983c0210     push str.FN_bBuildFileList              ; 0x10023c98 ; "FN_bBuildFileList"
+0x1000635d      e86e9f0000     call fcn.100102d0
+0x10006362      e943050000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006367      8b4c2414       mov ecx, dword [arg_14h]
+0x1000636b      68683c0210     push str.FN_bClientCallBackLoop         ; 0x10023c68 ; "FN_bClientCallBackLoop"
+0x10006370      e85b9f0000     call fcn.100102d0
+0x10006375      e930050000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000637a      8b4c2414       mov ecx, dword [arg_ch]
+0x1000637e      68403c0210     push str.FN_bCreateDirectory            ; 0x10023c40 ; "FN_bCreateDirectory"
+0x10006383      e8489f0000     call fcn.100102d0
+0x10006388      e91d050000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000638d      8b4c2414       mov ecx, dword [arg_8h]
+0x10006391      68243c0210     push str.FN_Destructor                  ; 0x10023c24 ; "FN_Destructor"
+0x10006396      e8359f0000     call fcn.100102d0
+0x1000639b      e90a050000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100063a0      8b4c2414       mov ecx, dword [arg_4h]
+0x100063a4      68003c0210     push str.FN_DriveMotorRun               ; 0x10023c00 ; "FN_DriveMotorRun"
+0x100063a9      e8229f0000     call fcn.100102d0
+0x100063ae      e9f7040000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100063b3      8b4c2414       mov ecx, dword [arg_14h_3]
+0x100063b7      68dc3b0210     push str.FN_bDriveMotorRun              ; 0x10023bdc ; "FN_bDriveMotorRun"
+0x100063bc      e80f9f0000     call fcn.100102d0
+0x100063c1      e9e4040000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100063c6      8b4c2414       mov ecx, dword [var_14h]
+0x100063ca      68b43b0210     push str.FN_bDriveMotorStop             ; 0x10023bb4 ; "FN_bDriveMotorStop"
+0x100063cf      e8fc9e0000     call fcn.100102d0
+0x100063d4      e9d1040000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100063d9      8b4c2414       mov ecx, dword [var_14h_2]
+0x100063dd      68983b0210     push str.FN_bDrvClose                   ; 0x10023b98 ; "FN_bDrvClose"
+0x100063e2      e8e99e0000     call fcn.100102d0
+0x100063e7      e9be040000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100063ec      8b4c2414       mov ecx, dword [var_14h_3]
+0x100063f0      68643b0210     push str.FN_bDrvFindPicController       ; 0x10023b64 ; "FN_bDrvFindPicController"
+0x100063f5      e8d69e0000     call fcn.100102d0
+0x100063fa      e9ab040000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100063ff      8b4c2414       mov ecx, dword [var_14h_4]
+0x10006403      683c3b0210     push str.FN_bDrvGetByteArray            ; 0x10023b3c ; "FN_bDrvGetByteArray"
+0x10006408      e8c39e0000     call fcn.100102d0
+0x1000640d      e998040000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006412      8b4c2414       mov ecx, dword [var_14h_5]
+0x10006416      68103b0210     push str.FN_bDrvGetByteArrayNL          ; 0x10023b10 ; "FN_bDrvGetByteArrayNL"
+0x1000641b      e8b09e0000     call fcn.100102d0
+0x10006420      e985040000     jmp 0x100068aa
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006425      8b4c2414       mov ecx, dword [var_14h_6]
+0x10006429      68ec3a0210     push str.FN_bDrvGetDevInfo              ; 0x10023aec ; "FN_bDrvGetDevInfo"
+0x1000642e      e89d9e0000     call fcn.100102d0
+0x10006433      e972040000     jmp 0x100068aa
+;-- case 0:                                                            ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006438      8b4c2414       mov ecx, dword [var_14h_7]
+0x1000643c      68bc3a0210     push str.FN_bDrvGetPpbDeviceBusy        ; 0x10023abc ; "FN_bDrvGetPpbDeviceBusy"
+0x10006441      e88a9e0000     call fcn.100102d0
+0x10006446      e95f040000     jmp 0x100068aa
+;-- case 1:                                                            ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000644b      8b4c2414       mov ecx, dword [var_14h_8]
+0x1000644f      68843a0210     push str.FN_bDrvGetPpbDeviceReadyNL     ; 0x10023a84 ; "FN_bDrvGetPpbDeviceReadyNL"
+0x10006454      e8779e0000     call fcn.100102d0
+0x10006459      e94c040000     jmp 0x100068aa
+;-- case 2:                                                            ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000645e      8b4c2414       mov ecx, dword [var_14h_9]
+0x10006462      68543a0210     push str.FN_bDrvGetRegisterByte         ; 0x10023a54 ; "FN_bDrvGetRegisterByte"
+0x10006467      e8649e0000     call fcn.100102d0
+0x1000646c      e939040000     jmp 0x100068aa
+;-- case 3:                                                            ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006471      8b4c2414       mov ecx, dword [var_14h_10]
+0x10006475      68243a0210     push str.FN_bDrvGetRegisterWord         ; 0x10023a24 ; "FN_bDrvGetRegisterWord"
+0x1000647a      e8519e0000     call fcn.100102d0
+0x1000647f      e926040000     jmp 0x100068aa
+;-- case 4:                                                            ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006484      8b4c2414       mov ecx, dword [var_14h_11]
+0x10006488      680c3a0210     push str.FN_bDrvOpen                    ; 0x10023a0c ; "FN_bDrvOpen"
+0x1000648d      e83e9e0000     call fcn.100102d0
+0x10006492      e913040000     jmp 0x100068aa
+;-- case 5:                                                            ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006497      8b4c2414       mov ecx, dword [var_14h_12]
+0x1000649b      68dc390210     push str.FN_bDrvPacketExecuteNL         ; 0x100239dc ; "FN_bDrvPacketExecuteNL"
+0x100064a0      e82b9e0000     call fcn.100102d0
+0x100064a5      e900040000     jmp 0x100068aa
+;-- case 6:                                                            ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100064aa      8b4c2414       mov ecx, dword [var_14h_13]
+0x100064ae      68a4390210     push str.FN_bDrvPacketHandleErrorNL     ; 0x100239a4 ; "FN_bDrvPacketHandleErrorNL"
+0x100064b3      e8189e0000     call fcn.100102d0
+0x100064b8      e9ed030000     jmp 0x100068aa
+;-- case 7:                                                            ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100064bd      8b4c2414       mov ecx, dword [var_14h_14]
+0x100064c1      6880390210     push str.FN_bDrvPutCommand              ; 0x10023980 ; "FN_bDrvPutCommand"
+0x100064c6      e8059e0000     call fcn.100102d0
+0x100064cb      e9da030000     jmp 0x100068aa
+;-- case 8:                                                            ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100064d0      8b4c2414       mov ecx, dword [var_14h_15]
+0x100064d4      6858390210     push str.FN_bDrvPutRegister             ; 0x10023958 ; "FN_bDrvPutRegister"
+0x100064d9      e8f29d0000     call fcn.100102d0
+0x100064de      e9c7030000     jmp 0x100068aa
+;-- case 9:                                                            ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100064e3      8b4c2414       mov ecx, dword [var_14h_16]
+0x100064e7      6828390210     push str.FN_bDrvPutRegisterByte         ; 0x10023928 ; "FN_bDrvPutRegisterByte"
+0x100064ec      e8df9d0000     call fcn.100102d0
+0x100064f1      e9b4030000     jmp 0x100068aa
+;-- case 10:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100064f6      8b4c2414       mov ecx, dword [var_14h_17]
+0x100064fa      68f8380210     push str.FN_bDrvPutRegisterWord         ; 0x100238f8 ; "FN_bDrvPutRegisterWord"
+0x100064ff      e8cc9d0000     call fcn.100102d0
+0x10006504      e9a1030000     jmp 0x100068aa
+;-- case 11:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006509      8b4c2414       mov ecx, dword [var_14h_18]
+0x1000650d      68cc380210     push str.FN_bDrvWritePacketNL           ; 0x100238cc ; "FN_bDrvWritePacketNL"
+0x10006512      e8b99d0000     call fcn.100102d0
+0x10006517      e98e030000     jmp 0x100068aa
+;-- case 12:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000651c      8b4c2414       mov ecx, dword [var_14h_19]
+0x10006520      68a0380210     push str.FN_bEEPromSendVendReq          ; 0x100238a0 ; "FN_bEEPromSendVendReq"
+0x10006525      e8a69d0000     call fcn.100102d0
+0x1000652a      e97b030000     jmp 0x100068aa
+;-- case 13:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000652f      8b4c2414       mov ecx, dword [var_14h_20]
+0x10006533      6880380210     push str.FN_bEEPromRead                 ; 0x10023880 ; "FN_bEEPromRead"
+0x10006538      e8939d0000     call fcn.100102d0
+0x1000653d      e968030000     jmp 0x100068aa
+;-- case 14:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006542      8b4c2414       mov ecx, dword [var_14h_21]
+0x10006546      6854380210     push str.FN_bEEPromReadSection          ; 0x10023854 ; "FN_bEEPromReadSection"
+0x1000654b      e8809d0000     call fcn.100102d0
+0x10006550      e955030000     jmp 0x100068aa
+;-- case 15:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006555      8b4c2414       mov ecx, dword [var_14h_22]
+0x10006559      6834380210     push str.FN_bEEPromWrite                ; 0x10023834 ; "FN_bEEPromWrite"
+0x1000655e      e86d9d0000     call fcn.100102d0
+0x10006563      e942030000     jmp 0x100068aa
+;-- case 16:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006568      8b4c2414       mov ecx, dword [var_14h_23]
+0x1000656c      6810380210     push str.FN_EnableControls              ; 0x10023810 ; "FN_EnableControls"
+0x10006571      e85a9d0000     call fcn.100102d0
+0x10006576      e92f030000     jmp 0x100068aa
+;-- case 17:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000657b      8b4c2414       mov ecx, dword [var_14h_24]
+0x1000657f      68f0370210     push str.FN_EraseEEPROM                 ; 0x100237f0 ; "FN_EraseEEPROM"
+0x10006584      e8479d0000     call fcn.100102d0
+0x10006589      e91c030000     jmp 0x100068aa
+;-- case 18:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000658e      8b4c2414       mov ecx, dword [var_14h_25]
+0x10006592      68c8370210     push str.FN_FindPersonality             ; 0x100237c8 ; "FN_FindPersonality"
+0x10006597      e8349d0000     call fcn.100102d0
+0x1000659c      e909030000     jmp 0x100068aa
+;-- case 19:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100065a1      8b4c2414       mov ecx, dword [var_14h_26]
+0x100065a5      68a0370210     push str.FN_bFindPersonality            ; 0x100237a0 ; "FN_bFindPersonality"
+0x100065aa      e8219d0000     call fcn.100102d0
+0x100065af      e9f6020000     jmp 0x100068aa
+;-- case 20:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100065b4      8b4c2414       mov ecx, dword [var_14h_27]
+0x100065b8      6868370210     push str.FN_bFindPicControllerStatus    ; 0x10023768 ; "FN_bFindPicControllerStatus"
+0x100065bd      e80e9d0000     call fcn.100102d0
+0x100065c2      e9e3020000     jmp 0x100068aa
+;-- case 21:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100065c7      8b4c2414       mov ecx, dword [var_14h_28]
+0x100065cb      6844370210     push str.FN_FirmwareAssess              ; 0x10023744 ; "FN_FirmwareAssess"
+0x100065d0      e8fb9c0000     call fcn.100102d0
+0x100065d5      e9d0020000     jmp 0x100068aa
+;-- case 22:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100065da      8b4c2414       mov ecx, dword [var_14h_29]
+0x100065de      681c370210     push str.FN_bFirmwareAssess             ; 0x1002371c ; "FN_bFirmwareAssess"
+0x100065e3      e8e89c0000     call fcn.100102d0
+0x100065e8      e9bd020000     jmp 0x100068aa
+;-- case 23:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100065ed      8b4c2414       mov ecx, dword [var_14h_30]
+0x100065f1      68e4360210     push str.FN_bFirmwareGetByteArrayNL     ; 0x100236e4 ; "FN_bFirmwareGetByteArrayNL"
+0x100065f6      e8d59c0000     call fcn.100102d0
+0x100065fb      e9aa020000     jmp 0x100068aa
+;-- case 24:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006600      8b4c2414       mov ecx, dword [var_14h_31]
+0x10006604      68ac360210     push str.FN_bFirmwareGetProgramWord     ; 0x100236ac ; "FN_bFirmwareGetProgramWord"
+0x10006609      e8c29c0000     call fcn.100102d0
+0x1000660e      e997020000     jmp 0x100068aa
+;-- case 25:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006613      8b4c2414       mov ecx, dword [var_14h_32]
+0x10006617      6870360210     push str.FN_bFirmwareGetProgramWords8   ; 0x10023670 ; "FN_bFirmwareGetProgramWords8"
+0x1000661c      e8af9c0000     call fcn.100102d0
+0x10006621      e984020000     jmp 0x100068aa
+;-- case 26:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006626      8b4c2414       mov ecx, dword [var_14h_33]
+0x1000662a      6838360210     push str.FN_bFirmwarePutProgramData     ; 0x10023638 ; "FN_bFirmwarePutProgramData"
+0x1000662f      e89c9c0000     call fcn.100102d0
+0x10006634      e971020000     jmp 0x100068aa
+;-- case 27:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006639      8b4c2414       mov ecx, dword [var_14h_34]
+0x1000663d      6800360210     push str.FN_bFirmwarePutProgramWord     ; 0x10023600 ; "FN_bFirmwarePutProgramWord"
+0x10006642      e8899c0000     call fcn.100102d0
+0x10006647      e95e020000     jmp 0x100068aa
+;-- case 28:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000664c      8b4c2414       mov ecx, dword [var_14h_35]
+0x10006650      68cc350210     push str.FN_bFirmwareWritePacketNL      ; 0x100235cc ; "FN_bFirmwareWritePacketNL"
+0x10006655      e8769c0000     call fcn.100102d0
+0x1000665a      e94b020000     jmp 0x100068aa
+;-- case 29:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000665f      8b4c2414       mov ecx, dword [var_14h_36]
+0x10006663      6898350210     push str.FN_FuncInitializeScanner       ; 0x10023598 ; "FN_FuncInitializeScanner"
+0x10006668      e8639c0000     call fcn.100102d0
+0x1000666d      e938020000     jmp 0x100068aa
+;-- case 30:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006672      8b4c2414       mov ecx, dword [var_14h_37]
+0x10006676      6870350210     push str.FN_bHexToWordArray             ; 0x10023570 ; "FN_bHexToWordArray"
+0x1000667b      e8509c0000     call fcn.100102d0
+0x10006680      e925020000     jmp 0x100068aa
+;-- case 31:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006685      8b4c2414       mov ecx, dword [var_14h_38]
+0x10006689      685c350210     push str.FN_bInit                       ; 0x1002355c ; "FN_bInit"
+0x1000668e      e83d9c0000     call fcn.100102d0
+0x10006693      e912020000     jmp 0x100068aa
+;-- case 32:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006698      8b4c2414       mov ecx, dword [var_14h_39]
+0x1000669c      6830350210     push str.FN_InitializeScanner           ; 0x10023530 ; "FN_InitializeScanner"
+0x100066a1      e82a9c0000     call fcn.100102d0
+0x100066a6      e9ff010000     jmp 0x100068aa
+;-- case 33:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100066ab      8b4c2414       mov ecx, dword [var_14h_40]
+0x100066af      680c350210     push str.FN_bInitWorkerSub              ; 0x1002350c ; "FN_bInitWorkerSub"
+0x100066b4      e8179c0000     call fcn.100102d0
+0x100066b9      e9ec010000     jmp 0x100068aa
+;-- case 34:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100066be      8b4c2414       mov ecx, dword [var_14h_41]
+0x100066c2      68ec340210     push str.FN_LoadFirmware                ; 0x100234ec ; "FN_LoadFirmware"
+0x100066c7      e8049c0000     call fcn.100102d0
+0x100066cc      e9d9010000     jmp 0x100068aa
+;-- case 35:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100066d1      8b4c2414       mov ecx, dword [var_14h_42]
+0x100066d5      68c4340210     push str.FN_bLoadFirmwareNow            ; 0x100234c4 ; "FN_bLoadFirmwareNow"
+0x100066da      e8f19b0000     call fcn.100102d0
+0x100066df      e9c6010000     jmp 0x100068aa
+;-- case 36:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100066e4      8b4c2414       mov ecx, dword [var_14h_43]
+0x100066e8      6898340210     push str.FN_uiLoadFirmwareNow           ; 0x10023498 ; "FN_uiLoadFirmwareNow"
+0x100066ed      e8de9b0000     call fcn.100102d0
+0x100066f2      e9b3010000     jmp 0x100068aa
+;-- case 37:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100066f7      8b4c2414       mov ecx, dword [var_14h_44]
+0x100066fb      685c340210     push str.FN_LoadPersonalityAndFirmware  ; 0x1002345c ; "FN_LoadPersonalityAndFirmware"
+0x10006700      e8cb9b0000     call fcn.100102d0
+0x10006705      e9a0010000     jmp 0x100068aa
+;-- case 38:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000670a      8b4c2414       mov ecx, dword [var_14h_45]
+0x1000670e      6844340210     push str.FN_bLoadPic                    ; 0x10023444 ; "FN_bLoadPic"
+0x10006713      e8b89b0000     call fcn.100102d0
+0x10006718      e98d010000     jmp 0x100068aa
+;-- case 39:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000671d      8b4c2414       mov ecx, dword [var_14h_46]
+0x10006721      6820340210     push str.FN_bLoadPicLarge               ; 0x10023420 ; "FN_bLoadPicLarge"
+0x10006726      e8a59b0000     call fcn.100102d0
+0x1000672b      e97a010000     jmp 0x100068aa
+;-- case 40:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006730      8b4c2414       mov ecx, dword [var_14h_47]
+0x10006734      68fc330210     push str.FN_MoveFilmGuides              ; 0x100233fc ; "FN_MoveFilmGuides"
+0x10006739      e8929b0000     call fcn.100102d0
+0x1000673e      e967010000     jmp 0x100068aa
+;-- case 41:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006743      8b4c2414       mov ecx, dword [var_14h_48]
+0x10006747      68dc330210     push str.FN_OnInitDialog                ; 0x100233dc ; "FN_OnInitDialog"
+0x1000674c      e87f9b0000     call fcn.100102d0
+0x10006751      e954010000     jmp 0x100068aa
+;-- case 42:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006756      8b4c2414       mov ecx, dword [var_14h_49]
+0x1000675a      68a0330210     push str.FN_OnMsgLoadFirmwareCallBack   ; 0x100233a0 ; "FN_OnMsgLoadFirmwareCallBack"
+0x1000675f      e86c9b0000     call fcn.100102d0
+0x10006764      e941010000     jmp 0x100068aa
+;-- case 43:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006769      8b4c2414       mov ecx, dword [var_14h_50]
+0x1000676d      6890330210     push str.FN_OnOK                        ; 0x10023390 ; "FN_OnOK"
+0x10006772      e8599b0000     call fcn.100102d0
+0x10006777      e92e010000     jmp 0x100068aa
+;-- case 44:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000677c      8b4c2414       mov ecx, dword [var_14h_51]
+0x10006780      685c330210     push str.FN_bPicToBootLoaderState       ; 0x1002335c ; "FN_bPicToBootLoaderState"
+0x10006785      e8469b0000     call fcn.100102d0
+0x1000678a      e91b010000     jmp 0x100068aa
+;-- case 45:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x1000678f      8b4c2414       mov ecx, dword [var_14h_52]
+0x10006793      682c330210     push str.FN_bProcessHexFileLine         ; 0x1002332c ; "FN_bProcessHexFileLine"
+0x10006798      e8339b0000     call fcn.100102d0
+0x1000679d      e908010000     jmp 0x100068aa
+;-- case 46:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100067a2      8b4c2414       mov ecx, dword [var_14h_53]
+0x100067a6      6800330210     push str.FN_bReadEEPromBasics           ; 0x10023300 ; "FN_bReadEEPromBasics"
+0x100067ab      e8209b0000     call fcn.100102d0
+0x100067b0      e9f5000000     jmp 0x100068aa
+;-- case 47:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100067b5      8b4c2414       mov ecx, dword [var_14h_54]
+0x100067b9      68c4320210     push str.FN_bReadEEPromBasicsCheckSum   ; 0x100232c4 ; "FN_bReadEEPromBasicsCheckSum"
+0x100067be      e80d9b0000     call fcn.100102d0
+0x100067c3      e9e2000000     jmp 0x100068aa
+;-- case 48:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100067c8      8b4c2414       mov ecx, dword [var_14h_55]
+0x100067cc      6898320210     push str.FN_bReadGeneralParams          ; 0x10023298 ; "FN_bReadGeneralParams"
+0x100067d1      e8fa9a0000     call fcn.100102d0
+0x100067d6      e9cf000000     jmp 0x100068aa
+;-- case 49:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100067db      8b4c2414       mov ecx, dword [var_14h_56]
+0x100067df      6878320210     push str.FN_bReadHexFile                ; 0x10023278 ; "FN_bReadHexFile"
+0x100067e4      e8e79a0000     call fcn.100102d0
+0x100067e9      e9bc000000     jmp 0x100068aa
+;-- case 50:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x100067ee      8b4c2414       mov ecx, dword [var_14h_57]
+0x100067f2      6844320210     push str.FN_bReadPersonalityFiles       ; 0x10023244 ; "FN_bReadPersonalityFiles"
+0x100067f7      e8d49a0000     call fcn.100102d0
+0x100067fc      e9a9000000     jmp 0x100068aa
+;-- case 51:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006801      8b4c2414       mov ecx, dword [var_14h_58]
+0x10006805      6818320210     push str.FN_bReadPicEEPromByte          ; 0x10023218 ; "FN_bReadPicEEPromByte"
+0x1000680a      e8c19a0000     call fcn.100102d0
+0x1000680f      e996000000     jmp 0x100068aa
+;-- case 52:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006814      8b4c2414       mov ecx, dword [var_14h_59]
+0x10006818      68e4310210     push str.FN_ReleasePressureRollers      ; 0x100231e4 ; "FN_ReleasePressureRollers"
+0x1000681d      e8ae9a0000     call fcn.100102d0
+0x10006822      e983000000     jmp 0x100068aa
+;-- case 53:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006827      8b4c2414       mov ecx, dword [var_14h_60]
+0x1000682b      68b4310210     push str.FN_bSendClientCallBack         ; 0x100231b4 ; "FN_bSendClientCallBack"
+0x10006830      e89b9a0000     call fcn.100102d0
+0x10006835      eb73           jmp 0x100068aa
+;-- case 54:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006837      8b4c2414       mov ecx, dword [var_14h_61]
+0x1000683b      687c310210     push str.FN_bSetHeartBeatTimeOut335     ; 0x1002317c ; "FN_bSetHeartBeatTimeOut335"
+0x10006840      e88b9a0000     call fcn.100102d0
+0x10006845      eb63           jmp 0x100068aa
+;-- case 55:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006847      8b4c2414       mov ecx, dword [var_14h_62]
+0x1000684b      6858310210     push str.FN_SetPersonality              ; 0x10023158 ; "FN_SetPersonality"
+0x10006850      e87b9a0000     call fcn.100102d0
+0x10006855      eb53           jmp 0x100068aa
+;-- case 56:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006857      8b4c2414       mov ecx, dword [var_14h_63]
+0x1000685b      6830310210     push str.FN_bSetScannerModel            ; 0x10023130 ; "FN_bSetScannerModel"
+0x10006860      e86b9a0000     call fcn.100102d0
+0x10006865      eb43           jmp 0x100068aa
+;-- case 57:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006867      8b4c2414       mov ecx, dword [var_14h_64]
+0x1000686b      6804310210     push str.FN_bVerifyPersonality          ; 0x10023104 ; "FN_bVerifyPersonality"
+0x10006870      e85b9a0000     call fcn.100102d0
+0x10006875      eb33           jmp 0x100068aa
+;-- case 58...59:                                                      ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006877      8b4c2414       mov ecx, dword [var_14h_65]
+0x1000687b      68dc300210     push str.FN_bVerifyPicLarge             ; 0x100230dc ; "FN_bVerifyPicLarge"
+0x10006880      e84b9a0000     call fcn.100102d0
+0x10006885      eb23           jmp 0x100068aa
+;-- case 60:                                                           ; from 0x1000634d
+; CODE XREF from fcn.10006270 @ 0x1000634d(x)
+0x10006887      8b4c2414       mov ecx, dword [var_14h_66]
+0x1000688b      68b0300210     push str.FN_bWritePersonality           ; 0x100230b0 ; "FN_bWritePersonality"
+0x10006890      e83b9a0000     call fcn.100102d0
+0x10006895      eb13           jmp 0x100068aa
+;-- default:                                                           ; from 0x1000634d
+; CODE XREFS from fcn.10006270 @ 0x10006347(x), 0x1000634d(x)
+0x10006897      8b4c2414       mov ecx, dword [arg_14h_2]
+0x1000689b      50             push eax
+0x1000689c      68bc3c0210     push 0x10023cbc
+0x100068a1      51             push ecx
+0x100068a2      e8099d0000     call fcn.100105b0
+0x100068a7      83c40c         add esp, 0xc
+; XREFS(72)
+0x100068aa      8b44240c       mov eax, dword [arg_ch]
+0x100068ae      83f864         cmp eax, 0x64                           ; 'd' ; 100
+0x100068b1      0f8f18010000   jg 0x100069cf
+0x100068b7      0f8403010000   je 0x100069c0
+0x100068bd      8d48ff         lea ecx, [eax - 1]
+0x100068c0      83f90f         cmp ecx, 0xf                            ; 15
+0x100068c3      0f870e060000   ja case.0x10006d95.1008
+;-- switch:
+0x100068c9      ff248d3870..   jmp dword [ecx*4 + 0x10007038]          ; switch table (16 cases) at 0x10007038
+;-- case 1:                                                            ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x100068d0      8b4c2418       mov ecx, dword [arg_18h]
+0x100068d4      6874300210     push str.EC_InvalidPtrToClientCallback  ; 0x10023074 ; "EC_InvalidPtrToClientCallback"
+0x100068d9      e8f2990000     call fcn.100102d0
+0x100068de      c3             ret
+;-- case 2:                                                            ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x100068df      8b4c2418       mov ecx, dword [arg_18h]
+0x100068e3      6848300210     push str.EC_WorkerThreadExists          ; 0x10023048 ; "EC_WorkerThreadExists"
+0x100068e8      e8e3990000     call fcn.100102d0
+0x100068ed      c3             ret
+;-- case 3:                                                            ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x100068ee      8b4c2418       mov ecx, dword [arg_18h]
+0x100068f2      6824300210     push str.EC_QueryInterface              ; 0x10023024 ; "EC_QueryInterface"
+0x100068f7      e8d4990000     call fcn.100102d0
+0x100068fc      c3             ret
+;-- case 4:                                                            ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x100068fd      8b4c2418       mov ecx, dword [arg_18h]
+0x10006901      68d02f0210     push 0x10022fd0
+0x10006906      e8c5990000     call fcn.100102d0
+0x1000690b      c3             ret
+;-- case 5:                                                            ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x1000690c      8b4c2418       mov ecx, dword [arg_18h]
+0x10006910      68942f0210     push str.EC_UnableToCreateWorkerThread  ; 0x10022f94 ; "EC_UnableToCreateWorkerThread"
+0x10006915      e8b6990000     call fcn.100102d0
+0x1000691a      c3             ret
+;-- case 6:                                                            ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x1000691b      8b4c2418       mov ecx, dword [arg_18h]
+0x1000691f      685c2f0210     push str.EC_WorkerThreadCoInitialize    ; 0x10022f5c ; "EC_WorkerThreadCoInitialize"
+0x10006924      e8a7990000     call fcn.100102d0
+0x10006929      c3             ret
+;-- case 7:                                                            ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x1000692a      8b4c2418       mov ecx, dword [arg_18h]
+0x1000692e      68002f0210     push str.EC_WorkerThreadCoGetInterfaceAndReleaseStream ; 0x10022f00 ; "EC_WorkerThreadCoGetInterfaceAndReleaseStream"
+0x10006933      e898990000     call fcn.100102d0
+0x10006938      c3             ret
+;-- case 8:                                                            ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x10006939      8b4c2418       mov ecx, dword [arg_18h]
+0x1000693d      68c82e0210     push str.EC_WorkerThreadClientSignal    ; 0x10022ec8 ; "EC_WorkerThreadClientSignal"
+0x10006942      e889990000     call fcn.100102d0
+0x10006947      c3             ret
+;-- case 9:                                                            ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x10006948      8b4c2418       mov ecx, dword [arg_18h]
+0x1000694c      68902e0210     push str.EC_WorkerThreadStartTimeout    ; 0x10022e90 ; "EC_WorkerThreadStartTimeout"
+0x10006951      e87a990000     call fcn.100102d0
+0x10006956      c3             ret
+;-- case 10:                                                           ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x10006957      8b4c2418       mov ecx, dword [arg_18h]
+0x1000695b      68702e0210     push str.EC_InvalidIndex                ; 0x10022e70 ; "EC_InvalidIndex"
+0x10006960      e86b990000     call fcn.100102d0
+0x10006965      c3             ret
+;-- case 11:                                                           ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x10006966      8b4c2418       mov ecx, dword [arg_18h]
+0x1000696a      683c2e0210     push 0x10022e3c
+0x1000696f      e85c990000     call fcn.100102d0
+0x10006974      c3             ret
+;-- case 12:                                                           ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x10006975      8b4c2418       mov ecx, dword [arg_18h]
+0x10006979      68142e0210     push str.EC_InvalidParameter            ; 0x10022e14 ; "EC_InvalidParameter"
+0x1000697e      e84d990000     call fcn.100102d0
+0x10006983      c3             ret
+;-- case 13:                                                           ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x10006984      8b4c2418       mov ecx, dword [arg_18h]
+0x10006988      68e02d0210     push str.EC_CBAdviseAlreadyCalled       ; 0x10022de0 ; "EC_CBAdviseAlreadyCalled"
+0x1000698d      e83e990000     call fcn.100102d0
+0x10006992      c3             ret
+;-- case 14:                                                           ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x10006993      8b4c2418       mov ecx, dword [arg_18h]
+0x10006997      68b42d0210     push str.EC_CBAdviseNotCalled           ; 0x10022db4 ; "EC_CBAdviseNotCalled"
+0x1000699c      e82f990000     call fcn.100102d0
+0x100069a1      c3             ret
+;-- case 15:                                                           ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x100069a2      8b4c2418       mov ecx, dword [arg_18h]
+0x100069a6      68702d0210     push str.EC_InitializeScannerAlreadyCalled ; 0x10022d70 ; "EC_InitializeScannerAlreadyCalled"
+0x100069ab      e820990000     call fcn.100102d0
+0x100069b0      c3             ret
+;-- case 16:                                                           ; from 0x100068c9
+; CODE XREF from fcn.10006270 @ 0x100068c9(x)
+0x100069b1      8b4c2418       mov ecx, dword [arg_18h]
+0x100069b5      68482d0210     push 0x10022d48
+0x100069ba      e811990000     call fcn.100102d0
+0x100069bf      c3             ret
+; CODE XREF from fcn.10006270 @ 0x100068b7(x)
+0x100069c0      8b4c2418       mov ecx, dword [arg_18h]
+0x100069c4      680c2d0210     push str.EC_CreateDirectoryInvalidForm  ; 0x10022d0c ; "EC_CreateDirectoryInvalidForm"
+0x100069c9      e802990000     call fcn.100102d0
+0x100069ce      c3             ret
+; CODE XREF from fcn.10006270 @ 0x100068b1(x)
+0x100069cf      3de8030000     cmp eax, 0x3e8                          ; 1000
+0x100069d4      0f8fac030000   jg 0x10006d86
+0x100069da      0f8497030000   je 0x10006d77
+0x100069e0      8d489b         lea ecx, [eax - 0x65]
+0x100069e3      83f93e         cmp ecx, 0x3e                           ; '>' ; 62
+0x100069e6      0f87eb040000   ja case.0x10006d95.1008
+;-- switch:
+0x100069ec      ff248d7870..   jmp dword [ecx*4 + 0x10007078]          ; switch table (63 cases) at 0x10007078
+;-- case 101:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x100069f3      8b4c2418       mov ecx, dword [arg_18h]
+0x100069f7      68e82c0210     push str.EC_EEPromAddress               ; 0x10022ce8 ; "EC_EEPromAddress"
+0x100069fc      e8cf980000     call fcn.100102d0
+0x10006a01      c3             ret
+;-- case 102:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a02      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a06      68c02c0210     push str.EC_EEPromCorrupted             ; 0x10022cc0 ; "EC_EEPromCorrupted"
+0x10006a0b      e8c0980000     call fcn.100102d0
+0x10006a10      c3             ret
+;-- case 103:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a11      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a15      68a02c0210     push str.EC_EEPromLength                ; 0x10022ca0 ; "EC_EEPromLength"
+0x10006a1a      e8b1980000     call fcn.100102d0
+0x10006a1f      c3             ret
+;-- case 104:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a20      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a24      68702c0210     push str.EC_EEPromMemoryAddress         ; 0x10022c70 ; "EC_EEPromMemoryAddress"
+0x10006a29      e8a2980000     call fcn.100102d0
+0x10006a2e      c3             ret
+;-- case 107:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a2f      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a33      684c2c0210     push 0x10022c4c
+0x10006a38      e893980000     call fcn.100102d0
+0x10006a3d      c3             ret
+;-- case 108:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a3e      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a42      682c2c0210     push str.EC_FileNotFound                ; 0x10022c2c ; "EC_FileNotFound"
+0x10006a47      e884980000     call fcn.100102d0
+0x10006a4c      c3             ret
+;-- case 110:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a4d      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a51      68fc2b0210     push str.EC_FirmwareVerification        ; 0x10022bfc ; "EC_FirmwareVerification"
+0x10006a56      e875980000     call fcn.100102d0
+0x10006a5b      c3             ret
+;-- case 111:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a5c      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a60      68d02b0210     push 0x10022bd0
+0x10006a65      e866980000     call fcn.100102d0
+0x10006a6a      c3             ret
+;-- case 112:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a6b      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a6f      68b42b0210     push str.EC_MemoryNew                   ; 0x10022bb4 ; "EC_MemoryNew"
+0x10006a74      e857980000     call fcn.100102d0
+0x10006a79      c3             ret
+;-- case 113:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a7a      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a7e      68882b0210     push str.EC_MotorBoardNotFound          ; 0x10022b88 ; "EC_MotorBoardNotFound"
+0x10006a83      e848980000     call fcn.100102d0
+0x10006a88      c3             ret
+;-- case 114:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a89      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a8d      68682b0210     push str.EC_NoBootLoader                ; 0x10022b68 ; "EC_NoBootLoader"
+0x10006a92      e839980000     call fcn.100102d0
+0x10006a97      c3             ret
+;-- case 115:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006a98      8b4c2418       mov ecx, dword [arg_18h]
+0x10006a9c      68482b0210     push str.EC_ParsingError                ; 0x10022b48 ; "EC_ParsingError"
+0x10006aa1      e82a980000     call fcn.100102d0
+0x10006aa6      c3             ret
+;-- case 116:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006aa7      8b4c2418       mov ecx, dword [arg_18h]
+0x10006aab      682c2b0210     push str.EC_PpbFailure                  ; 0x10022b2c ; "EC_PpbFailure"
+0x10006ab0      e81b980000     call fcn.100102d0
+0x10006ab5      c3             ret
+;-- case 117:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006ab6      8b4c2418       mov ecx, dword [arg_18h]
+0x10006aba      68082b0210     push str.EC_PpbFailureTest              ; 0x10022b08 ; "EC_PpbFailureTest"
+0x10006abf      e80c980000     call fcn.100102d0
+0x10006ac4      c3             ret
+;-- case 118:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006ac5      8b4c2418       mov ecx, dword [arg_18h]
+0x10006ac9      68e82a0210     push str.EC_ReadRegistry                ; 0x10022ae8 ; "EC_ReadRegistry"
+0x10006ace      e8fd970000     call fcn.100102d0
+0x10006ad3      c3             ret
+;-- case 119:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006ad4      8b4c2418       mov ecx, dword [arg_18h]
+0x10006ad8      68c02a0210     push str.EC_ScannerNotFound             ; 0x10022ac0 ; "EC_ScannerNotFound"
+0x10006add      e8ee970000     call fcn.100102d0
+0x10006ae2      c3             ret
+;-- case 120:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006ae3      8b4c2418       mov ecx, dword [arg_18h]
+0x10006ae7      68882a0210     push str.EC_SelfTestFailedCcdStepper    ; 0x10022a88 ; "EC_SelfTestFailedCcdStepper"
+0x10006aec      e8df970000     call fcn.100102d0
+0x10006af1      c3             ret
+;-- case 121:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006af2      8b4c2418       mov ecx, dword [arg_18h]
+0x10006af6      68502a0210     push str.EC_SelfTestFailedFilmDrive     ; 0x10022a50 ; "EC_SelfTestFailedFilmDrive"
+0x10006afb      e8d0970000     call fcn.100102d0
+0x10006b00      c3             ret
+;-- case 122:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b01      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b05      68142a0210     push str.EC_SelfTestFailedLensStepper   ; 0x10022a14 ; "EC_SelfTestFailedLensStepper"
+0x10006b0a      e8c1970000     call fcn.100102d0
+0x10006b0f      c3             ret
+;-- case 123:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b10      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b14      68f4290210     push str.EC_StartUpError                ; 0x100229f4 ; "EC_StartUpError"
+0x10006b19      e8b2970000     call fcn.100102d0
+0x10006b1e      c3             ret
+;-- case 124:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b1f      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b23      68c4290210     push str.EC_StepperAlreadyMoving        ; 0x100229c4 ; "EC_StepperAlreadyMoving"
+0x10006b28      e8a3970000     call fcn.100102d0
+0x10006b2d      c3             ret
+;-- case 125:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b2e      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b32      6898290210     push str.EC_StepperDidNotStop           ; 0x10022998 ; "EC_StepperDidNotStop"
+0x10006b37      e894970000     call fcn.100102d0
+0x10006b3c      c3             ret
+;-- case 126:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b3d      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b41      6870290210     push str.EC_StepperPosition             ; 0x10022970 ; "EC_StepperPosition"
+0x10006b46      e885970000     call fcn.100102d0
+0x10006b4b      c3             ret
+;-- case 127:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b4c      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b50      6858290210     push str.EC_TimeOut                     ; 0x10022958 ; "EC_TimeOut"
+0x10006b55      e876970000     call fcn.100102d0
+0x10006b5a      c3             ret
+;-- case 128:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b5b      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b5f      683c290210     push str.EC_UuidCreate                  ; 0x1002293c ; "EC_UuidCreate"
+0x10006b64      e867970000     call fcn.100102d0
+0x10006b69      c3             ret
+;-- case 129:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b6a      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b6e      681c290210     push str.EC_VerifyFailed                ; 0x1002291c ; "EC_VerifyFailed"
+0x10006b73      e858970000     call fcn.100102d0
+0x10006b78      c3             ret
+;-- case 130:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b79      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b7d      68f8280210     push str.EC_WrongByteCount              ; 0x100228f8 ; "EC_WrongByteCount"
+0x10006b82      e849970000     call fcn.100102d0
+0x10006b87      c3             ret
+;-- case 131:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b88      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b8c      68d8280210     push str.EC_WIN_CancelIo                ; 0x100228d8 ; "EC_WIN_CancelIo"
+0x10006b91      e83a970000     call fcn.100102d0
+0x10006b96      c3             ret
+;-- case 132:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006b97      8b4c2418       mov ecx, dword [arg_18h]
+0x10006b9b      68a8280210     push str.EC_WIN_CreateDirectory         ; 0x100228a8 ; "EC_WIN_CreateDirectory"
+0x10006ba0      e82b970000     call fcn.100102d0
+0x10006ba5      c3             ret
+;-- case 133:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006ba6      8b4c2418       mov ecx, dword [arg_18h]
+0x10006baa      6880280210     push str.EC_WIN_CreateEvent             ; 0x10022880 ; "EC_WIN_CreateEvent"
+0x10006baf      e81c970000     call fcn.100102d0
+0x10006bb4      c3             ret
+;-- case 134:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006bb5      8b4c2418       mov ecx, dword [arg_18h]
+0x10006bb9      684c280210     push 0x1002284c
+0x10006bbe      e80d970000     call fcn.100102d0
+0x10006bc3      c3             ret
+;-- case 135:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006bc4      8b4c2418       mov ecx, dword [arg_18h]
+0x10006bc8      681c280210     push str.EC_WIN_DeviceIoControl         ; 0x1002281c ; "EC_WIN_DeviceIoControl"
+0x10006bcd      e8fe960000     call fcn.100102d0
+0x10006bd2      c3             ret
+;-- case 136:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006bd3      8b4c2418       mov ecx, dword [arg_18h]
+0x10006bd7      68f8270210     push str.EC_WIN_FileClose               ; 0x100227f8 ; "EC_WIN_FileClose"
+0x10006bdc      e8ef960000     call fcn.100102d0
+0x10006be1      c3             ret
+;-- case 137:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006be2      8b4c2418       mov ecx, dword [arg_18h]
+0x10006be6      68d8270210     push str.EC_WIN_FileOpen                ; 0x100227d8 ; "EC_WIN_FileOpen"
+0x10006beb      e8e0960000     call fcn.100102d0
+0x10006bf0      c3             ret
+;-- case 138:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006bf1      8b4c2418       mov ecx, dword [arg_18h]
+0x10006bf5      68b8270210     push str.EC_WIN_FileRead                ; 0x100227b8 ; "EC_WIN_FileRead"
+0x10006bfa      e8d1960000     call fcn.100102d0
+0x10006bff      c3             ret
+;-- case 139:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c00      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c04      688c270210     push str.EC_WIN_FileSetPointer          ; 0x1002278c ; "EC_WIN_FileSetPointer"
+0x10006c09      e8c2960000     call fcn.100102d0
+0x10006c0e      c3             ret
+;-- case 140:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c0f      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c13      6854270210     push str.EC_WIN_FileTimeToSystemTime    ; 0x10022754 ; "EC_WIN_FileTimeToSystemTime"
+0x10006c18      e8b3960000     call fcn.100102d0
+0x10006c1d      c3             ret
+;-- case 141:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c1e      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c22      6830270210     push 0x10022730
+0x10006c27      e8a4960000     call fcn.100102d0
+0x10006c2c      c3             ret
+;-- case 142:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c2d      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c31      6804270210     push 0x10022704
+0x10006c36      e895960000     call fcn.100102d0
+0x10006c3b      c3             ret
+;-- case 143:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c3c      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c40      68dc260210     push str.EC_WIN_FreeLibrary             ; 0x100226dc ; "EC_WIN_FreeLibrary"
+0x10006c45      e886960000     call fcn.100102d0
+0x10006c4a      c3             ret
+;-- case 144:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c4b      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c4f      68ac260210     push str.EC_WIN_GetDiskFreeSpace        ; 0x100226ac ; "EC_WIN_GetDiskFreeSpace"
+0x10006c54      e877960000     call fcn.100102d0
+0x10006c59      c3             ret
+;-- case 145:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c5a      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c5e      6878260210     push str.EC_WIN_GetDiskFreeSpaceEx      ; 0x10022678 ; "EC_WIN_GetDiskFreeSpaceEx"
+0x10006c63      e868960000     call fcn.100102d0
+0x10006c68      c3             ret
+;-- case 146:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c69      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c6d      6850260210     push str.EC_WIN_GetFileSize             ; 0x10022650 ; "EC_WIN_GetFileSize"
+0x10006c72      e859960000     call fcn.100102d0
+0x10006c77      c3             ret
+;-- case 147:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c78      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c7c      6818260210     push str.EC_WIN_GetOverlappedResult     ; 0x10022618 ; "EC_WIN_GetOverlappedResult"
+0x10006c81      e84a960000     call fcn.100102d0
+0x10006c86      c3             ret
+;-- case 148:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c87      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c8b      68d8250210     push str.EC_WIN_GetProcessWorkingSetSize ; 0x100225d8 ; "EC_WIN_GetProcessWorkingSetSize"
+0x10006c90      e83b960000     call fcn.100102d0
+0x10006c95      c3             ret
+;-- case 149:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006c96      8b4c2418       mov ecx, dword [arg_18h]
+0x10006c9a      68ac250210     push str.EC_WIN_LoadLibrary             ; 0x100225ac ; "EC_WIN_LoadLibrary"
+0x10006c9f      e82c960000     call fcn.100102d0
+0x10006ca4      c3             ret
+;-- case 150:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006ca5      8b4c2418       mov ecx, dword [arg_18h]
+0x10006ca9      6880250210     push 0x10022580
+0x10006cae      e81d960000     call fcn.100102d0
+0x10006cb3      c3             ret
+;-- case 151:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006cb4      8b4c2418       mov ecx, dword [arg_18h]
+0x10006cb8      685c250210     push str.EC_WIN_OpenEvent               ; 0x1002255c ; "EC_WIN_OpenEvent"
+0x10006cbd      e80e960000     call fcn.100102d0
+0x10006cc2      c3             ret
+;-- case 152:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006cc3      8b4c2418       mov ecx, dword [arg_18h]
+0x10006cc7      682c250210     push str.EC_WIN_OpenFileMapping         ; 0x1002252c ; "EC_WIN_OpenFileMapping"
+0x10006ccc      e8ff950000     call fcn.100102d0
+0x10006cd1      c3             ret
+;-- case 153:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006cd2      8b4c2418       mov ecx, dword [arg_18h]
+0x10006cd6      6808250210     push str.EC_WIN_ResetEvent              ; 0x10022508 ; "EC_WIN_ResetEvent"
+0x10006cdb      e8f0950000     call fcn.100102d0
+0x10006ce0      c3             ret
+;-- case 154:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006ce1      8b4c2418       mov ecx, dword [arg_18h]
+0x10006ce5      68e0240210     push str.EC_WIN_SetEndOfFile            ; 0x100224e0 ; "EC_WIN_SetEndOfFile"
+0x10006cea      e8e1950000     call fcn.100102d0
+0x10006cef      c3             ret
+;-- case 155:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006cf0      8b4c2418       mov ecx, dword [arg_18h]
+0x10006cf4      68c0240210     push str.EC_WIN_SetEvent                ; 0x100224c0 ; "EC_WIN_SetEvent"
+0x10006cf9      e8d2950000     call fcn.100102d0
+0x10006cfe      c3             ret
+;-- case 156:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006cff      8b4c2418       mov ecx, dword [arg_18h]
+0x10006d03      6890240210     push str.EC_WIN_SetFilePointerEx        ; 0x10022490 ; "EC_WIN_SetFilePointerEx"
+0x10006d08      e8c3950000     call fcn.100102d0
+0x10006d0d      c3             ret
+;-- case 157:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006d0e      8b4c2418       mov ecx, dword [arg_18h]
+0x10006d12      6850240210     push str.EC_WIN_SetProcessWorkingSetSize ; 0x10022450 ; "EC_WIN_SetProcessWorkingSetSize"
+0x10006d17      e8b4950000     call fcn.100102d0
+0x10006d1c      c3             ret
+;-- case 158:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006d1d      8b4c2418       mov ecx, dword [arg_18h]
+0x10006d21      6820240210     push str.EC_WIN_UnmapViewOfFile         ; 0x10022420 ; "EC_WIN_UnmapViewOfFile"
+0x10006d26      e8a5950000     call fcn.100102d0
+0x10006d2b      c3             ret
+;-- case 159:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006d2c      8b4c2418       mov ecx, dword [arg_18h]
+0x10006d30      68f8230210     push str.EC_WIN_VirtualAlloc            ; 0x100223f8 ; "EC_WIN_VirtualAlloc"
+0x10006d35      e896950000     call fcn.100102d0
+0x10006d3a      c3             ret
+;-- case 160:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006d3b      8b4c2418       mov ecx, dword [arg_18h]
+0x10006d3f      68d0230210     push str.EC_WIN_VirtualFree             ; 0x100223d0 ; "EC_WIN_VirtualFree"
+0x10006d44      e887950000     call fcn.100102d0
+0x10006d49      c3             ret
+;-- case 161:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006d4a      8b4c2418       mov ecx, dword [arg_18h]
+0x10006d4e      68a8230210     push str.EC_WIN_VirtualLock             ; 0x100223a8 ; "EC_WIN_VirtualLock"
+0x10006d53      e878950000     call fcn.100102d0
+0x10006d58      c3             ret
+;-- case 162:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006d59      8b4c2418       mov ecx, dword [arg_18h]
+0x10006d5d      687c230210     push str.EC_WIN_VirtualUnlock           ; 0x1002237c ; "EC_WIN_VirtualUnlock"
+0x10006d62      e869950000     call fcn.100102d0
+0x10006d67      c3             ret
+;-- case 163:                                                          ; from 0x100069ec
+; CODE XREF from fcn.10006270 @ 0x100069ec(x)
+0x10006d68      8b4c2418       mov ecx, dword [arg_18h]
+0x10006d6c      6844230210     push str.EC_WIN_WaitForSingleObject     ; 0x10022344 ; "EC_WIN_WaitForSingleObject"
+0x10006d71      e85a950000     call fcn.100102d0
+0x10006d76      c3             ret
+; CODE XREF from fcn.10006270 @ 0x100069da(x)
+0x10006d77      8b4c2418       mov ecx, dword [arg_18h]
+0x10006d7b      6824230210     push str.EC_DRV_Unknown                 ; 0x10022324 ; "EC_DRV_Unknown"
+0x10006d80      e84b950000     call fcn.100102d0
+0x10006d85      c3             ret
+; CODE XREF from fcn.10006270 @ 0x100069d4(x)
+0x10006d86      8d8817fcffff   lea ecx, [eax - 0x3e9]
+0x10006d8c      83f915         cmp ecx, 0x15                           ; 21
+0x10006d8f      0f8742010000   ja case.0x10006d95.1008
+;-- switch:
+0x10006d95      ff248d7471..   jmp dword [ecx*4 + 0x10007174]          ; switch table (22 cases) at 0x10007174
+;-- case 1001:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006d9c      8b4c2418       mov ecx, dword [arg_18h]
+0x10006da0      68e0220210     push str.EC_DRV_CannotFindStartOfScanLine ; 0x100222e0 ; "EC_DRV_CannotFindStartOfScanLine"
+0x10006da5      e826950000     call fcn.100102d0
+0x10006daa      c3             ret
+;-- case 1002:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006dab      8b4c2418       mov ecx, dword [arg_18h]
+0x10006daf      68b0220210     push str.EC_DRV_RingTailOverflow        ; 0x100222b0 ; "EC_DRV_RingTailOverflow"
+0x10006db4      e817950000     call fcn.100102d0
+0x10006db9      c3             ret
+;-- case 1003:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006dba      8b4c2418       mov ecx, dword [arg_18h]
+0x10006dbe      6890220210     push str.EC_DRV_LostSync                ; 0x10022290 ; "EC_DRV_LostSync"
+0x10006dc3      e808950000     call fcn.100102d0
+0x10006dc8      c3             ret
+;-- case 1004:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006dc9      8b4c2418       mov ecx, dword [arg_18h]
+0x10006dcd      685c220210     push str.EC_DRV_InvalidPacketType       ; 0x1002225c ; "EC_DRV_InvalidPacketType"
+0x10006dd2      e8f9940000     call fcn.100102d0
+0x10006dd7      c3             ret
+;-- case 1005:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006dd8      8b4c2418       mov ecx, dword [arg_18h]
+0x10006ddc      6838220210     push str.EC_DRV_PacketBusy              ; 0x10022238 ; "EC_DRV_PacketBusy"
+0x10006de1      e8ea940000     call fcn.100102d0
+0x10006de6      c3             ret
+;-- case 1006:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006de7      8b4c2418       mov ecx, dword [arg_18h]
+0x10006deb      6810220210     push str.EC_DRV_FifoOverflow            ; 0x10022210 ; "EC_DRV_FifoOverflow"
+0x10006df0      e8db940000     call fcn.100102d0
+0x10006df5      c3             ret
+;-- case 1007:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006df6      8b4c2418       mov ecx, dword [arg_18h]
+0x10006dfa      68dc210210     push 0x100221dc
+0x10006dff      e8cc940000     call fcn.100102d0
+0x10006e04      c3             ret
+;-- case 1009:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e05      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e09      68b0210210     push 0x100221b0
+0x10006e0e      e8bd940000     call fcn.100102d0
+0x10006e13      c3             ret
+;-- case 1010:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e14      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e18      6888210210     push str.EC_DRV_PacketCmdErr            ; 0x10022188 ; "EC_DRV_PacketCmdErr"
+0x10006e1d      e8ae940000     call fcn.100102d0
+0x10006e22      c3             ret
+;-- case 1011:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e23      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e27      6850210210     push str.EC_DRV_PacketHostErrorNoAck    ; 0x10022150 ; "EC_DRV_PacketHostErrorNoAck"
+0x10006e2c      e89f940000     call fcn.100102d0
+0x10006e31      c3             ret
+;-- case 1012:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e32      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e36      6814210210     push 0x10022114
+0x10006e3b      e890940000     call fcn.100102d0
+0x10006e40      c3             ret
+;-- case 1013:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e41      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e45      68dc200210     push str.EC_DRV_PacketHostErrorCkSum    ; 0x100220dc ; "EC_DRV_PacketHostErrorCkSum"
+0x10006e4a      e881940000     call fcn.100102d0
+0x10006e4f      c3             ret
+;-- case 1014:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e50      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e54      6890200210     push 0x10022090
+0x10006e59      e872940000     call fcn.100102d0
+0x10006e5e      c3             ret
+;-- case 1015:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e5f      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e63      6840200210     push str.EC_DRV_PacketHostErrorEndPointTimeOut ; 0x10022040 ; "EC_DRV_PacketHostErrorEndPointTimeOut"
+0x10006e68      e863940000     call fcn.100102d0
+0x10006e6d      c3             ret
+;-- case 1016:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e6e      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e72      68f01f0210     push str.EC_DRV_PacketHostErrorEndPointLength ; 0x10021ff0 ; "EC_DRV_PacketHostErrorEndPointLength"
+0x10006e77      e854940000     call fcn.100102d0
+0x10006e7c      c3             ret
+;-- case 1017:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e7d      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e81      68b41f0210     push str.EC_DRV_PacketHostErrorAlgo     ; 0x10021fb4 ; "EC_DRV_PacketHostErrorAlgo"
+0x10006e86      e845940000     call fcn.100102d0
+0x10006e8b      c3             ret
+;-- case 1018:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e8c      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e90      68801f0210     push str.EC_DRV_PacketHostErrorBus      ; 0x10021f80 ; "EC_DRV_PacketHostErrorBus"
+0x10006e95      e836940000     call fcn.100102d0
+0x10006e9a      c3             ret
+;-- case 1019:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006e9b      8b4c2418       mov ecx, dword [arg_18h]
+0x10006e9f      68401f0210     push str.EC_DRV_PacketHostErrorUndefined ; 0x10021f40 ; "EC_DRV_PacketHostErrorUndefined"
+0x10006ea4      e827940000     call fcn.100102d0
+0x10006ea9      c3             ret
+;-- case 1020:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006eaa      8b4c2418       mov ecx, dword [arg_18h]
+0x10006eae      68001f0210     push str.EC_DRV_PacketReadWriteMismatch ; 0x10021f00 ; "EC_DRV_PacketReadWriteMismatch"
+0x10006eb3      e818940000     call fcn.100102d0
+0x10006eb8      c3             ret
+;-- case 1021:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006eb9      8b4c2418       mov ecx, dword [arg_18h]
+0x10006ebd      68d01e0210     push str.EC_DRV_InfoBufferString        ; 0x10021ed0 ; "EC_DRV_InfoBufferString"
+0x10006ec2      e809940000     call fcn.100102d0
+0x10006ec7      c3             ret
+;-- case 1022:                                                         ; from 0x10006d95
+; CODE XREF from fcn.10006270 @ 0x10006d95(x)
+0x10006ec8      8b4c2418       mov ecx, dword [arg_18h]
+0x10006ecc      689c1e0210     push str.EC_DRV_TransferInProgress      ; 0x10021e9c ; "EC_DRV_TransferInProgress"
+0x10006ed1      e8fa930000     call fcn.100102d0
+0x10006ed6      c3             ret
+;-- default:                                                           ; from 0x10006d95
+;-- case 1008...0:                                                     ; from 0x100069ec
+;-- case 105:                                                          ; from 0x100069ec
+;-- case 106:                                                          ; from 0x100069ec
+;-- default:                                                           ; from 0x100068c9
+; XREFS: CODE 0x100068c3  CODE 0x100068c9  CODE 0x100069e6  
+; XREFS: CODE 0x100069ec  CODE 0x10006d8f  CODE 0x10006d95  
+0x10006ed7      8b542418       mov edx, dword [arg_18h]
+0x10006edb      50             push eax
+0x10006edc      68bc3c0210     push 0x10023cbc
+0x10006ee1      52             push edx
+0x10006ee2      e8c9960000     call fcn.100105b0
+0x10006ee7      83c40c         add esp, 0xc
+0x10006eea      c3             ret

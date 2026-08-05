@@ -1,0 +1,31 @@
+┌ 105: fcn.1000fd10 ();
+│ afv: vars(4:sp[0x4..0x10])
+│           0x1000fd10      6aff           push 0xffffffffffffffff
+│           0x1000fd12      68b8970510     push 0x100597b8
+│           0x1000fd17      64a100000000   mov eax, dword fs:[0]
+│           0x1000fd1d      50             push eax
+│           0x1000fd1e      6489250000..   mov dword fs:[0], esp
+│           0x1000fd25      51             push ecx
+│           0x1000fd26      56             push esi
+│           0x1000fd27      8bf1           mov esi, ecx
+│           0x1000fd29      89742404       mov dword [var_4h], esi
+│           0x1000fd2d      c70694cf0510   mov dword [esi], 0x1005cf94 ; [0x1005cf94:4]=0x10011910
+│           0x1000fd33      8b4e20         mov ecx, dword [esi + 0x20]
+│           0x1000fd36      85c9           test ecx, ecx
+│           0x1000fd38      c744241000..   mov dword [var_10h], 0
+│       ┌─< 0x1000fd40      7406           je 0x1000fd48
+│       │   0x1000fd42      8b01           mov eax, dword [ecx]
+│       │   0x1000fd44      6a01           push 1                      ; 1
+│       │   0x1000fd46      ff10           call dword [eax]
+│       └─> 0x1000fd48      c706ccc40510   mov dword [esi], 0x1005c4cc ; [0x1005c4cc:4]=0x10010ca0
+│           0x1000fd4e      8b4e10         mov ecx, dword [esi + 0x10]
+│           0x1000fd51      51             push ecx
+│           0x1000fd52      c7442414ff..   mov dword [var_10h], 0xffffffff ; [0xffffffff:4]=-1 ; -1
+│           0x1000fd5a      c7460cc4b2..   mov dword [esi + 0xc], 0x1005b2c4 ; [0x1005b2c4:4]=0x10001020
+│           0x1000fd61      e8e26f0300     call fcn.10046d48
+│           0x1000fd66      8b4c240c       mov ecx, dword [var_4h]
+│           0x1000fd6a      83c404         add esp, 4
+│           0x1000fd6d      5e             pop esi
+│           0x1000fd6e      64890d0000..   mov dword fs:[0], ecx
+│           0x1000fd75      83c410         add esp, 0x10
+└           0x1000fd78      c3             ret

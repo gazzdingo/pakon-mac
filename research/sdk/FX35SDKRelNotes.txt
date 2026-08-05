@@ -1,0 +1,647 @@
+F-X35 SDK 3.1 (Build 0.28) 5/17/2007
+
+Contents:
+1. Changes since F-X35 SDK 3.0 (build 4.27)
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes in this Release
+FX35
+CR 775 - Add new method to get film mask in raw color space (14 bit linear transmittance).  Only if you are a client saving raw images and doing your own color negative image processing path would this be helpful.  If you are saving images with the SAV_UseColorCorrection then this would not be helpful.
+BG 777 - TLXClientDemo not always showing TLX error information.  Clarified TLXClientDemo error message dialogs so it is clear what the TLX error is and what the underlying scanner log entry is.
+CR 780 - Replace "in,out" parameters with "out" parameters
+CR 789 - Add the scanner user manuals to the FX35 redistributable installer.  The Scanner User Manuals can be found in the” Program Files\Pakon” directory.
+CR 790 - Add check to FX35 intitialization to see if another instance of FX35 is already loaded
+CR        - Add firmware loader utility for doing safe firmware updates in the field.  Go to “Start->Program Files->Pakon” and click the Firmware Loader shortcut to run the firmware loader program.  The firmware loadeer program will upload any new firmware that resides in the firmware directory.
+F135
+CR 779 - Enable BnW C41 scanning on the F-135 and F-135 Plus scanners
+F235
+F335
+PTS
+BG 772 - PTS reports Invalid EEPROM due to color positive matrix range check (Max matrix diagnol value changed from .45 to .65)
+CR 773 - DX Pots Adjust button should have a warning message
+BG 781 - PTS flags min and avg light values as error (highlight as red) too often on F135 (changed avg threshold from 90% to 50% of max and changed min threshold from 50% to 30% of max)
+CR 782 – Add temperature readings to PTS
+PakonIma
+
+2. Installation:
+Remove any Pakon software (other than F-X35 SDK or FX35 redistributable) currently installed on the Target Machine. Install the F-X35 SDK (Developer’s Machine) or F-X35 redistributable (customer’s machine).
+
+There is no need to recompile the client when upgrading an existing installation of the FX35 SDK.  However, in order to use the new method for getting Film Mask in Tmax or to use the new out BSTR methods, the client will need to be modified, re-compiled and re-distributed.
+
+3. Known Problems:
+
+4. Version List
+Module
+Version
+TLX.dll
+3.1.0.28
+TLXClientDemo.exe
+3.1.0.28
+TLA.dll
+3.1.0.28
+TLB.dll
+3.1.0.28
+TLC.dll
+3.1.0.28
+PTS.exe
+3.1.0.28
+PakonIma.dll
+3.0.0.22
+
+F-X35 SDK 3.0 (Build 4.27) 1/24/2007
+
+Contents:
+1. Changes since F-X35 SDK 3.0 (build 2.25)
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes in this patch
+FX35
+F135
+Add initialization of a value used in creating low res scan line.  Without this initialization, it was possible for an exception to occur when the first frame started on scan line 0 and some memory had high values.  This was very rare.
+Always writing config light data to registry instead of only writing when corrections occur.  It was possible to connect a new serial number scanner which resets all the correction times, then shut down without doing corrections.  In this case the registry is updated with the new serial number but not the reset corrections times.  Now when you can you could be using LED current values from another sscanner.
+Making sure the EC_FilmInGuides is always sent.  Prior  to this change it was possible to do corrections with film in the gate and not get the EC_FilmInGuides error.
+F235
+F335
+Add initialization of a value used in creating low res scan line.  Without this initialization, it was possible for an exception to occur when the first frame started on scan line 0 and some memory had high values.  This was very rare.
+Always writing config light data to registry instead of only writing when corrections occur.  It was possible to connect a new serial number scanner which resets all the correction times, then shut down without doing corrections.  In this case the registry is updated with the new serial number but not the reset corrections times.  Now when you can you could be using LED current values from another sscanner.
+TLC error codes were not getting translated to TLX/FX35 error codes.  Therefore, you could get a lamp burn out error on an 335/LED scanner which makes no sense.  You could also get back error codes that were not defined in FX35 (they are specific to F335).
+PTS
+PakonIma
+
+2. Installation:
+To apply the patch:
+   1. Close any applications that may be using the FX35 software.
+   2. Copy all the 3.0.4.27 files into the "C:\Program Files\Pakon\FX35 Com Server" folder.
+
+3. Known Problems:
+
+4. Version List
+Module
+Version
+TLX.dll
+3.0.4.27
+TLXClientDemo.exe
+3.0.4.27
+TLA.dll
+3.0.4.27
+TLB.dll
+3.0.4.27
+TLC.dll
+3.0.4.27
+PTS.exe
+3.0.1.24
+PakonIma.dll
+3.0.0.22
+
+
+F-X35 SDK 3.0 (Build 2.25) 10/6/2006
+
+Contents:
+1. Changes since F-X35 SDK 3.0 (build 1.24)
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes in this release
+FX35
+F135
+Reduce IR light level from 60,000 to 40,000 to prevent lag issues seen with newer CCD chips.
+F235
+F335
+Reduce IR light level from 60,000 to 40,000 to prevent lag issues seen with newer CCD chips.
+PTS
+PakonIma
+
+2. Installation:
+Remove any Pakon software (other than F-X35 SDK or FX35 redistributable) currently installed on the Target Machine. Install the F-X35 SDK (Developer’s Machine) or F-X35 redistributable (customer’s machine).
+
+There is no need to recompile the client when upgrading an existing installation of the FX35 SDK 1.0 or 1.1.  However, in order to use the premium color path and receive the new progress callbacks for order anlaysis, the client will need to be modified, re-compiled and re-distributed.
+
+3. Known Problems:
+
+4. Version List
+Module
+Version
+TLX.dll
+3.0.1.24
+TLXClientDemo.exe
+3.0.0.24
+TLA.dll
+3.0.1.24
+TLB.dll
+3.0.2.25
+TLC.dll
+3.0.2.25
+PTS.exe
+3.0.1.24
+PakonIma.dll
+3.0.0.22
+
+F-X35 SDK 3.0 (Build 1.24) 09/14/2006
+
+Contents:
+1. Changes since F-X35 SDK 3.0 (build 0.22)
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes in this release
+FX35
+3.0 Build 0.22 introduced a new bug in Track test DX Pots adjustment as run by Calibration Wizard (CW).  This bug does affect the Track test as run by normal clients like PSI, TLXClientDemo, or other OEM clients.  This bug only affects Pakon’s Calibration Wizard client application.
+Added Initialize flag (INITIALIZE_CSharpClient)
+ for clients written in C# using Microsoft Visual Studio .NET.  Dot Net clients that do not use this version or do not set this flag in this version will likely experience small memory leaks and instability (crashing).  If this new flag is set, developers should ignore Paragraph 5.2 of the FX35 User Guide and see Tech Note 10.  
+There are NO similar known issues with clients written in C++ that follow the FX35 User Guide Paragraph 5.2 “BSTRINGS”.   These clients should not set this new flag and should continue to adhere to the FX35 User Guide Paragraph 5.2 “BSTRINGS” .
+Changed the way we find max no film during track test.  The way it was would sometimes cause the film eject to keep running and track test would never complete.
+F135
+F235
+F335
+PTS
+Prior to this release, PTS may have been unnecessarily flagging 335 four base motor speeds as bad.
+PTS is now setting the INITIALIZE_CSharpClient initialization flag when calling FX35’s InitializeScanner method.
+PakonIma
+
+2. Installation:
+Remove any Pakon software (other than F-X35 SDK or FX35 redistributable) currently installed on the Target Machine. Install the F-X35 SDK (Developer’s Machine) or F-X35 redistributable (customer’s machine).
+
+There is no need to recompile the client when upgrading an existing installation of the FX35 SDK 1.0 or 1.1.  However, in order to use the premium color path and receive the new progress callbacks for order anlaysis, the client will need to be modified, re-compiled and re-distributed.
+
+3. Known Problems:
+
+4. Version List
+Module
+Version
+TLX.dll
+3.0.1.24
+TLXClientDemo.exe
+3.0.0.24
+TLA.dll
+3.0.1.24
+TLB.dll
+3.0.1.24
+TLC.dll
+3.0.1.24
+PTS.exe
+3.0.1.24
+PakonIma.dll
+3.0.0.22
+
+F-X35 SDK 3.0 (Build 0.22) 08/24/2006
+
+Contents:
+1. Changes since F-X35 SDK 1.2 (build 0.17)
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes in this release
+FX35
+Meta data from Imported DSC image sources (method ImportFromFile) is now persisted to the FX35 exported exif images
+Added a new scan option for a premium color path (KPT).  To use the premium color path for Color Negative you must have the premium color path enabler installed.  If the premium color path enabler is not installed and the client sets SCAN_UsePremiumColorPath then the SCAN_UsePremiumColorPath will be ignored.
+The standard color path has been changed from KCDFS to a standard color path using Ansel 4.1.
+Better color balance, Faster save times, Lens falloff compensation, Automatic contrast adjustment for under exposed images, Less histogram stretching that caused noise in bright areas of the picture.
+Added new callbacks at the end of the scan for updating client on progress of order analysis step. The order analysis step occurs after the film drive motor stops and before the client gets the WTP_ProgressComplete.  To see these callbacks, the client must scan with the SCAN_UseOrderAnalysisCallbacks option set.
+New save interface added that includes new methods for adjusting pictures black and white effect and saturation adjustment
+Track test as run by Calibration Wizard (CW) is modified to better handle the latest lot of DX sensors.  Older versions of CW(and FX35 software) may not calibrate the new DX sensors very well (sensors may not detect film but will still read DX).
+
+F135
+Setting scanner type to F135 when detecting F135 motor addresses.  This ensures better default values used by CW when EEPROM is blank.  Before CW may have assumed F135P if that was what was in the registry.
+Move initial lens position back 700 steps so the zero limit switch on the 135 focus fixture can be moved forward 700 steps and thus prevent the lens from catching on the lens stand during calibration.  When upgrading a CW station from 2.4 to 3.0, the zero limit switch for the lens stepper must be moved forward 700 steps.
+Now calling bResetAllPicErrors before each scan.  Before, once the scanner reported an error during a scan, it would continue to be reported even though it was cleared unless the client called resetstatusled, ForceCorrections, tracktest, or changed some scan settings that caused a corrections to occur.
+
+F235
+F335
+PTS
+Added a few new advanced features.
+Read in both open gate and scan duty cycles. Used open gate for display and scan gate for power calculation.
+Set pass for DX reads to 60%.
+Four channel save on a 135/135Plus now works.  In 1.2 it did not.
+PakonIma
+
+2. Installation:
+Remove any Pakon software (other than F-X35 SDK or FX35 redistributable) currently installed on the Target Machine. Install the F-X35 SDK (Developer’s Machine) or F-X35 redistributable (customer’s machine).
+
+There is no need to recompile the client when upgrading an existing installation of the FX35 SDK 1.0 or 1.1.  However, in order to use the premium color path and receive the new progress callbacks for order anlaysis, the client will need to be modified, re-compiled and re-distributed.
+
+3. Known Problems:
+
+4. Version List
+Module
+Version
+TLX.dll
+3.0.0.22
+TLXClientDemo.exe
+3.0.0.22
+TLA.dll
+3.0.0.22
+TLB.dll
+3.0.0.22
+TLC.dll
+3.0.0.22
+PTS.exe
+3.0.0.22
+PakonIma.dll
+3.0.0.22
+
+F-X35 SDK 1.2 (Build 0.17 Release) 03/14/2006
+
+Contents:
+1. Changes since F-X35 SDK 1.1
+    FX35
+    F235
+    F335
+    F135
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes in this release
+FX35
+LoadImageFromBuffer source rectangle flipping is slightly optimized
+Bug 719 – EC_TimeOut at end of scan.  If low end computer is heavily loaded sometimes time out would occur while waiting for scan to complete. Changed time out from 3 to 6 seconds.
+F135
+Added support for F135Plus.
+F235
+Bug 719 – EC_TimeOut at end of scan.  If low end computer is heavily loaded sometimes time out would occur while waiting for scan to complete. Changed time out from 3 to 6 seconds.
+Bug 702 - CalibrationWizard interface was not setting gain and offset on CCD so PTS light test display showed light iwthout gain applied.  Because OEMs and PSI do not use CalibrationWizard interface, this bug only affected PTS.
+F335
+Bug 719 – EC_TimeOut at end of scan.  If low end computer is heavily loaded sometimes time out would occur while waiting for scan to complete. Changed time out from 3 to 6 seconds.
+PTS
+Better handling of the case of a USB board without a personality.
+Select first in combo box if USB board personality isn't written..
+Personality defaults to F235 FIFO when it isn't written, so make sure the model is a 235 before setting personality to FIFO.
+Decipher ErrorCode for TLX defined COM errors.
+Set LED red if there is an TLX error callback as well as a COM error.
+Implement cancel scan for four channel save.
+Set pass for minimum pixel value to 50% of max.
+Validate Ir light, but drop limit to 8000 instead of 32000 for RGB light.
+Set currently selected tab after test is completed.
+Drive Motor commands were not working on an F135.  They are now.
+Opened up motor speed tolerances for all scanners from +/- 5% to +/- 10% of nominal
+Opened up 3x10 matrix  tolerance for all scanners from +/- .15 to +/- .2  of identity(1). This is for the diagonal only.
+Added support of 135 Plus scanners such as EEPROM checking, firmware loading, motor commands, etc.
+Now showing hardware version 100 as a production version (some early runs of 135/335 were set to hw version 100).
+Fixed bug where if you tried a command that was not supported by the scanner, PTS would get in bad state then not work (always gave error even for supported commands)
+If you ran stepper test on a 135 you would get an error, which is OK, but if you then connected a 235 the stepper test would fail for that to.  You had to shutdown PTS and restart in order to do stepper test on a 235 after you do it on a 135.  Now you can go from 135 stepper test to 235 stepper test without closing and reopening PTS.
+
+PakonIma
+N/A.
+2. Installation:
+Remove any Pakon software (other than F-X35 SDK) currently installed on the Target Machine.
+Install the F-X35 SDK.
+
+There is no need to recompile the client when upgrading an existing installation of the FX35 SDK 1.0 or 1.1.
+
+3. Known Problems:
+Operator/Developer must ensure that only one scanner is power on and connected to the computer at one time.
+Only one instance of TLX may be running at one time.  Starting two applications that both load TLX can cause unstable/unexpected results.
+
+4. Version List
+Module
+Version
+TLX.dll
+1.2.0.17
+TLXClientDemo.exe
+1.2.0.17
+TLA.dll
+1.2.0.17
+TLB.dll
+1.2.0.17
+TLC.dll
+1.2.0.17
+PTS.exe
+1.2.0.17
+PakonIma.dll
+1.31.1.4
+
+ 
+F-X35 SDK 1.1 (Build 36.12 Release) 12/15/05
+
+Contents:
+1. Changes since F-X35 SDK 1.0
+    FX35
+    F235
+    F335
+    F135
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes in this release
+FX35
+	Bug 709 - Reference Manual states ColorPortraitMode is not implemented
+	Bug 711 - Installer was installing CrystalReports merge modules that aren't used
+Version info for all files set the same. (i.e. 1.1.36.12)
+F135
+New PICL and PICM firmware for F135 with improved DX reading
+Bug 697 - PICM firmware upload fails
+Bug 700 - 'PutScannerInfoPreFrameUser' is not working as expected on an F135 
+BUG 688 TLB and TLC do not write Color calibration data to registry
+F235
+BUG 694  TLA not sensing APS cartride in F235C
+F335
+	Bug 712 - TLC hardware callback not translated to TLX hardware callbacks
+BUG 685 EC_PFS_WritePastEOF not handeled exactly right
+BUG 688 TLB and TLC do not write Color calibration data to registry
+Allowable range for LampDelayOff changed from 20 sec to 180 sec. 
+Allowable range for AmbientTempRecalSwing changed from +/-2 deg C to +/-6 deg C. (change request to help with long roll scanning)
+PTS 
+Added new PTS program for diagnosing scanners in the field.  This tool is meant to replace some of themore dangerous toos such as scanner cure, Setup1300, mfctest, etc.
+
+2. Installation:
+Remove any Pakon software (other than F-X35 SDK) currently installed on the Target Machine.
+Install the F-X35 SDK.
+
+There is no need to recompile the client when upgrading an existing installation of the FX35 SDK 1.0 or 1.1.
+
+3. Known Problems:
+Operator/Developer must ensure that only one scanner is power on and connected to the computer at one time.
+Only one instance of TLX may be running at one time.  Starting two applications that both load TLX can cause unstable/unexpected results.
+BUG 702 – PTS Light test displays light without the gain applied
+BUG 704 - Redistributable installer does not upgrade 1.0 redistributable
+
+4. Version List
+Module
+Version
+TLX.dll
+1.1.36.12
+TLXClientDemo.exe
+1.1.36.12
+TLA.dll
+1.1.36.12
+TLB.dll
+1.1.36.12
+TLC.dll
+1.1.36.12
+PTS.exe
+1.1.36.12
+PakonIma.dll
+1.31.1.4
+
+
+F-X35 SDK 1.0 (Build 33.7 Release) 10/10/05
+
+Contents:
+1. Changes since F-X35 SDK 1.0.1.5
+    FX35
+    F235
+    F335
+    F135
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes in this release
+FX35
+Version info for all files set the same. (i.e. 1.0.33.7)
+Color Negative and BnW image data path enhanced.  Final sRGB images or less noisy and more contrast has been added (EBP algorithm).  Affects color path for all scanner types.  This only affects SDK users that are saving with the SAV_UseColorSceneBalance save option.
+Removed the dependancy on a resource.hm file from the TLXClientDemo project
+Added hooks for simulator version of software installation.
+Included legacy driver files so after un-installing F135 SDK, F235 SDK or F335 SDK and installing FX35 SDK, the scanner driver loads properly.
+New Lamp Board Firmware for F335 to eliminate erroneous fan slow errors logged in error log
+New APS firmware for F235C and F335C with Improved CM1 reading in presence of CM2 data 
+F135
+F235
+F335
+Allowable range for LampDelayOff changed from 20 sec to 180 sec. 
+Allowable range for AmbientTempRecalSwing changed from +/-2 deg C to +/-6 deg C. (change request to help with long roll scanning)
+
+2. Installation:
+Remove any Pakon software (other than F-X35 SDK) currently installed on the Target Machine.
+Install the F-X35 SDK.
+
+There is no need to recompile the client when upgrading an existing installation of the FX35 SDK 1.0.
+
+3. Known Problems:
+Operator/Developer must ensure that only one scanner is power on and connected to the computer at one time.
+Only one instance of TLX may be running at one time.  Starting two applications that both load TLX can cause unstable/unexpected results.
+4. Version List
+Module
+Version
+TLX.dll
+1.0.33.7
+TLXClientDemo.exe
+1.0.33.7
+TLA.dll
+1.0.33.7
+TLB.dll
+1.0.33.7
+TLC.dll
+1.0.33.7
+PakonIma.dll
+1.31.1.4
+F-X35 SDK 1.0 (Build 1.5 Release) 07/8/05
+
+Contents:
+1. Changes since F-X35 SDK 1.0.0.4
+    FX35
+    F235
+    F335
+    F135
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes in this release
+RollId parameter is now fully implemented.
+If APS Film ID not read properly, Film ID gets set to -1.  Before the film ID might look OK, but it did not match the cartridge Film id.
+Added New calls to set the Film ID of an APS roll and a new call to get the CHOL for an APS roll  (F235 and F335 only).
+Made improvements to the APS scanning by improving DX reading and FAT bit reading  (F235 and F335 only).
+New DX firmware for the F235 and F335.
+2. Installation:
+Remove any Pakon software (other than F-X35 SDK) currently installed on the Target Machine.
+Install the F-X35 SDK
+
+Clients should either have their applicatons call InitializeScanner with FirmwareUpdate enabled or use some other means to update the firmware on the DX board of the F235 and F335.
+3. Known Problems:
+Operator/Developer must ensure that only one scanner is power on and connected to the computer at one time.
+Only one instance of TLX may be running at one time.  Starting two applications that both load TLX can cause unstable/unexpected results.
+4. Version List
+Module
+Version
+TLX.dll
+1.0.1.5
+TLXClientDemo.exe
+1.0.1.5
+TLA.dll
+1.0.32.6
+TLB.dll
+1.0.2.14
+TLC.dll
+1.0.2.13
+PakonIma.dll
+1.31.0.3
+
+F-X35 SDK 1.0 (Build 0.4 Release) 06/13/05
+
+Contents:
+1. Changes since F-X35 SDK 1.0.0.3
+    FX35
+    F235
+    F335
+    F135
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes since F-X35 SDK 1.0.0.3
+F-X35 SDK 1.0.0.4 changes (since F-X35 SDK 1.0.0.3):
+Version change from 1.0.0.3 to 1.0.0.4
+
+Installer now adds all the necessary supporting DLL’s.  Only affected SDK users using SaveToDisk with file format set to jpeg or EXIF jpeg.
+
+F-235:
+Version change from 0.0.31.3 to 0.0.31.4
+
+BUG 669 - Motor board misses some commands and TLA does not detect
+
+F-335:  
+No changes from F-X35 SDK 1.0 (Build 0.3 Beta)
+
+F-135:
+No changes from F-X35 SDK 1.0 (Build 0.3 Beta)
+
+PakonIMA.dll:
+Changed from version 1.31.0.2 to 1.31.0.3
+
+BUG 670 – contrast adjustment was not working. Only affected SDK users using SAV_UseColorSceneBalance and doing a PutPictureInfo to change the contrast setting.
+
+2. Installation:
+Remove any Pakon software currently installed on the Target Machine.
+If you have UseLampColdStart turned off in the registry, you should turn it back on.
+Install the F-X35 SDK
+
+3. Known Problems:
+RollID parameter in the TLX interface is not yet implemented.  You can pass in a RollID but you will always get 1000 back.
+
+Operator/Developer must ensure that only one scanner is power on and connected to the computer at one time.
+
+Only one instance of TLX may be running at one time.  Starting two applications that both load TLX can cause unstable/unexpected results.
+
+
+
+4. Version List
+Module
+Version
+TLX.dll
+1.0.0.4
+TLXClientDemo.exe
+1.0.0.4
+TLA.dll
+31RC4
+TLB.dll
+1.0.1.13
+TLC.dll
+1.0.1.11
+PakonIma.dll
+1.31.0.3
+
+F-X35 SDK 1.0 (Build 0.3 Beta) 05/10/05
+
+Contents:
+1. Changes
+    F235
+    F335
+    F135
+2. Installation
+3. Known Problems
+4. Version List
+
+1. Changes
+F-X35 SDK 1.0.0.3 changes (since F-X35 SDK 1.0.0.2):
+Cleaned up some construction destruction methods to prevent memory leaks that occurred during each Advise/Unadvise cycle.
+
+Removed the SaveToSharedMemory method from the save interface.
+
+Added some com plumbing for more complete support of .net and multithreading.
+
+F-235 SDK 31RC3 changes (since F-235 SDK 30RC2):
+Some of the options in the F-235 interface have been removed to: make implementation easier, make implementation common with the F-135 and F-335, reduce problems with different OEM implementations.
+
+BUG 661 - Filter wheel hardware failure is not reported by TLA/PSI
+
+CR 647 – Use digitalice library that does not activate the thread priority time critical
+
+CR 648 - Added abiltity to apply SBA to digital input (SAV_UseColorSceneBalanceDigital)
+
+CR 610 - The entries in the log files “PakonErrorLogMain”, “PakonErrorLogSave” and “PakonErrorLogScan” now include the serial number, firmware info to help identify which log entries are for which scanner.  The entries also now include the error number in parenthsis so you can relate the error log to the error number you see from PSI. The logs are now in the Logs subdirectory.
+
+CR 652 - Added Base8Ratio_HR_LR to the Scan folder of the registry.  This registry entry is 8 by default which gives a 175 X 262 pixel low res image (same as 30RC2).  The other entry accepted is 4 which will give a 350 x 525 pixel low res image.
+
+CR 650 - Implemented iLampSaverSec parameter in the Get and PutScannerInfo000 calls.  Sets lamp to standby voltage and filter wheel to blocked position after iLampSaverSec seconds of neither scanning nor calibrating.  This will extend the life of the Light bulb and the dyes in the CCD chip.
+
+CR 651 - Eliminate ScanOptions related to cartridge scanning that did not work and caused confusion for SDKusers.
+
+BUG 646 - A temporary buffer that is allocated when rendering a hi res image was twice as big as it needed to be (90 Mbytes instead of 45 Mbytes).
+
+CR 656 - Add MOF data error correction before sending data to MOF edc library
+
+CR 655 - Add MOF calibration sequence to Manufacturing Calibration procedure
+
+If DX firmware indicates tail first after three or more head first reads are acquired, the tail first warning is ignored and not passed on to the client.
+
+The DX firmware uses a USHORT counter which can cause some rollover issues.  This should be resolved now.Handling the error case where the DX sensor reports finding film immediately.  We will use the CCD for positioning in this case.
+
+Added EC_PI_NO_DISK_SPACE which indicates a save to disk was not completed due to lack of free disk space.
+
+Lamp warm-up is faster.
+
+F-335 1.0.1.11 changes  (since F-335 SDK 1.0.0.9)
+BUG 666 - Fixed a memory leak when saving images.
+
+Default processed ringtail size changed from 16 Meg to 32 Meg.
+
+BUG 664 - Eliminated the delay between WTP_CorrectionComplete and WTP_ScanningStarted which was occurring during the ScanPictures progress callback sequence.
+
+BUG 663 - Enabling the LampDelayOff causes EC_LampWarmUpFailure
+
+BUG 660 - EC_LampWarmUpFailure (error number 142) when doing corrections
+
+BUG 653 - Calling ForceCorrections() with the CALIBRATE_Focus or CALIBRATE_FocusAdvanceFilm bits set did not turn on the lamp - now it does.
+
+CR 652 - Added Base8Ratio_HR_LR to the Scan folder of the registry.  This registry entry is 8 by default which gives a 175 X 262 pixel low res image (same as 30RC2).  The other entry accepted is 4 which will give a 350 x 525 pixel low res image.
+
+CR 648 - Added abiltity to apply SBA to digital input (SAV_UseColorSceneBalanceDigital)
+
+BUG 654 - MOF reading fails if running debugger and SDK TLAClientDemo DebugU build
+
+CR 656 - Add MOF data error correction before sending data to MOF edc library
+
+CR 655 - Add MOF calibration sequence to Manufacturing Calibration procedure
+
+F-135 changes (since F-135 SDK 1.0.0.13)
+CR 648 - Added abiltity to apply SBA to digital input (SAV_UseColorSceneBalanceDigital)
+
+
+2. Installation:
+Remove any Pakon software currently installed on the Target Machine.
+If you have UseLampColdStart turned off in the registry, you should turn it back on.
+Install the F-x35 SDK
+
+3. Known Problems:
+RollID parameter in the TLX interface has been is not yet implemented.  You can pass in a RollID but you will always get 1000 back.
+
+Operator/Developer must ensure that only one scanner is power on and connected to the computer at one time.
+
+Only one instance of TLX may be running at one time.  Starting two applications that both load TLX can cause unstable/unexpected results.
+
+4. Version List
+Module
+Version
+TLX.dll
+1.0.0.3
+TLXClientDemo.exe
+1.0.0.3
+TLA.dll
+31RC3
+TLB.dll
+1.0.1.13
+TLC.dll
+1.0.1.11
+PakonIma.dll
+1.31.0.2
+
+

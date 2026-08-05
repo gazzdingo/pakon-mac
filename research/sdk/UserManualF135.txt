@@ -1,0 +1,490 @@
+F-135
+F-135 Plus
+
+User Manual
+
+Scanner Specifications
+Minimum Host Computer Specifications
+•
+•
+•
+•
+•
+•
+
+Pentium III or Athlon CPU, 700 MHz or higher, with MMX support
+4GB of free hard drive space, capable of a sustained transfer rate of 30MB/sec. If IDE, it must
+either be a Primary or Secondary Master drive or connected using a serial ATA connection.
+Windows 2000 and Windows XP
+256 MB of RAM
+USB 2.0
+Screen resolution of 1024x768 or higher
+
+Power
+•
+•
+•
+•
+•
+
+External power supply
+15V, 2.4 amps,
+50-60 Hz Input voltage frequency
+Plug polarity is plus center, minus outside
+5.5mm outer diameter, 2.5mm inner diameter
+
+Contents of Box
+•
+•
+•
+•
+
+F-135 or F-135 Plus Film Scanner
+6ft. USB 2.0 Cable
+Software and User Manual CD
+External power supply and power cord
+
+Size
+•
+•
+
+6.75” x 8.5” x 14.75” (H x W x D)
+17.15cm x 21.6cm x 37.5cm (H x W x D)
+
+Resolutions
+The F-135 has two supported resolutions:
+4Base 1000 x 1500
+8Base 1500 x 2250
+The F-135 Plus has three supported resolutions:
+4Base 1000 x 1500
+8Base 1500 x 2250
+16Base 2000 x 3000
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+1
+
+Light Source
+The F-135 uses an LED light source which should outlast the life span of the scanner
+itself.
+
+Film Types and Variations
+•
+
+The F-135 is designed to scan 35 MM. color negative film. 35 MM. cut strips are supported in
+sizes from 3 frames to 40 frames. However, to ensure DX code reading, the strips must be a
+minimum of 4 frames.
+
+DX Code Reading
+•
+
+35 MM. DX codes are read using the ISO 1007 specifications and are used by the host manager.
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+2
+
+Installing the F-135
+The F-135 is a peripheral device. It must be connected to a computer that meets the required specifications listed on page 1 of this manual.
+1. Install the software for the F-135, if it is not already installed on the PC.
+2. Clear a space near your computer system to place the F-135 scanner. The USB 2.0 cable must
+be able to reach the PC, so it cannot be more than 6 feet (2m) from the computer.
+3. Connect the power cord to the power supply plug on the back of the scanner.
+
+4. Connect the USB 2.0 cable to the back of the scanner.
+5. Connect the USB 2.0 cable to the back of the computer, in a USB 2.0 port. Do not plug in to
+a USB 1.0 connector!
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+3
+
+6. While the computer is on and Windows is loaded, turn the scanner power switch into the ‘on’
+position.
+7. Windows will prompt you to click “Next” to continue the driver installation.
+
+8. Then click on “Finish” to finish the driver installation.
+
+9. The process will repeat twice before finishing.
+10. After the driver is finished installing, verify that the scanner driver is properly installed, by
+viewing the scanner properties in the Device Manager under the heading, “Imaging Devices.”
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+4
+
+11. Clean the F-135 from any dust that may be inside the scanner. Please refer to these procedures
+in the “Operator Maintenance” chapter.
+
+BIOS Configuration
+The following BIOS options are used on systems configured by Pakon, and are recommended to
+be configured as outlined below.
+
+Option
+
+Pakon Part#125307-B
+
+Setting
+
+Plug and Play O/S
+
+Disable
+
+AGP Aperture Size
+
+32MB
+
+PCI Latency Timer
+
+248
+
+ACPI Suspend State
+
+S1 State
+
+USB Boot
+
+Disable
+
+PXE Boot to Lan
+
+Disable
+
+PCI to DRAM Prefetch
+
+Disable
+
+October 10, 2006
+
+5
+
+Operational Information
+Powering On
+Power on the host PC, and allow it to finish loading Windows before turning the F-135
+scanner on. This will ensure that the scanner can properly communicate with the host computer.
+
+Operation and Film Insertion
+When scanning film, do not load film until the film status LED is green.
+Inserting the film properly will ensure that the DX codes are read and that the framing will be done correctly. Insert the film with the emulsion to the inside of the scanner, DX
+Code up, and starting with the lowest number first, as shown below:
+
+Do not attempt to remove film from the scanner while the scanner motor is moving! This
+will cause damage to both the film and the scanner.
+Calibration
+There are two types of calibration for the F-135.
+Color calibration is set during the manufacturing process, as well as any service that
+involves the CCD or any optical filter. This is to be performed by trained and authorized service
+personnel only.
+Scanner corrections are performed automatically. They consist of a series of steps performed when the scanner is first turned on, as shown below:
+• Start-up corrections
+• Initial LED warm-up
+• Gain and exposure Control Corrections
+• Run Time Corrections
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+6
+
+LED Indicator Lights
+
+Power LED
+
+Function
+
+Solid Green
+
++5V is functioning
+
+Off
+
++5V is not functioning
+
+Status LED
+
+Function
+
+Solid Green
+
+Scanner Ready
+
+Blinking Green
+
+Scanner is Scanning
+
+Blinking Yellow
+
+Scanner is unable to
+scan at the moment
+
+Blinking Red
+
+Scanner Error
+
+Off
+
+Scanner not Functioning
+
+Film LED
+
+Function
+
+Solid Green
+
+Film is being scanned
+
+Blinking Green
+
+Insert film to be scanned
+
+Blinking Yellow
+
+Remove film from scanner
+
+Off
+
+No film in the scanner
+
+Digital ICE
+Digital ICE is designed to assist in removing scratches, dust, and debris artifacts from
+scanned film. It should be used as a complement to a photo lab’s normal cleaning procedures.
+Customers are still advised to clean the floors and work surfaces regularly to keep the lab environment as dust-free as possible.
+It is also recommended to clean all film with a lint-free cloth before attempting to make
+prints 8”x10” or higher.
+If a lab is having persistent dust problems, it is recommended to perform the following
+regularly:
+•Clean all customer film with a lint-free cloth before scanning it.
+•When the scanner is turned off, cover it with a plastic, or lint-free cover.
+•Use a lint-free cloth daily to clean the cover of the scanner and the surface of the table it
+is positioned on.
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+7
+
+Operator Maintenance
+Cleaning the Film Track
+It is recommended to clean the film track every two weeks, along with the illumination
+cleaning. Keeping the film track clean will ensure that DX code reading remains reliable. It will
+also maintain the proper motor speed for each resolution. We recommend ensuring the film is
+clean before putting it into the scanner.
+1. Position the tip of the compressed air hose in the film track entrance, and blow, moving the
+hose up and down while blowing inside.
+
+2. Follow the cleaning instructions for cleaning the scanner cover below.
+3. After cleaning the film track, run the ‘Film Track Test’ in the client interface program.
+
+Cleaning the Scanner Cover
+1. Aim the hose of a can of compressed air into the film path--blowing the air away from the film
+entrance.
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+8
+
+2. On the film exit side, blow the air away from the film exit.
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+9
+
+Service Policy
+Warranty Period - New Equipment
+• Parts - One year (expendables excluded)
+• Phone Service & Factory labor - 30 days
+• OEM Equipment - Remainder of original manufacturer’s warranty
+Warranty Service - New Equipment
+• Phone Service - First 30 days, no charge
+• Defective parts - First year Pakon will send a part replacement (expendables excluded), no
+charge
+• Factory Repair / Replacement - First 30 days, if necessary, Pakon will repair or replace, at its
+discretion, any defective unit. Pakon, Inc. will pay standard freight costs both ways for the
+repaired or replaced unit. Any expedited shipping fees are the responsibility of the buyer.
+Warranty Service - Refurbished/used Equipment
+• Phone Service - First 30 days, no charge
+• Defective Parts - First 90 days Pakon will send a part replacement (expandables excluded), no
+charge
+• Factory Repair / Replacement - First 30 days, if necessary, Pakon will repair or replace, at its
+discretion, any defective unit. Pakon, Inc. will pay standard freight costs both ways for the
+repaired or replaced unit. Any expedited shipping fees are the responsibility of the buyer.
+After Warranty Service / OEM Service
+• Scanner Phone Service - Incident charge of $35.00 per incident payable via credit card or with
+pre-approved credit terms
+• OEM Phone Service - Helping buyer install or service Pakon supported OEM equipment or
+software is considered an incident and charged accordingly. Pakon does not service unsupported products. (Supported products are those sold or recommended by Pakon.)
+• Factory Repair / Replacement - Buyer pays freight both ways, plus service labor charges at
+$75.00 per hour and packing costs if needed to return unit safely. Beyond one year the buyer
+is responsible for parts.
+Software
+Software updates are provided at no charge. Any software offering new features is optional and
+billable.
+
+This writing constitutes the final, complete and exclusive expression of the terms of warranty and
+remedy as agreed to by the parties to this sale. Pakon, Inc. neither authorizes nor adopts any statement made by any representative which differs from the terms of this writing, and all such statements are superseded by this document.
+
+Pakon Part#125279-C
+
+October 9, 2006
+
+10
+
+Warranty
+Pakon, Inc. warrants to the original purchaser that each Pakon product is free from defects in
+workmanship and material for 12 months, from the date of purchase. In the event any Pakon product or component of equipment is replaced by Pakon, Inc. under this warranty, such item is covered by this same warranty for the remainder of the original warranty period, or sixty days from
+the date of installation, whichever is longer. OEM products supplied by Pakon will be covered by
+the remainder of the original equipment manufacturer’s warranty.
+Pakon’s obligation during this warranty period is expressly limited to repair, or in its discretion,
+replacement of non-expendable original equipment or components which it finds defective; service and labor costs for such repairs or replacement will be covered under this warranty for the
+first 30 days following the date of installation. Upon authorization, Pakon, Inc. shall prepay all
+transportation costs and return the equipment to the party asserting a claim within the first 30 days
+of installation. That party shall also bear all reasonable service and labor charges incident to any
+warranty claim and those service and labor charges beyond the 30 day labor warranty period.
+This warranty does not apply to (1) to any expendable parts, (2) to any Pakon product or component which as been repaired or altered with parts or by persons not approved in writing by Pakon,
+Inc. provided, however, that such approval is not to be unreasonable withheld, or (3) to any product on which this serial number or name has been altered, defaced or removed. This warranty also
+shall not apply to any Pakon product whose unsatisfactory performance or condition is due to:
+•
+•
+•
+•
+
+Use of any expendable parts or consumable products not tested and approved by Pakon, Inc.
+Failure to follow the maintenance or safety procedures recommended for Pakon product operation
+Unusual physical or electrical stress
+Accident, neglect, misuse, failure of electric power, air conditioning, humidity control, transportation or causes other than ordinary use in the purposes for which the product was
+intended.
+
+The above express limited warranty is in lieu of all other warranties, express or implied, and there
+are no warranties beyond those stated in this document. The implied warranties of merchantability
+and fitness for a particular purpose, and all other warranties, express or implied, or inferable from
+the course, of dealing or usage of trade, are excluded and shall not apply to this product.
+The provisions for repair or replacement of defective parts provided in this warranty shall be the
+exclusive and sole remedy of the purchaser. Pakon, Inc. shall not be liable for any other damages
+(Whether in tort, due to negligence or otherwise) including but not limited to loss or labor, time,
+materials, customer profits, goodwill, or any other indirect, special, incidental, or consequential
+damages in connection with the furnishing operation or faulty performance of this product. This
+exclusive remedy shall not be deemed to have failed of its essential purpose so long as Pakon is
+willing and able to repair or replace defective parts in the prescribed manner.
+
+Pakon Part#125279-C
+
+October 9, 2006
+
+11
+
+Contacting Technical Support
+When contacting support by phone, please follow these guidelines to ensure
+timely assistance:
+•
+•
+•
+•
+•
+
+Have the computer and scanner on.
+Have PSI loaded, if possible.
+Have any reported error codes written down for quick reference.
+Know the version of PSI being used.
+Know the serial number of your scanner.
+
+If you prefer to email support, please include the following information in your
+email request:
+•
+•
+•
+•
+•
+•
+
+Any applicable error log files.
+Version number of PSI.
+Serial number of your scanner.
+A sample image, if helpful.
+Your company name and location.
+Details on the problem and what has been attempted so far to resolve the problem.
+
+Pakon Contact Information
+Phone:
+Within the United States - 877.217.2566
+Outside the United States - 952.936.4390
+Email:
+support@pakon.com
+On the Web:
+http://www.pakon.com
+ftp://ftp.pakon.com
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+14
+
+Regulatory Information
+
+Warning:
+This is a class A product. In a domestic environment this product may cause radio interference in which case the user may be required to take adequate measures.
+Note:
+This equipment has been tested and found to comply with the limits for a Class A digital
+device, pursuant to part 15 of the FCC rules. These limits are designed to provide reasonable protection against harmful interference when the equipment is operated in a commercial environment. This equipment generates, uses and can radiate radio frequency energy and, if not installed
+and used in accordance with the instruction manual, may cause harmful interference to radio communications. Operation of this equipment in a residential area is likely to cause harmful interference in which case the user will be required to correct the interference at his own expense.
+Site Conditions:
+Not for use in a computer room as defined in the Standard for the Protection of Electronic Computer/Data Processing Equipment, ANSI/NFPA 75.
+Ne peut être utilisé dans une salle d'ordinateurs telle que définie dans la norme ANSI/ NFPA 75
+Standard for Protection of Electronic Computer/Data Processing Equipment.
+
+Temperature
+
+15-29 degrees Celsius
+
+Humidity
+
+30-75% (non-condensing)
+
+Vibration
+
+Not to Exceed 0.05G RMS
+5-200Hz
+
+Ventilation
+
+A 4” clearance above and
+behind the scanners ventilation duct is necessary
+
+Lighting
+
+<1000 LUX ambient light
+
+Noise
+
+< 70db(A)
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+15
+
+Shipping and Storage Conditions
+Temperature: -25 to 60 degrees Celsius
+
+Pakon Part#125307-B
+
+October 10, 2006
+
+16
+
+

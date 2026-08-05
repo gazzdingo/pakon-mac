@@ -1,0 +1,425 @@
+     F-135
+
+Manual de Usuario
+                           Especificaciones del escáner
+Especificaciones mínimas del equipo host
+•   CPU Pentium III o Athlon, 700 MHz o superior, compatible con MMX
+•   4 GB de espacio disponible en el disco duro, con capacidad de una tasa de transferencia
+    continua de 30 MB por segundo. Si hay presente una IDE, deberá ser una unidad Maestra
+    Principal o Secundaria o bien deberá estar conectada a una conexión serie ATA.
+•   Windows 2000 y Windows XP
+•   256 MB de RAM
+•   USB 2.0
+•   Resolución de pantalla de 1024 x 768 o superior
+
+Alimentación
+•   Fuente de alimentación externa
+•   15 V; 2,4 amperios
+•   Frecuencia de voltaje de entrada de 50-60 Hz
+•   La polaridad del enchufe es positiva en el centro y negativa en la parte exterior
+•   Diámetro externo 5,5 mm; diámetro interno de 2,5 mm
+
+Contenido de la caja
+•   Escáner de películas F-135
+•   Cable USB 2.0 de 6 pies (2 m)
+•   Software y CD con el Manual del usuario
+•   Cable de alimentación y fuente de alimentación externa
+
+Tamaño
+•   6,75” x 8,5” x 14,75” (Al. x An. x Pr.)
+•   17,15 cm x 21,6 cm x 37,5 cm (Al. x An. x Pr.)
+
+Resoluciones
+       Existen dos resoluciones admitidas para el escaner F-135
+       4Base 1000 x 1500
+       8Base 1500 x 2250
+
+       Existen tres resoluciones admitidas para el escaner F-135 Plus
+       4base 1000 x 1500
+       8Base 1500 x 2250
+       16Base 2000 x 3000.
+
+Fuente de iluminación
+       El F-135 utiliza una fuente de iluminación LED que debería tener una vida útil más
+prolongada que la del propio escáner.
+
+
+Parte Nº 125336-A Pakon               January 27, 2006                                    1
+Tipos de películas y variaciones
+•   El F-135 está diseñado para digitalizar películas negativas de color de 35 mm. Las tiras
+    cortadas de 35 mm. se admiten en tamaños de 3 tramas a 40 tramas. Sin embargo, para
+    asegurar la lectura de los códigos DX, las tiras deberán tener un mínimo de 4 tramas.
+
+Lectura de los códigos DX
+•   Los códigos DX de 35 mm se leen conforme a las especificaciones ISO 1007 y son utilizados
+    por el administrador host.
+
+
+
+
+Parte Nº 125336-A Pakon               January 27, 2006                                         2
+                               Instalación del F-135
+El F-135 es un dispositivo periférico. Debe conectarse a un equipo que cumpla con las
+especificaciones requeridas que se enumeran en la página 1 de este manual.
+
+1. Instale el software para el F-135, en caso de que ya no esté instalado en el equipo.
+2. Haga lugar junto a su equipo para ubicar el escáner F-135. El cable USB 2.0 deberá ubicarse
+   de manera que pueda alcanzar el equipo; por lo tanto, no podrá encontrarse a más de 6 pies
+   (2 m) del equipo.
+3. Conecte el cable de alimentación al enchufe de la fuente de alimentación ubicado en la parte
+   posterior del escáner.
+
+
+
+
+4. Conecte el cable USB 2.0 a la parte posterior del escáner.
+
+5. Conecte el cable USB 2.0 a la parte posterior del equipo, en un puerto USB 2.0. No lo
+   enchufe a un conector USB 1.0.
+
+
+
+
+Parte Nº 125336-A Pakon              10 de noviembre de 2004                                3
+6. Si el equipo está encendido y Windows está cargado, coloque el interruptor de alimentación
+   del escáner en la posición "encendido".
+7. Windows le solicitará que haga clic en "Siguiente" para continuar con la instalación del
+   controlador.
+
+
+
+
+8. A continuación, haga clic en "Finalizar" para finalizar la instalación del controlador.
+
+
+
+
+9. El proceso se repetirá dos veces antes de finalizar.
+10. Una vez que el controlador haya finalizado la instalación, compruebe que el controlador del
+    escáner esté instalado correctamente; para eso, revise las propiedades del escáner en el
+    Administrador de dispositivos de la sección "Dispositivos de imagen".
+
+
+Parte Nº 125336-A Pakon               10 de noviembre de 2004                                4
+11. Quite del F-135 el polvo que puede haber en la parte interior del escáner. Consulte estos
+    procedimientos en el capítulo "Mantenimiento del operador".
+
+
+Configuración de BIOS
+Las siguientes opciones de BIOS se utilizan en los sistemas configurados por Pakon y se
+recomienda configurarlas como se indica a continuación.
+
+
+                                    Opción                    Configuración
+
+                     Sistema operativo Plug and Play          Deshabilitado
+                     Tamaño de apertura AGP                   32 MB
+                     Temporizador de latencia PCI             248
+                     Estado suspendido ACPI                   Estado S1
+                     Inicio USB                               Deshabilitado
+                     Inicio PXE a Lan                         Deshabilitado
+                     PCI a DRAM Prefetch                      Deshabilitado
+
+
+
+
+Parte Nº 125336-A Pakon              10 de noviembre de 2004                                    5
+Parte Nº 125336-A Pakon   10 de noviembre de 2004   6
+                   Información para el funcionamiento
+Encendido
+       Encienda el equipo host y espere hasta que finalice la carga de Windows antes de
+encender el escáner F-135. De este modo, el escáner podrá comunicarse adecuadamente con el
+equipo host.
+
+Operación e Inserción de película
+       Haga clic para ver: Inserción de película, Salida de película, Eliminación de película
+
+        Al digitalizar una película, espere para cargar la película hasta que el LED de estado de
+película esté de color verde.
+        La inserción adecuada de la película garantizará que se leerán los códigos DX y que
+las tramas se realizarán de forma correcta. Inserte la película con la emulsión en la parte
+interior del escáner, con los códigos DX hacia arriba, y comience primero con el número
+más bajo, como se muestra a continuación:
+
+
+
+
+       No intente quitar la película del escáner mientras el motor del escáner esté en movimiento.
+Esta acción dañará tanto a la película como al escáner.
+
+Calibración
+       Existen dos tipos de calibración para el F-135.
+       La calibración de color se configura durante el proceso de fabricación, así como también
+todo servicio relativo al CCD o a cualquier filtro óptico. Esta acción deberá llevarla a cabo sólo
+personal de servicio capacitado y autorizado.
+       Las correcciones del escáner se realizan de forma automática. Consisten en una serie de
+pasos que se realizan cuando el escáner se enciende por primera vez, como se muestra a
+continuación:
+
+
+Parte Nº 125336-A Pakon              10 de noviembre de 2004                                    7
+•   Correcciones de inicio
+•   Preparación del LED inicial
+•   Obtener y exponer Correcciones de control
+•   Ejecutar Correciones de tiempo
+
+Luces del indicador LED
+
+
+                 LED de alimentación      Función
+
+                 Verde fijo               Está funcionando un voltaje de +5 V
+                 Apagado                  No está funcionando un voltaje de +5 V
+
+
+                      LED de estado                             Función
+
+                Verde fijo                      Escáner listo
+                Verde intermitente              El escáner está trabajando
+                Amarillo intermitente           El escáner no puede trabajar en este
+                                                momento
+                Rojo intermitente               Error del escáner
+                Apagado                         El escáner no está funcionando
+
+
+
+
+                    LED de película                             Función
+
+               Verde fijo                   Se está digitalizando una película
+               Verde intermitente           Inserte la película que desea digitalizar
+               Amarillo intermitente        Quite la película del escáner
+               Apagado                      No hay película en el escáner
+
+Digital ICE
+        Digital ICE está diseñado para ayudar a eliminar rayas, polvo y desechos de la película
+digitalizada. Debe utilizarse como componente de los procedimientos normales de limpieza de un
+laboratorio fotográfico. Se aconseja a los clientes limpiar los pisos y trabajar sobre superficies de
+forma regular para mantener el entorno del laboratorio lo más limpio posible.
+        También se recomienda limpiar toda la película con un paño sin pelusa antes de intentar
+realizar impresiones 8” x 10” o superiores.
+        Si un laboratorio tiene problemas de polvo continuamente, se recomienda realizar el
+siguiente procedimiento de forma regular:
+
+
+Parte Nº 125336-A Pakon                10 de noviembre de 2004                                  8
+     •Limpie toda la película del cliente con un paño sin pelusa antes de digitalizarla.
+     •Cuando el escáner esté apagado, cúbralo con un plástico o paño sin pelusa.
+     •Utilice un paño sin pelusa diariamente para limpiar la cubierta del escáner y la superficie
+      de la mesa sobre la que está ubicado el escáner.
+     •Limpie o reemplace el filtro de aire ubicado en la parte posterior del escáner una vez por
+      semana.
+
+
+
+
+Parte Nº 125336-A Pakon            10 de noviembre de 2004                                   9
+Parte Nº 125336-A Pakon   10 de noviembre de 2004   10
+                        Mantenimiento del Operador
+Limpiar la entrada y salida del escaner
+
+       Se recomienda limpiar la entrada/salida del escaner cada dos semanas. Mantener la
+entrada del escaner limpia asegura que la lectura del codigo DX sea correcta. Igualmente ayuda a
+que la velocidad del motor sea siempre la misma y correcta para cada resolucion. Nosotros
+recomendamos que la pelicula este limpia antes de introducirla en el escaner.
+
+1. Ponga la manguera de la lata de aire comprimido en la entrada del escaner y haga que sople
+   fuertemente moviendolo de arriba hacia abajo.
+
+
+
+
+Parte Nº 125336-A Pakon             10 de noviembre de 2004                               11
+2. Siga las instrucciones siguientes para la limpieza de la cubierta.
+3. Despues de haber limpiado la entrada/salida del escaner, corra el procedimiento ‘Prueba de
+   pis’ que se encuentra en el software del escaner.
+
+Limpieza de las cubiertas del escaner
+
+1. Dirija la presion del aire de la lata de aire comprimido directamente hacia afuera del camino
+   por donde se escanea la pelicula.
+
+
+
+
+Parte Nº 125336-A Pakon              10 de noviembre de 2004                                12
+2. En la parte de la salida, sirigir el aire hacia afuera del camino por donde sale la pelicula.
+
+
+
+
+Parte Nº 125336-A Pakon                10 de noviembre de 2004                                     13
+                                           Garantía
+Pakon, Inc. garantiza al comprador del original que todo producto Pakon se se entrega sin efectos
+en los materiales y la mano de obra durante un período inferior a los doce (12) meses, dos mil
+(2000) horas de trabajo medidas o al tiempo equivalente de uso normal, a partir de la fecha de
+compra. En el caso de que algún producto Pakon o componente del equipo sea sustituido por
+Pakon, Inc. conforme a esta garantía, dicho artículo estará cubierto por la misma garantía durante
+el tiempo restante del período de garantía original o durante seis días a partir de la fecha de
+instalación, según cuál sea el período más prolongado. Los productos de fabricantes de equipos
+originales suministrados por Pakon estarán cubiertos por el período de tiempo restante de la
+garantía del fabricante de equipos originales.
+
+La responsabilidad de Pakon durante este período de garantía se limita explícitamente a la
+reparación o, según lo disponga la compañía, a la sustitución del equipo o componentes originales
+no fungibles con defectos; los costos de servicio y mano de obra resultantes de dichas
+reparaciones o sustitución estarán cubiertos por esta garantía durante los primeros treinta (30) días
+a partir de la fecha de instalación. Según autorización de Pakon, Inc., la parte correspondiente que
+realice un reclamo conforme a esta garantía deberá pagar por anticipado todos los costos de
+transporte y deberá devolver el equipo a un centro especificado por Pakon, Inc. Esa parte también
+será responsable de todos los cargos razonables por servicio y mano de obra inherentes a
+cualquier reclamo de garantía y a aquellos cargos por servicio y mano de obra que se registren una
+vez excedido el período de garantía de mano de obra de treinta (30) días.
+
+Esta garantía no se aplica (1) a partes fungibles, (2) a productos ni componentes Pakon que hayan
+sido reparados o alterados con partes o por personas no aprobadas por escrito por Pakon, Inc. a
+condición de que, no obstante, tal aprobación no se niegue de forma injustificada o (3) a
+productos en los que se hayan alterado, borroneado o quitado el nombre o número de serie. Esta
+garantía tampoco se aplicará a un producto Pakon cuya condición o rendimiento insatisfactorio se
+deba a:
+
+•   Uso de partes fungibles o productos consumibles que no han sido evaluados y aprobados por
+    Pakon, Inc.
+•   Incumplimiento de los procedimientos de mantenimiento o seguridad recomendados para el
+    funcionamiento del producto Pakon
+•   Tensión eléctrica o física inusual
+•   Accidente, negligencia, mala utilización, falta de alimentación eléctrica, aire acondicionado,
+    control de humedad, transporte o causas ajenas al uso normal según los fines para los cuales
+    está diseñado el producto.
+
+La garantía explícita y limitada que se mencionó anteriormente rige sobre cualquier otra garantía,
+explícita o implícita, y no existen garantías adicionales a las estipuladas en este documento. Las
+garantías implícitas de comercialización y adecuacidad para un fin específico, y todas las demás
+garantías —explícitas, implícitas o deducibles— del manejo o uso comercial, están excluidas y no
+se aplicarán a este producto.
+
+
+
+
+Parte Nº 125336-A Pakon                10 de noviembre de 2004                                 14
+Las disposiciones para la reparación o sustitución de piezas de repuesto con defectos expuestas en
+esta garantía representarán el recurso exclusivo y único del comprador. Pakon, Inc. no será
+responsable de ningún tipo de daño (independientemente de que se deba a una acción por
+responsabilidad extracontractual, negligencia o similar) que incluye, aunque no de forma
+excluyente, la pérdida o mano de obra, tiempo, materiales, ganancias del cliente, buen nombre o
+cualquier otro daño indirecto, especial, incidental o consiguiente relacionado con la actividad de
+instalación o el desempeño incorrecto de este producto. No se considerará que este recurso
+exclusivo no ha cumplido con su propósito principal siempre que Pakon esté dispuesto y
+capacitado para reparar o sustituir las piezas de repuesto con defectos tal como se expuso.
+
+Este escrito constituye la expresión final, completa y exclusiva de los términos y condiciones de
+la garantía, y recurso según lo acordado entre las partes de esta venta. Pakon, Inc. no autoriza ni
+adopta ninguna declaración realizada por ningún representante que difiera de los términos y
+condiciones de este documento, y tales declaraciones serán sustituidas por este documento.
+
+
+
+
+Parte Nº 125336-A Pakon               10 de noviembre de 2004                                 15
+                                 Política del servicio
+Período de garantía
+• Repuestos: un (1) año (excepto las piezas fungibles)
+• Mano de obra de fábrica y servicio telefónico: treinta (30) días
+• Productos de fabricantes de equipos originales: período de tiempo restante de la garantía del
+   fabricante de equipos originales
+
+Servicio de garantía
+• Servicio telefónico: los primeros treinta (30) días, sin cargo
+• Piezas con defectos: el primer (1) año Pakon enviará una pieza de repuesto (excepto las piezas
+   fungibles), sin cargo
+• Reparación/sustitución de fábrica: los primeros treinta (30) días, según sea necesario, Pakon
+   reparará o sustituirá, a discreción de la compañía, toda unidad defectuosa. Pakon, Inc. pagará
+   los costos de transporte estándar de ambos trayectos de la unidad reparada o sustituida. Todos
+   los cargos por envío acelerado serán responsabilidad del comprador.
+
+Después del Servicio de garantía/Servicio de fabricantes de equipos originales
+• Servicio telefónico del escáner: cargo de $35 dólares por incidente pagadero vía tarjeta de
+   crédito o sujeto a condiciones de crédito aprobadas previamente
+• Servicio telefónico de fabricantes de equipos originales: la ayuda al comprador en la
+   instalación o el servicio para software o productos de fabricantes de equipos originales
+   admitidos por Pakon se considera incidente y, por lo tanto, se facturará en consecuencia.
+   Pakon no brindará servicio a productos no admitidos. (Los productos admitidos son aquellos
+   vendidos o recomendados por Pakon).
+• Reparación/sustitución de fábrica: el comprador deberá pagar los costos por transporte de
+   ambos trayectos, más los cargos por mano de obra del servicio a $65 dólares por hora y los
+   costos de empaquetado, en caso de que sea necesario devolver una unidad de manera segura.
+   Si se excede el período de un año, el comprador será responsable de los repuestos
+
+Software
+Las actualizaciones de software se proporcionan sin cargo. Todo software que ofrece funciones
+nuevas se considera opcional y tiene costo.
+
+Contrato de servicio anual
+El contrato incluye el soporte técnico telefónico del escáner. Todos los repuestos de fábrica
+(excepto los fungibles) y la mano de obra de fábrica son sin cargo. Pakon pagará todos los costos
+de transporte en caso de que una unidad necesite reparación de fábrica. Todos los cargos por
+envío acelerado serán responsabilidad del comprador. El contrato entrará en vigencia a partir de la
+culminación de la Garantía de mano de obra y regirá durante un período de doce (12) meses;
+podrá renovarse anualmente. El precio es u$s1.000 por año con pago anticipado. Si se adquiere
+junto con la unidad, el precio será u$s750 y, si se mantiene en vigencia, podrá renovarse a un
+precio de u$s750, lo cual representa un ahorro de u$s250 por año.
+
+
+
+
+Parte Nº 125336-A Pakon               10 de noviembre de 2004                                 16
+Escáneres de arrendamiento del servicio de reparaciones
+Pakon proporcionará una cantidad limitada de escáneres para arrendar, en caso de que el escáner
+del cliente deba enviarse al servicio de reparaciones. Los escáneres de arrendamiento del servicio
+de reparaciones se pueden arrendar por u$s250 más los costos de transporte de ambos trayectos, si
+está disponible. La disponibilidad variará debido a la prioridad que se le da a los clientes que
+utilizan el servicio de reparaciones por primera vez, según un contrato de servicio anual.
+
+
+
+
+Parte Nº 125336-A Pakon              10 de noviembre de 2004                                 17
+                    Información sobre reglamentaciones
+
+
+
+
+Advertencia:
+        Éste es un producto Clase A. En un entorno doméstico, este producto puede ocasionar
+interferencia de radiodifusión; en cuyo caso, se le solicita al usuario que tome las medidas
+correspondientes.
+
+Nota:
+        Este equipo ha sido evaluado y cumple con los límites para un dispositivo digital Clase A,
+conforme a la parte 15 de las reglas de la FCC. Estos límites están diseñados para proporcionar
+una protección razonable contra la interferencia perjudicial cuando el equipo funciona en un
+entorno comercial. Este equipo genera, utiliza y puede irradiar energía de radiofrecuencia y, si no
+está instalado y no se utiliza de acuerdo con el manual de instrucciones, puede ocasionar
+interferencia perjudicial para las comunicaciones radiales. Es posible que el funcionamiento de
+este equipo en un área residencial ocasione interferencia perjudicial; en cuyo caso, la corrección
+de la interferencia correrá por cuenta del usuario.
+
+Condiciones del lugar:
+Equipo no diseñado para su uso en una sala de computación según lo estipulado en la Norma para
+la Protección de Equipos de Procesamiento de Datos/Equipos Electrónicos, ANSI/NFPA 75.
+
+Ne peut être utilisé dans une salle d'ordinateurs telle que définie dans la norme ANSI/ NFPA 75
+Standard for Protection of Electronic Computer/Data Processing Equipment.
+
+            Temperatura                    De 15 a 29 grados Celsius
+            Humedad                        De 30 a 75% (sin condensación)
+            Vibración                      No debe exceder el parámetro de 5-200Hz
+                                           RMS 0.05G
+            Ventilación                    Se requiere un espacio libre de 4" arriba y
+                                           debajo del conducto de ventilación de los
+                                           escáneres
+            Iluminación                    <Luz ambiental de 1000 LUX
+            Ruido                          < 70 db (A)
+
+Condiciones de envío y almacenamiento
+
+
+
+Parte Nº 125336-A Pakon               10 de noviembre de 2004                                18
+Temperatura: De -25 a 60 grados Celsius
+
+
+
+
+Parte Nº 125336-A Pakon            10 de noviembre de 2004   19
+

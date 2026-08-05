@@ -1,0 +1,2320 @@
+nth  paddr      vaddr      len size section type    string
+――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+0    0x0005b370 0x1005b370 46  94   .rdata  utf16le DeviceIoControl(IOCTL_DISK_GET_PARTITION_INFO)
+1    0x0005b3d0 0x1005b3d0 46  94   .rdata  utf16le DeviceIoControl(IOCTL_DISK_GET_DRIVE_GEOMETRY)
+2    0x0005b430 0x1005b430 4   10   .rdata  utf16le \\.\
+3    0x0005b43c 0x1005b43c 14  30   .rdata  utf16le %s\PFS%02d.bin
+4    0x0005b45c 0x1005b45c 5   12   .rdata  utf16le *.bin
+5    0x0005b468 0x1005b468 10  22   .rdata  utf16le %s\Buffers
+6    0x0005b488 0x1005b488 88  178  .rdata  utf16le hFile = %u, pvBuffer = %p, uiWriteBytesRequested = %u, dwTest = %u, CurrentPosition = %d
+7    0x0005b6f4 0x1005b6f4 5   12   .rdata  utf16le %d %s
+8    0x0005b79c 0x1005b79c 16  34   .rdata  utf16le \Logs\DxCode.txt
+9    0x0005b7c0 0x1005b7c0 30  31   .rdata  ascii   Product = %d, Specifier = %d\r\n
+10   0x0005b7e0 0x1005b7e0 59  60   .rdata  ascii   Product = %d, Specifier = %d, ApsIdNumber = %u, CHOL = %i\r\n
+11   0x0005b81c 0x1005b81c 53  54   .rdata  ascii   \r\n-------------------------------------------------\r\n
+12   0x0005b86c 0x1005b86c 12  13   .rdata  ascii   %6d    %4d\r\n
+13   0x0005b87c 0x1005b87c 17  18   .rdata  ascii   LeftEdge  Width\r\n
+14   0x0005b890 0x1005b890 39  40   .rdata  ascii   FramingBlindlyPlacePictures placed %d\r\n
+15   0x0005b8b8 0x1005b8b8 26  27   .rdata  ascii   LookAtBeginning found %d\r\n
+16   0x0005b8d4 0x1005b8d4 20  21   .rdata  ascii   LookAtEnd found %d\r\n
+17   0x0005b8ec 0x1005b8ec 35  36   .rdata  ascii   FramingLookInBetweenEnds found %d\r\n
+18   0x0005b910 0x1005b910 19  20   .rdata  ascii   %6d    %6d    %4d\r\n
+19   0x0005b924 0x1005b924 27  28   .rdata  ascii   LeftEdge  RightEdge Width\r\n
+20   0x0005b940 0x1005b940 34  35   .rdata  ascii   \r\n\r\nLookForNicePictures found %d\r\n
+21   0x0005b964 0x1005b964 46  47   .rdata  ascii   %4d   %4d   %4d   %4d   %4d      %5d     %5d\r\n
+22   0x0005b994 0x1005b994 59  60   .rdata  ascii   LoLim  Target HiLim  Actual Variance  LeftEdge  RightEdge\r\n
+23   0x0005b9d0 0x1005b9d0 55  56   .rdata  ascii   \r\n\r\n------------------ Framing Ones -----------------\r\n
+24   0x0005ba40 0x1005ba40 7   16   .rdata  utf16le TypeLib
+25   0x0005ba50 0x1005ba50 8   18   .rdata  utf16le Software
+26   0x0005ba64 0x1005ba64 6   14   .rdata  utf16le SYSTEM
+27   0x0005ba74 0x1005ba74 8   18   .rdata  utf16le SECURITY
+28   0x0005ba90 0x1005ba90 4   10   .rdata  utf16le Mime
+29   0x0005ba9c 0x1005ba9c 8   18   .rdata  utf16le Hardware
+30   0x0005bab0 0x1005bab0 9   20   .rdata  utf16le Interface
+31   0x0005bac4 0x1005bac4 8   18   .rdata  utf16le FileType
+32   0x0005bad8 0x1005bad8 20  42   .rdata  utf16le Component Categories
+33   0x0005bb04 0x1005bb04 5   12   .rdata  utf16le CLSID
+34   0x0005bb10 0x1005bb10 5   12   .rdata  utf16le AppID
+35   0x0005bb3c 0x1005bb3c 6   14   .rdata  utf16le Delete
+36   0x0005bb4c 0x1005bb4c 8   18   .rdata  utf16le NoRemove
+37   0x0005bb60 0x1005bb60 11  24   .rdata  utf16le ForceRemove
+38   0x0005bb80 0x1005bb80 4   20   .rdata  utf32le BDMS
+39   0x0005bb94 0x1005bb94 6   14   .rdata  utf16le ??????
+40   0x0005bba4 0x1005bba4 14  30   .rdata  utf16le PH_HOST_STATUS
+41   0x0005bbc4 0x1005bbc4 14  30   .rdata  utf16le PH_LOCAL_RESET
+42   0x0005bbe4 0x1005bbe4 15  32   .rdata  utf16le PH_GET_RESPONSE
+43   0x0005bc04 0x1005bc04 6   14   .rdata  utf16le PH_CMD
+44   0x0005bc14 0x1005bc14 14  30   .rdata  utf16le PH_READ_STATUS
+45   0x0005bc34 0x1005bc34 8   18   .rdata  utf16le PH_WRITE
+46   0x0005bc48 0x1005bc48 7   16   .rdata  utf16le PH_READ
+47   0x0005bc58 0x1005bc58 10  22   .rdata  utf16le PH_INVALID
+48   0x0005bc70 0x1005bc70 21  44   .rdata  utf16le m_hDriverEventPollPPB
+49   0x0005bc9c 0x1005bc9c 28  58   .rdata  utf16le m_DriverOverlappedPPB.hEvent
+50   0x0005bcd8 0x1005bcd8 12  26   .rdata  utf16le \\.\Pakon135
+51   0x0005bcf4 0x1005bcf4 11  24   .rdata  utf16le EventDriver
+52   0x0005bd0c 0x1005bd0c 30  62   .rdata  utf16le Type %x, PktLen %x, Address %x
+53   0x0005bd4c 0x1005bd4c 20  42   .rdata  utf16le Logs\PakonPpbDebugDx
+54   0x0005bd78 0x1005bd78 13  28   .rdata  utf16le uiStatus = %u
+55   0x0005bd94 0x1005bd94 23  48   .rdata  utf16le Addr 0x%02X, Cmd 0x%02X
+56   0x0005bdc4 0x1005bdc4 22  46   .rdata  utf16le m_hDriverThreadPollPPB
+57   0x0005bdf4 0x1005bdf4 12  26   .rdata  utf16le EventPollPPB
+58   0x0005be18 0x1005be18 9   20   .rdata  utf16le ucCommand
+59   0x0005be4c 0x1005be4c 11  24   .rdata  utf16le AD_????????
+60   0x0005be64 0x1005be64 17  36   .rdata  utf16le AD_BOOT_PICM_PLUS
+61   0x0005be88 0x1005be88 12  26   .rdata  utf16le AD_PICM_PLUS
+62   0x0005bea4 0x1005bea4 17  36   .rdata  utf16le AD_BOOT_PICL_PLUS
+63   0x0005bec8 0x1005bec8 12  26   .rdata  utf16le AD_PICL_PLUS
+64   0x0005bee4 0x1005bee4 12  26   .rdata  utf16le AD_BOOT_PICM
+65   0x0005bf00 0x1005bf00 7   16   .rdata  utf16le AD_PICM
+66   0x0005bf10 0x1005bf10 12  26   .rdata  utf16le AD_BOOT_PICL
+67   0x0005bf2c 0x1005bf2c 7   16   .rdata  utf16le AD_PICL
+68   0x0005bf3c 0x1005bf3c 7   16   .rdata  utf16le AD_HOST
+69   0x0005bf4c 0x1005bf4c 18  38   .rdata  utf16le PPB_READ_DX_CODE\r\n
+70   0x0005bf78 0x1005bf78 40  82   .rdata  utf16le PPB_START_DX_SCAN, Speed %d, Format %d\r\n
+71   0x0005bfcc 0x1005bfcc 18  38   .rdata  utf16le PPB_STOP_DX_SCAN\r\n
+72   0x0005bff4 0x1005bff4 6   14   .rdata  utf16le %02X\r\n
+73   0x0005c004 0x1005c004 18  38   .rdata  utf16le PPB_GET_RESPONSE\r\n
+74   0x0005c02c 0x1005c02c 19  40   .rdata  utf16le PPB_SET_INTERRUPT\r\n
+75   0x0005c054 0x1005c054 11  24   .rdata  utf16le PPB_MINFO\r\n
+76   0x0005c06c 0x1005c06c 16  34   .rdata  utf16le PPB_GET_STATUS\r\n
+77   0x0005c090 0x1005c090 33  70   .rdata  utf16le Addr %s, Type %s, Cnt %d, %d, Cmd
+78   0x0005c0d8 0x1005c0d8 26  54   .rdata  utf16le Addr %s, Type %s, Cnt %d\r\n
+79   0x0005c110 0x1005c110 31  64   .rdata  utf16le \r\n-----------%s--------------\r\n
+80   0x0005c150 0x1005c150 45  92   .rdata  utf16le TLA - AppendPicDebugFile() Failed to open %s\n
+81   0x0005c1ac 0x1005c1ac 11  24   .rdata  utf16le %s\%s%u.txt
+82   0x0005c1d0 0x1005c1d0 142 143  .rdata  ascii   Time\tFilmPresent\tTempMB\tTempLB\tTempSetpoint\tVisOn\tIrOn\tCurrent_R\tCurrent_G\tCurrent_B\tCurrent_Ir\tDuty_R\tDuty_G\tDuty_B\tDuty_Ir\tIntegrationTime\r\n
+83   0x0005c260 0x1005c260 27  56   .rdata  utf16le \Logs\LightStabilityLog.txt
+84   0x0005c298 0x1005c298 23  48   .rdata  utf16le %s\Logs\EEPromDebug.txt
+85   0x0005c2c8 0x1005c2c8 28  58   .rdata  utf16le TLA - Firmware, Software %s\n
+86   0x0005c308 0x1005c308 57  116  .rdata  utf16le USB 0x%02x,0x%02x  PicL 0x%02x,0x%02x  PicM 0x%02x,0x%02x
+87   0x0005c37c 0x1005c37c 49  50   .rdata  ascii   %d\t%d\t%f\t%f\t%f\t%d\t%d\t%u\t%u\t%u\t%u\t%f\t%f\t%f\t%f\t%u\r\n
+88   0x0005c3c0 0x1005c3c0 77  156  .rdata  utf16le TLA - EC_DRV_FifoOverflow in bDrvGetPpbInterruptStatus (not always an error)\n
+89   0x0005c45c 0x1005c45c 19  40   .rdata  utf16le uiControlValueColor
+90   0x0005c484 0x1005c484 21  44   .rdata  utf16le uiControlValueAddress
+91   0x0005c4d8 0x1005c4d8 11  24   .rdata  utf16le NegMatrix29
+92   0x0005c4f0 0x1005c4f0 11  24   .rdata  utf16le NegMatrix28
+93   0x0005c508 0x1005c508 11  24   .rdata  utf16le NegMatrix27
+94   0x0005c520 0x1005c520 11  24   .rdata  utf16le NegMatrix26
+95   0x0005c538 0x1005c538 11  24   .rdata  utf16le NegMatrix25
+96   0x0005c550 0x1005c550 11  24   .rdata  utf16le NegMatrix24
+97   0x0005c568 0x1005c568 11  24   .rdata  utf16le NegMatrix23
+98   0x0005c580 0x1005c580 11  24   .rdata  utf16le NegMatrix22
+99   0x0005c598 0x1005c598 11  24   .rdata  utf16le NegMatrix21
+100  0x0005c5b0 0x1005c5b0 11  24   .rdata  utf16le NegMatrix20
+101  0x0005c5c8 0x1005c5c8 11  24   .rdata  utf16le NegMatrix19
+102  0x0005c5e0 0x1005c5e0 11  24   .rdata  utf16le NegMatrix18
+103  0x0005c5f8 0x1005c5f8 11  24   .rdata  utf16le NegMatrix17
+104  0x0005c610 0x1005c610 11  24   .rdata  utf16le NegMatrix16
+105  0x0005c628 0x1005c628 11  24   .rdata  utf16le NegMatrix15
+106  0x0005c640 0x1005c640 11  24   .rdata  utf16le NegMatrix14
+107  0x0005c658 0x1005c658 11  24   .rdata  utf16le NegMatrix13
+108  0x0005c670 0x1005c670 11  24   .rdata  utf16le NegMatrix12
+109  0x0005c688 0x1005c688 11  24   .rdata  utf16le NegMatrix11
+110  0x0005c6a0 0x1005c6a0 11  24   .rdata  utf16le NegMatrix10
+111  0x0005c6b8 0x1005c6b8 10  22   .rdata  utf16le NegMatrix9
+112  0x0005c6d0 0x1005c6d0 10  22   .rdata  utf16le NegMatrix8
+113  0x0005c6e8 0x1005c6e8 10  22   .rdata  utf16le NegMatrix7
+114  0x0005c700 0x1005c700 10  22   .rdata  utf16le NegMatrix6
+115  0x0005c718 0x1005c718 10  22   .rdata  utf16le NegMatrix5
+116  0x0005c730 0x1005c730 10  22   .rdata  utf16le NegMatrix4
+117  0x0005c748 0x1005c748 10  22   .rdata  utf16le NegMatrix3
+118  0x0005c760 0x1005c760 10  22   .rdata  utf16le NegMatrix2
+119  0x0005c778 0x1005c778 10  22   .rdata  utf16le NegMatrix1
+120  0x0005c790 0x1005c790 10  22   .rdata  utf16le NegMatrix0
+121  0x0005c7a8 0x1005c7a8 11  24   .rdata  utf16le PosMatrix29
+122  0x0005c7c0 0x1005c7c0 11  24   .rdata  utf16le PosMatrix28
+123  0x0005c7d8 0x1005c7d8 11  24   .rdata  utf16le PosMatrix27
+124  0x0005c7f0 0x1005c7f0 11  24   .rdata  utf16le PosMatrix26
+125  0x0005c808 0x1005c808 11  24   .rdata  utf16le PosMatrix25
+126  0x0005c820 0x1005c820 11  24   .rdata  utf16le PosMatrix24
+127  0x0005c838 0x1005c838 11  24   .rdata  utf16le PosMatrix23
+128  0x0005c850 0x1005c850 11  24   .rdata  utf16le PosMatrix22
+129  0x0005c868 0x1005c868 11  24   .rdata  utf16le PosMatrix21
+130  0x0005c880 0x1005c880 11  24   .rdata  utf16le PosMatrix20
+131  0x0005c898 0x1005c898 11  24   .rdata  utf16le PosMatrix19
+132  0x0005c8b0 0x1005c8b0 11  24   .rdata  utf16le PosMatrix18
+133  0x0005c8c8 0x1005c8c8 11  24   .rdata  utf16le PosMatrix17
+134  0x0005c8e0 0x1005c8e0 11  24   .rdata  utf16le PosMatrix16
+135  0x0005c8f8 0x1005c8f8 11  24   .rdata  utf16le PosMatrix15
+136  0x0005c910 0x1005c910 11  24   .rdata  utf16le PosMatrix14
+137  0x0005c928 0x1005c928 11  24   .rdata  utf16le PosMatrix13
+138  0x0005c940 0x1005c940 11  24   .rdata  utf16le PosMatrix12
+139  0x0005c958 0x1005c958 11  24   .rdata  utf16le PosMatrix11
+140  0x0005c970 0x1005c970 11  24   .rdata  utf16le PosMatrix10
+141  0x0005c988 0x1005c988 10  22   .rdata  utf16le PosMatrix9
+142  0x0005c9a0 0x1005c9a0 10  22   .rdata  utf16le PosMatrix8
+143  0x0005c9b8 0x1005c9b8 10  22   .rdata  utf16le PosMatrix7
+144  0x0005c9d0 0x1005c9d0 10  22   .rdata  utf16le PosMatrix6
+145  0x0005c9e8 0x1005c9e8 10  22   .rdata  utf16le PosMatrix5
+146  0x0005ca00 0x1005ca00 10  22   .rdata  utf16le PosMatrix4
+147  0x0005ca18 0x1005ca18 10  22   .rdata  utf16le PosMatrix3
+148  0x0005ca30 0x1005ca30 10  22   .rdata  utf16le PosMatrix2
+149  0x0005ca48 0x1005ca48 10  22   .rdata  utf16le PosMatrix1
+150  0x0005ca60 0x1005ca60 10  22   .rdata  utf16le PosMatrix0
+151  0x0005ca7c 0x1005ca7c 6   7    .rdata  ascii   red_R:
+152  0x0005ca8c 0x1005ca8c 4   10   .rdata  utf16le %s%s
+153  0x0005ca9f 0x1005ca9f 5   6    .rdata  ascii   ?%f%f
+154  0x0005caa8 0x1005caa8 6   7    .rdata  ascii   0.0000
+155  0x0005cab7 0x1005cab7 13  14   .rdata  ascii   ?\r\nPositive\r\n
+156  0x0005cac8 0x1005cac8 3   5    .rdata  ascii   %f,
+157  0x0005cad0 0x1005cad0 12  13   .rdata  ascii   \r\nNegative\r\n
+158  0x0005cae0 0x1005cae0 4   10   .rdata  utf16le .bin
+159  0x0005caec 0x1005caec 11  24   .rdata  utf16le ColRevLutS6
+160  0x0005cb04 0x1005cb04 14  30   .rdata  utf16le ColRevLut1File
+161  0x0005cb24 0x1005cb24 17  36   .rdata  utf16le OutputProfileFile
+162  0x0005cb48 0x1005cb48 16  34   .rdata  utf16le InputProfileFile
+163  0x0005cb6c 0x1005cb6c 18  38   .rdata  utf16le CRInputProfileFile
+164  0x0005cb98 0x1005cb98 48  98   .rdata  utf16le \Config\ColorCorrection\ClientColRevMat_3x10.txt
+165  0x0005cc00 0x1005cc00 48  98   .rdata  utf16le \Config\ColorCorrection\ClientColNegMat_3x10.txt
+166  0x0005cc68 0x1005cc68 43  88   .rdata  utf16le \Config\ColorCorrection\ClientColRevLut.txt
+167  0x0005ccc0 0x1005ccc0 43  88   .rdata  utf16le \Config\ColorCorrection\ClientColNegLut.txt
+168  0x0005cd18 0x1005cd18 39  80   .rdata  utf16le \Config\ColorCorrection\ColRevLutS6.lut
+169  0x0005cd68 0x1005cd68 37  76   .rdata  utf16le \Config\ColorCorrection\ColRevLut1.pf
+170  0x0005cdb8 0x1005cdb8 31  64   .rdata  utf16le \Config\ColorCorrection\srgb.pf
+171  0x0005cdf8 0x1005cdf8 30  62   .rdata  utf16le \Config\ColorCorrection\rpd.pf
+172  0x0005ce38 0x1005ce38 31  64   .rdata  utf16le \Config\ColorCorrection\romm.pf
+173  0x0005ce97 0x1005ce97 34  35   .rdata  ascii   8%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\n
+174  0x0005cebc 0x1005cebc 42  43   .rdata  ascii   %u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\t%u\n
+175  0x0005cee8 0x1005cee8 109 110  .rdata  ascii   Gain_R\tGain_G\tGain_B\tGain_Ir\tDark_R\tDark_G\tDark_B\tDark_Ir\tSmear_R\tSmear_G\tSmear_B\tSmearC_R\tSmearC_G\tSmearC_B\n
+176  0x0005cf58 0x1005cf58 26  54   .rdata  utf16le \Logs\FixedPatternData.txt
+177  0x0005cf98 0x1005cf98 20  42   .rdata  utf16le FullLightCorrections
+178  0x0005cfc4 0x1005cfc4 20  42   .rdata  utf16le DutyCycleOpenGate_Ir
+179  0x0005cff0 0x1005cff0 19  40   .rdata  utf16le DutyCycleOpenGate_B
+180  0x0005d018 0x1005d018 19  40   .rdata  utf16le DutyCycleOpenGate_G
+181  0x0005d040 0x1005d040 19  40   .rdata  utf16le DutyCycleOpenGate_R
+182  0x0005d068 0x1005d068 12  26   .rdata  utf16le DutyCycle_Ir
+183  0x0005d084 0x1005d084 11  24   .rdata  utf16le DutyCycle_B
+184  0x0005d09c 0x1005d09c 11  24   .rdata  utf16le DutyCycle_G
+185  0x0005d0b4 0x1005d0b4 11  24   .rdata  utf16le DutyCycle_R
+186  0x0005d0cc 0x1005d0cc 10  22   .rdata  utf16le Current_Ir
+187  0x0005d0e4 0x1005d0e4 9   20   .rdata  utf16le Current_B
+188  0x0005d0f8 0x1005d0f8 9   20   .rdata  utf16le Current_G
+189  0x0005d10c 0x1005d10c 9   20   .rdata  utf16le Current_R
+190  0x0005d120 0x1005d120 8   18   .rdata  utf16le Offset_B
+191  0x0005d134 0x1005d134 8   18   .rdata  utf16le Offset_G
+192  0x0005d148 0x1005d148 8   18   .rdata  utf16le Offset_R
+193  0x0005d15c 0x1005d15c 6   14   .rdata  utf16le Gain_B
+194  0x0005d16c 0x1005d16c 6   14   .rdata  utf16le Gain_G
+195  0x0005d17c 0x1005d17c 6   14   .rdata  utf16le Gain_R
+196  0x0005d18c 0x1005d18c 12  26   .rdata  utf16le DetectFilm_G
+197  0x0005d1a8 0x1005d1a8 13  28   .rdata  utf16le DetectWhite_G
+198  0x0005d1c4 0x1005d1c4 14  30   .rdata  utf16le SpliceDarkness
+199  0x0005d1e4 0x1005d1e4 6   14   .rdata  utf16le Max_Ir
+200  0x0005d1fc 0x1005d1fc 17  36   .rdata  utf16le MotorSpeedPlus_Ir
+201  0x0005d220 0x1005d220 14  30   .rdata  utf16le MotorSpeedPlus
+202  0x0005d240 0x1005d240 18  38   .rdata  utf16le MotorAdjustDrag_Ir
+203  0x0005d268 0x1005d268 15  32   .rdata  utf16le MotorAdjustDrag
+204  0x0005d288 0x1005d288 14  30   .rdata  utf16le MotorAdjust_Ir
+205  0x0005d2a8 0x1005d2a8 11  24   .rdata  utf16le MotorAdjust
+206  0x0005d2c0 0x1005d2c0 6   14   .rdata  utf16le Offset
+207  0x0005d2d0 0x1005d2d0 10  22   .rdata  utf16le StepperCCD
+208  0x0005d2e8 0x1005d2e8 11  24   .rdata  utf16le StepperLens
+209  0x0005d300 0x1005d300 13  28   .rdata  utf16le MotorSpeed_Ir
+210  0x0005d31c 0x1005d31c 10  22   .rdata  utf16le MotorSpeed
+211  0x0005d358 0x1005d358 14  30   .rdata  utf16le m_iMotorAdjust
+212  0x0005d390 0x1005d390 24  50   .rdata  utf16le MotherBoardTempFaultHigh
+213  0x0005d3c4 0x1005d3c4 26  54   .rdata  utf16le MotherBoardTempWarningHigh
+214  0x0005d3fc 0x1005d3fc 25  52   .rdata  utf16le MotherBoardTempWarningLow
+215  0x0005d430 0x1005d430 23  48   .rdata  utf16le MotherBoardTempFaultLow
+216  0x0005d460 0x1005d460 17  36   .rdata  utf16le LampTempFaultHigh
+217  0x0005d484 0x1005d484 19  40   .rdata  utf16le LampTempWarningHigh
+218  0x0005d4ac 0x1005d4ac 15  32   .rdata  utf16le LampTempWorking
+219  0x0005d4cc 0x1005d4cc 18  38   .rdata  utf16le LampTempWarningLow
+220  0x0005d4f4 0x1005d4f4 16  34   .rdata  utf16le LampTempFaultLow
+221  0x0005d518 0x1005d518 23  48   .rdata  utf16le UseTemperatureSetpoints
+222  0x0005d548 0x1005d548 20  42   .rdata  utf16le WriteEEPromDebugFile
+223  0x0005d574 0x1005d574 14  30   .rdata  utf16le WaitForLamp_Ir
+224  0x0005d594 0x1005d594 13  28   .rdata  utf16le WaitForLamp_B
+225  0x0005d5b0 0x1005d5b0 13  28   .rdata  utf16le WaitForLamp_G
+226  0x0005d5cc 0x1005d5cc 13  28   .rdata  utf16le WaitForLamp_R
+227  0x0005d5e8 0x1005d5e8 22  46   .rdata  utf16le WriteLightStabilityLog
+228  0x0005d618 0x1005d618 23  48   .rdata  utf16le DxCalibrationFilmOffset
+229  0x0005d648 0x1005d648 38  78   .rdata  utf16le RequireDxSensorsDuringLightCalibration
+230  0x0005d698 0x1005d698 31  64   .rdata  utf16le DxCreateDebugFilesCommunication
+231  0x0005d6d8 0x1005d6d8 18  38   .rdata  utf16le DxCreateDebugFiles
+232  0x0005d700 0x1005d700 18  38   .rdata  utf16le FPCCreateDebugFile
+233  0x0005d728 0x1005d728 19  40   .rdata  utf16le FPCAnalyzeThreshold
+234  0x0005d750 0x1005d750 14  30   .rdata  utf16le FPCAnalyzeSkip
+235  0x0005d770 0x1005d770 13  28   .rdata  utf16le FPCAnalyzeAvg
+236  0x0005d78c 0x1005d78c 25  52   .rdata  utf16le DriverSimultaneousPackets
+237  0x0005d7c0 0x1005d7c0 19  40   .rdata  utf16le StepperStartingLens
+238  0x0005d7e8 0x1005d7e8 24  50   .rdata  utf16le StepperStartingTransport
+239  0x0005d81c 0x1005d81c 16  34   .rdata  utf16le AnselOrientation
+240  0x0005d840 0x1005d840 13  28   .rdata  utf16le UseFPCAnalyze
+241  0x0005d85c 0x1005d85c 23  48   .rdata  utf16le UseTimeCriticalPriority
+242  0x0005d88c 0x1005d88c 13  28   .rdata  utf16le HighWaterTest
+243  0x0005d8a8 0x1005d8a8 17  36   .rdata  utf16le UsePpbDebugTraces
+244  0x0005d8cc 0x1005d8cc 17  36   .rdata  utf16le IrCrossTalkFactor
+245  0x0005d8f0 0x1005d8f0 25  52   .rdata  utf16le UseFixedPatternCorrection
+246  0x0005d924 0x1005d924 7   16   .rdata  utf16le Version
+247  0x0005d934 0x1005d934 14  30   .rdata  utf16le TlaControlLeds
+248  0x0005d954 0x1005d954 12  26   .rdata  utf16le LockSteppers
+249  0x0005d970 0x1005d970 13  28   .rdata  utf16le DxDesperation
+250  0x0005d98c 0x1005d98c 11  24   .rdata  utf16le DrawDxLines
+251  0x0005d9a4 0x1005d9a4 9   20   .rdata  utf16le SenseFilm
+252  0x0005d9b8 0x1005d9b8 23  48   .rdata  utf16le PlanarFileHeaderVersion
+253  0x0005d9e8 0x1005d9e8 26  54   .rdata  utf16le IrChannelSavedInPlanarFile
+254  0x0005da20 0x1005da20 18  38   .rdata  utf16le HiResMegabytesRoll
+255  0x0005da48 0x1005da48 19  40   .rdata  utf16le HiResMegabytesTotal
+256  0x0005da70 0x1005da70 9   20   .rdata  utf16le HiResPath
+257  0x0005da84 0x1005da84 23  48   .rdata  utf16le FirmwareLoadRetrySerial
+258  0x0005dab4 0x1005dab4 17  36   .rdata  utf16le FirmwareLoadRetry
+259  0x0005dad8 0x1005dad8 19  40   .rdata  utf16le ScannerSerialNumber
+260  0x0005db00 0x1005db00 16  34   .rdata  utf16le ScannerVersionHw
+261  0x0005db24 0x1005db24 11  24   .rdata  utf16le ScannerType
+262  0x0005db3c 0x1005db3c 7   16   .rdata  utf16le C:\Temp
+263  0x0005db4c 0x1005db4c 11  24   .rdata  utf16le ProgramPath
+264  0x0005db6c 0x1005db6c 16  17   .rdata  ascii   jn)AAuthenticAMD
+265  0x0005db80 0x1005db80 12  13   .rdata  ascii   GenuineIntel
+266  0x0005db90 0x1005db90 30  62   .rdata  utf16le SystemInfo.wProcessorLevel < 6
+267  0x0005dbd0 0x1005dbd0 65  132  .rdata  utf16le PROCESSOR_ARCHITECTURE_INTEL != SystemInfo.wProcessorArchitecture
+268  0x0005dc70 0x1005dc70 10  22   .rdata  utf16le \BnW_C41Ir
+269  0x0005dc88 0x1005dc88 8   18   .rdata  utf16le \BnW_C41
+270  0x0005dc9c 0x1005dc9c 6   14   .rdata  utf16le \BnWIr
+271  0x0005dcac 0x1005dcac 4   10   .rdata  utf16le \BnW
+272  0x0005dcb8 0x1005dcb8 9   20   .rdata  utf16le \ColNegIr
+273  0x0005dccc 0x1005dccc 7   16   .rdata  utf16le \ColNeg
+274  0x0005dce4 0x1005dce4 12  26   .rdata  utf16le \DpiBase4_35
+275  0x0005dd00 0x1005dd00 12  26   .rdata  utf16le \DpiBase8_35
+276  0x0005dd1c 0x1005dd1c 13  28   .rdata  utf16le \DpiBase16_35
+277  0x0005dd38 0x1005dd38 5   12   .rdata  utf16le \Test
+278  0x0005dd50 0x1005dd50 39  80   .rdata  utf16le C:\Program Files\Pakon\F-X35 COM Server
+279  0x0005dda8 0x1005dda8 5   12   .rdata  utf16le \Save
+280  0x0005ddb4 0x1005ddb4 11  24   .rdata  utf16le \ColorKodak
+281  0x0005ddcc 0x1005ddcc 5   12   .rdata  utf16le \Scan
+282  0x0005ddd8 0x1005ddd8 7   16   .rdata  utf16le \Memory
+283  0x0005dde8 0x1005dde8 39  80   .rdata  utf16le \StringFileInfo\040904B0\ProductVersion
+284  0x0005de38 0x1005de38 27  56   .rdata  utf16le \Logs\PakonErrorLogSave.txt
+285  0x0005de70 0x1005de70 27  56   .rdata  utf16le \Logs\PakonErrorLogScan.txt
+286  0x0005dea8 0x1005dea8 27  56   .rdata  utf16le \Logs\PakonErrorLogMain.txt
+287  0x0005def0 0x1005def0 21  22   .rdata  ascii   ?DMLDICEEnd@@YAJPAX@Z
+288  0x0005df08 0x1005df08 54  55   .rdata  ascii   ?DMLDICEDefectCount@@YAJPAXUDICEInfoDynamicTag@@PAK2@Z
+289  0x0005df40 0x1005df40 46  47   .rdata  ascii   ?DMLDICEProcess@@YAJPAXUDICEInfoDynamicTag@@@Z
+290  0x0005df70 0x1005df70 19  20   .rdata  ascii   ?DICEVersion@@YAJXZ
+291  0x0005df84 0x1005df84 43  44   .rdata  ascii   ?DMLDICEBegin@@YAPAXKUDICEInfoStaticTag@@@Z
+292  0x0005dfb8 0x1005dfb8 18  19   .rdata  ascii   PIAnselDeleteScene
+293  0x0005dfcc 0x1005dfcc 17  18   .rdata  ascii   PIAnselDeleteRoll
+294  0x0005dfe0 0x1005dfe0 30  31   .rdata  ascii   PIAnselColorSceneBalancePlanar
+295  0x0005e000 0x1005e000 19  20   .rdata  ascii   PIAnselAnalyzeScene
+296  0x0005e014 0x1005e014 18  19   .rdata  ascii   PIAnselAnalyzeRoll
+297  0x0005e028 0x1005e028 14  15   .rdata  ascii   PIAnselEndRoll
+298  0x0005e038 0x1005e038 15  16   .rdata  ascii   PIAnselAddScene
+299  0x0005e048 0x1005e048 19  20   .rdata  ascii   PIAnselStartNewRoll
+300  0x0005e05c 0x1005e05c 26  27   .rdata  ascii   PIColorCorrectColRevPlanar
+301  0x0005e078 0x1005e078 30  31   .rdata  ascii   PIColorCorrectColNegPlanarSave
+302  0x0005e098 0x1005e098 30  31   .rdata  ascii   PIColorCorrectColNegPlanarScan
+303  0x0005e0b8 0x1005e0b8 22  23   .rdata  ascii   PIScaleAndRotatePlanar
+304  0x0005e0d0 0x1005e0d0 14  15   .rdata  ascii   PIRotatePlanar
+305  0x0005e0e0 0x1005e0e0 19  20   .rdata  ascii   PIColorAdjustPlanar
+306  0x0005e0f4 0x1005e0f4 16  17   .rdata  ascii   PIFileOpenPlanar
+307  0x0005e108 0x1005e108 19  20   .rdata  ascii   PIFileSpecsPlanar_8
+308  0x0005e11c 0x1005e11c 18  19   .rdata  ascii   PISaveFilePlanar_8
+309  0x0005e130 0x1005e130 5   6    .rdata  ascii   PIEnd
+310  0x0005e138 0x1005e138 7   8    .rdata  ascii   PIBegin
+311  0x0005e140 0x1005e140 5   24   .rdata  utf32le APCH0
+312  0x0005e180 0x1005e180 97  98   .rdata  ascii   CodesInserted at beginning %d, FirstGoodDx %d, FirstGoodDxLineNumber %u, m_uiFilmFoundOffset %u\r\n
+313  0x0005e1e4 0x1005e1e4 16  17   .rdata  ascii    %02u  %5u  %d\r\n
+314  0x0005e1f8 0x1005e1f8 32  33   .rdata  ascii   %s, Height %u\r\nFrame Line Good\r\n
+315  0x0005e220 0x1005e220 106 107  .rdata  ascii   Count = %u, Avg = %u, Expected = %u, Correction = %u, Product = %d, Specifier = %d, Scan Warnings = 0x%X\r\n
+316  0x0005e28c 0x1005e28c 30  31   .rdata  ascii   \r\n\r\n------------------------\r\n
+317  0x0005e2ac 0x1005e2ac 18  19   .rdata  ascii   NO Scratch Removal
+318  0x0005e2c0 0x1005e2c0 19  20   .rdata  ascii   Use Scratch Removal
+319  0x0005e2d4 0x1005e2d4 10  12   .rdata  ascii   Cartridge,
+320  0x0005e2e0 0x1005e2e0 7   9    .rdata  ascii   , 35mm,
+321  0x0005e2ec 0x1005e2ec 7   9    .rdata  ascii   , 24mm,
+322  0x0005e2f8 0x1005e2f8 6   8    .rdata  ascii   Serial
+323  0x0005e300 0x1005e300 22  46   .rdata  utf16le %s\Logs\PakonDxLog.txt
+324  0x0005e330 0x1005e330 26  27   .rdata  ascii   %2d %2d %2d %5d  %s  %6u\r\n
+325  0x0005e34c 0x1005e34c 25  26   .rdata  ascii   %2d %6u %6u %6u %6u %6u\r\n
+326  0x0005e368 0x1005e368 24  25   .rdata  ascii   ID Prev   Curr   Width\r\n
+327  0x0005e384 0x1005e384 55  56   .rdata  ascii   \r\n\r\n------------------ Perforations -----------------\r\n
+328  0x0005e3bc 0x1005e3bc 9   10   .rdata  ascii   %2d %6u\r\n
+329  0x0005e3c8 0x1005e3c8 9   10   .rdata  ascii   ID Line\r\n
+330  0x0005e3d4 0x1005e3d4 53  54   .rdata  ascii   \r\n-------------------- Fat Bits -------------------\r\n
+331  0x0005e40c 0x1005e40c 26  27   .rdata  ascii   ID OK In Frame PAR  Line\r\n
+332  0x0005e428 0x1005e428 51  52   .rdata  ascii   -------------------- DX Codes -------------------\r\n
+333  0x0005e45c 0x1005e45c 38  39   .rdata  ascii   Max Correctness of %d found at %d.\r\n\r\n
+334  0x0005e484 0x1005e484 18  19   .rdata  ascii   Good Dx Count %d\r\n
+335  0x0005e498 0x1005e498 105 106  .rdata  ascii    FilmFoundDx %u,  FilmFoundOffset %u, uiOffsetCcdTest %u, uiOffsetCcdTestLow %u, uiOffsetCcdTestHigh %u\r\n
+336  0x0005e508 0x1005e508 57  116  .rdata  utf16le IOCTL_EZUSB_VENDOR_OR_CLASS_REQUEST, Request %x, Value %x
+337  0x0005e57c 0x1005e57c 59  60   .rdata  ascii   Offset %u, Speed %d, Speed_Ir %d, Adjust %d, Adjust_Ir %d\r\n
+338  0x0005e5b8 0x1005e5b8 12  13   .rdata  ascii   \r\nBase4_35\r\n
+339  0x0005e5c8 0x1005e5c8 12  13   .rdata  ascii   \r\nBase8_35\r\n
+340  0x0005e5d8 0x1005e5d8 13  14   .rdata  ascii   \r\nBase16_35\r\n
+341  0x0005e5e8 0x1005e5e8 32  33   .rdata  ascii   Ser %u, Type %u, Version HW %u\r\n
+342  0x0005e60c 0x1005e60c 21  44   .rdata  utf16le Second Section Failed
+343  0x0005e638 0x1005e638 20  42   .rdata  utf16le First Section Failed
+344  0x0005e664 0x1005e664 20  42   .rdata  utf16le Both Sections Failed
+345  0x0005e690 0x1005e690 20  42   .rdata  utf16le EC_NoScannerDetected
+346  0x0005e6bc 0x1005e6bc 15  32   .rdata  utf16le EC_DICE_Unknown
+347  0x0005e6dc 0x1005e6dc 20  42   .rdata  utf16le EC_DICE_CouldNotLoad
+348  0x0005e708 0x1005e708 15  32   .rdata  utf16le EC_DICE_CodeErr
+349  0x0005e728 0x1005e728 19  40   .rdata  utf16le EC_DICE_InternalErr
+350  0x0005e750 0x1005e750 17  36   .rdata  utf16le EC_DICE_QueueFull
+351  0x0005e774 0x1005e774 24  50   .rdata  utf16le EC_DICE_InvalidParameter
+352  0x0005e7a8 0x1005e7a8 21  44   .rdata  utf16le EC_DICE_InvalidThread
+353  0x0005e7d4 0x1005e7d4 21  44   .rdata  utf16le EC_DICE_NotInProgress
+354  0x0005e800 0x1005e800 18  38   .rdata  utf16le EC_DICE_InProgress
+355  0x0005e828 0x1005e828 14  30   .rdata  utf16le EC_DICE_MemErr
+356  0x0005e848 0x1005e848 25  52   .rdata  utf16le EC_PFS_FileAlreadyDeleted
+357  0x0005e87c 0x1005e87c 20  42   .rdata  utf16le EC_PFS_ReadBeforeBOF
+358  0x0005e8a8 0x1005e8a8 24  50   .rdata  utf16le EC_PFS_InvalidFileHandle
+359  0x0005e8dc 0x1005e8dc 25  52   .rdata  utf16le EC_PFS_NotEnoughDiskSpace
+360  0x0005e910 0x1005e910 30  62   .rdata  utf16le EC_PFS_WritingToCompletedStrip
+361  0x0005e950 0x1005e950 21  44   .rdata  utf16le EC_PFS_InvalidPointer
+362  0x0005e97c 0x1005e97c 15  32   .rdata  utf16le EC_PFS_BadDrive
+363  0x0005e99c 0x1005e99c 19  40   .rdata  utf16le EC_PFS_WritePastEOF
+364  0x0005e9c4 0x1005e9c4 23  48   .rdata  utf16le EC_PFS_WriteSizeInvalid
+365  0x0005e9f4 0x1005e9f4 21  44   .rdata  utf16le EC_PFS_FileSystemFull
+366  0x0005ea20 0x1005ea20 23  48   .rdata  utf16le EC_PFS_FileLengthNotSet
+367  0x0005ea50 0x1005ea50 25  52   .rdata  utf16le EC_PFS_NotLastStripInFile
+368  0x0005ea84 0x1005ea84 18  38   .rdata  utf16le EC_PFS_ReadPastEOF
+369  0x0005eaac 0x1005eaac 25  52   .rdata  utf16le EC_PFS_FilePointerDeleted
+370  0x0005eae0 0x1005eae0 26  54   .rdata  utf16le EC_PFS_RollAlreadyRecycled
+371  0x0005eb18 0x1005eb18 22  46   .rdata  utf16le EC_PFS_NullFilePointer
+372  0x0005eb48 0x1005eb48 25  52   .rdata  utf16le EC_PFS_FileSystemNotEmpty
+373  0x0005eb7c 0x1005eb7c 24  50   .rdata  utf16le EC_PFS_PartitionSelected
+374  0x0005ebb0 0x1005ebb0 23  48   .rdata  utf16le EC_PFS_FileSystemExists
+375  0x0005ebe0 0x1005ebe0 31  64   .rdata  utf16le EC_PFS_PartitionAlreadySelected
+376  0x0005ec20 0x1005ec20 19  40   .rdata  utf16le EC_PI_NO_DISK_SPACE
+377  0x0005ec48 0x1005ec48 23  48   .rdata  utf16le EC_PI_KCDFS_INIT_FAILED
+378  0x0005ec78 0x1005ec78 14  30   .rdata  utf16le EC_PI_CR_LUTS6
+379  0x0005ec98 0x1005ec98 32  66   .rdata  utf16le EC_PI_UNKNOWN_EXCEPTION_RECORDED
+380  0x0005ecdc 0x1005ecdc 30  62   .rdata  utf16le EC_PI_KNOWN_EXCEPTION_RECORDED
+381  0x0005ed20 0x1005ed20 37  76   .rdata  utf16le EC_PI_CR_COMBINE_INPUT_OUTPUT_PROFILE
+382  0x0005ed70 0x1005ed70 34  70   .rdata  utf16le EC_PI_COMBINE_INPUT_OUTPUT_PROFILE
+383  0x0005edb8 0x1005edb8 25  52   .rdata  utf16le EC_PI_INVALID_FILE_FORMAT
+384  0x0005edec 0x1005edec 28  58   .rdata  utf16le EC_PI_ERROR_SETTING_LOCKBEAM
+385  0x0005ee28 0x1005ee28 25  52   .rdata  utf16le EC_PI_INVALID_ORIENTATION
+386  0x0005ee5c 0x1005ee5c 28  58   .rdata  utf16le EC_PI_MIN_MAX_RANGE_CONTRAST
+387  0x0005ee98 0x1005ee98 30  62   .rdata  utf16le EC_PI_MIN_MAX_RANGE_BRIGHTNESS
+388  0x0005eed8 0x1005eed8 24  50   .rdata  utf16le EC_PI_MIN_MAX_RANGE_BLUE
+389  0x0005ef0c 0x1005ef0c 25  52   .rdata  utf16le EC_PI_MIN_MAX_RANGE_GREEN
+390  0x0005ef40 0x1005ef40 23  48   .rdata  utf16le EC_PI_MIN_MAX_RANGE_RED
+391  0x0005ef70 0x1005ef70 22  46   .rdata  utf16le EC_PI_NO_MMX_PROCESSOR
+392  0x0005efa0 0x1005efa0 22  46   .rdata  utf16le EC_PI_RPD2ROMM_PROFILE
+393  0x0005efd0 0x1005efd0 20  42   .rdata  utf16le EC_PI_OUTPUT_PROFILE
+394  0x0005effc 0x1005effc 19  40   .rdata  utf16le EC_PI_INPUT_PROFILE
+395  0x0005f024 0x1005f024 22  46   .rdata  utf16le EC_PI_CR_INPUT_PROFILE
+396  0x0005f058 0x1005f058 32  66   .rdata  utf16le EC_PI_CANT_WRITE_PAKONERRORLOGPI
+397  0x0005f09c 0x1005f09c 12  26   .rdata  utf16le EC_PI_MEMORY
+398  0x0005f0b8 0x1005f0b8 13  28   .rdata  utf16le EC_PI_UNKNOWN
+399  0x0005f0d4 0x1005f0d4 24  50   .rdata  utf16le EC_DRV_PacketOverFlowErr
+400  0x0005f108 0x1005f108 25  52   .rdata  utf16le EC_DRV_TransferInProgress
+401  0x0005f13c 0x1005f13c 23  48   .rdata  utf16le EC_DRV_InfoBufferString
+402  0x0005f16c 0x1005f16c 30  62   .rdata  utf16le EC_DRV_PacketReadWriteMismatch
+403  0x0005f1b0 0x1005f1b0 31  64   .rdata  utf16le EC_DRV_PacketHostErrorUndefined
+404  0x0005f1f0 0x1005f1f0 25  52   .rdata  utf16le EC_DRV_PacketHostErrorBus
+405  0x0005f224 0x1005f224 26  54   .rdata  utf16le EC_DRV_PacketHostErrorAlgo
+406  0x0005f260 0x1005f260 36  74   .rdata  utf16le EC_DRV_PacketHostErrorEndPointLength
+407  0x0005f2b0 0x1005f2b0 37  76   .rdata  utf16le EC_DRV_PacketHostErrorEndPointTimeOut
+408  0x0005f300 0x1005f300 36  74   .rdata  utf16le EC_DRV_PacketHostErrorEndPointFormat
+409  0x0005f34c 0x1005f34c 27  56   .rdata  utf16le EC_DRV_PacketHostErrorCkSum
+410  0x0005f384 0x1005f384 28  58   .rdata  utf16le EC_DRV_PacketHostErrorFormat
+411  0x0005f3c0 0x1005f3c0 27  56   .rdata  utf16le EC_DRV_PacketHostErrorNoAck
+412  0x0005f3f8 0x1005f3f8 19  40   .rdata  utf16le EC_DRV_PacketCmdErr
+413  0x0005f420 0x1005f420 20  42   .rdata  utf16le EC_DRV_PacketCommErr
+414  0x0005f44c 0x1005f44c 24  50   .rdata  utf16le EC_DRV_PacketChecksumErr
+415  0x0005f480 0x1005f480 19  40   .rdata  utf16le EC_DRV_FifoOverflow
+416  0x0005f4a8 0x1005f4a8 17  36   .rdata  utf16le EC_DRV_PacketBusy
+417  0x0005f4cc 0x1005f4cc 24  50   .rdata  utf16le EC_DRV_InvalidPacketType
+418  0x0005f500 0x1005f500 15  32   .rdata  utf16le EC_DRV_LostSync
+419  0x0005f520 0x1005f520 23  48   .rdata  utf16le EC_DRV_RingTailOverflow
+420  0x0005f550 0x1005f550 32  66   .rdata  utf16le EC_DRV_CannotFindStartOfScanLine
+421  0x0005f594 0x1005f594 14  30   .rdata  utf16le EC_DRV_Unknown
+422  0x0005f5b4 0x1005f5b4 20  42   .rdata  utf16le EC_BistPicmMotorFail
+423  0x0005f5e0 0x1005f5e0 18  38   .rdata  utf16le EC_BistPicmVinFail
+424  0x0005f608 0x1005f608 18  38   .rdata  utf16le EC_BistPicm13VFail
+425  0x0005f630 0x1005f630 18  38   .rdata  utf16le EC_BistPicm12VFail
+426  0x0005f658 0x1005f658 17  36   .rdata  utf16le EC_BistPicm6VFail
+427  0x0005f67c 0x1005f67c 17  36   .rdata  utf16le EC_BistPicm5VFail
+428  0x0005f6a0 0x1005f6a0 17  36   .rdata  utf16le EC_BistPicm3VFail
+429  0x0005f6c4 0x1005f6c4 23  48   .rdata  utf16le EC_BistPiclTeCoolerFail
+430  0x0005f6f8 0x1005f6f8 32  66   .rdata  utf16le EC_BistPiclLightBdTempSensorFail
+431  0x0005f740 0x1005f740 33  68   .rdata  utf16le EC_BistPiclMotherBdTempSensorFail
+432  0x0005f788 0x1005f788 33  68   .rdata  utf16le EC_BistPiclCurrentDriversCommFail
+433  0x0005f7d0 0x1005f7d0 31  64   .rdata  utf16le EC_BistPiclMotherBdFpgaCommFail
+434  0x0005f810 0x1005f810 22  46   .rdata  utf16le EC_BistPiclDxEntryFail
+435  0x0005f840 0x1005f840 21  44   .rdata  utf16le EC_BistPiclDxExitFail
+436  0x0005f86c 0x1005f86c 21  44   .rdata  utf16le EC_FocusBoardNotFound
+437  0x0005f898 0x1005f898 16  34   .rdata  utf16le EC_PicM_NotFound
+438  0x0005f8bc 0x1005f8bc 16  34   .rdata  utf16le EC_PicF_NotFound
+439  0x0005f8e0 0x1005f8e0 23  48   .rdata  utf16le EC_MotorFault_PowerFail
+440  0x0005f910 0x1005f910 23  48   .rdata  utf16le EC_MotorFault_FilmDrive
+441  0x0005f940 0x1005f940 25  52   .rdata  utf16le EC_MotorFault_CCD_Stepper
+442  0x0005f974 0x1005f974 26  54   .rdata  utf16le EC_MotorFault_Lens_Stepper
+443  0x0005f9ac 0x1005f9ac 23  48   .rdata  utf16le EC_MotorFault_FilmGuide
+444  0x0005f9dc 0x1005f9dc 25  52   .rdata  utf16le EC_MotorFault_FilterWheel
+445  0x0005fa10 0x1005fa10 15  32   .rdata  utf16le EC_VerifyFailed
+446  0x0005fa30 0x1005fa30 19  40   .rdata  utf16le EC_CCD_VoltageError
+447  0x0005fa58 0x1005fa58 23  48   .rdata  utf16le EC_MMX_SSE_NotSupported
+448  0x0005fa88 0x1005fa88 19  40   .rdata  utf16le EC_BadSimulatorFile
+449  0x0005fab0 0x1005fab0 16  34   .rdata  utf16le EC_NoFilmTimeOut
+450  0x0005fad4 0x1005fad4 13  28   .rdata  utf16le EC_DXBadSwing
+451  0x0005faf0 0x1005faf0 31  64   .rdata  utf16le EC_DXAdjustingPotsForGoodSignal
+452  0x0005fb30 0x1005fb30 26  54   .rdata  utf16le EC_DXNoGoodBrightSpotFound
+453  0x0005fb68 0x1005fb68 16  34   .rdata  utf16le EC_DXNoFilmFound
+454  0x0005fb8c 0x1005fb8c 22  46   .rdata  utf16le EC_DXPotsWillNotAdjust
+455  0x0005fbbc 0x1005fbbc 25  52   .rdata  utf16le EC_PollPpbNotOutOfService
+456  0x0005fbf0 0x1005fbf0 14  30   .rdata  utf16le EC_BadFileData
+457  0x0005fc10 0x1005fc10 21  44   .rdata  utf16le EC_ApsUnprocessedFilm
+458  0x0005fc3c 0x1005fc3c 14  30   .rdata  utf16le EC_ApsParkInit
+459  0x0005fc5c 0x1005fc5c 10  22   .rdata  utf16le EC_ApsPark
+460  0x0005fc74 0x1005fc74 14  30   .rdata  utf16le EC_ApsOverflow
+461  0x0005fc94 0x1005fc94 17  36   .rdata  utf16le EC_ApsNoCartridge
+462  0x0005fcb8 0x1005fcb8 20  42   .rdata  utf16le EC_ApsFilmJamRetract
+463  0x0005fce4 0x1005fce4 17  36   .rdata  utf16le EC_ApsFilmJamScan
+464  0x0005fd08 0x1005fd08 20  42   .rdata  utf16le EC_ApsFilmJamExtract
+465  0x0005fd34 0x1005fd34 18  38   .rdata  utf16le EC_ApsFilmEndError
+466  0x0005fd5c 0x1005fd5c 24  50   .rdata  utf16le EC_ApsEjectButtonPressed
+467  0x0005fd90 0x1005fd90 23  48   .rdata  utf16le EC_ApsCartridgeUnpacked
+468  0x0005fdc0 0x1005fdc0 26  54   .rdata  utf16le EC_WIN_WaitForSingleObject
+469  0x0005fdf8 0x1005fdf8 20  42   .rdata  utf16le EC_WIN_VirtualUnlock
+470  0x0005fe24 0x1005fe24 18  38   .rdata  utf16le EC_WIN_VirtualLock
+471  0x0005fe4c 0x1005fe4c 18  38   .rdata  utf16le EC_WIN_VirtualFree
+472  0x0005fe74 0x1005fe74 19  40   .rdata  utf16le EC_WIN_VirtualAlloc
+473  0x0005fe9c 0x1005fe9c 22  46   .rdata  utf16le EC_WIN_UnmapViewOfFile
+474  0x0005fed0 0x1005fed0 31  64   .rdata  utf16le EC_WIN_SetProcessWorkingSetSize
+475  0x0005ff10 0x1005ff10 23  48   .rdata  utf16le EC_WIN_SetFilePointerEx
+476  0x0005ff40 0x1005ff40 15  32   .rdata  utf16le EC_WIN_SetEvent
+477  0x0005ff60 0x1005ff60 19  40   .rdata  utf16le EC_WIN_SetEndOfFile
+478  0x0005ff88 0x1005ff88 17  36   .rdata  utf16le EC_WIN_ResetEvent
+479  0x0005ffac 0x1005ffac 22  46   .rdata  utf16le EC_WIN_OpenFileMapping
+480  0x0005ffdc 0x1005ffdc 16  34   .rdata  utf16le EC_WIN_OpenEvent
+481  0x00060000 0x10060000 20  42   .rdata  utf16le EC_WIN_MapViewOfFile
+482  0x0006002c 0x1006002c 18  38   .rdata  utf16le EC_WIN_LoadLibrary
+483  0x00060058 0x10060058 31  64   .rdata  utf16le EC_WIN_GetProcessWorkingSetSize
+484  0x00060098 0x10060098 26  54   .rdata  utf16le EC_WIN_GetOverlappedResult
+485  0x000600d0 0x100600d0 18  38   .rdata  utf16le EC_WIN_GetFileSize
+486  0x000600f8 0x100600f8 25  52   .rdata  utf16le EC_WIN_GetDiskFreeSpaceEx
+487  0x0006012c 0x1006012c 23  48   .rdata  utf16le EC_WIN_GetDiskFreeSpace
+488  0x0006015c 0x1006015c 18  38   .rdata  utf16le EC_WIN_FreeLibrary
+489  0x00060184 0x10060184 20  42   .rdata  utf16le EC_WIN_FindFirstFile
+490  0x000601b0 0x100601b0 16  34   .rdata  utf16le EC_WIN_FileWrite
+491  0x000601d4 0x100601d4 27  56   .rdata  utf16le EC_WIN_FileTimeToSystemTime
+492  0x0006020c 0x1006020c 21  44   .rdata  utf16le EC_WIN_FileSetPointer
+493  0x00060238 0x10060238 15  32   .rdata  utf16le EC_WIN_FileRead
+494  0x00060258 0x10060258 15  32   .rdata  utf16le EC_WIN_FileOpen
+495  0x00060278 0x10060278 16  34   .rdata  utf16le EC_WIN_FileClose
+496  0x0006029c 0x1006029c 22  46   .rdata  utf16le EC_WIN_DeviceIoControl
+497  0x000602cc 0x100602cc 24  50   .rdata  utf16le EC_WIN_CreateFileMapping
+498  0x00060300 0x10060300 18  38   .rdata  utf16le EC_WIN_CreateEvent
+499  0x00060328 0x10060328 22  46   .rdata  utf16le EC_WIN_CreateDirectory
+500  0x00060358 0x10060358 15  32   .rdata  utf16le EC_WIN_CancelIo
+501  0x00060378 0x10060378 17  36   .rdata  utf16le EC_WrongByteCount
+502  0x0006039c 0x1006039c 27  56   .rdata  utf16le EC_UseScratchRemovalChanged
+503  0x000603d4 0x100603d4 10  22   .rdata  utf16le EC_TimeOut
+504  0x000603ec 0x100603ec 13  28   .rdata  utf16le EC_SystemInfo
+505  0x00060408 0x10060408 18  38   .rdata  utf16le EC_StepperPosition
+506  0x00060430 0x10060430 20  42   .rdata  utf16le EC_StepperDidNotStop
+507  0x0006045c 0x1006045c 23  48   .rdata  utf16le EC_StepperAlreadyMoving
+508  0x0006048c 0x1006048c 28  58   .rdata  utf16le EC_SelfTestFailedLensStepper
+509  0x000604c8 0x100604c8 26  54   .rdata  utf16le EC_SelfTestFailedFilmDrive
+510  0x00060500 0x10060500 27  56   .rdata  utf16le EC_SelfTestFailedCcdStepper
+511  0x00060538 0x10060538 22  46   .rdata  utf16le EC_ScanLineAcquisition
+512  0x00060568 0x10060568 32  66   .rdata  utf16le EC_ResolutionOrFilmFormatChanged
+513  0x000605ac 0x100605ac 15  32   .rdata  utf16le EC_RegistryRead
+514  0x000605cc 0x100605cc 28  58   .rdata  utf16le EC_ProcessedRingTailOverflow
+515  0x00060608 0x10060608 27  56   .rdata  utf16le EC_PreviousHardwareFaultAps
+516  0x00060640 0x10060640 17  36   .rdata  utf16le EC_PollPPBStopped
+517  0x00060664 0x10060664 13  28   .rdata  utf16le EC_PicVersion
+518  0x00060680 0x10060680 15  32   .rdata  utf16le EC_ParsingError
+519  0x000606a0 0x100606a0 18  38   .rdata  utf16le EC_NoStripsScanned
+520  0x000606c8 0x100606c8 25  52   .rdata  utf16le EC_NoHighResolutionBuffer
+521  0x000606fc 0x100606fc 21  44   .rdata  utf16le EC_MissingDllFunction
+522  0x00060728 0x10060728 12  26   .rdata  utf16le EC_MemoryNew
+523  0x00060744 0x10060744 20  42   .rdata  utf16le EC_LampWarmUpFailure
+524  0x00060770 0x10060770 21  44   .rdata  utf16le EC_InvalidAdjustValue
+525  0x0006079c 0x1006079c 29  60   .rdata  utf16le EC_InsufficientMemoryPassedIn
+526  0x000607d8 0x100607d8 36  74   .rdata  utf16le EC_InsufficientMemoryForSaveToMemory
+527  0x00060824 0x10060824 20  42   .rdata  utf16le EC_InsufficientLight
+528  0x00060850 0x10060850 20  42   .rdata  utf16le EC_ImportedFileColor
+529  0x0006087c 0x1006087c 17  36   .rdata  utf16le EC_ImageNotPlanar
+530  0x000608a0 0x100608a0 16  34   .rdata  utf16le EC_HardwareFault
+531  0x000608c4 0x100608c4 19  40   .rdata  utf16le EC_FocusQuadRegress
+532  0x000608ec 0x100608ec 26  54   .rdata  utf16le EC_FocusPredictorThreshold
+533  0x00060928 0x10060928 31  64   .rdata  utf16le EC_FocusOutsideRegionOfInterest
+534  0x00060968 0x10060968 26  54   .rdata  utf16le EC_FocusCurvatureThreshold
+535  0x000609a0 0x100609a0 23  48   .rdata  utf16le EC_FirmwareVerification
+536  0x000609d0 0x100609d0 15  32   .rdata  utf16le EC_FilmInGuides
+537  0x000609f0 0x100609f0 15  32   .rdata  utf16le EC_FileNotFound
+538  0x00060a10 0x10060a10 27  56   .rdata  utf16le EC_EEPromWarningCheckSumBad
+539  0x00060a48 0x10060a48 21  44   .rdata  utf16le EC_EEPromWarningBlank
+540  0x00060a74 0x10060a74 22  46   .rdata  utf16le EC_EEPromMemoryAddress
+541  0x00060aa4 0x10060aa4 15  32   .rdata  utf16le EC_EEPromLength
+542  0x00060ac4 0x10060ac4 18  38   .rdata  utf16le EC_EEPromCorrupted
+543  0x00060aec 0x10060aec 16  34   .rdata  utf16le EC_EEPromAddress
+544  0x00060b10 0x10060b10 23  48   .rdata  utf16le EC_CS_NotUnlockedAtExit
+545  0x00060b40 0x10060b40 19  40   .rdata  utf16le EC_CS_InvalidUnlock
+546  0x00060b68 0x10060b68 18  38   .rdata  utf16le EC_CS_DoubleUnlock
+547  0x00060b90 0x10060b90 16  34   .rdata  utf16le EC_DllInitialize
+548  0x00060bb4 0x10060bb4 29  60   .rdata  utf16le EC_CreateDirectoryInvalidForm
+549  0x00060bf0 0x10060bf0 27  56   .rdata  utf16le EC_ColorCalibrationFromFile
+550  0x00060c28 0x10060c28 26  54   .rdata  utf16le EC_ClientMemoryBufferInUse
+551  0x00060c60 0x10060c60 35  72   .rdata  utf16le EC_BufferDriveMegabytesRollTooSmall
+552  0x00060ca8 0x10060ca8 19  40   .rdata  utf16le EC_CcdAtoDGainLimit
+553  0x00060cd0 0x10060cd0 36  74   .rdata  utf16le EC_CalibratingWizardBusyOrNotRunning
+554  0x00060d1c 0x10060d1c 27  56   .rdata  utf16le EC_NoFixedPatternCorrection
+555  0x00060d54 0x10060d54 19  40   .rdata  utf16le EC_ApplyDragChanged
+556  0x00060d7c 0x10060d7c 12  26   .rdata  utf16le EC_AidNoRoll
+557  0x00060d98 0x10060d98 20  42   .rdata  utf16le EC_NotAllowedWithAps
+558  0x00060dc4 0x10060dc4 29  60   .rdata  utf16le EC_ChangingFrameNumberWithAps
+559  0x00060e00 0x10060e00 12  26   .rdata  utf16le EC_LampError
+560  0x00060e1c 0x10060e1c 19  40   .rdata  utf16le EC_InvalidParameter
+561  0x00060e44 0x10060e44 24  50   .rdata  utf16le EC_InvalidMemberVariable
+562  0x00060e78 0x10060e78 20  42   .rdata  utf16le EC_FileNameListEmpty
+563  0x00060ea4 0x10060ea4 28  58   .rdata  utf16le EC_CallEnableFullCalibration
+564  0x00060ee0 0x10060ee0 16  34   .rdata  utf16le EC_PreviousError
+565  0x00060f04 0x10060f04 19  40   .rdata  utf16le EC_NotSupportedByHW
+566  0x00060f2c 0x10060f2c 25  52   .rdata  utf16le EC_AdjustMotorSpeedIsZero
+567  0x00060f60 0x10060f60 33  68   .rdata  utf16le EC_InitializeScannerAlreadyCalled
+568  0x00060fa4 0x10060fa4 20  42   .rdata  utf16le EC_CBAdviseNotCalled
+569  0x00060fd0 0x10060fd0 24  50   .rdata  utf16le EC_CBAdviseAlreadyCalled
+570  0x00061004 0x10061004 15  32   .rdata  utf16le EC_StartUpError
+571  0x00061024 0x10061024 30  62   .rdata  utf16le EC_OneFileNameForMultipleSaves
+572  0x00061068 0x10061068 40  82   .rdata  utf16le EC_NoWorkerThreadForMultipleSaveToMemory
+573  0x000610bc 0x100610bc 23  48   .rdata  utf16le EC_NoClientMemoryBuffer
+574  0x000610ec 0x100610ec 15  32   .rdata  utf16le EC_InvalidIndex
+575  0x0006110c 0x1006110c 15  32   .rdata  utf16le EC_TooManyRolls
+576  0x0006112c 0x1006112c 21  44   .rdata  utf16le EC_NoPicturesOrStrips
+577  0x00061158 0x10061158 24  50   .rdata  utf16le EC_ScannerNotInitialized
+578  0x0006118c 0x1006118c 27  56   .rdata  utf16le EC_WorkerThreadStartTimeout
+579  0x000611c4 0x100611c4 27  56   .rdata  utf16le EC_WorkerThreadClientSignal
+580  0x00061200 0x10061200 45  92   .rdata  utf16le EC_WorkerThreadCoGetInterfaceAndReleaseStream
+581  0x0006125c 0x1006125c 27  56   .rdata  utf16le EC_WorkerThreadCoInitialize
+582  0x00061294 0x10061294 29  60   .rdata  utf16le EC_UnableToCreateWorkerThread
+583  0x000612d0 0x100612d0 40  82   .rdata  utf16le EC_CoMarshalInterThreadInterfaceInStream
+584  0x00061324 0x10061324 17  36   .rdata  utf16le EC_QueryInterface
+585  0x00061348 0x10061348 21  44   .rdata  utf16le EC_WorkerThreadExists
+586  0x00061374 0x10061374 29  60   .rdata  utf16le EC_InvalidPtrToClientCallback
+587  0x000613b0 0x100613b0 23  48   .rdata  utf16le FN_PutPictureSaturation
+588  0x000613e0 0x100613e0 22  46   .rdata  utf16le FN_PutPictureBnWEffect
+589  0x00061410 0x10061410 12  26   .rdata  utf16le FN_bFindTmax
+590  0x0006142c 0x1006142c 11  24   .rdata  utf16le FN_bSetF135
+591  0x00061444 0x10061444 13  28   .rdata  utf16le FN_bLampSaver
+592  0x00061460 0x10061460 15  32   .rdata  utf16le FN_bWriteEEProm
+593  0x00061480 0x10061480 27  56   .rdata  utf16le FN_bWriteEEPromAdjustValues
+594  0x000614b8 0x100614b8 13  28   .rdata  utf16le FN_bVerifyPic
+595  0x000614d4 0x100614d4 23  48   .rdata  utf16le FN_bStateMachineLedFilm
+596  0x00061504 0x10061504 23  48   .rdata  utf16le FN_bSetReadFilePosition
+597  0x00061534 0x10061534 22  46   .rdata  utf16le FN_bSetCurrentScanType
+598  0x00061564 0x10061564 19  40   .rdata  utf16le FN_bReadMatrix_3x10
+599  0x0006158c 0x1006158c 11  24   .rdata  utf16le FN_bReadLut
+600  0x000615a4 0x100615a4 23  48   .rdata  utf16le FN_bReadExternalMofFile
+601  0x000615d4 0x100615d4 18  38   .rdata  utf16le FN_bReadEEPromData
+602  0x00061600 0x10061600 32  66   .rdata  utf16le FN_PutFilmPressureRollerPosition
+603  0x00061644 0x10061644 23  48   .rdata  utf16le FN_PutFilmGuidePosition
+604  0x00061678 0x10061678 33  68   .rdata  utf16le FN_PutCalibrateInfoIdentification
+605  0x000616bc 0x100616bc 30  62   .rdata  utf16le FN_PutCalibrateInfoColorMatrix
+606  0x000616fc 0x100616fc 11  24   .rdata  utf16le FN_bLoadPic
+607  0x00061714 0x10061714 25  52   .rdata  utf16le FN_bLampWarmupFromStandby
+608  0x00061748 0x10061748 14  30   .rdata  utf16le FN_bLampWarmUp
+609  0x00061768 0x10061768 20  42   .rdata  utf16le FN_LampManualControl
+610  0x00061794 0x10061794 18  38   .rdata  utf16le FN_bGetColorMatrix
+611  0x000617bc 0x100617bc 30  62   .rdata  utf16le FN_GetCalibrateInfoColorMatrix
+612  0x000617fc 0x100617fc 16  34   .rdata  utf16le FN_bGetAPSFrames
+613  0x00061820 0x10061820 24  50   .rdata  utf16le FN_bDrvSetMotorVariables
+614  0x00061854 0x10061854 21  44   .rdata  utf16le FN_bDrvPutLampLevelIr
+615  0x00061880 0x10061880 19  40   .rdata  utf16le FN_bDrvPutLampLevel
+616  0x000618a8 0x100618a8 22  46   .rdata  utf16le FN_bDrvPutCcdExposures
+617  0x000618d8 0x100618d8 22  46   .rdata  utf16le FN_bDrvMoveFilterWheel
+618  0x00061908 0x10061908 30  62   .rdata  utf16le FN_bDrvMoveFilmPressureRollers
+619  0x00061948 0x10061948 21  44   .rdata  utf16le FN_bDrvMoveFilmGuides
+620  0x00061974 0x10061974 26  54   .rdata  utf16le FN_bDrvGetPpbGeneralStatus
+621  0x000619ac 0x100619ac 28  58   .rdata  utf16le FN_bDrvGetHardwareStatusPicF
+622  0x000619e8 0x100619e8 29  60   .rdata  utf16le FN_bDrvGetHardwareStatusMotor
+623  0x00061a24 0x10061a24 23  48   .rdata  utf16le FN_bDrvCcdAquireControl
+624  0x00061a54 0x10061a54 18  38   .rdata  utf16le FN_bLoadDefaultLut
+625  0x00061a7c 0x10061a7c 21  44   .rdata  utf16le FN_bLoadColRevDefault
+626  0x00061aa8 0x10061aa8 34  70   .rdata  utf16le FN_CalibratePutFilterWheelPosition
+627  0x00061af0 0x10061af0 28  58   .rdata  utf16le FN_bCalibrateFindSmearAndFPC
+628  0x00061b2c 0x10061b2c 28  58   .rdata  utf16le FN_bCalibrateFindLiteAndDark
+629  0x00061b68 0x10061b68 18  38   .rdata  utf16le FN_bWriteFileChunk
+630  0x00061b90 0x10061b90 21  44   .rdata  utf16le FN_bWriteEEPromCalWiz
+631  0x00061bbc 0x10061bbc 21  44   .rdata  utf16le FN_bWriteEEPromAdjust
+632  0x00061be8 0x10061be8 18  38   .rdata  utf16le FN_bWriteAllParams
+633  0x00061c10 0x10061c10 26  54   .rdata  utf16le FN_bWorkingSetSizeIncrease
+634  0x00061c48 0x10061c48 29  60   .rdata  utf16le FN_bWorkingSetSizeDecreaseMax
+635  0x00061c84 0x10061c84 29  60   .rdata  utf16le FN_bWorkingSetSizeDecreaseMin
+636  0x00061cc0 0x10061cc0 18  38   .rdata  utf16le FN_bVerifyPicLarge
+637  0x00061ce8 0x10061ce8 10  22   .rdata  utf16le FN_bUpdate
+638  0x00061d00 0x10061d00 26  54   .rdata  utf16le FN_bUnlockAndFreeVA_Memory
+639  0x00061d38 0x10061d38 10  22   .rdata  utf16le FN_bUnlock
+640  0x00061d50 0x10061d50 9   20   .rdata  utf16le FN_bTimer
+641  0x00061d64 0x10061d64 14  30   .rdata  utf16le FN_bStopMotors
+642  0x00061d84 0x10061d84 19  40   .rdata  utf16le FN_bShutDownPollPPB
+643  0x00061dac 0x10061dac 27  56   .rdata  utf16le FN_bSetUpSaveToSharedMemory
+644  0x00061de4 0x10061de4 21  44   .rdata  utf16le FN_bSetLockedLampTemp
+645  0x00061e10 0x10061e10 31  64   .rdata  utf16le FN_bSetLampStartingDifferential
+646  0x00061e50 0x10061e50 17  36   .rdata  utf16le FN_bSetFilmLength
+647  0x00061e74 0x10061e74 18  38   .rdata  utf16le FN_bSetEventStates
+648  0x00061e9c 0x10061e9c 15  32   .rdata  utf16le FN_bSensorReset
+649  0x00061ebc 0x10061ebc 22  46   .rdata  utf16le FN_bSendClientCallBack
+650  0x00061eec 0x10061eec 20  42   .rdata  utf16le FN_bSelectHardDriveP
+651  0x00061f18 0x10061f18 21  44   .rdata  utf16le FN_bSelectHardDriveFS
+652  0x00061f44 0x10061f44 14  30   .rdata  utf16le FN_iScanStrips
+653  0x00061f64 0x10061f64 20  42   .rdata  utf16le FN_hrScanPicturesSub
+654  0x00061f90 0x10061f90 15  32   .rdata  utf16le FN_ScanPictures
+655  0x00061fb0 0x10061fb0 13  28   .rdata  utf16le FN_ScanCancel
+656  0x00061fcc 0x10061fcc 9   20   .rdata  utf16le FN_bScale
+657  0x00061fe0 0x10061fe0 21  44   .rdata  utf16le FN_SaveToSharedMemory
+658  0x0006200c 0x1006200c 16  34   .rdata  utf16le FN_bSaveToMemory
+659  0x00062030 0x10062030 14  30   .rdata  utf16le FN_bSaveToFile
+660  0x00062050 0x10062050 13  28   .rdata  utf16le FN_SaveToDisk
+661  0x0006206c 0x1006206c 21  44   .rdata  utf16le FN_SaveToClientMemory
+662  0x00062098 0x10062098 20  42   .rdata  utf16le FN_uiSaveDiskBuffers
+663  0x000620c4 0x100620c4 13  28   .rdata  utf16le FN_SaveCancel
+664  0x000620e0 0x100620e0 26  54   .rdata  utf16le FN_bRotateAndScalePlanar_8
+665  0x00062118 0x10062118 13  28   .rdata  utf16le FN_bRotate180
+666  0x00062134 0x10062134 13  28   .rdata  utf16le FN_bRotate90R
+667  0x00062150 0x10062150 13  28   .rdata  utf16le FN_bRotate90L
+668  0x0006216c 0x1006216c 10  22   .rdata  utf16le FN_bRotate
+669  0x00062184 0x10062184 11  24   .rdata  utf16le FN_bRetract
+670  0x0006219c 0x1006219c 18  38   .rdata  utf16le FN_ResetStatusLeds
+671  0x000621c4 0x100621c4 23  48   .rdata  utf16le FN_ResetFactoryDefaults
+672  0x000621f4 0x100621f4 15  32   .rdata  utf16le FN_bResetErrors
+673  0x00062214 0x10062214 21  44   .rdata  utf16le FN_bResetAllPicErrors
+674  0x00062240 0x10062240 15  32   .rdata  utf16le FN_bReadRawFile
+675  0x00062260 0x10062260 15  32   .rdata  utf16le FN_bReadHexFile
+676  0x00062280 0x10062280 19  40   .rdata  utf16le FN_LoadColNegClient
+677  0x000622a8 0x100622a8 17  36   .rdata  utf16le FN_bLoadClientLut
+678  0x000622cc 0x100622cc 15  32   .rdata  utf16le FN_bRecycleRoll
+679  0x000622ec 0x100622ec 14  30   .rdata  utf16le FN_bReadSpline
+680  0x0006230c 0x1006230c 21  44   .rdata  utf16le FN_bReadPicEEPromByte
+681  0x00062338 0x10062338 19  40   .rdata  utf16le FN_bReadInternalMof
+682  0x00062360 0x10062360 34  70   .rdata  utf16le FN_bReadFixedPatternCorrectionFile
+683  0x000623a8 0x100623a8 12  26   .rdata  utf16le FN_bReadFile
+684  0x000623c4 0x100623c4 21  44   .rdata  utf16le FN_bReadEEPromSection
+685  0x000623f0 0x100623f0 24  50   .rdata  utf16le FN_bReadEEPromToRegistry
+686  0x00062424 0x10062424 17  36   .rdata  utf16le FN_bReadAllParams
+687  0x00062448 0x10062448 19  40   .rdata  utf16le FN_bPutStripInfoAid
+688  0x00062470 0x10062470 22  46   .rdata  utf16le FN_bPutSourceUserRects
+689  0x000624a0 0x100624a0 29  60   .rdata  utf16le FN_PutScannerInfoPreFrameUser
+690  0x000624dc 0x100624dc 20  42   .rdata  utf16le FN_PutScannerInfo001
+691  0x00062508 0x10062508 20  42   .rdata  utf16le FN_PutScannerInfo000
+692  0x00062534 0x10062534 15  32   .rdata  utf16le FN_bPutRotation
+693  0x00062554 0x10062554 21  44   .rdata  utf16le FN_bPutPictureInfoAid
+694  0x00062580 0x10062580 19  40   .rdata  utf16le FN_bPutPictureInfo1
+695  0x000625a8 0x100625a8 18  38   .rdata  utf16le FN_PutPictureInfo1
+696  0x000625d0 0x100625d0 17  36   .rdata  utf16le FN_PutPictureInfo
+697  0x000625f4 0x100625f4 24  50   .rdata  utf16le FN_PutCalibrateInfoLight
+698  0x00062628 0x10062628 22  46   .rdata  utf16le FN_PutCalibrateInfoDpi
+699  0x00062658 0x10062658 21  44   .rdata  utf16le FN_PutCalibrateEEProm
+700  0x00062684 0x10062684 20  42   .rdata  utf16le FN_bProcessorVersion
+701  0x000626b0 0x100626b0 21  44   .rdata  utf16le FN_bProcessMofWithAid
+702  0x000626dc 0x100626dc 22  46   .rdata  utf16le FN_bProcessHexFileLine
+703  0x0006270c 0x1006270c 17  36   .rdata  utf16le FN_bPrepareToScan
+704  0x00062730 0x10062730 24  50   .rdata  utf16le FN_bPicToBootLoaderState
+705  0x00062764 0x10062764 17  36   .rdata  utf16le FN_ImportFromFile
+706  0x00062788 0x10062788 8   18   .rdata  utf16le FN_bOpen
+707  0x0006279c 0x1006279c 26  54   .rdata  utf16le FN_bPrepareColorCorrection
+708  0x000627d4 0x100627d4 18  38   .rdata  utf16le FN_bPlanarDataCopy
+709  0x000627fc 0x100627fc 23  48   .rdata  utf16le FN_bPicInterruptHandler
+710  0x00062830 0x10062830 34  70   .rdata  utf16le FN_bPermitWorkerThreadCreationScan
+711  0x00062878 0x10062878 12  26   .rdata  utf16le FN_bNewStrip
+712  0x00062894 0x10062894 11  24   .rdata  utf16le FN_bNewRoll
+713  0x000628ac 0x100628ac 25  52   .rdata  utf16le FN_bLogHardwareStatusLamp
+714  0x000628e0 0x100628e0 16  34   .rdata  utf16le FN_bLockRawStats
+715  0x00062904 0x10062904 8   18   .rdata  utf16le FN_bLock
+716  0x00062918 0x10062918 16  34   .rdata  utf16le FN_bLoadPicLarge
+717  0x0006293c 0x1006293c 20  42   .rdata  utf16le FN_bLoadClientMatrix
+718  0x00062968 0x10062968 21  44   .rdata  utf16le FN_bLoadImageFromFilm
+719  0x00062994 0x10062994 21  44   .rdata  utf16le FN_bLoadImageFromFile
+720  0x000629c0 0x100629c0 23  48   .rdata  utf16le FN_bLoadImageFromBuffer
+721  0x000629f0 0x100629f0 16  34   .rdata  utf16le FN_bLoadImageSub
+722  0x00062a14 0x10062a14 13  28   .rdata  utf16le FN_bLoadImage
+723  0x00062a30 0x10062a30 9   20   .rdata  utf16le FN_bLeave
+724  0x00062a44 0x10062a44 25  52   .rdata  utf16le FN_bLampTemperatureStable
+725  0x00062a78 0x10062a78 16  34   .rdata  utf16le FN_bLampDelayOff
+726  0x00062a9c 0x10062a9c 20  42   .rdata  utf16le FN_bKcdfsCorrections
+727  0x00062ac8 0x10062ac8 16  34   .rdata  utf16le FN_InsertPicture
+728  0x00062aec 0x10062aec 17  36   .rdata  utf16le FN_bInitWorkerSub
+729  0x00062b10 0x10062b10 24  50   .rdata  utf16le FN_bInitWorkerSaveToDisk
+730  0x00062b48 0x10062b48 32  66   .rdata  utf16le FN_bInitWorkerSaveToSharedMemory
+731  0x00062b90 0x10062b90 32  66   .rdata  utf16le FN_bInitWorkerSaveToClientMemory
+732  0x00062bd4 0x10062bd4 14  30   .rdata  utf16le FN_bInitWorker
+733  0x00062bf4 0x10062bf4 25  52   .rdata  utf16le FN_bInitPlanarImageStruct
+734  0x00062c28 0x10062c28 19  40   .rdata  utf16le FN_bInitImageStruct
+735  0x00062c50 0x10062c50 20  42   .rdata  utf16le FN_InitializeScanner
+736  0x00062c7c 0x10062c7c 9   20   .rdata  utf16le FN_bInit3
+737  0x00062c90 0x10062c90 9   20   .rdata  utf16le FN_bInit2
+738  0x00062ca4 0x10062ca4 8   18   .rdata  utf16le FN_bInit
+739  0x00062cb8 0x10062cb8 18  38   .rdata  utf16le FN_bHexToWordArray
+740  0x00062ce0 0x10062ce0 12  26   .rdata  utf16le FN_bHaveIROn
+741  0x00062cfc 0x10062cfc 19  40   .rdata  utf16le FN_bGetStripInfoAid
+742  0x00062d24 0x10062d24 18  38   .rdata  utf16le FN_GetStripInfoAid
+743  0x00062d4c 0x10062d4c 29  60   .rdata  utf16le FN_GetScannerInfoPreFrameUser
+744  0x00062d88 0x10062d88 25  52   .rdata  utf16le FN_GetScannerInfoPreFrame
+745  0x00062dbc 0x10062dbc 17  36   .rdata  utf16le FN_uiGetScanLines
+746  0x00062de0 0x10062de0 16  34   .rdata  utf16le FN_bGetScanLines
+747  0x00062e04 0x10062e04 13  28   .rdata  utf16le FN_bGetRGBAll
+748  0x00062e20 0x10062e20 21  44   .rdata  utf16le FN_bGetPictureInfoAid
+749  0x00062e4c 0x10062e4c 20  42   .rdata  utf16le FN_GetPictureInfoAid
+750  0x00062e78 0x10062e78 23  48   .rdata  utf16le FN_bGetPicMofDataPacket
+751  0x00062ea8 0x10062ea8 17  36   .rdata  utf16le FN_bGetHiResImage
+752  0x00062ecc 0x10062ecc 13  28   .rdata  utf16le FN_bGetErrors
+753  0x00062ee8 0x10062ee8 28  58   .rdata  utf16le FN_bGetDXProductAndSpecifier
+754  0x00062f24 0x10062f24 19  40   .rdata  utf16le FN_uiGetCorrections
+755  0x00062f4c 0x10062f4c 24  50   .rdata  utf16le FN_GetCalibrateInfoLight
+756  0x00062f80 0x10062f80 22  46   .rdata  utf16le FN_GetCalibrateInfoDpi
+757  0x00062fb0 0x10062fb0 21  44   .rdata  utf16le FN_GetCalibrateEEProm
+758  0x00062fdc 0x10062fdc 21  44   .rdata  utf16le FN_bGetBytesPerSector
+759  0x00063008 0x10063008 19  40   .rdata  utf16le FN_FuncScanPictures
+760  0x00063030 0x10063030 17  36   .rdata  utf16le FN_FuncSaveToDisk
+761  0x00063054 0x10063054 25  52   .rdata  utf16le FN_FuncSaveToSharedMemory
+762  0x00063088 0x10063088 25  52   .rdata  utf16le FN_FuncSaveToClientMemory
+763  0x000630bc 0x100630bc 21  44   .rdata  utf16le FN_FuncImportFromFile
+764  0x000630e8 0x100630e8 24  50   .rdata  utf16le FN_FuncInitializeScanner
+765  0x0006311c 0x1006311c 18  38   .rdata  utf16le FN_FuncCorrections
+766  0x00063144 0x10063144 19  40   .rdata  utf16le FN_bFreeColorCiruit
+767  0x0006316c 0x1006316c 20  42   .rdata  utf16le FN_bFramingLookAtEnd
+768  0x00063198 0x10063198 26  54   .rdata  utf16le FN_bFramingLookAtBeginning
+769  0x000631d0 0x100631d0 23  48   .rdata  utf16le FN_iFramingFindPictures
+770  0x00063200 0x10063200 28  58   .rdata  utf16le FN_iFramingEstimatePlacement
+771  0x0006323c 0x1006323c 26  54   .rdata  utf16le FN_iFramingCreateOnesArray
+772  0x00063274 0x10063274 20  42   .rdata  utf16le FN_iFramePicturesSub
+773  0x000632a0 0x100632a0 17  36   .rdata  utf16le FN_iFramePictures
+774  0x000632c4 0x100632c4 20  42   .rdata  utf16le FN_bFPCConfigAnalyze
+775  0x000632f0 0x100632f0 16  34   .rdata  utf16le FN_bFPCConfigAdd
+776  0x00063314 0x10063314 19  40   .rdata  utf16le FN_ForceCorrections
+777  0x0006333c 0x1006333c 20  42   .rdata  utf16le FN_bFocusQuadRegress
+778  0x00063368 0x10063368 21  44   .rdata  utf16le FN_bFocusPositionFilm
+779  0x00063394 0x10063394 21  44   .rdata  utf16le FN_bFocusFindPosition
+780  0x000633c0 0x100633c0 21  44   .rdata  utf16le FN_bFocusFindBestLine
+781  0x000633ec 0x100633ec 27  56   .rdata  utf16le FN_bFocusFillPredictorArray
+782  0x00063424 0x10063424 13  28   .rdata  utf16le FN_bFocusDiag
+783  0x00063440 0x10063440 21  44   .rdata  utf16le FN_bFocusAbsPixDifRed
+784  0x0006346c 0x1006346c 25  52   .rdata  utf16le FN_bFirmwareWritePacketNL
+785  0x000634a0 0x100634a0 26  54   .rdata  utf16le FN_bFirmwarePutProgramWord
+786  0x000634d8 0x100634d8 26  54   .rdata  utf16le FN_bFirmwarePutProgramData
+787  0x00063510 0x10063510 28  58   .rdata  utf16le FN_bFirmwareGetProgramWords8
+788  0x0006354c 0x1006354c 26  54   .rdata  utf16le FN_bFirmwareGetProgramWord
+789  0x00063584 0x10063584 26  54   .rdata  utf16le FN_bFirmwareGetByteArrayNL
+790  0x000635bc 0x100635bc 21  44   .rdata  utf16le FN_FinishedLoadingRaw
+791  0x000635e8 0x100635e8 26  54   .rdata  utf16le FN_bFindSaveFileDimensions
+792  0x00063620 0x10063620 26  54   .rdata  utf16le FN_bFindFirstAvailableRoll
+793  0x00063658 0x10063658 12  26   .rdata  utf16le FN_bFindDmin
+794  0x00063674 0x10063674 17  36   .rdata  utf16le FN_bFilmTrackTest
+795  0x00063698 0x10063698 16  34   .rdata  utf16le FN_FilmTrackTest
+796  0x000636bc 0x100636bc 13  28   .rdata  utf16le FN_bFilmFound
+797  0x000636d8 0x100636d8 17  36   .rdata  utf16le FN_bFileOpenWrite
+798  0x000636fc 0x100636fc 15  32   .rdata  utf16le FN_bFileIsNewer
+799  0x0006371c 0x1006371c 13  28   .rdata  utf16le FN_bFileClose
+800  0x00063738 0x10063738 14  30   .rdata  utf16le FN_bFakeDriver
+801  0x00063758 0x10063758 11  24   .rdata  utf16le FN_bExtract
+802  0x00063770 0x10063770 8   18   .rdata  utf16le FN_bExit
+803  0x00063784 0x10063784 20  42   .rdata  utf16le FN_bExerciseSteppers
+804  0x000637b0 0x100637b0 33  68   .rdata  utf16le FN_bEntryAndExitSensorCalibration
+805  0x000637f4 0x100637f4 22  46   .rdata  utf16le FN_bEEPromWriteSection
+806  0x00063824 0x10063824 15  32   .rdata  utf16le FN_bEEPromWrite
+807  0x00063844 0x10063844 21  44   .rdata  utf16le FN_bEEPromSendVendReq
+808  0x00063870 0x10063870 21  44   .rdata  utf16le FN_bEEPromReadSection
+809  0x0006389c 0x1006389c 14  30   .rdata  utf16le FN_bEEPromRead
+810  0x000638bc 0x100638bc 20  42   .rdata  utf16le FN_bDrvWritePacketNL
+811  0x000638e8 0x100638e8 22  46   .rdata  utf16le FN_bDrvSteppersStopped
+812  0x00063918 0x10063918 20  42   .rdata  utf16le FN_bSetUpListOfRolls
+813  0x00063944 0x10063944 18  38   .rdata  utf16le FN_bDrvSetScanVars
+814  0x0006396c 0x1006396c 13  28   .rdata  utf16le FN_bDrvSetLed
+815  0x00063988 0x10063988 16  34   .rdata  utf16le FN_bDrvResetHost
+816  0x000639ac 0x100639ac 17  36   .rdata  utf16le FN_bDrvResetFifos
+817  0x000639d0 0x100639d0 22  46   .rdata  utf16le FN_bDrvPutRegisterWord
+818  0x00063a00 0x10063a00 21  44   .rdata  utf16le FN_bDrvPutRegisterCcd
+819  0x00063a2c 0x10063a2c 22  46   .rdata  utf16le FN_bDrvPutRegisterByte
+820  0x00063a5c 0x10063a5c 18  38   .rdata  utf16le FN_bDrvPutRegister
+821  0x00063a84 0x10063a84 19  40   .rdata  utf16le FN_bDrvPutCcdIrMode
+822  0x00063aac 0x10063aac 25  52   .rdata  utf16le FN_bDrvPutCcdFpgaSettings
+823  0x00063ae0 0x10063ae0 27  56   .rdata  utf16le FN_bDrvPutCcdFpgaControlReg
+824  0x00063b18 0x10063b18 24  50   .rdata  utf16le FN_bDrvPutCcdAtoDOffsets
+825  0x00063b4c 0x10063b4c 22  46   .rdata  utf16le FN_bDrvPutCcdAtoDGains
+826  0x00063b7c 0x10063b7c 15  32   .rdata  utf16le FN_bDrvSendWord
+827  0x00063b9c 0x10063b9c 21  44   .rdata  utf16le FN_bDrvSendTimeOutSet
+828  0x00063bc8 0x10063bc8 17  36   .rdata  utf16le FN_bDrvPutCommand
+829  0x00063bec 0x10063bec 19  40   .rdata  utf16le FN_bDrvReadScanLine
+830  0x00063c14 0x10063c14 26  54   .rdata  utf16le FN_bDrvPacketHandleErrorNL
+831  0x00063c4c 0x10063c4c 22  46   .rdata  utf16le FN_bDrvPacketExecuteNL
+832  0x00063c7c 0x10063c7c 11  24   .rdata  utf16le FN_bDrvOpen
+833  0x00063c94 0x10063c94 24  50   .rdata  utf16le FN_bDrvMoveFocusSteppers
+834  0x00063cc8 0x10063cc8 13  28   .rdata  utf16le FN_bDrvLampOn
+835  0x00063ce4 0x10063ce4 14  30   .rdata  utf16le FN_bDrvLampOff
+836  0x00063d04 0x10063d04 27  56   .rdata  utf16le FN_bDrvInitLampTemperatures
+837  0x00063d3c 0x10063d3c 14  30   .rdata  utf16le FN_bDrvInitCcd
+838  0x00063d5c 0x10063d5c 25  52   .rdata  utf16le FN_iDrvGetStepperPosition
+839  0x00063d90 0x10063d90 22  46   .rdata  utf16le FN_bDrvGetRegisterWord
+840  0x00063dc0 0x10063dc0 21  44   .rdata  utf16le FN_bDrvGetRegisterCcd
+841  0x00063dec 0x10063dec 22  46   .rdata  utf16le FN_bDrvGetRegisterByte
+842  0x00063e1c 0x10063e1c 28  58   .rdata  utf16le FN_bDrvGetPpbInterruptStatus
+843  0x00063e58 0x10063e58 29  60   .rdata  utf16le FN_bDrvGetPpbInfoBufferString
+844  0x00063e94 0x10063e94 27  56   .rdata  utf16le FN_bDrvGetPpbHostStatusByte
+845  0x00063ecc 0x10063ecc 26  54   .rdata  utf16le FN_bDrvGetPpbDeviceReadyNL
+846  0x00063f04 0x10063f04 23  48   .rdata  utf16le FN_bDrvGetPpbDeviceBusy
+847  0x00063f34 0x10063f34 28  58   .rdata  utf16le FN_bDrvGetHardwareStatusLamp
+848  0x00063f70 0x10063f70 26  54   .rdata  utf16le FN_bDrvGetHardwareStatusDx
+849  0x00063fa8 0x10063fa8 27  56   .rdata  utf16le FN_bDrvGetHardwareStatusCcd
+850  0x00063fe0 0x10063fe0 17  36   .rdata  utf16le FN_bDrvGetDevInfo
+851  0x00064004 0x10064004 21  44   .rdata  utf16le FN_bDrvGetByteArrayNL
+852  0x00064030 0x10064030 19  40   .rdata  utf16le FN_bDrvGetByteArray
+853  0x00064058 0x10064058 24  50   .rdata  utf16le FN_bDrvFindPicController
+854  0x0006408c 0x1006408c 13  28   .rdata  utf16le FN_bDrvDxStop
+855  0x000640a8 0x100640a8 14  30   .rdata  utf16le FN_bDrvDxStart
+856  0x000640c8 0x100640c8 20  42   .rdata  utf16le FN_bDrvDxPutHardware
+857  0x000640f4 0x100640f4 20  42   .rdata  utf16le FN_bDrvDxGetHardware
+858  0x00064120 0x10064120 19  40   .rdata  utf16le FN_bDrvDxChangePots
+859  0x00064148 0x10064148 12  26   .rdata  utf16le FN_bDrvClose
+860  0x00064164 0x10064164 20  42   .rdata  utf16le FN_bDrvCcdClockSpeed
+861  0x00064190 0x10064190 21  44   .rdata  utf16le FN_bDrvApsReadMofData
+862  0x000641bc 0x100641bc 21  44   .rdata  utf16le FN_bDrvApsFilmControl
+863  0x000641e8 0x100641e8 27  56   .rdata  utf16le FN_bDrvCcdAcquireAndDxStart
+864  0x00064220 0x10064220 24  50   .rdata  utf16le FN_bDrvCcdAcquireControl
+865  0x00064254 0x10064254 18  38   .rdata  utf16le FN_uiDriverPollPPB
+866  0x0006427c 0x1006427c 18  38   .rdata  utf16le FN_bDriveMotorStop
+867  0x000642a4 0x100642a4 25  52   .rdata  utf16le FN_bDriveMotorAdvanceFilm
+868  0x000642d8 0x100642d8 11  24   .rdata  utf16le FN_bDisplay
+869  0x000642f0 0x100642f0 19  40   .rdata  utf16le FN_bCreateIndexList
+870  0x00064318 0x10064318 18  38   .rdata  utf16le FN_bCreateFileView
+871  0x00064340 0x10064340 15  32   .rdata  utf16le FN_bCreateEvent
+872  0x00064360 0x10064360 19  40   .rdata  utf16le FN_bCreateDirectory
+873  0x00064388 0x10064388 15  32   .rdata  utf16le FN_bCreate2DLut
+874  0x000643a8 0x100643a8 10  22   .rdata  utf16le FN_bCreate
+875  0x000643c0 0x100643c0 8   18   .rdata  utf16le FN_bCopy
+876  0x000643d4 0x100643d4 21  44   .rdata  utf16le FN_bLoadDefaultMatrix
+877  0x00064400 0x10064400 11  24   .rdata  utf16le FN_LoadLut1
+878  0x00064418 0x10064418 20  42   .rdata  utf16le FN_bLoadColRevClient
+879  0x00064444 0x10064444 21  44   .rdata  utf16le FN_bLoadColNegDefault
+880  0x00064470 0x10064470 21  44   .rdata  utf16le FN_bConvertAndReadLut
+881  0x0006449c 0x1006449c 21  44   .rdata  utf16le FN_bPlanar16ToPlanar8
+882  0x000644c8 0x100644c8 16  34   .rdata  utf16le FN_bPlanarToDib8
+883  0x000644ec 0x100644ec 22  46   .rdata  utf16le FN_bColorAdjustLutFill
+884  0x00064520 0x10064520 33  68   .rdata  utf16le FN_bColorAdjustLutAllocateAndFill
+885  0x00064564 0x10064564 24  50   .rdata  utf16le FN_bColorAdjustTempImage
+886  0x00064598 0x10064598 19  40   .rdata  utf16le FN_bColorAdjustDib8
+887  0x000645c0 0x100645c0 31  64   .rdata  utf16le FN_bClientMemoryBufferGetOldest
+888  0x00064600 0x10064600 31  64   .rdata  utf16le FN_ClientMemoryBufferDismissAll
+889  0x00064640 0x10064640 32  66   .rdata  utf16le FN_bClientMemoryBufferDismissAll
+890  0x00064688 0x10064688 35  72   .rdata  utf16le FN_bClientMemoryBufferDismissOldest
+891  0x000646d0 0x100646d0 24  50   .rdata  utf16le FN_ClientMemoryBufferAdd
+892  0x00064704 0x10064704 25  52   .rdata  utf16le FN_bClientMemoryBufferAdd
+893  0x00064738 0x10064738 20  42   .rdata  utf16le FN_bClientFilesExist
+894  0x00064764 0x10064764 22  46   .rdata  utf16le FN_bClientCallBackLoop
+895  0x00064794 0x10064794 15  32   .rdata  utf16le FN_bCheckRanges
+896  0x000647b8 0x100647b8 33  68   .rdata  utf16le FN_bChangeLampTemperatureScanning
+897  0x00064800 0x10064800 32  66   .rdata  utf16le FN_bChangeLampTemperatureLampOff
+898  0x00064848 0x10064848 35  72   .rdata  utf16le FN_bChangeLampTemperatureAfterDelay
+899  0x00064890 0x10064890 25  52   .rdata  utf16le FN_bChangeLampTemperature
+900  0x000648c4 0x100648c4 18  38   .rdata  utf16le FN_bCancelReadFile
+901  0x000648ec 0x100648ec 19  40   .rdata  utf16le FN_bCalibrateWizard
+902  0x00064914 0x10064914 29  60   .rdata  utf16le FN_CalibrateTestTowerSteppers
+903  0x00064950 0x10064950 26  54   .rdata  utf16le FN_bCalibrateStartDataFlow
+904  0x00064988 0x10064988 41  84   .rdata  utf16le FN_CalibratePutFilmPressureRollerPosition
+905  0x000649dc 0x100649dc 21  44   .rdata  utf16le FN_CalibrateMofReader
+906  0x00064a08 0x10064a08 17  36   .rdata  utf16le FN_bCalibrateLEDs
+907  0x00064a2c 0x10064a2c 17  36   .rdata  utf16le FN_CalibrateFocus
+908  0x00064a50 0x10064a50 18  38   .rdata  utf16le FN_bCalibrateFlush
+909  0x00064a78 0x10064a78 30  62   .rdata  utf16le FN_bCalibrateFixedPatternIrLag
+910  0x00064ab8 0x10064ab8 29  60   .rdata  utf16le FN_bCalibrateFixedPatternDark
+911  0x00064af8 0x10064af8 31  64   .rdata  utf16le FN_bCalibrateFixedPatternBright
+912  0x00064b38 0x10064b38 34  70   .rdata  utf16le FN_bCalibrateFindOpenGateExposures
+913  0x00064b80 0x10064b80 29  60   .rdata  utf16le FN_bCalibrateFindLedDutyCycle
+914  0x00064bbc 0x10064bbc 30  62   .rdata  utf16le FN_bCalibrateFindLedCurrentSub
+915  0x00064bfc 0x10064bfc 27  56   .rdata  utf16le FN_bCalibrateFindLedCurrent
+916  0x00064c34 0x10064c34 26  54   .rdata  utf16le FN_bCalibrateFindExposures
+917  0x00064c6c 0x10064c6c 27  56   .rdata  utf16le FN_bCalibrateFindDarkOffset
+918  0x00064ca4 0x10064ca4 28  58   .rdata  utf16le FN_bCalibrateFindCorrections
+919  0x00064ce0 0x10064ce0 24  50   .rdata  utf16le FN_bCalibrateEndDataFlow
+920  0x00064d14 0x10064d14 16  34   .rdata  utf16le FN_bCalibrateEnd
+921  0x00064d38 0x10064d38 18  38   .rdata  utf16le FN_CalibrateChange
+922  0x00064d60 0x10064d60 17  36   .rdata  utf16le FN_CalibrateBegin
+923  0x00064d84 0x10064d84 19  40   .rdata  utf16le FN_bCalibrateBefore
+924  0x00064dac 0x10064dac 18  38   .rdata  utf16le FN_bCalibrateAfter
+925  0x00064dd4 0x10064dd4 23  48   .rdata  utf16le FN_CalibrateAdvanceFilm
+926  0x00064e08 0x10064e08 35  72   .rdata  utf16le FN_bCalibrateAcquireAndAverageLines
+927  0x00064e50 0x10064e50 19  40   .rdata  utf16le FN_CalibrateAcquire
+928  0x00064e78 0x10064e78 14  30   .rdata  utf16le FN_bBeforeScan
+929  0x00064e98 0x10064e98 19  40   .rdata  utf16le FN_bAssembleMofData
+930  0x00064ec0 0x10064ec0 19  40   .rdata  utf16le FN_ApsManualRetract
+931  0x00064ee8 0x10064ee8 25  52   .rdata  utf16le FN_bApplyColorAdjustments
+932  0x00064f1c 0x10064f1c 29  60   .rdata  utf16le FN_bApplyKodakColorCorrection
+933  0x00064f58 0x10064f58 21  44   .rdata  utf16le FN_bApplyColorCircuit
+934  0x00064f84 0x10064f84 11  24   .rdata  utf16le FN_bAnalyze
+935  0x00064f9c 0x10064f9c 20  42   .rdata  utf16le FN_bAidSetLeaderData
+936  0x00064fc8 0x10064fc8 14  30   .rdata  utf16le FN_bAidNewRoll
+937  0x00064fe8 0x10064fe8 22  46   .rdata  utf16le FN_bAidGetMofFrameData
+938  0x00065018 0x10065018 21  44   .rdata  utf16le FN_iAfterScanFinished
+939  0x00065044 0x10065044 13  28   .rdata  utf16le FN_bAfterScan
+940  0x00065060 0x10065060 12  26   .rdata  utf16le FN_AfterScan
+941  0x0006507c 0x1006507c 14  30   .rdata  utf16le FN_AdvanceFilm
+942  0x0006509c 0x1006509c 19  40   .rdata  utf16le FN_AdjustMotorSpeed
+943  0x000650c4 0x100650c4 16  34   .rdata  utf16le FN_bAdjustDxPots
+944  0x000650e8 0x100650e8 13  28   .rdata  utf16le FN_Destructor
+945  0x00065104 0x10065104 14  30   .rdata  utf16le FN_Constructor
+946  0x00065124 0x10065124 12  26   .rdata  utf16le CN_CiTLAMain
+947  0x00065140 0x10065140 27  56   .rdata  utf16le CN_CiThreadDataScanPictures
+948  0x00065178 0x10065178 25  52   .rdata  utf16le CN_CiThreadDataScanDriver
+949  0x000651ac 0x100651ac 27  56   .rdata  utf16le CN_CiThreadDataSavePictures
+950  0x000651e4 0x100651e4 22  46   .rdata  utf16le CN_CiThreadDataLongOps
+951  0x00065218 0x10065218 32  66   .rdata  utf16le CN_CiThreadDataInitializeScanner
+952  0x0006525c 0x1006525c 26  54   .rdata  utf16le CN_CiThreadDataCorrections
+953  0x00065294 0x10065294 13  28   .rdata  utf16le CN_CiStringUC
+954  0x000652b0 0x100652b0 29  60   .rdata  utf16le CN_CiScanSpeedRollingAverages
+955  0x000652ec 0x100652ec 12  26   .rdata  utf16le CN_CiScanner
+956  0x00065308 0x10065308 11  24   .rdata  utf16le CN_CiPicLoc
+957  0x00065320 0x10065320 12  26   .rdata  utf16le CN_CiPicture
+958  0x0006533c 0x1006533c 19  40   .rdata  utf16le CN_CiMeteredSection
+959  0x00065364 0x10065364 9   20   .rdata  utf16le CN_CiList
+960  0x00065378 0x10065378 14  30   .rdata  utf16le CN_CiLineWidth
+961  0x00065398 0x10065398 10  22   .rdata  utf16le CN_CiImage
+962  0x000653b0 0x100653b0 13  28   .rdata  utf16le CN_CiFirmware
+963  0x000653cc 0x100653cc 17  36   .rdata  utf16le CN_CiDxAndApsHole
+964  0x000653f0 0x100653f0 12  26   .rdata  utf16le CN_CiDllRoot
+965  0x0006540c 0x1006540c 16  34   .rdata  utf16le CN_CiDLLPakonMof
+966  0x00065430 0x10065430 16  34   .rdata  utf16le CN_CiDLLPakonIma
+967  0x00065454 0x10065454 18  38   .rdata  utf16le CN_CiDLLDigitalIce
+968  0x0006547c 0x1006547c 20  42   .rdata  utf16le CN_CiCriticalSection
+969  0x000654a8 0x100654a8 15  32   .rdata  utf16le CN_CiConfigTest
+970  0x000654c8 0x100654c8 20  42   .rdata  utf16le CN_CiConfigSimulator
+971  0x000654f4 0x100654f4 15  32   .rdata  utf16le CN_CiConfigScan
+972  0x00065514 0x10065514 15  32   .rdata  utf16le CN_CiConfigSave
+973  0x00065534 0x10065534 17  36   .rdata  utf16le CN_CiConfigMemory
+974  0x00065558 0x10065558 15  32   .rdata  utf16le CN_CiConfigMain
+975  0x00065578 0x10065578 16  34   .rdata  utf16le CN_CiConfigLight
+976  0x000655a0 0x100655a0 33  68   .rdata  utf16le CN_CiConfigFixedPatternCorrection
+977  0x000655e4 0x100655e4 14  30   .rdata  utf16le CN_CiConfigDpi
+978  0x00065604 0x10065604 21  44   .rdata  utf16le CN_CiConfigColorKodak
+979  0x00065630 0x10065630 11  24   .rdata  utf16le CN_CiConfig
+980  0x00065648 0x10065648 25  52   .rdata  utf16le CN_CiColorCorrectionKodak
+981  0x0006567c 0x1006567c 20  42   .rdata  utf16le CN_CiColorCorrection
+982  0x000656a8 0x100656a8 12  26   .rdata  utf16le CN_CiCmdComm
+983  0x000656c4 0x100656c4 16  34   .rdata  utf16le CN_CiBufferStrip
+984  0x000656e8 0x100656e8 24  50   .rdata  utf16le CN_CiBufferImportedHiRes
+985  0x0006571c 0x1006571c 19  40   .rdata  utf16le CN_CiBufferImported
+986  0x00065744 0x10065744 16  34   .rdata  utf16le CN_CiBufferHiRes
+987  0x00065768 0x10065768 21  44   .rdata  utf16le CN_CiBufferFileSystem
+988  0x00065794 0x10065794 11  24   .rdata  utf16le CN_CiBuffer
+989  0x000657ac 0x100657ac 19  40   .rdata  utf16le CN_CiApsMofInternal
+990  0x000657d4 0x100657d4 9   20   .rdata  utf16le CN_Global
+991  0x000657e8 0x100657e8 8   18   .rdata  utf16le CN_Win32
+992  0x00065808 0x10065808 187 188  .rdata  ascii   \r\n---- %s (Version %s) ---- (Scanner Type %u, Serial %u) ----\r\nVersion USB 0x%02X,0x%02X  CCD 0x%02X,0x%02X  Lamp 0x%02X,0x%02X  DX 0x%02X,0x%02X  Motor 0x%02X,0x%02X  Aps 0x%02X,0x%02X\r\n
+993  0x000658c4 0x100658c4 4   5    .rdata  ascii   %s\r\n
+994  0x000658d4 0x100658d4 16  34   .rdata  utf16le %d %d %d %u %s\r\n
+995  0x000658f8 0x100658f8 19  40   .rdata  utf16le %s %s %s (%d) %u %s
+996  0x00065920 0x10065920 21  44   .rdata  utf16le %s %s %s (%d) 0x%x %s
+997  0x0006594c 0x1006594c 19  40   .rdata  utf16le %s %s %s (%d) %s %s
+998  0x00065974 0x10065974 13  28   .rdata  utf16le %d %d %d %u\r\n
+999  0x00065990 0x10065990 16  34   .rdata  utf16le %s %s %s (%d) %u
+1000 0x000659b4 0x100659b4 15  32   .rdata  utf16le %d %d %d 0x%X\r\n
+1001 0x000659d4 0x100659d4 18  38   .rdata  utf16le %s %s %s (%d) 0x%X
+1002 0x000659fc 0x100659fc 16  34   .rdata  utf16le %s %s %s (%d) %s
+1003 0x00065a28 0x10065a28 16  34   .rdata  utf16le %s%s%02x%02x.hex
+1004 0x00065a4c 0x10065a4c 15  32   .rdata  utf16le %*c%*c%*02x%02x
+1005 0x00065a6c 0x10065a6c 14  30   .rdata  utf16le %s%s%02x??.hex
+1006 0x00065aac 0x10065aac 23  48   .rdata  utf16le \\?\%s\Config\Firmware\
+1007 0x00065adc 0x10065adc 27  56   .rdata  utf16le m_uiFirmwareLoadRetrySerial
+1008 0x00065b18 0x10065b18 34  70   .rdata  utf16le pConfigScan->m_uiFirmwareLoadRetry
+1009 0x00065b60 0x10065b60 20  42   .rdata  utf16le EventScanPacketReady
+1010 0x00065b8c 0x10065b8c 13  28   .rdata  utf16le Worker Resume
+1011 0x00065ba8 0x10065ba8 12  26   .rdata  utf16le Worker Pause
+1012 0x00065bc4 0x10065bc4 10  11   .rdata  ascii   %u\t%u\t%u\r\n
+1013 0x00065bd0 0x10065bd0 16  17   .rdata  ascii   R\tG\tB\t%u\t%u\t%u\r\n
+1014 0x00065be4 0x10065be4 13  14   .rdata  ascii   %u\t%u\t%u\t%u\r\n
+1015 0x00065bf4 0x10065bf4 19  20   .rdata  ascii   R\tG\tB\tIr\t%u\t%u\t%u\r\n
+1016 0x00065c08 0x10065c08 29  60   .rdata  utf16le %s\Logs\Corrections_%u_%s.txt
+1017 0x00065c44 0x10065c44 25  52   .rdata  utf16le Allocate Kirk's ringtail.
+1018 0x00065c7f 0x10065c7f 5   8    .rdata  utf8    ?۶m۶m
+1019 0x00065c90 0x10065c90 24  50   .rdata  utf16le bCalibrateFindDarkOffset
+1020 0x00065cc8 0x10065cc8 6   7    .rdata  ascii   333333
+1021 0x00065cd0 0x10065cd0 26  54   .rdata  utf16le bCalibrateFixedPatternDark
+1022 0x00065d08 0x10065d08 24  50   .rdata  utf16le bCalibrateFindLedCurrent
+1023 0x00065d4c 0x10065d4c 4   5    .rdata  ascii   MbP?
+1024 0x00065d58 0x10065d58 26  54   .rdata  utf16le bCalibrateFindLedDutyCycle
+1025 0x00065d90 0x10065d90 28  58   .rdata  utf16le bCalibrateFixedPatternBright
+1026 0x00065dcc 0x10065dcc 27  56   .rdata  utf16le bCalibrateFixedPatternIrLag
+1027 0x00065e04 0x10065e04 17  36   .rdata  utf16le Driver ReadFile()
+1028 0x00065e28 0x10065e28 33  68   .rdata  utf16le m_DriverOverlappedReadFile.hEvent
+1029 0x00065e70 0x10065e70 5   6    .rdata  ascii   fffff
+1030 0x00065ec0 0x10065ec0 10  22   .rdata  utf16le iFilmColor
+1031 0x00065ed8 0x10065ed8 26  54   .rdata  utf16le iResolution OR iFilmFormat
+1032 0x00065f18 0x10065f18 4   10   .rdata  utf16le Blue
+1033 0x00065f24 0x10065f24 5   12   .rdata  utf16le Green
+1034 0x00065f38 0x10065f38 13  28   .rdata  utf16le m_iFilmFormat
+1035 0x00065f54 0x10065f54 12  26   .rdata  utf16le m_iFilmColor
+1036 0x00065f70 0x10065f70 8   18   .rdata  utf16le uiHeight
+1037 0x00065f84 0x10065f84 6   8    .rdata  ascii   %5.5lf
+1038 0x00065f8c 0x10065f8c 14  30   .rdata  utf16le DiffValues.txt
+1039 0x00065fc0 0x10065fc0 32  66   .rdata  utf16le bFocusFindBestLine unsuccessfull
+1040 0x00066024 0x10066024 5   8    .rdata  utf8    ܥL@ϡ4
+1041 0x00066030 0x10066030 5   12   .rdata  utf16le %s\%s
+1042 0x00066044 0x10066044 24  50   .rdata  utf16le %02d%02d%02d%02d%02d%02d
+1043 0x00066084 0x10066084 10  22   .rdata  utf16le m_uiHeight
+1044 0x0006609c 0x1006609c 9   20   .rdata  utf16le m_uiWidth
+1045 0x000660b0 0x100660b0 18  38   .rdata  utf16le m_uiColorsPerPixel
+1046 0x000660d8 0x100660d8 12  26   .rdata  utf16le m_iImageType
+1047 0x00066314 0x10066314 9   20   .rdata  utf16le Sharpness
+1048 0x00066328 0x10066328 8   18   .rdata  utf16le Contrast
+1049 0x0006633c 0x1006633c 10  22   .rdata  utf16le Brightness
+1050 0x00066358 0x10066358 36  74   .rdata  utf16le \Config\ColorCorrection\Defaults.ini
+1051 0x000663a4 0x100663a4 8   18   .rdata  utf16le IMPORTED
+1052 0x000663b8 0x100663b8 4   10   .rdata  utf16le NONE
+1053 0x000663cc 0x100663cc 8   18   .rdata  utf16le POSITIVE
+1054 0x000663e0 0x100663e0 8   18   .rdata  utf16le DX_ERROR
+1055 0x000663f4 0x100663f4 12  26   .rdata  utf16le iFrameNumber
+1056 0x00066410 0x10066410 11  24   .rdata  utf16le m_pBufferLR
+1057 0x00066428 0x10066428 16  34   .rdata  utf16le szImportFileName
+1058 0x0006644c 0x1006644c 15  32   .rdata  utf16le rcrSourceUserHR
+1059 0x0006646c 0x1006646c 13  28   .rdata  utf16le uiGetLength()
+1060 0x00066488 0x10066488 4   10   .rdata  utf16le .rol
+1061 0x00066494 0x10066494 4   10   .rdata  utf16le .raw
+1062 0x000664a0 0x100664a0 4   10   .rdata  utf16le .bmp
+1063 0x000664ac 0x100664ac 4   10   .rdata  utf16le .tif
+1064 0x000664b8 0x100664b8 4   10   .rdata  utf16le F335
+1065 0x000664c4 0x100664c4 5   12   .rdata  utf16le F335C
+1066 0x000664d0 0x100664d0 3   10   .rdata  utf16le TLC
+1067 0x000664dc 0x100664dc 9   20   .rdata  utf16le F135_PLUS
+1068 0x000664f0 0x100664f0 4   10   .rdata  utf16le F235
+1069 0x000664fc 0x100664fc 5   12   .rdata  utf16le F235C
+1070 0x00066508 0x10066508 3   10   .rdata  utf16le TLA
+1071 0x00066514 0x10066514 4   10   .rdata  utf16le F135
+1072 0x00066520 0x10066520 3   10   .rdata  utf16le TLB
+1073 0x0006652c 0x1006652c 4   10   .rdata  utf16le .jpg
+1074 0x00066568 0x10066568 8   18   .rdata  utf16le C:\KCDFS
+1075 0x0006657c 0x1006657c 16  34   .rdata  utf16le %s\PakonImau.dll
+1076 0x000665a8 0x100665a8 209 420  .rdata  utf16le TLA - CiScanner bScanStrips before CancelIo() iStopScan %d, StopDriver %d\n      DriverRunning %d, StopTransfer %d, TransferInProgress %d, overflow %d\n      EndTime %u, Reading %d, ToRead %d, Writing %d, NF %d\n
+1077 0x0006674c 0x1006674c 19  40   .rdata  utf16le EventDriverReadFile
+1078 0x00066778 0x10066778 47  96   .rdata  utf16le TLA - Driver ring tail Overflow in iScanStrips\n
+1079 0x000667d8 0x100667d8 56  114  .rdata  utf16le Driver ReadFile() returned TRUE for Overlapped operation
+1080 0x0006684c 0x1006684c 20  42   .rdata  utf16le EventScanWriteToDisk
+1081 0x00066878 0x10066878 125 126  .rdata  ascii   Completed calibrating pots.  Pot counts are as follows:\r\n\tTopClock = %d, TopData = %d,\r\n\tBottomClock = %d, BottomData = %d.\r\n
+1082 0x000668f8 0x100668f8 50  51   .rdata  ascii   Error - Could not find good bright spot on film.\r\n
+1083 0x0006692c 0x1006692c 30  31   .rdata  ascii   Error - Could not find film.\r\n
+1084 0x00066950 0x10066950 73  74   .rdata  ascii   Error communicating with scanner.  See main error log for more details.\r\n
+1085 0x0006699c 0x1006699c 39  40   .rdata  ascii   Starting calibration of digital pots.\r\n
+1086 0x000669c4 0x100669c4 42  43   .rdata  ascii   Track Test Completed with no errors.\r\n\r\n\r\n
+1087 0x000669f0 0x100669f0 104 105  .rdata  ascii   No film thresholds are as follows:\r\n\tTopClock = %u, TopData = %u,\r\n\tBottomClock = %u, BottomData = %u.\r\n
+1088 0x00066a60 0x10066a60 99  100  .rdata  ascii   DX thresholds are as follows:\r\n\tTopClock = %u, TopData = %u,\r\n\tBottomClock = %u, BottomData = %u.\r\n
+1089 0x00066ac8 0x10066ac8 67  68   .rdata  ascii   BottomData data - MaxValue = %d, MaxClearFilm = %d, MinFilm = %d.\r\n
+1090 0x00066b10 0x10066b10 86  87   .rdata  ascii   Error - Could not get a good voltage swing on BottomData sensor.  Swing value is %d.\r\n
+1091 0x00066b68 0x10066b68 68  69   .rdata  ascii   BottomClock data - MaxValue = %d, MaxClearFilm = %d, MinFilm = %d.\r\n
+1092 0x00066bb0 0x10066bb0 87  88   .rdata  ascii   Error - Could not get a good voltage swing on BottomClock sensor.  Swing value is %d.\r\n
+1093 0x00066c08 0x10066c08 64  65   .rdata  ascii   TopData data - MaxValue = %d, MaxClearFilm = %d, MinFilm = %d.\r\n
+1094 0x00066c50 0x10066c50 83  84   .rdata  ascii   Error - Could not get a good voltage swing on TopData sensor.  Swing value is %d.\r\n
+1095 0x00066ca8 0x10066ca8 65  66   .rdata  ascii   TopClock data - MaxValue = %d, MaxClearFilm = %d, MinFilm = %d.\r\n
+1096 0x00066cf0 0x10066cf0 84  85   .rdata  ascii   Error - Could not get a good voltage swing on TopClock sensor.  Swing value is %d.\r\n
+1097 0x00066d48 0x10066d48 34  35   .rdata  ascii   \r\n\r\n------------ %s ------------\r\n
+1098 0x00066d70 0x10066d70 37  76   .rdata  utf16le \\?\%s\Logs\PakonFilmTrackTestLog.txt
+1099 0x00066ddc 0x10066ddc 20  42   .rdata  utf16le uiCcdIntegrationTime
+1100 0x00066e08 0x10066e08 38  78   .rdata  utf16le uiCcdPixelOffset < uiCalibrationOffset
+1101 0x00066e58 0x10066e58 81  164  .rdata  utf16le (CALIBRATION_HEIGHT + CALIBRATION_OFFSET) < (uiCcdPixelHeight + uiCcdPixelOffset)
+1102 0x00066efc 0x10066efc 27  56   .rdata  utf16le 0 != (uiCcdPixelHeight % 4)
+1103 0x00066f38 0x10066f38 95  192  .rdata  utf16le ((CALIBRATION_HEIGHT / 2) + CALIBRATION_OFFSET_BINNING) < (uiCcdPixelHeight + uiCcdPixelOffset)
+1104 0x00067010 0x10067010 13  28   .rdata  utf16le uiStepperLens
+1105 0x0006702c 0x1006702c 18  38   .rdata  utf16le uiStepperTransport
+1106 0x00067054 0x10067054 14  30   .rdata  utf16le m_pConfigLight
+1107 0x00067074 0x10067074 12  26   .rdata  utf16le m_pConfigDpi
+1108 0x00067090 0x10067090 22  46   .rdata  utf16le Film Drive Not Running
+1109 0x000670c0 0x100670c0 18  38   .rdata  utf16le Film Drive Running
+1110 0x000672b8 0x100672b8 12  26   .rdata  utf16le pvParameters
+1111 0x000672d8 0x100672d8 61  124  .rdata  utf16le       Previous - Wait %u, EndTime %u, Reading %d, Writing %d\n
+1112 0x00067358 0x10067358 100 202  .rdata  utf16le TLA - uiGetScanLines(%d) Driver Ring Tail Overflow (%d) Wait %u, EndTime %u, Reading %d, Writing %d\n
+1113 0x00067428 0x10067428 66  134  .rdata  utf16le TLA - uiGetScanLines() (%d) WAIT_TIMEOUT changed to WAIT_OBJECT_0\n
+1114 0x000674b0 0x100674b0 51  104  .rdata  utf16le       NumP %d, OverFlow %d, StopScan %d, Resp 0x%X\n
+1115 0x00067518 0x10067518 70  142  .rdata  utf16le       Previous - Wait %u, EndTime %u, WFSO %d, Reading %d, Writing %d\n
+1116 0x000675a8 0x100675a8 59  120  .rdata  utf16le       Wait %u, EndTime %u, WFSO %d, Reading %d, Writing %d\n
+1117 0x00067620 0x10067620 50  102  .rdata  utf16le TLA - uiGetScanLines() (%d) Wait for event failed\n
+1118 0x00067688 0x10067688 48  98   .rdata  utf16le TLA - uiGetScanLines() (%d) Long Wait for Event\n
+1119 0x000676f0 0x100676f0 38  78   .rdata  utf16le TLA - uiGetScanLines() (%d) Cancelled\n
+1120 0x00067740 0x10067740 80  162  .rdata  utf16le TLA - uiGetScanLines() (1) Wait %u, EndTime %u, NumP %d, Reading %d, Writing %d\n
+1121 0x000677e8 0x100677e8 89  180  .rdata  utf16le TLA - DriverRingTailOverflow - HighWaterDriverRingTail %u, HighWaterProcessedRingTail %u\n
+1122 0x000678a0 0x100678a0 97  196  .rdata  utf16le TLA - ProcessedRingTailOverflow (%d) - HighWaterDriverRingTail %u, HighWaterProcessedRingTail %u\n
+1123 0x00067968 0x10067968 68  138  .rdata  utf16le TLA - (3) HighWaterDriverRingTail %u, HighWaterProcessedRingTail %u\n
+1124 0x000679f4 0x100679f4 23  48   .rdata  utf16le pVA_usRingTailProcessed
+1125 0x00067a24 0x10067a24 18  38   .rdata  utf16le pVA_RingTailDriver
+1126 0x00067a50 0x10067a50 6   7    .rdata  ascii   UUUUUU
+1127 0x00067a58 0x10067a58 11  24   .rdata  utf16le iResolution
+1128 0x00067a70 0x10067a70 11  24   .rdata  utf16le iFilmFormat
+1129 0x00067a8f 0x10067a8f 5   7    .rdata  utf8    ?ףp=\n
+1130 0x00067b24 0x10067b24 19  40   .rdata  utf16le EventCallBackClient
+1131 0x00067b4c 0x10067b4c 10  22   .rdata  utf16le lOperation
+1132 0x00067b64 0x10067b64 22  46   .rdata  utf16le m_hEventCallBackClient
+1133 0x00067bac 0x10067bac 23  48   .rdata  utf16le EventSaveToClientMemory
+1134 0x00067bdc 0x10067bdc 20  42   .rdata  utf16le iSaveToMemoryTimeout
+1135 0x00067c30 0x10067c30 17  36   .rdata  utf16le %s\DMLDICELib.dll
+1136 0x00067c58 0x10067c58 41  84   .rdata  utf16le HiResMegabytesTotal or HiResMegabytesRoll
+1137 0x00067cac 0x10067cac 18  38   .rdata  utf16le Software\Pakon\TLB
+1138 0x00067cd4 0x10067cd4 18  38   .rdata  utf16le EventScanCalibrate
+1139 0x00067cfc 0x10067cfc 23  48   .rdata  utf16le See PakonErrorLogPI.txt
+1140 0x00067d38 0x10067d38 7   16   .rdata  utf16le otation
+1141 0x00067d48 0x10067d48 14  30   .rdata  utf16le iScalingMethod
+1142 0x00067d68 0x10067d68 43  88   .rdata  utf16le File Format Incorrect for FastUpdate8BitDib
+1143 0x00067dc0 0x10067dc0 42  86   .rdata  utf16le Color Adjustments without Image Correction
+1144 0x00067e18 0x10067e18 41  84   .rdata  utf16le Image Correction without Color Correction
+1145 0x00067e6c 0x10067e6c 13  28   .rdata  utf16le riSaveControl
+1146 0x00067e88 0x10067e88 33  68   .rdata  utf16le iBoundingWidth_or_iBoundingHeight
+1147 0x00067edc 0x10067edc 13  28   .rdata  utf16le Unknown Error
+1148 0x00067ef8 0x10067ef8 26  54   .rdata  utf16le m_hEventSaveToClientMemory
+1149 0x00067f30 0x10067f30 15  32   .rdata  utf16le iSelectedHidden
+1150 0x00067f50 0x10067f50 26  54   .rdata  utf16le iFilmColor or iScanControl
+1151 0x00067f88 0x10067f88 10  22   .rdata  utf16le iStripMode
+1152 0x00067fa0 0x10067fa0 10  22   .rdata  utf16le iBnWEffect
+1153 0x00067fb8 0x10067fb8 11  24   .rdata  utf16le iSaturation
+1154 0x00067fd0 0x10067fd0 33  68   .rdata  utf16le ~TLA key to complete calibration~
+1155 0x00068014 0x10068014 21  44   .rdata  utf16le m_hEventScanCalibrate
+1156 0x00068040 0x10068040 12  26   .rdata  utf16le iStepperLens
+1157 0x0006805c 0x1006805c 11  24   .rdata  utf16le iStepperCCD
+1158 0x00068078 0x10068078 35  72   .rdata  utf16le iMotorSpeed (ScannerVersionHw = %u)
+1159 0x000680c0 0x100680c0 38  78   .rdata  utf16le iMotorSpeed_Ir (ScannerVersionHw = %u)
+1160 0x00068110 0x10068110 22  46   .rdata  utf16le iHeightToCcd + iOffset
+1161 0x00068140 0x10068140 7   16   .rdata  utf16le iOffset
+1162 0x00068150 0x10068150 17  36   .rdata  utf16le iHeight + iOffset
+1163 0x00068174 0x10068174 7   16   .rdata  utf16le iHeight
+1164 0x00068184 0x10068184 12  26   .rdata  utf16le iHeightToCcd
+1165 0x000681a0 0x100681a0 26  54   .rdata  utf16le i_uiSaveToSharedMemorySize
+1166 0x000681d8 0x100681d8 17  36   .rdata  utf16le iCalibrateControl
+1167 0x000681fc 0x100681fc 20  42   .rdata  utf16le iAdvanceMilliseconds
+1168 0x00068228 0x10068228 29  60   .rdata  utf16le iTenthsOfMillimetersPerSecond
+1169 0x00068264 0x10068264 23  48   .rdata  utf16le %d.%d,%d,%d,%d,%d,%d,%d
+1170 0x00068298 0x10068298 32  66   .rdata  utf16le iDarkPointCorrectIntervalMinutes
+1171 0x000682dc 0x100682dc 17  36   .rdata  utf16le i_uiNoFilmTimeOut
+1172 0x00068300 0x10068300 18  38   .rdata  utf16le iColorPortraitMode
+1173 0x00068328 0x10068328 17  36   .rdata  utf16le iMaxFilmLength_mm
+1174 0x0006834c 0x1006834c 25  52   .rdata  utf16le i_uiProcessedTriggerBytes
+1175 0x00068380 0x10068380 26  54   .rdata  utf16le i_uiRingTailProcessedBytes
+1176 0x000683b8 0x100683b8 22  46   .rdata  utf16le i_uiDriverTriggerBytes
+1177 0x000683e8 0x100683e8 23  48   .rdata  utf16le i_uiRingTailDriverBytes
+1178 0x00068418 0x10068418 24  50   .rdata  utf16le iWidthHR OR iWidthUnitHR
+1179 0x00068450 0x10068450 70  142  .rdata  utf16le iWidthHR OR lCropHRLeft OR lCropHRTop OR lCropHRRight OR lCropHRBottom
+1180 0x0006850c 0x1006850c 4   5    .rdata  ascii   /.8_
+1181 0x0006853b 0x1006853b 9   12   .rdata  utf8    TiD䟱jnKq2
+1182 0x00068571 0x10068571 4   5    .rdata  ascii   a$uo
+1183 0x00068584 0x10068584 4   5    .rdata  ascii   \vwxD
+1184 0x000685d0 0x100685d0 19  40   .rdata  utf16le HKEY_CURRENT_CONFIG
+1185 0x000685f8 0x100685f8 13  28   .rdata  utf16le HKEY_DYN_DATA
+1186 0x00068614 0x10068614 21  44   .rdata  utf16le HKEY_PERFORMANCE_DATA
+1187 0x00068640 0x10068640 10  22   .rdata  utf16le HKEY_USERS
+1188 0x00068658 0x10068658 18  38   .rdata  utf16le HKEY_LOCAL_MACHINE
+1189 0x00068680 0x10068680 17  36   .rdata  utf16le HKEY_CURRENT_USER
+1190 0x000686a4 0x100686a4 17  36   .rdata  utf16le HKEY_CLASSES_ROOT
+1191 0x000686c8 0x100686c8 4   10   .rdata  utf16le HKCC
+1192 0x000686d4 0x100686d4 4   10   .rdata  utf16le HKDD
+1193 0x000686e0 0x100686e0 4   10   .rdata  utf16le HKPD
+1194 0x000686f4 0x100686f4 4   10   .rdata  utf16le HKLM
+1195 0x00068700 0x10068700 4   10   .rdata  utf16le HKCU
+1196 0x0006870c 0x1006870c 4   10   .rdata  utf16le HKCR
+1197 0x00068788 0x10068788 4   10   .rdata  utf16le .tlb
+1198 0x00068a51 0x10068a51 4   5    .rdata  ascii   a$uo
+1199 0x00068a8b 0x10068a8b 9   12   .rdata  utf8    TiD䟱jnKq2
+1200 0x00068adc 0x10068adc 4   5    .rdata  ascii   /.8_
+1201 0x00068aef 0x10068aef 7   9    .rdata  utf8    \a`=\vߏT\e
+1202 0x00068bf4 0x10068bf4 5   12   .rdata  utf16le APPID
+1203 0x00068c1c 0x10068c1c 23  48   .rdata  utf16le \Implemented Categories
+1204 0x00068c4c 0x10068c4c 20  42   .rdata  utf16le \Required Categories
+1205 0x00068c78 0x10068c78 6   14   .rdata  utf16le CLSID\
+1206 0x00068d64 0x10068d64 8   18   .rdata  utf16le REGISTRY
+1207 0x00068d78 0x10068d78 10  22   .rdata  utf16le Module_Raw
+1208 0x00068d90 0x10068d90 6   14   .rdata  utf16le Module
+1209 0x00068de1 0x10068de1 5   6    .rdata  ascii   =L9o<
+1210 0x00068e04 0x10068e04 32  33   .rdata  ascii   Access violation - no RTTI data!
+1211 0x00068e28 0x10068e28 17  18   .rdata  ascii   Bad dynamic_cast!
+1212 0x00068ed8 0x10068ed8 17  18   .rdata  ascii   Unknown exception
+1213 0x000690a0 0x100690a0 7   8    .rdata  ascii   FlsFree
+1214 0x000690a8 0x100690a8 11  12   .rdata  ascii   FlsSetValue
+1215 0x000690b4 0x100690b4 11  12   .rdata  ascii   FlsGetValue
+1216 0x000690c0 0x100690c0 8   9    .rdata  ascii   FlsAlloc
+1217 0x000690cc 0x100690cc 12  13   .rdata  ascii   kernel32.dll
+1218 0x00069149 0x10069149 7   8    .rdata  ascii    (8PX\a\b
+1219 0x00069151 0x10069151 6   7    .rdata  ascii   700WP\a
+1220 0x00069160 0x10069160 7   8    .rdata  ascii   \b`h````
+1221 0x00069169 0x10069169 9   10   .rdata  ascii   ppxxxx\b\a\b
+1222 0x00069188 0x10069188 4   10   .rdata  utf16le ull)
+1223 0x00069194 0x10069194 6   7    .rdata  ascii   (null)
+1224 0x000691ac 0x100691ac 14  15   .rdata  ascii   CorExitProcess
+1225 0x000691bc 0x100691bc 11  12   .rdata  ascii   mscoree.dll
+1226 0x000691e4 0x100691e4 5   6    .rdata  ascii   e+000
+1227 0x000691fe 0x100691fe 27  28   .rdata  ascii   GAIsProcessorFeaturePresent
+1228 0x0006921c 0x1006921c 8   9    .rdata  ascii   KERNEL32
+1229 0x00069234 0x10069234 21  22   .rdata  ascii   SunMonTueWedThuFriSat
+1230 0x0006924c 0x1006924c 36  37   .rdata  ascii   JanFebMarAprMayJunJulAugSepOctNovDec
+1231 0x00069300 0x10069300 4   5    .rdata  ascii   atan
+1232 0x00069308 0x10069308 4   5    .rdata  ascii   ceil
+1233 0x00069310 0x10069310 5   6    .rdata  ascii   floor
+1234 0x00069318 0x10069318 4   5    .rdata  ascii   modf
+1235 0x00069320 0x10069320 4   5    .rdata  ascii   exp2
+1236 0x00069328 0x10069328 5   6    .rdata  ascii   exp10
+1237 0x00069330 0x10069330 4   5    .rdata  ascii   log2
+1238 0x00069340 0x10069340 5   6    .rdata  ascii   log10
+1239 0x00069815 0x10069815 6   8    .rdata  utf8    ƻ?X&eB
+1240 0x00069847 0x10069847 4   5    .rdata  ascii   ?Ltm
+1241 0x00069862 0x10069862 4   5    .rdata  ascii   tLVv
+1242 0x00069877 0x10069877 5   6    .rdata  ascii   ?h6_~
+1243 0x000698bc 0x100698bc 4   5    .rdata  ascii   37.=
+1244 0x000698f7 0x100698f7 5   6    .rdata  ascii   ?7Tf(
+1245 0x0006999b 0x1006999b 5   6    .rdata  ascii   =\uI=
+1246 0x000699a9 0x100699a9 4   5    .rdata  ascii   g:"(
+1247 0x000699bc 0x100699bc 4   5    .rdata  ascii   $O1=
+1248 0x00069a07 0x10069a07 4   6    .rdata  utf8    ?ֲa\n
+1249 0x00069a1c 0x10069a1c 4   5    .rdata  ascii   uXO=
+1250 0x00069a2c 0x10069a2c 4   5    .rdata  ascii   1w<=
+1251 0x00069a32 0x10069a32 4   5    .rdata  ascii   >'eH
+1252 0x00069aba 0x10069aba 5   7    .rdata  utf8    فpnJ=
+1253 0x00069b21 0x10069b21 4   5    .rdata  ascii   Ht=c
+1254 0x00069b5c 0x10069b5c 4   5    .rdata  ascii   t\f'=
+1255 0x00069ba3 0x10069ba3 4   6    .rdata  utf8    W9!ٿ
+1256 0x00069c46 0x10069c46 4   6    .rdata  utf8    Կ1y2
+1257 0x00069dbb 0x10069dbb 4   5    .rdata  ascii   \a7\bM
+1258 0x00069de6 0x10069de6 4   7    .rdata  utf8    ¿#6H
+1259 0x00069df5 0x10069df5 5   7    .rdata  utf8    -¿=]P
+1260 0x00069eaa 0x10069eaa 5   6    .rdata  ascii   g:I\eB
+1261 0x00069ed9 0x10069ed9 6   7    .rdata  ascii   ]vQ<)8
+1262 0x00069f09 0x10069f09 5   7    .rdata  utf8    mœFB*
+1263 0x00069f1b 0x10069f1b 4   5    .rdata  ascii   _\r\eD
+1264 0x00069f32 0x10069f32 4   5    .rdata  ascii   z1}B
+1265 0x00069f5b 0x10069f5b 4   5    .rdata  ascii   X4I+
+1266 0x0006a3a3 0x1006a3a3 8   9    .rdata  ascii   |)P!?Ua0
+1267 0x0006a3ac 0x1006a3ac 4   5    .rdata  ascii   \t\t!=
+1268 0x0006a3b4 0x1006a3b4 4   5    .rdata  ascii   +34?
+1269 0x0006a3c6 0x1006a3c6 6   7    .rdata  ascii   ??7;\fW
+1270 0x0006a3e4 0x1006a3e4 4   5    .rdata  ascii   MkK?
+1271 0x0006a3f4 0x1006a3f4 5   7    .rdata  utf8    ɘP?*\b
+1272 0x0006a414 0x1006a414 4   5    .rdata  ascii   R_V?
+1273 0x0006a433 0x1006a433 5   6    .rdata  ascii   \r9&\?
+1274 0x0006a445 0x1006a445 10  12   .rdata  utf8    \t_?߭Eb2]A=
+1275 0x0006a45c 0x1006a45c 4   5    .rdata  ascii   f#I=
+1276 0x0006a465 0x1006a465 5   6    .rdata  ascii   hb?O2
+1277 0x0006a46c 0x1006a46c 4   5    .rdata  ascii   H`3=
+1278 0x0006a476 0x1006a476 4   5    .rdata  ascii   c?e2
+1279 0x0006a483 0x1006a483 5   7    .rdata  utf8    ԆLe?2
+1280 0x0006a4a5 0x1006a4a5 4   5    .rdata  ascii   0h?[
+1281 0x0006a4ab 0x1006a4ab 5   6    .rdata  ascii   2ieO=
+1282 0x0006a4db 0x1006a4db 4   6    .rdata  utf8    ̈[8=
+1283 0x0006a4eb 0x1006a4eb 5   6    .rdata  ascii   |W8A=
+1284 0x0006a4f3 0x1006a4f3 4   6    .rdata  utf8    ՛ko?
+1285 0x0006a4fb 0x1006a4fb 4   6    .rdata  utf8    qݲN=
+1286 0x0006a505 0x1006a505 4   6    .rdata  ascii   np?z
+1287 0x0006a50b 0x1006a50b 5   6    .rdata  ascii   m{\rM=
+1288 0x0006a514 0x1006a514 4   5    .rdata  ascii   )(q?
+1289 0x0006a539 0x1006a539 4   5    .rdata  ascii   }~:f
+1290 0x0006a554 0x1006a554 6   7    .rdata  ascii   &\rt?,&
+1291 0x0006a576 0x1006a576 7   8    .rdata  ascii   u?^p?o4
+1292 0x0006a584 0x1006a584 4   5    .rdata  ascii   !9v?
+1293 0x0006a59c 0x1006a59c 4   5    .rdata  ascii   GYM=
+1294 0x0006a5a6 0x1006a5a6 5   6    .rdata  ascii   w?q\aC
+1295 0x0006a5b4 0x1006a5b4 5   6    .rdata  ascii   Pex?0
+1296 0x0006a5f4 0x1006a5f4 5   7    .rdata  utf8    6K{?ҝ
+1297 0x0006a5fc 0x1006a5fc 4   5    .rdata  ascii   E\tM=
+1298 0x0006a61c 0x1006a61c 4   5    .rdata  ascii   X-F=
+1299 0x0006a625 0x1006a625 4   5    .rdata  ascii   w}?0
+1300 0x0006a634 0x1006a634 7   9    .rdata  utf8    y1~?|"į
+1301 0x0006a64c 0x1006a64c 4   5    .rdata  ascii   f\a@=
+1302 0x0006a67a 0x1006a67a 5   7    .rdata  utf8    ̍x\vI=
+1303 0x0006a685 0x1006a685 4   6    .rdata  utf8    р?wY
+1304 0x0006a68b 0x1006a68b 5   6    .rdata  ascii   V%A+=
+1305 0x0006a6eb 0x1006a6eb 4   6    .rdata  utf8    ؇\rK=
+1306 0x0006a72c 0x1006a72c 4   5    .rdata  ascii   4';=
+1307 0x0006a784 0x1006a784 5   9    .rdata  utf8    蠆?̸WU
+1308 0x0006a7fb 0x1006a7fb 3   5    .rdata  ascii   q\t!
+1309 0x0006a8c3 0x1006a8c3 4   5    .rdata  ascii   #D5p
+1310 0x0006a8fb 0x1006a8fb 4   5    .rdata  ascii   \n^!E
+1311 0x0006a963 0x1006a963 4   5    .rdata  ascii   La8i
+1312 0x0006a96a 0x1006a96a 4   6    .rdata  utf8    ٬zF+
+1313 0x0006a9a3 0x1006a9a3 4   5    .rdata  ascii   {4Wf
+1314 0x0006aa19 0x1006aa19 5   7    .rdata  utf8    6MŞr<
+1315 0x0006aab3 0x1006aab3 4   5    .rdata  ascii   Ai0T
+1316 0x0006aad3 0x1006aad3 4   5    .rdata  ascii   @VNQ
+1317 0x0006aad8 0x1006aad8 6   8    .rdata  utf8    ?|G¾d0
+1318 0x0006ab08 0x1006ab08 4   5    .rdata  ascii   p4"%
+1319 0x0006ab22 0x1006ab22 4   6    .rdata  utf8    `ȃ1D
+1320 0x0006ab4b 0x1006ab4b 4   6    .rdata  utf8    6"dм
+1321 0x0006b3d7 0x1006b3d7 5   7    .rdata  utf8    >.ܶlW
+1322 0x0006b3ec 0x1006b3ec 4   5    .rdata  ascii   b\aH=
+1323 0x0006b41a 0x1006b41a 5   7    .rdata  utf8    ݟP'E=
+1324 0x0006b447 0x1006b447 4   6    .rdata  utf8    >.;ĝ
+1325 0x0006b51c 0x1006b51c 4   5    .rdata  ascii   ls1=
+1326 0x0006b557 0x1006b557 4   5    .rdata  ascii   ?PiB
+1327 0x0006b55c 0x1006b55c 4   5    .rdata  ascii   {^C=
+1328 0x0006b5b5 0x1006b5b5 5   6    .rdata  ascii    \a?5O
+1329 0x0006b5e4 0x1006b5e4 4   5    .rdata  ascii   \e@\t?
+1330 0x0006b614 0x1006b614 4   5    .rdata  ascii    `\v?
+1331 0x0006b623 0x1006b623 5   6    .rdata  ascii   r" \f?
+1332 0x0006b67a 0x1006b67a 5   7    .rdata  utf8    4±cC=
+1333 0x0006b68c 0x1006b68c 4   5    .rdata  ascii   n{;=
+1334 0x0006b6cc 0x1006b6cc 4   5    .rdata  ascii   3<L=
+1335 0x0006b6da 0x1006b6da 5   7    .rdata  utf8    rF҈K=
+1336 0x0006b737 0x1006b737 6   7    .rdata  ascii   ?|I7Z#
+1337 0x0006b74c 0x1006b74c 4   5    .rdata  ascii   aDJ=
+1338 0x0006b75a 0x1006b75a 6   7    .rdata  ascii   >,'1D=
+1339 0x0006b76c 0x1006b76c 4   5    .rdata  ascii   +NB=
+1340 0x0006b7c7 0x1006b7c7 9   10   .rdata  ascii   ?g)([|X>=
+1341 0x0006b817 0x1006b817 4   5    .rdata  ascii   ?|[{
+1342 0x0006b81c 0x1006b81c 4   5    .rdata  ascii   ~*L=
+1343 0x0006b84c 0x1006b84c 4   5    .rdata  ascii   u!K=
+1344 0x0006b873 0x1006b873 5   6    .rdata  ascii   fAp\e?
+1345 0x0006b8c7 0x1006b8c7 5   6    .rdata  ascii   ?IT$7
+1346 0x0006b8e7 0x1006b8e7 4   6    .rdata  utf8    ?0tЗ
+1347 0x0006b954 0x1006b954 4   5    .rdata  ascii   -8 ?
+1348 0x0006b964 0x1006b964 4   5    .rdata  ascii   .h ?
+1349 0x0006b9a4 0x1006b9a4 4   5    .rdata  ascii   2 !?
+1350 0x0006b9b3 0x1006b9b3 5   6    .rdata  ascii   \f4P!?
+1351 0x0006b9f3 0x1006b9f3 5   6    .rdata  ascii   u8\b"?
+1352 0x0006b9fa 0x1006b9fa 4   5    .rdata  ascii   !y##
+1353 0x0006ba04 0x1006ba04 4   5    .rdata  ascii   98"?
+1354 0x0006ba14 0x1006ba14 6   7    .rdata  ascii   :h"?bC
+1355 0x0006ba54 0x1006ba54 4   5    .rdata  ascii   ? #?
+1356 0x0006ba64 0x1006ba64 6   7    .rdata  ascii   @H#?43
+1357 0x0006ba74 0x1006ba74 8   9    .rdata  ascii   Ax#?uN}*
+1358 0x0006ba8a 0x1006ba8a 6   7    .rdata  ascii   r7Yr7=
+1359 0x0006ba9b 0x1006ba9b 5   6    .rdata  ascii   .K="=
+1360 0x0006bab4 0x1006bab4 7   8    .rdata  ascii   F0$?3=1
+1361 0x0006bac4 0x1006bac4 6   7    .rdata  ascii   H`$?h|
+1362 0x0006bb06 0x1006bb06 4   5    .rdata  ascii   %?uY
+1363 0x0006bb14 0x1006bb14 4   5    .rdata  ascii   NH%?
+1364 0x0006bb24 0x1006bb24 4   5    .rdata  ascii   Px%?
+1365 0x0006bb36 0x1006bb36 5   6    .rdata  ascii   %?\9\f
+1366 0x0006bb56 0x1006bb56 6   7    .rdata  ascii   &?~YK|
+1367 0x0006bb63 0x1006bb63 7   9    .rdata  utf8    sU0&?WĻ
+1368 0x0006bb74 0x1006bb74 4   5    .rdata  ascii   VX&?
+1369 0x0006bc68 0x1006bc68 4   5    .rdata  ascii   4g%6
+1370 0x0006bcfa 0x1006bcfa 5   6    .rdata  ascii   :]=O>
+1371 0x0006bd08 0x1006bd08 6   8    .rdata  utf8    #w_jُB
+1372 0x0006bd1b 0x1006bd1b 3   5    .rdata  ascii   (+E
+1373 0x0006bd2a 0x1006bd2a 4   5    .rdata  ascii   V~|_
+1374 0x0006be7a 0x1006be7a 4   6    .rdata  utf8    3Rʏ3
+1375 0x0006be88 0x1006be88 4   5    .rdata  ascii   !|.4
+1376 0x0006bea8 0x1006bea8 7   8    .rdata  ascii   G"jm\n>;
+1377 0x0006bf28 0x1006bf28 4   6    .rdata  utf8    \bT3ʢ
+1378 0x0006bf9b 0x1006bf9b 4   5    .rdata  ascii   /h\f7
+1379 0x0006c0e8 0x1006c0e8 4   5    .rdata  ascii   6(`J
+1380 0x0006c138 0x1006c138 6   8    .rdata  utf8    Mϲk:UG
+1381 0x0006c258 0x1006c258 6   8    .rdata  utf8    ~ܾUY =
+1382 0x0006c2db 0x1006c2db 4   5    .rdata  ascii   Bfe9
+1383 0x0006c31b 0x1006c31b 4   5    .rdata  ascii   E=|\n
+1384 0x0006c36a 0x1006c36a 5   6    .rdata  ascii   CqTR;
+1385 0x0006c3d8 0x1006c3d8 7   9    .rdata  utf8    \aAiFC.ֿ
+1386 0x0006c407 0x1006c407 5   6    .rdata  ascii   ?]\b[S
+1387 0x0006c457 0x1006c457 4   5    .rdata  ascii   ?5a1
+1388 0x0006c48d 0x1006c48d 4   5    .rdata  ascii   :@<\e
+1389 0x0006c4df 0x1006c4df 5   6    .rdata  ascii   <{Q}<
+1390 0x0006c509 0x1006c509 5   6    .rdata  ascii   hI{L[
+1391 0x0006c55f 0x1006c55f 7   8    .rdata  ascii   <8bunz8
+1392 0x0006c597 0x1006c597 4   5    .rdata  ascii   ?}\r?
+1393 0x0006c5cf 0x1006c5cf 4   5    .rdata  ascii   <V/>
+1394 0x0006c617 0x1006c617 5   6    .rdata  ascii   ?(FN\
+1395 0x0006c6a2 0x1006c6a2 4   5    .rdata  ascii   a`\bN
+1396 0x0006c6dc 0x1006c6dc 6   8    .rdata  utf8    b˙<'*6
+1397 0x0006c6e9 0x1006c6e9 6   9    .rdata  utf8    B쯗C}<\r
+1398 0x0006c6f7 0x1006c6f7 4   5    .rdata  ascii   ?3xj
+1399 0x0006c75b 0x1006c75b 6   9    .rdata  utf8    [ᕂ<)TH
+1400 0x0006c77c 0x1006c77c 6   7    .rdata  ascii   \eK<<H!
+1401 0x0006c849 0x1006c849 5   6    .rdata  ascii   m1WY$
+1402 0x0006c8df 0x1006c8df 4   6    .rdata  utf8    <۠*B
+1403 0x0006c917 0x1006c917 7   9    .rdata  utf8    ?#%X.y֝
+1404 0x0006c947 0x1006c947 5   7    .rdata  utf8    ?Ѕ\e|[
+1405 0x0006c96c 0x1006c96c 6   7    .rdata  ascii   F||<##
+1406 0x0006c97d 0x1006c97d 4   5    .rdata  ascii   $x<e
+1407 0x0006c982 0x1006c982 4   5    .rdata  ascii   ]{f\f
+1408 0x0006c99f 0x1006c99f 4   5    .rdata  ascii   <]%>
+1409 0x0006ca07 0x1006ca07 5   7    .rdata  utf8    ?\aׄ0^
+1410 0x0006ca2a 0x1006ca2a 5   6    .rdata  ascii   T~OXu
+1411 0x0006ca37 0x1006ca37 4   5    .rdata  ascii   ?.)T
+1412 0x0006cac2 0x1006cac2 4   5    .rdata  ascii   \aJ-\a
+1413 0x0006cac9 0x1006cac9 4   5    .rdata  ascii   zyC7
+1414 0x0006cb1b 0x1006cb1b 5   7    .rdata  utf8    xWڒ<_
+1415 0x0006cb5c 0x1006cb5c 4   7    .rdata  utf8    "Ւ<ڐ
+1416 0x0006cb92 0x1006cb92 4   5    .rdata  ascii   k7+%
+1417 0x0006cb9f 0x1006cb9f 7   8    .rdata  ascii   <@En[vP
+1418 0x0006cde0 0x1006cde0 33  68   .rdata  utf16le          (((((                  H
+1419 0x0006cfe2 0x1006cfe2 33  68   .rdata  utf16le          h((((                  H
+1420 0x0006d0e0 0x1006d0e0 34  70   .rdata  utf16le                                  H
+1421 0x0006d1e8 0x1006d1e8 32  66   .rdata  utf16le         h((((                  H
+1422 0x0006d2ee 0x1006d2ee 7   8    .rdata  ascii   \a\b\t\n\v\f\r
+1423 0x0006d307 0x1006d307 95  96   .rdata  ascii    !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+1424 0x0006d394 0x1006d394 13  15   .rdata  ascii   runtime error
+1425 0x0006d3a4 0x1006d3a4 13  14   .rdata  ascii   TLOSS error\r\n
+1426 0x0006d3b4 0x1006d3b4 12  13   .rdata  ascii   SING error\r\n
+1427 0x0006d3c4 0x1006d3c4 14  15   .rdata  ascii   DOMAIN error\r\n
+1428 0x0006d3d8 0x1006d3d8 161 162  .rdata  ascii   R6029\r\n- This application cannot run using the active version of the Microsoft .NET Runtime\nPlease contact the application's support team for more information.\r\n
+1429 0x0006d47c 0x1006d47c 36  37   .rdata  ascii   R6028\r\n- unable to initialize heap\r\n
+1430 0x0006d4a4 0x1006d4a4 52  53   .rdata  ascii   R6027\r\n- not enough space for lowio initialization\r\n
+1431 0x0006d4dc 0x1006d4dc 52  53   .rdata  ascii   R6026\r\n- not enough space for stdio initialization\r\n
+1432 0x0006d514 0x1006d514 37  38   .rdata  ascii   R6025\r\n- pure virtual function call\r\n
+1433 0x0006d53c 0x1006d53c 52  53   .rdata  ascii   R6024\r\n- not enough space for _onexit/atexit table\r\n
+1434 0x0006d574 0x1006d574 40  41   .rdata  ascii   R6019\r\n- unable to open console device\r\n
+1435 0x0006d5a0 0x1006d5a0 32  33   .rdata  ascii   R6018\r\n- unexpected heap error\r\n
+1436 0x0006d5c4 0x1006d5c4 44  45   .rdata  ascii   R6017\r\n- unexpected multithread lock error\r\n
+1437 0x0006d5f4 0x1006d5f4 43  44   .rdata  ascii   R6016\r\n- not enough space for thread data\r\n
+1438 0x0006d620 0x1006d620 149 150  .rdata  ascii   \r\nThis application has requested the Runtime to terminate it in an unusual way.\nPlease contact the application's support team for more information.\r\n
+1439 0x0006d6b8 0x1006d6b8 43  44   .rdata  ascii   R6009\r\n- not enough space for environment\r\n
+1440 0x0006d6e4 0x1006d6e4 41  42   .rdata  ascii   R6008\r\n- not enough space for arguments\r\n
+1441 0x0006d710 0x1006d710 36  37   .rdata  ascii   R6002\r\n- floating point not loaded\r\n
+1442 0x0006d738 0x1006d738 36  37   .rdata  ascii   Microsoft Visual C++ Runtime Library
+1443 0x0006d764 0x1006d764 24  26   .rdata  ascii   Runtime Error!\n\nProgram:
+1444 0x0006d784 0x1006d784 22  23   .rdata  ascii   <program name unknown>
+1445 0x0006d79c 0x1006d79c 8   10   .rdata  ascii   Program:
+1446 0x0006d7a8 0x1006d7a8 159 160  .rdata  ascii   A buffer overrun has been detected which has corrupted the program's\ninternal state.  The program cannot safely continue execution and must\nnow be terminated.\n
+1447 0x0006d848 0x1006d848 24  25   .rdata  ascii   Buffer overrun detected!
+1448 0x0006d868 0x1006d868 176 177  .rdata  ascii   A security error of unknown cause has been detected which has\ncorrupted the program's internal state.  The program cannot safely\ncontinue execution and must now be terminated.\n
+1449 0x0006d91c 0x1006d91c 34  35   .rdata  ascii   Unknown security failure detected!
+1450 0x0006d94c 0x1006d94c 37  38   .rdata  ascii   InitializeCriticalSectionAndSpinCount
+1451 0x0006da3c 0x1006da3c 10  11   .rdata  ascii   _nextafter
+1452 0x0006da48 0x1006da48 5   6    .rdata  ascii   _logb
+1453 0x0006da5c 0x1006da5c 5   6    .rdata  ascii   frexp
+1454 0x0006da64 0x1006da64 4   5    .rdata  ascii   fmod
+1455 0x0006da6c 0x1006da6c 6   7    .rdata  ascii   _hypot
+1456 0x0006da74 0x1006da74 5   6    .rdata  ascii   _cabs
+1457 0x0006da7c 0x1006da7c 5   6    .rdata  ascii   ldexp
+1458 0x0006da84 0x1006da84 4   5    .rdata  ascii   fabs
+1459 0x0006da98 0x1006da98 4   5    .rdata  ascii   sqrt
+1460 0x0006daa0 0x1006daa0 5   6    .rdata  ascii   atan2
+1461 0x0006daa8 0x1006daa8 4   5    .rdata  ascii   acos
+1462 0x0006dab0 0x1006dab0 4   5    .rdata  ascii   asin
+1463 0x0006dab8 0x1006dab8 4   5    .rdata  ascii   tanh
+1464 0x0006dac0 0x1006dac0 4   5    .rdata  ascii   cosh
+1465 0x0006dac8 0x1006dac8 4   5    .rdata  ascii   sinh
+1466 0x0006dafc 0x1006dafc 8   9    .rdata  ascii   HH:mm:ss
+1467 0x0006db08 0x1006db08 19  20   .rdata  ascii   dddd, MMMM dd, yyyy
+1468 0x0006db1c 0x1006db1c 8   9    .rdata  ascii   MM/dd/yy
+1469 0x0006db30 0x1006db30 8   9    .rdata  ascii   December
+1470 0x0006db3c 0x1006db3c 8   9    .rdata  ascii   November
+1471 0x0006db48 0x1006db48 7   8    .rdata  ascii   October
+1472 0x0006db50 0x1006db50 9   10   .rdata  ascii   September
+1473 0x0006db5c 0x1006db5c 6   7    .rdata  ascii   August
+1474 0x0006db64 0x1006db64 4   5    .rdata  ascii   July
+1475 0x0006db6c 0x1006db6c 4   5    .rdata  ascii   June
+1476 0x0006db74 0x1006db74 5   6    .rdata  ascii   April
+1477 0x0006db7c 0x1006db7c 5   6    .rdata  ascii   March
+1478 0x0006db84 0x1006db84 8   9    .rdata  ascii   February
+1479 0x0006db90 0x1006db90 7   8    .rdata  ascii   January
+1480 0x0006dbc8 0x1006dbc8 8   9    .rdata  ascii   Saturday
+1481 0x0006dbd4 0x1006dbd4 6   7    .rdata  ascii   Friday
+1482 0x0006dbdc 0x1006dbdc 8   9    .rdata  ascii   Thursday
+1483 0x0006dbe8 0x1006dbe8 9   10   .rdata  ascii   Wednesday
+1484 0x0006dbf4 0x1006dbf4 7   8    .rdata  ascii   Tuesday
+1485 0x0006dbfc 0x1006dbfc 6   7    .rdata  ascii   Monday
+1486 0x0006dc04 0x1006dc04 6   7    .rdata  ascii   Sunday
+1487 0x0006dc28 0x1006dc28 23  24   .rdata  ascii   GetProcessWindowStation
+1488 0x0006dc40 0x1006dc40 25  26   .rdata  ascii   GetUserObjectInformationA
+1489 0x0006dc5c 0x1006dc5c 18  19   .rdata  ascii   GetLastActivePopup
+1490 0x0006dc70 0x1006dc70 15  16   .rdata  ascii   GetActiveWindow
+1491 0x0006dc80 0x1006dc80 11  12   .rdata  ascii   MessageBoxA
+1492 0x0006dc8c 0x1006dc8c 10  11   .rdata  ascii   user32.dll
+1493 0x0006dccc 0x1006dccc 6   7    .rdata  ascii   1#QNAN
+1494 0x0006dcd4 0x1006dcd4 5   6    .rdata  ascii   1#INF
+1495 0x0006dcdc 0x1006dcdc 5   6    .rdata  ascii   1#IND
+1496 0x0006dce4 0x1006dce4 6   7    .rdata  ascii   1#SNAN
+1497 0x00071f76 0x10071f76 14  15   .rdata  ascii   VerQueryValueW
+1498 0x00071f88 0x10071f88 19  20   .rdata  ascii   GetFileVersionInfoW
+1499 0x00071f9e 0x10071f9e 23  24   .rdata  ascii   GetFileVersionInfoSizeW
+1500 0x00071fb6 0x10071fb6 11  12   .rdata  ascii   VERSION.dll
+1501 0x00071fc2 0x10071fc2 14  15   .rdata  ascii   AIDToolkit.dll
+1502 0x00071fd4 0x10071fd4 20  21   .rdata  ascii   EnterCriticalSection
+1503 0x00071fec 0x10071fec 20  21   .rdata  ascii   LeaveCriticalSection
+1504 0x00072004 0x10072004 25  26   .rdata  ascii   InitializeCriticalSection
+1505 0x00072020 0x10072020 21  22   .rdata  ascii   DeleteCriticalSection
+1506 0x00072038 0x10072038 11  12   .rdata  ascii   CloseHandle
+1507 0x00072046 0x10072046 15  16   .rdata  ascii   DeviceIoControl
+1508 0x00072058 0x10072058 12  13   .rdata  ascii   GetLastError
+1509 0x00072068 0x10072068 11  12   .rdata  ascii   CreateFileW
+1510 0x00072076 0x10072076 12  13   .rdata  ascii   SetEndOfFile
+1511 0x00072086 0x10072086 16  17   .rdata  ascii   SetFilePointerEx
+1512 0x0007209a 0x1007209a 19  20   .rdata  ascii   GetDiskFreeSpaceExW
+1513 0x000720b0 0x100720b0 17  18   .rdata  ascii   GetDiskFreeSpaceW
+1514 0x000720c4 0x100720c4 10  11   .rdata  ascii   ResetEvent
+1515 0x000720d2 0x100720d2 8   9    .rdata  ascii   SetEvent
+1516 0x000720de 0x100720de 9   10   .rdata  ascii   WriteFile
+1517 0x000720ea 0x100720ea 19  20   .rdata  ascii   WaitForSingleObject
+1518 0x00072100 0x10072100 8   9    .rdata  ascii   ReadFile
+1519 0x0007210c 0x1007210c 12  13   .rdata  ascii   CreateEventW
+1520 0x0007211c 0x1007211c 11  12   .rdata  ascii   DeleteFileW
+1521 0x0007212a 0x1007212a 12  13   .rdata  ascii   VirtualAlloc
+1522 0x0007213a 0x1007213a 11  12   .rdata  ascii   VirtualLock
+1523 0x00072148 0x10072148 13  14   .rdata  ascii   VirtualUnlock
+1524 0x00072158 0x10072158 19  20   .rdata  ascii   InterlockedExchange
+1525 0x0007216e 0x1007216e 6   7    .rdata  ascii   GetACP
+1526 0x00072178 0x10072178 14  15   .rdata  ascii   GetLocaleInfoA
+1527 0x0007218a 0x1007218a 15  16   .rdata  ascii   GetThreadLocale
+1528 0x0007219c 0x1007219c 13  14   .rdata  ascii   GetVersionExW
+1529 0x000721ac 0x100721ac 19  20   .rdata  ascii   WideCharToMultiByte
+1530 0x000721c2 0x100721c2 8   9    .rdata  ascii   lstrlenW
+1531 0x000721ce 0x100721ce 19  20   .rdata  ascii   GetOverlappedResult
+1532 0x000721e4 0x100721e4 5   6    .rdata  ascii   Sleep
+1533 0x000721ec 0x100721ec 13  14   .rdata  ascii   GetSystemInfo
+1534 0x000721fc 0x100721fc 18  19   .rdata  ascii   GetModuleFileNameW
+1535 0x00072212 0x10072212 12  13   .rdata  ascii   LoadLibraryW
+1536 0x00072222 0x10072222 11  12   .rdata  ascii   FreeLibrary
+1537 0x00072230 0x10072230 14  15   .rdata  ascii   GetProcAddress
+1538 0x00072242 0x10072242 9   10   .rdata  ascii   LocalFree
+1539 0x0007224e 0x1007224e 14  15   .rdata  ascii   FormatMessageW
+1540 0x00072260 0x10072260 11  12   .rdata  ascii   GetFileSize
+1541 0x0007226e 0x1007226e 9   10   .rdata  ascii   FindClose
+1542 0x0007227a 0x1007227a 13  14   .rdata  ascii   FindNextFileW
+1543 0x0007228a 0x1007228a 14  15   .rdata  ascii   FindFirstFileW
+1544 0x0007229c 0x1007229c 17  18   .rdata  ascii   SetThreadPriority
+1545 0x000722b0 0x100722b0 16  17   .rdata  ascii   GetCurrentThread
+1546 0x000722c4 0x100722c4 8   9    .rdata  ascii   CancelIo
+1547 0x000722d0 0x100722d0 18  19   .rdata  ascii   OutputDebugStringW
+1548 0x000722e6 0x100722e6 15  16   .rdata  ascii   CompareFileTime
+1549 0x000722f8 0x100722f8 11  12   .rdata  ascii   GetFileTime
+1550 0x00072306 0x10072306 16  17   .rdata  ascii   CreateDirectoryW
+1551 0x0007231a 0x1007231a 12  13   .rdata  ascii   GetLocalTime
+1552 0x0007232a 0x1007232a 11  12   .rdata  ascii   VirtualFree
+1553 0x00072338 0x10072338 25  26   .rdata  ascii   QueryPerformanceFrequency
+1554 0x00072354 0x10072354 23  24   .rdata  ascii   QueryPerformanceCounter
+1555 0x0007236e 0x1007236e 21  22   .rdata  ascii   GetPrivateProfileIntW
+1556 0x00072386 0x10072386 20  21   .rdata  ascii   FileTimeToSystemTime
+1557 0x0007239e 0x1007239e 24  25   .rdata  ascii   SetProcessWorkingSetSize
+1558 0x000723ba 0x100723ba 24  25   .rdata  ascii   GetProcessWorkingSetSize
+1559 0x000723d6 0x100723d6 17  18   .rdata  ascii   GetCurrentProcess
+1560 0x000723ea 0x100723ea 14  15   .rdata  ascii   RaiseException
+1561 0x000723fc 0x100723fc 15  16   .rdata  ascii   UnmapViewOfFile
+1562 0x0007240e 0x1007240e 13  14   .rdata  ascii   MapViewOfFile
+1563 0x0007241e 0x1007241e 18  19   .rdata  ascii   CreateFileMappingW
+1564 0x00072434 0x10072434 12  13   .rdata  ascii   GetTickCount
+1565 0x00072444 0x10072444 8   9    .rdata  ascii   lstrcpyW
+1566 0x00072450 0x10072450 12  13   .rdata  ascii   ResumeThread
+1567 0x00072460 0x10072460 20  21   .rdata  ascii   InterlockedIncrement
+1568 0x00072478 0x10072478 20  21   .rdata  ascii   InterlockedDecrement
+1569 0x00072490 0x10072490 9   10   .rdata  ascii   lstrcmpiW
+1570 0x0007249c 0x1007249c 25  26   .rdata  ascii   DisableThreadLibraryCalls
+1571 0x000724b8 0x100724b8 9   10   .rdata  ascii   lstrcpynW
+1572 0x000724c4 0x100724c4 8   9    .rdata  ascii   lstrcatW
+1573 0x000724d0 0x100724d0 19  20   .rdata  ascii   MultiByteToWideChar
+1574 0x000724e6 0x100724e6 14  15   .rdata  ascii   SizeofResource
+1575 0x000724f8 0x100724f8 12  13   .rdata  ascii   LoadResource
+1576 0x00072508 0x10072508 13  14   .rdata  ascii   FindResourceW
+1577 0x00072518 0x10072518 14  15   .rdata  ascii   LoadLibraryExW
+1578 0x0007252a 0x1007252a 16  17   .rdata  ascii   GetModuleHandleW
+1579 0x0007253c 0x1007253c 12  13   .rdata  ascii   KERNEL32.dll
+1580 0x0007254c 0x1007254c 11  12   .rdata  ascii   LoadStringW
+1581 0x0007255a 0x1007255a 9   10   .rdata  ascii   CharNextW
+1582 0x00072564 0x10072564 10  11   .rdata  ascii   USER32.dll
+1583 0x00072572 0x10072572 11  12   .rdata  ascii   RegCloseKey
+1584 0x00072580 0x10072580 16  17   .rdata  ascii   RegQueryValueExW
+1585 0x00072594 0x10072594 13  14   .rdata  ascii   RegOpenKeyExW
+1586 0x000725a4 0x100725a4 14  15   .rdata  ascii   RegSetValueExW
+1587 0x000725b6 0x100725b6 15  16   .rdata  ascii   RegCreateKeyExW
+1588 0x000725c8 0x100725c8 13  14   .rdata  ascii   RegDeleteKeyW
+1589 0x000725d8 0x100725d8 15  16   .rdata  ascii   RegDeleteValueW
+1590 0x000725ea 0x100725ea 16  17   .rdata  ascii   RegQueryInfoKeyW
+1591 0x000725fe 0x100725fe 13  14   .rdata  ascii   RegEnumKeyExW
+1592 0x0007260c 0x1007260c 12  13   .rdata  ascii   ADVAPI32.dll
+1593 0x0007261c 0x1007261c 30  31   .rdata  ascii   CoGetInterfaceAndReleaseStream
+1594 0x0007263e 0x1007263e 37  38   .rdata  ascii   CoMarshalInterThreadInterfaceInStream
+1595 0x00072666 0x10072666 14  15   .rdata  ascii   CoInitializeEx
+1596 0x00072678 0x10072678 15  16   .rdata  ascii   StringFromGUID2
+1597 0x0007268a 0x1007268a 12  13   .rdata  ascii   CoCreateGuid
+1598 0x0007269a 0x1007269a 14  15   .rdata  ascii   CoUninitialize
+1599 0x000726ac 0x100726ac 29  30   .rdata  ascii   CoCreateFreeThreadedMarshaler
+1600 0x000726cc 0x100726cc 13  14   .rdata  ascii   CoTaskMemFree
+1601 0x000726dc 0x100726dc 15  16   .rdata  ascii   ProgIDFromCLSID
+1602 0x000726ee 0x100726ee 14  15   .rdata  ascii   CoTaskMemAlloc
+1603 0x00072700 0x10072700 16  17   .rdata  ascii   CoTaskMemRealloc
+1604 0x00072714 0x10072714 16  17   .rdata  ascii   CoCreateInstance
+1605 0x00072726 0x10072726 9   10   .rdata  ascii   ole32.dll
+1606 0x00072730 0x10072730 12  13   .rdata  ascii   OLEAUT32.dll
+1607 0x00072740 0x10072740 18  19   .rdata  ascii   PathFindExtensionW
+1608 0x00072754 0x10072754 11  12   .rdata  ascii   SHLWAPI.dll
+1609 0x00072762 0x10072762 13  14   .rdata  ascii   GetVersionExA
+1610 0x00072772 0x10072772 12  13   .rdata  ascii   IsBadReadPtr
+1611 0x00072782 0x10072782 9   10   .rdata  ascii   RtlUnwind
+1612 0x0007278e 0x1007278e 10  11   .rdata  ascii   ExitThread
+1613 0x0007279c 0x1007279c 18  19   .rdata  ascii   GetCurrentThreadId
+1614 0x000727b2 0x100727b2 12  13   .rdata  ascii   CreateThread
+1615 0x000727c2 0x100727c2 23  24   .rdata  ascii   GetSystemTimeAsFileTime
+1616 0x000727dc 0x100727dc 22  23   .rdata  ascii   GetTimeZoneInformation
+1617 0x000727f6 0x100727f6 18  19   .rdata  ascii   GetFileAttributesW
+1618 0x0007280c 0x1007280c 8   9    .rdata  ascii   HeapFree
+1619 0x00072818 0x10072818 9   10   .rdata  ascii   HeapAlloc
+1620 0x00072824 0x10072824 11  12   .rdata  ascii   HeapReAlloc
+1621 0x00072832 0x10072832 14  15   .rdata  ascii   VirtualProtect
+1622 0x00072844 0x10072844 12  13   .rdata  ascii   VirtualQuery
+1623 0x00072854 0x10072854 15  16   .rdata  ascii   GetCommandLineA
+1624 0x00072866 0x10072866 11  12   .rdata  ascii   ExitProcess
+1625 0x00072874 0x10072874 8   9    .rdata  ascii   TlsAlloc
+1626 0x00072880 0x10072880 12  13   .rdata  ascii   SetLastError
+1627 0x00072890 0x10072890 7   8    .rdata  ascii   TlsFree
+1628 0x0007289a 0x1007289a 11  12   .rdata  ascii   TlsSetValue
+1629 0x000728a8 0x100728a8 11  12   .rdata  ascii   TlsGetValue
+1630 0x000728b6 0x100728b6 16  17   .rdata  ascii   GetModuleHandleA
+1631 0x000728ca 0x100728ca 27  28   .rdata  ascii   SetUnhandledExceptionFilter
+1632 0x000728e8 0x100728e8 16  17   .rdata  ascii   TerminateProcess
+1633 0x000728fc 0x100728fc 8   9    .rdata  ascii   HeapSize
+1634 0x00072908 0x10072908 24  25   .rdata  ascii   UnhandledExceptionFilter
+1635 0x00072924 0x10072924 11  12   .rdata  ascii   HeapDestroy
+1636 0x00072932 0x10072932 10  11   .rdata  ascii   HeapCreate
+1637 0x00072940 0x10072940 13  14   .rdata  ascii   IsBadWritePtr
+1638 0x00072950 0x10072950 14  15   .rdata  ascii   SetHandleCount
+1639 0x00072962 0x10072962 12  13   .rdata  ascii   GetStdHandle
+1640 0x00072972 0x10072972 11  12   .rdata  ascii   GetFileType
+1641 0x00072980 0x10072980 15  16   .rdata  ascii   GetStartupInfoA
+1642 0x00072992 0x10072992 18  19   .rdata  ascii   GetModuleFileNameA
+1643 0x000729a8 0x100729a8 23  24   .rdata  ascii   FreeEnvironmentStringsA
+1644 0x000729c2 0x100729c2 21  22   .rdata  ascii   GetEnvironmentStrings
+1645 0x000729da 0x100729da 23  24   .rdata  ascii   FreeEnvironmentStringsW
+1646 0x000729f4 0x100729f4 22  23   .rdata  ascii   GetEnvironmentStringsW
+1647 0x00072a0e 0x10072a0e 19  20   .rdata  ascii   GetCurrentProcessId
+1648 0x00072a24 0x10072a24 12  13   .rdata  ascii   IsBadCodePtr
+1649 0x00072a34 0x10072a34 8   9    .rdata  ascii   GetOEMCP
+1650 0x00072a40 0x10072a40 9   10   .rdata  ascii   GetCPInfo
+1651 0x00072a4c 0x10072a4c 12  13   .rdata  ascii   SetStdHandle
+1652 0x00072a5c 0x10072a5c 16  17   .rdata  ascii   FlushFileBuffers
+1653 0x00072a70 0x10072a70 14  15   .rdata  ascii   SetFilePointer
+1654 0x00072a82 0x10072a82 14  15   .rdata  ascii   GetStringTypeA
+1655 0x00072a94 0x10072a94 14  15   .rdata  ascii   GetStringTypeW
+1656 0x00072aa6 0x10072aa6 12  13   .rdata  ascii   LoadLibraryA
+1657 0x00072ab6 0x10072ab6 12  13   .rdata  ascii   LCMapStringA
+1658 0x00072ac6 0x10072ac6 12  13   .rdata  ascii   LCMapStringW
+1659 0x00072ad6 0x10072ad6 14  15   .rdata  ascii   CompareStringA
+1660 0x00072ae8 0x10072ae8 14  15   .rdata  ascii   CompareStringW
+1661 0x00072afa 0x10072afa 23  24   .rdata  ascii   SetEnvironmentVariableA
+1662 0x00072b70 0x10072b70 7   8    .rdata  ascii   TLB.DLL
+1663 0x00072b78 0x10072b78 15  16   .rdata  ascii   DllCanUnloadNow
+1664 0x00072b88 0x10072b88 17  18   .rdata  ascii   DllGetClassObject
+1665 0x00072b9a 0x10072b9a 17  18   .rdata  ascii   DllRegisterServer
+1666 0x00072bac 0x10072bac 19  20   .rdata  ascii   DllUnregisterServer
+1667 0x00073068 0x10073068 16  17   .data   ascii   .?AVCiStringUC@@
+1668 0x00073084 0x10073084 12  13   .data   ascii   .?AVCiList@@
+1669 0x0007309c 0x1007309c 14  15   .data   ascii   .?AVCiBuffer@@
+1670 0x000730b4 0x100730b4 23  24   .data   ascii   .?AVCAtlException@ATL@@
+1671 0x000730d4 0x100730d4 24  25   .data   ascii   .?AVCiBufferFileSystem@@
+1672 0x000730f8 0x100730f8 19  20   .data   ascii   .?AVCiBufferHiRes@@
+1673 0x00073114 0x10073114 22  23   .data   ascii   .?AVCiBufferImported@@
+1674 0x00073134 0x10073134 27  28   .data   ascii   .?AVCiBufferImportedHiRes@@
+1675 0x0007315c 0x1007315c 14  15   .data   ascii   .?AVCiDxCode@@
+1676 0x00073174 0x10073174 19  20   .data   ascii   .?AVCiFrameNumber@@
+1677 0x00073190 0x10073190 20  21   .data   ascii   .?AVCiDxAndApsHole@@
+1678 0x000731b0 0x100731b0 19  20   .data   ascii   .?AVCiBufferStrip@@
+1679 0x000731cc 0x100731cc 15  16   .data   ascii   .?AVexception@@
+1680 0x000731ec 0x100731ec 15  16   .data   ascii   .?AVCiCmdComm@@
+1681 0x00073204 0x10073204 23  24   .data   ascii   .?AVCiColorCorrection@@
+1682 0x00073224 0x10073224 14  15   .data   ascii   .?AVCiConfig@@
+1683 0x0007323c 0x1007323c 24  25   .data   ascii   .?AVCiConfigColorKodak@@
+1684 0x00073260 0x10073260 13  14   .data   ascii   .?AVCiCrc32@@
+1685 0x00073278 0x10073278 18  19   .data   ascii   .?AVCiConfigSave@@
+1686 0x00073294 0x10073294 36  37   .data   ascii   .?AVCiConfigFixedPatternCorrection@@
+1687 0x000732c4 0x100732c4 19  20   .data   ascii   .?AVCiConfigLight@@
+1688 0x000732e0 0x100732e0 17  18   .data   ascii   .?AVCiConfigDpi@@
+1689 0x000732fc 0x100732fc 20  21   .data   ascii   .?AVCiConfigMemory@@
+1690 0x0007331c 0x1007331c 18  19   .data   ascii   .?AVCiConfigTest@@
+1691 0x00073338 0x10073338 18  19   .data   ascii   .?AVCiConfigScan@@
+1692 0x00073354 0x10073354 18  19   .data   ascii   .?AVCiConfigMain@@
+1693 0x00073374 0x10073374 15  16   .data   ascii   .?AVCiDllRoot@@
+1694 0x0007338c 0x1007338c 21  22   .data   ascii   .?AVCiDLLDigitalIce@@
+1695 0x000733ac 0x100733ac 19  20   .data   ascii   .?AVCiDLLPakonIma@@
+1696 0x000733c8 0x100733c8 20  21   .data   ascii   .?AVCiErrorHandler@@
+1697 0x000733e8 0x100733e8 16  17   .data   ascii   .?AVCiFirmware@@
+1698 0x00073404 0x10073404 13  14   .data   ascii   .?AVCiImage@@
+1699 0x0007341c 0x1007341c 13  14   .data   ascii   .?AUtagRECT@@
+1700 0x00073434 0x10073434 12  13   .data   ascii   .?AVCiRect@@
+1701 0x0007344c 0x1007344c 14  15   .data   ascii   .?AVCiPicLoc@@
+1702 0x00073478 0x10073478 15  16   .data   ascii   .?AVCiPicture@@
+1703 0x00073490 0x10073490 29  30   .data   ascii   .?AVCiThreadDataCorrections@@
+1704 0x000734b8 0x100734b8 28  29   .data   ascii   .?AVCiThreadDataScanDriver@@
+1705 0x000734e0 0x100734e0 15  16   .data   ascii   .?AVCiScanner@@
+1706 0x000734f8 0x100734f8 20  21   .data   ascii   .?AVCiListStringUC@@
+1707 0x00073518 0x10073518 26  27   .data   ascii   .?AVCiCallBackClientList@@
+1708 0x0007353c 0x1007353c 26  27   .data   ascii   .?AVCiClientMemoryBuffer@@
+1709 0x00073560 0x10073560 25  26   .data   ascii   .?AVCiThreadDataLongOps@@
+1710 0x00073584 0x10073584 35  36   .data   ascii   .?AVCiThreadDataInitializeScanner@@
+1711 0x000735b0 0x100735b0 30  31   .data   ascii   .?AVCiThreadDataScanPictures@@
+1712 0x000735d8 0x100735d8 30  31   .data   ascii   .?AVCiThreadDataSavePictures@@
+1713 0x00073600 0x10073600 13  14   .data   ascii   .?AVCiTimer@@
+1714 0x00073688 0x10073688 28  29   .data   ascii   .?AVCComObjectRootBase@ATL@@
+1715 0x000736b0 0x100736b0 56  57   .data   ascii   .?AV?$CComObjectRootEx@VCComMultiThreadModel@ATL@@@ATL@@
+1716 0x000736f4 0x100736f4 14  15   .data   ascii   .?AUIUnknown@@
+1717 0x0007370c 0x1007370c 19  20   .data   ascii   .?AUIClassFactory@@
+1718 0x00073728 0x10073728 26  27   .data   ascii   .?AVCComClassFactory@ATL@@
+1719 0x0007374c 0x1007374c 24  25   .data   ascii   .?AUICalibrationWizard@@
+1720 0x00073770 0x10073770 138 139  .data   ascii   .?AV?$IDispatchImpl@UICalibrationWizard@@$1?IID_ICalibrationWizard@@3U_GUID@@B$1?LIBID_TLBLib@@3U3@B$00$0A@VCComTypeInfoHolder@ATL@@@ATL@@
+1721 0x00073804 0x10073804 19  20   .data   ascii   .?AUIScanPictures@@
+1722 0x00073820 0x10073820 128 129  .data   ascii   .?AV?$IDispatchImpl@UIScanPictures@@$1?IID_IScanPictures@@3U_GUID@@B$1?LIBID_TLBLib@@3U3@B$00$0A@VCComTypeInfoHolder@ATL@@@ATL@@
+1723 0x000738ac 0x100738ac 19  20   .data   ascii   .?AUISavePictures@@
+1724 0x000738c8 0x100738c8 128 129  .data   ascii   .?AV?$IDispatchImpl@UISavePictures@@$1?IID_ISavePictures@@3U_GUID@@B$1?LIBID_TLBLib@@3U3@B$00$0A@VCComTypeInfoHolder@ATL@@@ATL@@
+1725 0x00073954 0x10073954 20  21   .data   ascii   .?AUIScanPictures1@@
+1726 0x00073978 0x10073978 130 131  .data   ascii   .?AV?$IDispatchImpl@UIScanPictures1@@$1?IID_IScanPictures1@@3U_GUID@@B$1?LIBID_TLBLib@@3U3@B$00$0A@VCComTypeInfoHolder@ATL@@@ATL@@
+1727 0x00073a04 0x10073a04 20  21   .data   ascii   .?AUISavePictures1@@
+1728 0x00073a28 0x10073a28 130 131  .data   ascii   .?AV?$IDispatchImpl@UISavePictures1@@$1?IID_ISavePictures1@@3U_GUID@@B$1?LIBID_TLBLib@@3U3@B$00$0A@VCComTypeInfoHolder@ATL@@@ATL@@
+1729 0x00073ab4 0x10073ab4 20  21   .data   ascii   .?AUIScanPictures2@@
+1730 0x00073ad8 0x10073ad8 130 131  .data   ascii   .?AV?$IDispatchImpl@UIScanPictures2@@$1?IID_IScanPictures2@@3U_GUID@@B$1?LIBID_TLBLib@@3U3@B$00$0A@VCComTypeInfoHolder@ATL@@@ATL@@
+1731 0x00073b64 0x10073b64 20  21   .data   ascii   .?AUISavePictures2@@
+1732 0x00073b88 0x10073b88 130 131  .data   ascii   .?AV?$IDispatchImpl@UISavePictures2@@$1?IID_ISavePictures2@@3U_GUID@@B$1?LIBID_TLBLib@@3U3@B$00$0A@VCComTypeInfoHolder@ATL@@@ATL@@
+1733 0x00073c14 0x10073c14 16  17   .data   ascii   .?AUILongOpsCB@@
+1734 0x00073c30 0x10073c30 15  16   .data   ascii   .?AUIDispatch@@
+1735 0x00073c48 0x10073c48 14  15   .data   ascii   .?AUITLAMain@@
+1736 0x00073c60 0x10073c60 118 119  .data   ascii   .?AV?$IDispatchImpl@UITLAMain@@$1?IID_ITLAMain@@3U_GUID@@B$1?LIBID_TLBLib@@3U3@B$00$0A@VCComTypeInfoHolder@ATL@@@ATL@@
+1737 0x00073ce0 0x10073ce0 31  32   .data   ascii   .?AUIConnectionPointContainer@@
+1738 0x00073d08 0x10073d08 54  55   .data   ascii   .?AV?$IConnectionPointContainerImpl@VCiTLAMain@@@ATL@@
+1739 0x00073d48 0x10073d48 23  24   .data   ascii   .?AUISupportErrorInfo@@
+1740 0x00073d68 0x10073d68 64  65   .data   ascii   .?AV?$CComCoClass@VCiTLAMain@@$1?CLSID_TLAMain@@3U_GUID@@B@ATL@@
+1741 0x00073db4 0x10073db4 15  16   .data   ascii   .?AVCiTLAMain@@
+1742 0x00073dcc 0x10073dcc 35  36   .data   ascii   .?AV?$CComObject@VCiTLAMain@@@ATL@@
+1743 0x00073df8 0x10073df8 23  24   .data   ascii   .?AU_ATL_MODULE70@ATL@@
+1744 0x00073e18 0x10073e18 20  21   .data   ascii   .?AVCAtlModule@ATL@@
+1745 0x00073e38 0x10073e38 41  42   .data   ascii   .?AV?$CAtlModuleT@VCComModule@ATL@@@ATL@@
+1746 0x00073e6c 0x10073e6c 20  21   .data   ascii   .?AVCComModule@ATL@@
+1747 0x00073e8c 0x10073e8c 20  21   .data   ascii   .?AUIRegistrarBase@@
+1748 0x00073eac 0x10073eac 20  21   .data   ascii   .?AVCRegObject@ATL@@
+1749 0x00073ecc 0x10073ecc 52  53   .data   ascii   .?AV?$CComObjectCached@VCComClassFactory@ATL@@@ATL@@
+1750 0x00073f10 0x10073f10 57  58   .data   ascii   .?AV?$CComObjectRootEx@VCComSingleThreadModel@ATL@@@ATL@@
+1751 0x00073f54 0x10073f54 27  28   .data   ascii   .?AUIEnumConnectionPoints@@
+1752 0x00073f78 0x10073f78 173 174  .data   ascii   .?AV?$CComEnumImpl@UIEnumConnectionPoints@@$1?_GUID_b196b285_bab4_101a_b69c_00aa00341d07@@3U__s_GUID@@BPAUIConnectionPoint@@V?$_CopyInterface@UIConnectionPoint@@@ATL@@@ATL@@
+1753 0x00074030 0x10074030 194 195  .data   ascii   .?AV?$CComEnum@UIEnumConnectionPoints@@$1?_GUID_b196b285_bab4_101a_b69c_00aa00341d07@@3U__s_GUID@@BPAUIConnectionPoint@@V?$_CopyInterface@UIConnectionPoint@@@ATL@@VCComSingleThreadModel@6@@ATL@@
+1754 0x00074100 0x10074100 214 215  .data   ascii   .?AV?$CComObject@V?$CComEnum@UIEnumConnectionPoints@@$1?_GUID_b196b285_bab4_101a_b69c_00aa00341d07@@3U__s_GUID@@BPAUIConnectionPoint@@V?$_CopyInterface@UIConnectionPoint@@@ATL@@VCComSingleThreadModel@6@@ATL@@@ATL@@
+1755 0x000742c0 0x100742c0 15  16   .data   ascii   .?AVtype_info@@
+1756 0x000742d8 0x100742d8 23  24   .data   ascii   .?AV__non_rtti_object@@
+1757 0x000742f8 0x100742f8 16  17   .data   ascii   .?AVbad_typeid@@
+1758 0x00074314 0x10074314 14  15   .data   ascii   .?AVbad_cast@@
+1759 0x0007438c 0x1007438c 12  52   .data   utf32le \t\a\f\b\f\t\f\n\a\v\b\f
+1760 0x00074410 0x10074410 5   24   .data   utf32le R\rS\rW
+1761 0x00074428 0x10074428 7   32   .data   utf32le Y\vl\rm p
+1762 0x0007449c 0x1007449c 4   20   .data   utf32le \v§\r·
+1763 0x000744e7 0x100744e7 4   5    .data   ascii   ?pow
+1764 0x000744f0 0x100744f0 4   5    .data   ascii   asin
+1765 0x00074954 0x10074954 4   20   .data   utf32le \ax\n炀
+1766 0x00074e7c 0x10074e7c 4   20   .data   utf32le 5\v@Ͽ
+1767 0x000752f2 0x100752f2 4   5    .data   ascii   kU'9
+1768 0x00075342 0x10075342 8   11   .data   utf8    HMXB䧓9;5
+1769 0x0007537c 0x1007537c 5   8    .data   utf8    ]݀nLɛ
+1770 0x0007539b 0x1007539b 9   12   .data   utf8    ?q=\nףp=\nף
+1771 0x000753a7 0x100753a7 4   5    .data   ascii   ?Zd;
+1772 0x000753ef 0x100753ef 4   5    .data   ascii   ?/L[
+1773 0x000753fe 0x100753fe 4   5    .data   ascii   S;uD
+1774 0x00075411 0x10075411 4   6    .data   utf8    ϔ?$#
+1775 0x00075417 0x10075417 4   7    .data   utf8    ⼺;1a
+1776 0x0007541e 0x1007541e 5   6    .data   ascii   z?aUY
+1777 0x00075436 0x10075436 4   5    .data   ascii   D?$?
+1778 0x0007544e 0x1007544e 4   5    .data   ascii   U>c{
+1779 0x00075460 0x10075460 5   6    .data   ascii   zc%C1
+1780 0x00075473 0x10075473 5   7    .data   utf8    ;܈X\b\e
+1781 0x0007547f 0x1007547f 5   7    .data   utf8    ;ƄEB\a
+1782 0x0007548a 0x1007548a 4   5    .data   ascii   .:3q
+1783 0x000754b3 0x100754b3 5   6    .data   ascii   -64OS
+1784 0x000754d4 0x100754d4 4   5    .data   ascii   NKeb
+1785 0x00076130 0x10085130 17  36   .rsrc   utf16le \bREGISTRY\aTYPELIB
+1786 0x00076166 0x10085166 15  32   .rsrc   utf16le VS_VERSION_INFO
+1787 0x000761c2 0x100851c2 14  30   .rsrc   utf16le StringFileInfo
+1788 0x000761e6 0x100851e6 8   18   .rsrc   utf16le 040904b0
+1789 0x000761fe 0x100851fe 15  32   .rsrc   utf16le FileDescription
+1790 0x00076220 0x10085220 10  22   .rsrc   utf16le TLB Module
+1791 0x0007623e 0x1008523e 11  24   .rsrc   utf16le FileVersion
+1792 0x00076258 0x10085258 11  24   .rsrc   utf16le 3, 1, 0, 28
+1793 0x00076276 0x10085276 12  26   .rsrc   utf16le InternalName
+1794 0x0007629e 0x1008529e 14  30   .rsrc   utf16le LegalCopyright
+1795 0x000762bc 0x100852bc 19  40   .rsrc   utf16le Copyright 2003-2004
+1796 0x000762ea 0x100852ea 16  34   .rsrc   utf16le OriginalFilename
+1797 0x0007630c 0x1008530c 7   16   .rsrc   utf16le TLB.DLL
+1798 0x00076322 0x10085322 11  24   .rsrc   utf16le ProductName
+1799 0x0007633c 0x1008533c 10  22   .rsrc   utf16le TLB Module
+1800 0x0007635a 0x1008535a 14  30   .rsrc   utf16le ProductVersion
+1801 0x00076378 0x10085378 11  24   .rsrc   utf16le 3, 1, 0, 28
+1802 0x00076398 0x10085398 10  22   .rsrc   utf16le arFileInfo
+1803 0x000763b6 0x100853b6 11  24   .rsrc   utf16le Translation
+1804 0x000763d8 0x100853d8 594 595  .rsrc   ascii   HKCR\r\n{\r\n\tTLB.TLAMain.1 = s 'TLAMain Class'\r\n\t{\r\n\t\tCLSID = s '{52B5538B-7926-40AD-9DBE-810228E147AD}'\r\n\t}\r\n\tTLB.TLAMain = s 'TLAMain Class'\r\n\t{\r\n\t\tCLSID = s '{52B5538B-7926-40AD-9DBE-810228E147AD}'\r\n\t\tCurVer = s 'TLB.TLAMain.1'\r\n\t}\r\n\tNoRemove CLSID\r\n\t{\r\n\t\tForceRemove {52B5538B-7926-40AD-9DBE-810228E147AD} = s 'TLAMain Class'\r\n\t\t{\r\n\t\t\tProgID = s 'TLB.TLAMain.1'\r\n\t\t\tVersionIndependentProgID = s 'TLB.TLAMain'\r\n\t\t\tForceRemove 'Programmable'\r\n\t\t\tInprocServer32 = s '%MODULE%'\r\n\t\t\t{\r\n\t\t\t\tval ThreadingModel = s 'Both'\r\n\t\t\t}\r\n\t\t\t'TypeLib' = s '{6DE09D23-DB5C-4397-B283-1D272B7DCDB7}'\r\n\t\t}\r\n\t}\r\n}\r\n
+1805 0x00076630 0x10085630 4   5    .rsrc   ascii   MSFT
+1806 0x00076cd8 0x10085cd8 4   5    .rsrc   ascii   \vwxD
+1807 0x00076db8 0x10085db8 5   6    .rsrc   ascii   /.8_,
+1808 0x00076e25 0x10085e25 4   5    .rsrc   ascii   a$uo
+1809 0x00076e55 0x10085e55 5   6    .rsrc   ascii   jnKq2
+1810 0x00076f62 0x10085f62 14  15   .rsrc   ascii   stdole2.tlbWWW
+1811 0x0007717a 0x1008617a 10  11   .rsrc   ascii   $LTLBLibWW
+1812 0x0007718d 0x1008618d 20  21   .rsrc   ascii   8dD_ITLAMainEventsWd
+1813 0x000771ab 0x100861ab 9   10   .rsrc   ascii   fTLAMainW
+1814 0x000771bc 0x100861bc 12  13   .rsrc   ascii   \b8z]ITLAMain
+1815 0x000771d3 0x100861d3 21  22   .rsrc   ascii   JInitializeScannerWWW
+1816 0x000771f4 0x100861f4 20  21   .rsrc   ascii   iInitializeControlWW
+1817 0x00077214 0x10086214 20  21   .rsrc   ascii   iSaveToMemoryTimeout
+1818 0x00077234 0x10086234 28  29   .rsrc   ascii   i_uiSaveToSharedMemorySizeWW
+1819 0x0007725b 0x1008625b 21  22   .rsrc   ascii   KGetAndClearLastError
+1820 0x0007727c 0x1008627c 12  13   .rsrc   ascii   iShort_IIDWW
+1821 0x00077294 0x10086294 12  13   .rsrc   ascii   pbstrErrorWW
+1822 0x000772ab 0x100862ab 21  22   .rsrc   ascii   BpbstrErrorNumbersWWW
+1823 0x000772cc 0x100862cc 8   9    .rsrc   ascii   piErrorW
+1824 0x000772de 0x100862de 26  27   .rsrc   ascii   \nuGetInitializeWarningsWWW
+1825 0x00077304 0x10086304 21  22   .rsrc   ascii   piInitializeWarnings,
+1826 0x00077323 0x10086323 13  14   .rsrc   ascii   5ILongOpsCBWW
+1827 0x00077339 0x10086339 19  20   .rsrc   ascii   85ZICallBackClientW
+1828 0x00077357 0x10086357 9   10   .rsrc   ascii   NAwakeWWW
+1829 0x0007736b 0x1008636b 13  14   .rsrc   ascii   ]lOperationWW
+1830 0x00077384 0x10086384 9   10   .rsrc   ascii   lStatusW,
+1831 0x00077398 0x10086398 8   9    .rsrc   ascii   CBAdvise
+1832 0x000773aa 0x100863aa 18  19   .rsrc   ascii   ]opICallBackClient
+1833 0x000773c6 0x100863c6 11  12   .rsrc   ascii   PSplCookie,
+1834 0x000773db 0x100863db 13  14   .rsrc   ascii   [CBUnadviseWW
+1835 0x000773f4 0x100863f4 9   10   .rsrc   ascii   lCookieW,
+1836 0x00077407 0x10086407 13  14   .rsrc   ascii   ;CBHelperNTSW
+1837 0x00077420 0x10086420 16  17   .rsrc   ascii   IScanPicturesWWW
+1838 0x0007743c 0x1008643c 16  17   .rsrc   ascii   ForceCorrections
+1839 0x00077457 0x10086457 13  14   .rsrc   ascii   viResolutionW
+1840 0x0007746f 0x1008646f 13  14   .rsrc   ascii   LiFilmColorWW
+1841 0x00077487 0x10086487 13  14   .rsrc   ascii   kiFilmFormatW
+1842 0x0007749f 0x1008649f 21  22   .rsrc   ascii   +iCalibrateControlWWW
+1843 0x000774c0 0x100864c0 16  17   .rsrc   ascii   ForceDiagnostics
+1844 0x000774dc 0x100864dc 16  17   .rsrc   ascii   FilmTrackTestWWW
+1845 0x000774f6 0x100864f6 18  19   .rsrc   ascii   '5bDxPotsAdjustWWW
+1846 0x00077513 0x10086513 21  22   .rsrc   ascii   +FilmTrackTestResults
+1847 0x00077534 0x10086534 8   9    .rsrc   ascii   piErrors
+1848 0x00077548 0x10086548 12  13   .rsrc   ascii   ScanPictures
+1849 0x00077560 0x10086560 12  13   .rsrc   ascii   iStripModeWW
+1850 0x00077578 0x10086578 12  13   .rsrc   ascii   iScanControl
+1851 0x00077590 0x10086590 12  13   .rsrc   ascii   ScanCancelWW
+1852 0x000775a7 0x100865a7 17  18   .rsrc   ascii   tResetStatusLedsW
+1853 0x000775c2 0x100865c2 18  19   .rsrc   ascii   &jAdjustMotorSpeed
+1854 0x000775df 0x100865df 13  14   .rsrc   ascii   zAdvanceFilmW
+1855 0x000775f7 0x100865f7 21  22   .rsrc   ascii   yiAdvanceMilliseconds
+1856 0x00077616 0x10086616 18  19   .rsrc   ascii   3DiAdvanceSpeedWWW
+1857 0x00077633 0x10086633 17  18   .rsrc   ascii   -StopFilmDriveWWW
+1858 0x00077650 0x10086650 20  21   .rsrc   ascii   GetScannerInfo000WWW
+1859 0x0007766f 0x1008666f 17  18   .rsrc   ascii   >piScannerTypeWWW
+1860 0x0007768c 0x1008668c 16  17   .rsrc   ascii   pbstrRomVersionW
+1861 0x000776a8 0x100866a8 20  21   .rsrc   ascii   pbstrScannerModelWWW
+1862 0x000776c7 0x100866c7 25  26   .rsrc   ascii   !piScannerSerialNumberWWW
+1863 0x000776ea 0x100866ea 22  23   .rsrc   ascii   )MpiScannerVersionHwWW
+1864 0x0007770a 0x1008670a 18  19   .rsrc   ascii   U6pbstrTLAVersionW
+1865 0x00077727 0x10086727 33  34   .rsrc   ascii   apbstrSaveToSharedMemoryEventName
+1866 0x00077754 0x10086754 32  33   .rsrc   ascii   pbstrSaveToSharedMemoryMapNameWW
+1867 0x0007777f 0x1008677f 37  38   .rsrc   ascii   OpiDarkPointCorrectIntervalMinutesWWW
+1868 0x000777b0 0x100867b0 20  21   .rsrc   ascii   piColorPortraitModeW
+1869 0x000777d0 0x100867d0 28  29   .rsrc   ascii   pi_uiScanPacketReadyTimeOutW
+1870 0x000777f8 0x100867f8 20  21   .rsrc   ascii   pi_uiNoFilmTimeOutWW
+1871 0x00077818 0x10086818 20  21   .rsrc   ascii   PutScannerInfo000WWW
+1872 0x00077836 0x10086836 33  35   .rsrc   utf8    ˍiDarkPointCorrectIntervalMinutes
+1873 0x00077863 0x10086863 21  22   .rsrc   ascii   liColorPortraitModeWW
+1874 0x00077882 0x10086882 30  31   .rsrc   ascii   52i_uiScanPacketReadyTimeOutWW
+1875 0x000778ac 0x100868ac 20  21   .rsrc   ascii   i_uiNoFilmTimeOutWWW
+1876 0x000778cc 0x100868cc 20  21   .rsrc   ascii   GetScannerInfo001WWW
+1877 0x000778ec 0x100868ec 24  25   .rsrc   ascii   pi_uiRingTailDriverBytes
+1878 0x0007790e 0x1008690e 25  27   .rsrc   utf8    ߐpi_uiDriverTriggerBytesW
+1879 0x00077934 0x10086934 28  29   .rsrc   ascii   pi_uiRingTailProcessedBytesW
+1880 0x0007795c 0x1008695c 28  29   .rsrc   ascii   pi_uiProcessedTriggerBytesWW
+1881 0x00077982 0x10086982 22  23   .rsrc   ascii   bVpiMaxFilmLength_mmWW
+1882 0x000779a4 0x100869a4 20  21   .rsrc   ascii   PutScannerInfo001WWW
+1883 0x000779c2 0x100869c2 26  27   .rsrc   ascii   )\ai_uiRingTailDriverBytesW
+1884 0x000779e8 0x100869e8 24  25   .rsrc   ascii   i_uiDriverTriggerBytesWW
+1885 0x00077a0b 0x10086a0b 29  30   .rsrc   ascii   Ji_uiRingTailProcessedBytesWW
+1886 0x00077a34 0x10086a34 28  29   .rsrc   ascii   i_uiProcessedTriggerBytesWWW
+1887 0x00077a5c 0x10086a5c 20  21   .rsrc   ascii   iMaxFilmLength_mmWWW
+1888 0x00077a7c 0x10086a7c 20  21   .rsrc   ascii   GetScannerInfo002WWW
+1889 0x00077a9c 0x10086a9c 12  13   .rsrc   ascii   piRollIndexW
+1890 0x00077ab4 0x10086ab4 12  13   .rsrc   ascii   piStripIndex
+1891 0x00077aca 0x10086aca 22  23   .rsrc   ascii   /ipiNumberOfPicturesWW
+1892 0x00077aea 0x10086aea 25  27   .rsrc   utf8    ĐpiFromFileFrameNumberWWW
+1893 0x00077b10 0x10086b10 24  25   .rsrc   ascii   GetScannerInfoPreFrameWW
+1894 0x00077b34 0x10086b34 12  13   .rsrc   ascii   piHeightLRWW
+1895 0x00077b4c 0x10086b4c 16  17   .rsrc   ascii   piHeightHR_mmWWW
+1896 0x00077b68 0x10086b68 12  13   .rsrc   ascii   piHeightHRWW
+1897 0x00077b7f 0x10086b7f 13  14   .rsrc   ascii   fpiWidthHRWWW
+1898 0x00077b97 0x10086b97 17  18   .rsrc   ascii   xpiWidthUnitHRWWW
+1899 0x00077bb4 0x10086bb4 12  13   .rsrc   ascii   plCropHRLeft
+1900 0x00077bcc 0x10086bcc 12  13   .rsrc   ascii   plCropHRTopW
+1901 0x00077be4 0x10086be4 16  17   .rsrc   ascii   plCropHRRightWWW
+1902 0x00077c00 0x10086c00 16  17   .rsrc   ascii   plCropHRBottomWW
+1903 0x00077c1b 0x10086c1b 29  30   .rsrc   ascii   zGetScannerInfoPreFrameUserWW
+1904 0x00077c44 0x10086c44 28  29   .rsrc   ascii   PutScannerInfoPreFrameUserWW
+1905 0x00077c6c 0x10086c6c 8   9    .rsrc   ascii   iWidthHR
+1906 0x00077c7e 0x10086c7e 14  15   .rsrc   ascii   s%iWidthUnitHR
+1907 0x00077c98 0x10086c98 12  13   .rsrc   ascii   lCropHRLeftW
+1908 0x00077cb0 0x10086cb0 12  13   .rsrc   ascii   lCropHRTopWW
+1909 0x00077cc6 0x10086cc6 14  15   .rsrc   ascii   xflCropHRRight
+1910 0x00077ce0 0x10086ce0 16  17   .rsrc   ascii   lCropHRBottomWWW
+1911 0x00077cfb 0x10086cfb 21  22   .rsrc   ascii   fResetFactoryDefaults
+1912 0x00077d1c 0x10086d1c 20  21   .rsrc   ascii   iFactoryResetControl
+1913 0x00077d3c 0x10086d3c 16  17   .rsrc   ascii   ImportFromFileWW
+1914 0x00077d58 0x10086d58 20  21   .rsrc   ascii   bstrImportFileNamesW
+1915 0x00077d78 0x10086d78 25  26   .rsrc   ascii   bDeleteImportOnReleaseWWX
+1916 0x00077d9c 0x10086d9c 17  18   .rsrc   ascii   ISavePicturesWWWX
+1917 0x00077db8 0x10086db8 24  25   .rsrc   ascii   GetRollCountScanGroupWWW
+1918 0x00077ddc 0x10086ddc 13  14   .rsrc   ascii   piRollCountWX
+1919 0x00077df4 0x10086df4 24  25   .rsrc   ascii   GetPictureCountScanGroup
+1920 0x00077e18 0x10086e18 12  13   .rsrc   ascii   iRollIndexWW
+1921 0x00077e2f 0x10086e2f 13  14   .rsrc   ascii   {piStripCount
+1922 0x00077e48 0x10086e48 16  17   .rsrc   ascii   piPictureCountWW
+1923 0x00077e64 0x10086e64 17  18   .rsrc   ascii   piScanWarningsWWX
+1924 0x00077e7f 0x10086e7f 30  31   .rsrc   ascii   vMoveOldestRollToSaveGroupWWWX
+1925 0x00077ea8 0x10086ea8 25  26   .rsrc   ascii   DeleteRollInScanGroupWWWX
+1926 0x00077ecc 0x10086ecc 24  25   .rsrc   ascii   GetPictureCountSaveGroup
+1927 0x00077eef 0x10086eef 25  26   .rsrc   ascii   :piPictureSelectedCountWW
+1928 0x00077f12 0x10086f12 23  24   .rsrc   ascii   \aVpiPictureHiddenCountX
+1929 0x00077f34 0x10086f34 17  18   .rsrc   ascii   ReleaseSaveGroupX
+1930 0x00077f50 0x10086f50 12  13   .rsrc   ascii   SaveToDiskWW
+1931 0x00077f66 0x10086f66 9   11   .rsrc   utf8    ǵiIndexWW
+1932 0x00077f7c 0x10086f7c 12  13   .rsrc   ascii   bstrFileName
+1933 0x00077f94 0x10086f94 12  13   .rsrc   ascii   iSaveControl
+1934 0x00077fac 0x10086fac 16  17   .rsrc   ascii   iBoundingWidthWW
+1935 0x00077fc8 0x10086fc8 16  17   .rsrc   ascii   iBoundingHeightW
+1936 0x00077fe4 0x10086fe4 12  13   .rsrc   ascii   iRotationWWW
+1937 0x00077ffc 0x10086ffc 16  17   .rsrc   ascii   iScalingMethodWW
+1938 0x00078017 0x10087017 13  14   .rsrc   ascii   }iFileFormatW
+1939 0x00078030 0x10087030 12  13   .rsrc   ascii   iCompression
+1940 0x00078047 0x10087047 5   6    .rsrc   ascii   &iDpi
+1941 0x00078057 0x10087057 14  15   .rsrc   ascii   SiColorBitsWWX
+1942 0x00078070 0x10087070 24  25   .rsrc   ascii   ClientMemoryBufferAddWWW
+1943 0x00078094 0x10087094 20  21   .rsrc   ascii   i_pByteStartPointerW
+1944 0x000780b3 0x100870b3 14  15   .rsrc   ascii   EiByteCountWWX
+1945 0x000780cc 0x100870cc 29  30   .rsrc   ascii   ClientMemoryBufferDismissAllX
+1946 0x000780f2 0x100870f2 22  23   .rsrc   ascii   OfSaveToClientMemoryWW
+1947 0x00078113 0x10087113 25  26   .rsrc   ascii   :iFileFormatSaveToMemoryW
+1948 0x00078138 0x10087138 17  18   .rsrc   ascii   bUseWorkerThreadX
+1949 0x00078154 0x10087154 21  22   .rsrc   ascii   SaveToSharedMemoryWWX
+1950 0x00078174 0x10087174 13  14   .rsrc   ascii   SaveCancelWWX
+1951 0x0007818a 0x1008718a 18  19   .rsrc   ascii   K\bInsertPictureWWW
+1952 0x000781a8 0x100871a8 12  13   .rsrc   ascii   iStripIndexW
+1953 0x000781c0 0x100871c0 8   9    .rsrc   ascii   lLeftHRW
+1954 0x000781d3 0x100871d3 9   10   .rsrc   ascii   DlTopHRWW
+1955 0x000781e8 0x100871e8 8   9    .rsrc   ascii   lRightHR
+1956 0x000781fc 0x100871fc 13  14   .rsrc   ascii   lBottomHRWWWX
+1957 0x00078214 0x10087214 17  18   .rsrc   ascii   DeletePictureWWWX
+1958 0x00078230 0x10087230 12  13   .rsrc   ascii   GetSaveInfoW
+1959 0x00078248 0x10087248 20  21   .rsrc   ascii   piDefaultFilmProduct
+1960 0x00078268 0x10087268 24  25   .rsrc   ascii   piDefaultFilmSpecifierWW
+1961 0x0007828c 0x1008728c 25  26   .rsrc   ascii   pbstrDefaultDirectoryWWWX
+1962 0x000782ae 0x100872ae 13  15   .rsrc   utf8    ЬPutSaveInfoW
+1963 0x000782c7 0x100872c7 21  22   .rsrc   ascii   9iDefaultFilmProductW
+1964 0x000782e6 0x100872e6 26  27   .rsrc   ascii   \e)iDefaultFilmSpecifierWWW
+1965 0x0007830b 0x1008730b 22  23   .rsrc   ascii    bstrDefaultDirectoryX
+1966 0x0007832c 0x1008732c 12  13   .rsrc   ascii   GetStripInfo
+1967 0x00078344 0x10087344 12  13   .rsrc   ascii   pbIsStripWWW
+1968 0x0007835b 0x1008735b 13  14   .rsrc   ascii   QpiFilmColorW
+1969 0x00078373 0x10087373 13  14   .rsrc   ascii   qpiFilmFormat
+1970 0x0007838a 0x1008738a 14  15   .rsrc   ascii   #EplHeightHRWW
+1971 0x000783a4 0x100873a4 12  13   .rsrc   ascii   plLengthHRWW
+1972 0x000783bb 0x100873bb 13  14   .rsrc   ascii   EplHeightLRWW
+1973 0x000783d4 0x100873d4 12  13   .rsrc   ascii   plLengthLRWW
+1974 0x000783eb 0x100873eb 17  18   .rsrc   ascii   TpiFilmProductWWW
+1975 0x00078408 0x10087408 16  17   .rsrc   ascii   piFilmSpecifierW
+1976 0x00078424 0x10087424 8   9    .rsrc   ascii   piDmin_R
+1977 0x00078438 0x10087438 8   9    .rsrc   ascii   piDmin_G
+1978 0x0007844c 0x1008744c 9   10   .rsrc   ascii   piDmin_BX
+1979 0x0007845f 0x1008745f 17  18   .rsrc   ascii   2GetPictureInfoWW
+1980 0x0007847c 0x1008747c 20  21   .rsrc   ascii   piRollIndexFromStrip
+1981 0x0007849c 0x1008749c 24  25   .rsrc   ascii   piStripIndexFromStripWWW
+1982 0x000784c0 0x100874c0 24  25   .rsrc   ascii   piFilmProductFromStripWW
+1983 0x000784e3 0x100874e3 25  26   .rsrc   ascii   8piFilmSpecifierFromStrip
+1984 0x00078506 0x10087506 18  19   .rsrc   ascii   G_pbstrFrameNameWW
+1985 0x00078524 0x10087524 16  17   .rsrc   ascii   piFrameNumberWWW
+1986 0x0007853f 0x1008753f 21  22   .rsrc   ascii   bpiPrintAspectRatioWW
+1987 0x0007855e 0x1008755e 18  19   .rsrc   ascii   [\tpbstrFileNameWWW
+1988 0x0007857c 0x1008757c 16  17   .rsrc   ascii   pbstrDirectoryWW
+1989 0x00078598 0x10087598 12  13   .rsrc   ascii   piRotationWW
+1990 0x000785af 0x100875af 18  19   .rsrc   ascii   3piSelectedHiddenX
+1991 0x000785cc 0x100875cc 16  17   .rsrc   ascii   PutPictureInfoWW
+1992 0x000785e6 0x100875e6 14  15   .rsrc   ascii   k0iFrameNumber
+1993 0x000785ff 0x100875ff 17  18   .rsrc   ascii   ^bstrDirectoryWWW
+1994 0x0007861c 0x1008761c 17  18   .rsrc   ascii   iSelectedHiddenWX
+1995 0x00078636 0x10087636 18  20   .rsrc   utf8    ԏGetPictureInfo1WX
+1996 0x00078652 0x10087652 18  20   .rsrc   utf8    ċPutPictureInfo1WX
+1997 0x0007866e 0x1008766e 17  19   .rsrc   utf8    ՏGetPictureInfo2W
+1998 0x0007868c 0x1008768c 28  29   .rsrc   ascii   pbstrTitleOrImportFileNameWW
+1999 0x000786b4 0x100876b4 8   9    .rsrc   ascii   piYearWW
+2000 0x000786c8 0x100876c8 8   9    .rsrc   ascii   piMonthW
+2001 0x000786dc 0x100876dc 12  13   .rsrc   ascii   piDayOfMonth
+2002 0x000786f4 0x100876f4 25  26   .rsrc   ascii   piSecondsAfterMidnightWWX
+2003 0x00078718 0x10087718 21  22   .rsrc   ascii   GetPictureRotationWWX
+2004 0x00078738 0x10087738 21  22   .rsrc   ascii   PutPictureRotationWWX
+2005 0x00078758 0x10087758 21  22   .rsrc   ascii   GetPictureSelectionWX
+2006 0x00078777 0x10087777 21  22   .rsrc   ascii   rPutPictureSelectionW
+2007 0x00078798 0x10087798 13  14   .rsrc   ascii   bSkipHiddenWX
+2008 0x000787b0 0x100877b0 24  25   .rsrc   ascii   GetPictureFramingInfoWWW
+2009 0x000787d4 0x100877d4 16  17   .rsrc   ascii   piFramingRiskWWW
+2010 0x000787f0 0x100877f0 8   9    .rsrc   ascii   plLeftHR
+2011 0x00078803 0x10087803 9   10   .rsrc   ascii   &plTopHRW
+2012 0x00078817 0x10087817 13  14   .rsrc   ascii   \eplRightHRWWW
+2013 0x0007882f 0x1008782f 14  15   .rsrc   ascii   cplBottomHRWWX
+2014 0x00078847 0x10087847 30  31   .rsrc   ascii   7GetPictureFramingUserInfoWWWX
+2015 0x0007886f 0x1008786f 33  34   .rsrc   ascii   |GetPictureFramingUserInfoLowResW
+2016 0x0007889c 0x1008789c 8   9    .rsrc   ascii   plLeftLR
+2017 0x000788ae 0x100878ae 10  11   .rsrc   ascii   a'plTopLRW
+2018 0x000788c4 0x100878c4 12  13   .rsrc   ascii   plRightLRWWW
+2019 0x000788db 0x100878db 14  15   .rsrc   ascii   dplBottomLRWWX
+2020 0x000788f3 0x100878f3 30  31   .rsrc   ascii   [PutPictureFramingUserInfoWWWX
+2021 0x0007891c 0x1008791c 24  25   .rsrc   ascii   GetPictureColorSettingsW
+2022 0x0007893f 0x1008793f 9   10   .rsrc   ascii   +piRedWWW
+2023 0x00078954 0x10087954 8   9    .rsrc   ascii   piGreenW
+2024 0x00078966 0x10087966 10  11   .rsrc   ascii   b=piBlueWW
+2025 0x0007897c 0x1008797c 12  13   .rsrc   ascii   piBrightness
+2026 0x00078993 0x10087993 13  14   .rsrc   ascii   PpiContrastWW
+2027 0x000789ac 0x100879ac 13  14   .rsrc   ascii   piSharpnessWX
+2028 0x000789c2 0x100879c2 26  27   .rsrc   ascii   +6PutPictureColorSettingsW
+2029 0x000789e7 0x100879e7 5   6    .rsrc   ascii   piRed
+2030 0x000789f8 0x100879f8 8   9    .rsrc   ascii   iGreenWW
+2031 0x00078a0a 0x10087a0a 9   11   .rsrc   utf8    ѨiBlueWWW
+2032 0x00078a20 0x10087a20 12  13   .rsrc   ascii   iBrightnessW
+2033 0x00078a38 0x10087a38 12  13   .rsrc   ascii   iContrastWWW
+2034 0x00078a50 0x10087a50 13  14   .rsrc   ascii   iSharpnessWWX
+2035 0x00078a66 0x10087a66 39  40   .rsrc   ascii   R2PutPictureColorSettingsDifferentialWX
+2036 0x00078a98 0x10087a98 28  29   .rsrc   ascii   GetPictureLightingDirectionW
+2037 0x00078ac0 0x10087ac0 29  30   .rsrc   ascii   piPictureLightingDirectionWWX
+2038 0x00078ae7 0x10087ae7 29  30   .rsrc   ascii   qPutPictureLightingDirectionW
+2039 0x00078b10 0x10087b10 29  30   .rsrc   ascii   iPictureLightingDirectionWWWX
+2040 0x00078b38 0x10087b38 24  25   .rsrc   ascii   GetPictureRedEyeSettings
+2041 0x00078b5a 0x10087b5a 10  12   .rsrc   utf8    ߐpiRedEyeX
+2042 0x00078b6e 0x10087b6e 26  27   .rsrc   ascii   2HPutPictureRedEyeSettings
+2043 0x00078b94 0x10087b94 8   9    .rsrc   ascii   iRedEyeW
+2044 0x00078ba8 0x10087ba8 20  21   .rsrc   ascii   ICalibrationWizardWW
+2045 0x00078bc8 0x10087bc8 24  25   .rsrc   ascii   EnableFullCalibrationWWW
+2046 0x00078bea 0x10087bea 14  15   .rsrc   ascii   ,bbstrLicenseW
+2047 0x00078c03 0x10087c03 17  18   .rsrc   ascii   )CalibrateBeginWW
+2048 0x00078c20 0x10087c20 20  21   .rsrc   ascii   bUseScratchRemovalWW
+2049 0x00078c3f 0x10087c3f 21  22   .rsrc   ascii   $GetCalibrateInfoDpiW
+2050 0x00078c60 0x10087c60 16  17   .rsrc   ascii   piHeightToCcdWWW
+2051 0x00078c7c 0x10087c7c 8   9    .rsrc   ascii   piHeight
+2052 0x00078c90 0x10087c90 8   9    .rsrc   ascii   piOffset
+2053 0x00078ca4 0x10087ca4 16  17   .rsrc   ascii   piMotorAdjustWWW
+2054 0x00078cc0 0x10087cc0 16  17   .rsrc   ascii   piMotorAdjust_Ir
+2055 0x00078cdc 0x10087cdc 20  21   .rsrc   ascii   piMotorAdjustDragWWW
+2056 0x00078cfb 0x10087cfb 21  22   .rsrc   ascii   [piMotorAdjustDrag_Ir
+2057 0x00078d1a 0x10087d1a 14  15   .rsrc   ascii    zpiMotorSpeed
+2058 0x00078d34 0x10087d34 16  17   .rsrc   ascii   piMotorSpeed_IrW
+2059 0x00078d4e 0x10087d4e 18  19   .rsrc   ascii   V)piStepperLensWWW
+2060 0x00078d6a 0x10087d6a 14  15   .rsrc   ascii   \bLpiStepperCCD
+2061 0x00078d84 0x10087d84 20  21   .rsrc   ascii   PutCalibrateInfoDpiW
+2062 0x00078da3 0x10087da3 17  18   .rsrc   ascii   BbCalibrateGroupW
+2063 0x00078dc0 0x10087dc0 12  13   .rsrc   ascii   iHeightToCcd
+2064 0x00078dd8 0x10087dd8 8   9    .rsrc   ascii   iHeightW
+2065 0x00078dec 0x10087dec 8   9    .rsrc   ascii   iOffsetW
+2066 0x00078dfe 0x10087dfe 14  15   .rsrc   ascii   \etiMotorSpeedW
+2067 0x00078e17 0x10087e17 17  18   .rsrc   ascii    iMotorSpeed_IrWW
+2068 0x00078e34 0x10087e34 12  13   .rsrc   ascii   iStepperLens
+2069 0x00078e4b 0x10087e4b 13  14   .rsrc   ascii   FiStepperCCDW
+2070 0x00078e64 0x10087e64 24  25   .rsrc   ascii   GetCalibrateInfoLightWWW
+2071 0x00078e86 0x10087e86 10  11   .rsrc   ascii   \fmpiGain_R
+2072 0x00078e9b 0x10087e9b 9   10   .rsrc   ascii   mpiGain_G
+2073 0x00078eaf 0x10087eaf 9   10   .rsrc   ascii   lpiGain_B
+2074 0x00078ec2 0x10087ec2 14  15   .rsrc   ascii   y(piOffset_RWW
+2075 0x00078eda 0x10087eda 14  15   .rsrc   ascii   n(piOffset_GWW
+2076 0x00078ef2 0x10087ef2 14  15   .rsrc   ascii   i(piOffset_BWW
+2077 0x00078f0c 0x10087f0c 12  13   .rsrc   ascii   piCurrent_RW
+2078 0x00078f24 0x10087f24 12  13   .rsrc   ascii   piCurrent_GW
+2079 0x00078f3c 0x10087f3c 12  13   .rsrc   ascii   piCurrent_BW
+2080 0x00078f52 0x10087f52 14  15   .rsrc   ascii   a^piCurrent_Ir
+2081 0x00078f6c 0x10087f6c 16  17   .rsrc   ascii   pdfDutyCycle_RWW
+2082 0x00078f88 0x10087f88 16  17   .rsrc   ascii   pdfDutyCycle_GWW
+2083 0x00078fa4 0x10087fa4 16  17   .rsrc   ascii   pdfDutyCycle_BWW
+2084 0x00078fc0 0x10087fc0 16  17   .rsrc   ascii   pdfDutyCycle_IrW
+2085 0x00078fdb 0x10087fdb 17  18   .rsrc   ascii   SpiDetectWhite_GW
+2086 0x00078ff6 0x10087ff6 18  19   .rsrc   ascii   qFpiDetectFilm_GWW
+2087 0x00079013 0x10088013 25  26   .rsrc   ascii   bpdfAmbientTemperatureWWW
+2088 0x00079038 0x10088038 20  21   .rsrc   ascii   pdfLockedTemperature
+2089 0x00079057 0x10088057 25  26   .rsrc   ascii   PpdfVisibleTemperatureWWW
+2090 0x0007907b 0x1008807b 17  18   .rsrc   ascii   0pdfIrTemperature
+2091 0x00079096 0x10088096 26  27   .rsrc   ascii   P!PutCalibrateInfoLightWWW
+2092 0x000790bc 0x100880bc 8   9    .rsrc   ascii   iGain_RW
+2093 0x000790d0 0x100880d0 8   9    .rsrc   ascii   iGain_GW
+2094 0x000790e4 0x100880e4 8   9    .rsrc   ascii   iGain_BW
+2095 0x000790f7 0x100880f7 13  14   .rsrc   ascii   ^iOffset_RWWW
+2096 0x0007910e 0x1008810e 14  15   .rsrc   ascii   \t^iOffset_GWWW
+2097 0x00079127 0x10088127 13  14   .rsrc   ascii   ^iOffset_BWWW
+2098 0x0007913f 0x1008813f 13  14   .rsrc   ascii   "iCurrent_RWW
+2099 0x00079156 0x10088156 14  15   .rsrc   ascii   \v"iCurrent_GWW
+2100 0x0007916f 0x1008816f 13  14   .rsrc   ascii   "iCurrent_BWW
+2101 0x00079186 0x10088186 14  15   .rsrc   ascii   \XiCurrent_IrW
+2102 0x000791a0 0x100881a0 16  17   .rsrc   ascii   dfDutyCycle_RWWW
+2103 0x000791bc 0x100881bc 16  17   .rsrc   ascii   dfDutyCycle_GWWW
+2104 0x000791d8 0x100881d8 16  17   .rsrc   ascii   dfDutyCycle_BWWW
+2105 0x000791f4 0x100881f4 16  17   .rsrc   ascii   dfDutyCycle_IrWW
+2106 0x00079210 0x10088210 16  17   .rsrc   ascii   iDetectWhite_GWW
+2107 0x0007922c 0x1008822c 16  17   .rsrc   ascii   iDetectFilm_GWWW
+2108 0x00079248 0x10088248 28  29   .rsrc   ascii   GetCalibrateInfoColorMatrixW
+2109 0x00079270 0x10088270 16  17   .rsrc   ascii   pfMatrixValue0_0
+2110 0x0007928c 0x1008828c 16  17   .rsrc   ascii   pfMatrixValue0_1
+2111 0x000792a8 0x100882a8 16  17   .rsrc   ascii   pfMatrixValue0_2
+2112 0x000792c4 0x100882c4 16  17   .rsrc   ascii   pfMatrixValue0_3
+2113 0x000792e0 0x100882e0 16  17   .rsrc   ascii   pfMatrixValue0_4
+2114 0x000792fc 0x100882fc 16  17   .rsrc   ascii   pfMatrixValue0_5
+2115 0x00079318 0x10088318 16  17   .rsrc   ascii   pfMatrixValue0_6
+2116 0x00079334 0x10088334 16  17   .rsrc   ascii   pfMatrixValue0_7
+2117 0x00079350 0x10088350 16  17   .rsrc   ascii   pfMatrixValue0_8
+2118 0x0007936c 0x1008836c 16  17   .rsrc   ascii   pfMatrixValue0_9
+2119 0x00079387 0x10088387 17  18   .rsrc   ascii   \npfMatrixValue1_0
+2120 0x000793a3 0x100883a3 17  18   .rsrc   ascii   \npfMatrixValue1_1
+2121 0x000793bf 0x100883bf 17  18   .rsrc   ascii   \npfMatrixValue1_2
+2122 0x000793db 0x100883db 17  18   .rsrc   ascii   \npfMatrixValue1_3
+2123 0x000793f7 0x100883f7 17  18   .rsrc   ascii   \npfMatrixValue1_4
+2124 0x00079413 0x10088413 17  18   .rsrc   ascii   \npfMatrixValue1_5
+2125 0x0007942f 0x1008842f 17  18   .rsrc   ascii   \npfMatrixValue1_6
+2126 0x0007944b 0x1008844b 17  18   .rsrc   ascii   \npfMatrixValue1_7
+2127 0x00079467 0x10088467 17  18   .rsrc   ascii   \npfMatrixValue1_8
+2128 0x00079483 0x10088483 17  18   .rsrc   ascii   \npfMatrixValue1_9
+2129 0x000794a0 0x100884a0 16  17   .rsrc   ascii   pfMatrixValue2_0
+2130 0x000794bc 0x100884bc 16  17   .rsrc   ascii   pfMatrixValue2_1
+2131 0x000794d8 0x100884d8 16  17   .rsrc   ascii   pfMatrixValue2_2
+2132 0x000794f4 0x100884f4 16  17   .rsrc   ascii   pfMatrixValue2_3
+2133 0x00079510 0x10088510 16  17   .rsrc   ascii   pfMatrixValue2_4
+2134 0x0007952c 0x1008852c 16  17   .rsrc   ascii   pfMatrixValue2_5
+2135 0x00079548 0x10088548 16  17   .rsrc   ascii   pfMatrixValue2_6
+2136 0x00079564 0x10088564 16  17   .rsrc   ascii   pfMatrixValue2_7
+2137 0x00079580 0x10088580 16  17   .rsrc   ascii   pfMatrixValue2_8
+2138 0x0007959c 0x1008859c 16  17   .rsrc   ascii   pfMatrixValue2_9
+2139 0x000795b8 0x100885b8 28  29   .rsrc   ascii   PutCalibrateInfoColorMatrixW
+2140 0x000795e0 0x100885e0 16  17   .rsrc   ascii   fMatrixValue0_0W
+2141 0x000795fc 0x100885fc 16  17   .rsrc   ascii   fMatrixValue0_1W
+2142 0x00079618 0x10088618 16  17   .rsrc   ascii   fMatrixValue0_2W
+2143 0x00079634 0x10088634 16  17   .rsrc   ascii   fMatrixValue0_3W
+2144 0x00079650 0x10088650 16  17   .rsrc   ascii   fMatrixValue0_4W
+2145 0x0007966c 0x1008866c 16  17   .rsrc   ascii   fMatrixValue0_5W
+2146 0x00079688 0x10088688 16  17   .rsrc   ascii   fMatrixValue0_6W
+2147 0x000796a4 0x100886a4 16  17   .rsrc   ascii   fMatrixValue0_7W
+2148 0x000796c0 0x100886c0 16  17   .rsrc   ascii   fMatrixValue0_8W
+2149 0x000796dc 0x100886dc 16  17   .rsrc   ascii   fMatrixValue0_9W
+2150 0x000796f8 0x100886f8 16  17   .rsrc   ascii   fMatrixValue1_0W
+2151 0x00079714 0x10088714 16  17   .rsrc   ascii   fMatrixValue1_1W
+2152 0x00079730 0x10088730 16  17   .rsrc   ascii   fMatrixValue1_2W
+2153 0x0007974c 0x1008874c 16  17   .rsrc   ascii   fMatrixValue1_3W
+2154 0x00079768 0x10088768 16  17   .rsrc   ascii   fMatrixValue1_4W
+2155 0x00079784 0x10088784 16  17   .rsrc   ascii   fMatrixValue1_5W
+2156 0x000797a0 0x100887a0 16  17   .rsrc   ascii   fMatrixValue1_6W
+2157 0x000797bc 0x100887bc 16  17   .rsrc   ascii   fMatrixValue1_7W
+2158 0x000797d8 0x100887d8 16  17   .rsrc   ascii   fMatrixValue1_8W
+2159 0x000797f4 0x100887f4 16  17   .rsrc   ascii   fMatrixValue1_9W
+2160 0x0007980e 0x1008880e 18  19   .rsrc   ascii   E\nfMatrixValue2_0W
+2161 0x0007982a 0x1008882a 18  19   .rsrc   ascii   F\nfMatrixValue2_1W
+2162 0x00079846 0x10088846 18  19   .rsrc   ascii   G\nfMatrixValue2_2W
+2163 0x00079862 0x10088862 18  19   .rsrc   ascii   H\nfMatrixValue2_3W
+2164 0x0007987e 0x1008887e 18  19   .rsrc   ascii   I\nfMatrixValue2_4W
+2165 0x0007989a 0x1008889a 18  19   .rsrc   ascii   J\nfMatrixValue2_5W
+2166 0x000798b6 0x100888b6 18  19   .rsrc   ascii   K\nfMatrixValue2_6W
+2167 0x000798d2 0x100888d2 18  19   .rsrc   ascii   L\nfMatrixValue2_7W
+2168 0x000798ee 0x100888ee 18  19   .rsrc   ascii   M\nfMatrixValue2_8W
+2169 0x0007990a 0x1008890a 18  19   .rsrc   ascii   N\nfMatrixValue2_9W
+2170 0x00079928 0x10088928 32  33   .rsrc   ascii   PutCalibrateInfoIdentificationWW
+2171 0x00079954 0x10088954 20  21   .rsrc   ascii   iScannerVersionHwWWW
+2172 0x00079974 0x10088974 12  13   .rsrc   ascii   iScannerType
+2173 0x0007998c 0x1008898c 20  21   .rsrc   ascii   iScannerSerialNumber
+2174 0x000799aa 0x100889aa 18  19   .rsrc   ascii   ncCalibrateChangeW
+2175 0x000799c8 0x100889c8 16  17   .rsrc   ascii   CalibrateAcquire
+2176 0x000799e4 0x100889e4 12  13   .rsrc   ascii   iScanLinesWW
+2177 0x000799fb 0x100889fb 21  22   .rsrc   ascii   \CalibrateAdvanceFilm
+2178 0x00079a1c 0x10088a1c 16  17   .rsrc   ascii   CalibrateFocusWW
+2179 0x00079a38 0x10088a38 16  17   .rsrc   ascii   bFindTiltTurnsWW
+2180 0x00079a54 0x10088a54 24  25   .rsrc   ascii   CalibrateFocusResultsWWW
+2181 0x00079a77 0x10088a77 29  30   .rsrc   ascii   FpiCalibrateFocusErrorCenterW
+2182 0x00079aa0 0x10088aa0 28  29   .rsrc   ascii   piCalibrateFocusErrorLeftWWW
+2183 0x00079ac8 0x10088ac8 28  29   .rsrc   ascii   piCalibrateFocusErrorRightWW
+2184 0x00079af0 0x10088af0 28  29   .rsrc   ascii   piCalibrateFocusOffsetCenter
+2185 0x00079b18 0x10088b18 28  29   .rsrc   ascii   piCalibrateFocusOffsetLeftWW
+2186 0x00079b40 0x10088b40 28  29   .rsrc   ascii   piCalibrateFocusOffsetRightW
+2187 0x00079b68 0x10088b68 28  29   .rsrc   ascii   piCalibrateTiltEighthTurnsWW
+2188 0x00079b90 0x10088b90 20  21   .rsrc   ascii   PutCalibrateEEPromWW
+2189 0x00079baf 0x10088baf 13  15   .rsrc   ascii   HCalibrateEnd
+2190 0x00079bc8 0x10088bc8 16  18   .rsrc   ascii   IScanPictures1WW
+2191 0x00079be3 0x10088be3 17  18   .rsrc   ascii    ScanPictures1WWW
+2192 0x00079bfe 0x10088bfe 14  16   .rsrc   ascii   ]\ebstrRollIdWW
+2193 0x00079c16 0x10088c16 18  19   .rsrc   ascii    UImportFromFile1W
+2194 0x00079c33 0x10088c33 17  18   .rsrc   ascii   GISavePictures1WW
+2195 0x00079c50 0x10088c50 16  17   .rsrc   ascii   GetStripInfo1WWW
+2196 0x00079c6c 0x10088c6c 12  13   .rsrc   ascii   pbstrRollIdW
+2197 0x00079c84 0x10088c84 16  17   .rsrc   ascii   IScanPictures2WW
+2198 0x00079c9e 0x10088c9e 18  19   .rsrc   ascii   !UImportFromFile2W
+2199 0x00079cbc 0x10088cbc 21  22   .rsrc   ascii   bUsePremiumColorPathL
+2200 0x00079cdb 0x10088cdb 18  19   .rsrc   ascii   GISavePictures2WWL
+2201 0x00079cf8 0x10088cf8 20  21   .rsrc   ascii   PutPictureBnWEffectW
+2202 0x00079d17 0x10088d17 14  15   .rsrc   ascii   +iBnWEffectWWL
+2203 0x00079d30 0x10088d30 20  21   .rsrc   ascii   GetPictureBnWEffectW
+2204 0x00079d4f 0x10088d4f 14  15   .rsrc   ascii    piBnWEffectWL
+2205 0x00079d66 0x10088d66 22  23   .rsrc   ascii   D3PutPictureSaturation
+2206 0x00079d88 0x10088d88 13  14   .rsrc   ascii   iSaturationWL
+2207 0x00079da0 0x10088da0 20  21   .rsrc   ascii   GetPictureSaturation
+2208 0x00079dc0 0x10088dc0 12  13   .rsrc   ascii   piSaturation
+2209 0x00079dce 0x10088dce 22  23   .rsrc   ascii   TLB 1.0 Type LibraryWW
+2210 0x00079de6 0x10088de6 27  28   .rsrc   ascii   _ITLAMainEvents InterfaceW\r
+2211 0x00079e02 0x10088e02 14  15   .rsrc   ascii   TLAMain ClassW
+2212 0x00079e12 0x10088e12 18  19   .rsrc   ascii   ITLAMain Interface
+2213 0x00079e26 0x10088e26 27  28   .rsrc   ascii   method InitializeScannerWW\e
+2214 0x00079e42 0x10088e42 30  31   .rsrc   ascii   method GetAndClearLastErrorWWW
+2215 0x00079e62 0x10088e62 30  31   .rsrc   ascii   method GetInitializeWarningsWW
+2216 0x00079e82 0x10088e82 22  23   .rsrc   ascii   ILongOpsCB InterfaceWW
+2217 0x00079e9a 0x10088e9a 27  28   .rsrc   ascii   ICallBack Client Interface\f
+2218 0x00079eb6 0x10088eb6 14  15   .rsrc   ascii   method AwakeWW
+2219 0x00079ec6 0x10088ec6 18  19   .rsrc   ascii   method CBAdviseWWW
+2220 0x00079eda 0x10088eda 18  19   .rsrc   ascii   method CBUnadviseW
+2221 0x00079eee 0x10088eee 18  19   .rsrc   ascii   method CBHelperNTS
+2222 0x00079f02 0x10088f02 26  27   .rsrc   ascii   IScanPictures InterfaceWWW
+2223 0x00079f1e 0x10088f1e 26  27   .rsrc   ascii   method ForceCorrectionsWWW
+2224 0x00079f3a 0x10088f3a 26  27   .rsrc   ascii   method ForceDiagnosticsWWW
+2225 0x00079f56 0x10088f56 23  24   .rsrc   ascii   method FilmTrackTestWW\e
+2226 0x00079f6e 0x10088f6e 30  31   .rsrc   ascii   method FilmTrackTestResultsWWW
+2227 0x00079f8e 0x10088f8e 22  23   .rsrc   ascii   method ScanPicturesWWW
+2228 0x00079fa6 0x10088fa6 18  19   .rsrc   ascii   method ScanCancelW
+2229 0x00079fba 0x10088fba 22  23   .rsrc   ascii   method ResetStatusLeds
+2230 0x00079fd2 0x10088fd2 26  27   .rsrc   ascii   method AdjustMotorSpeedWWW
+2231 0x00079fee 0x10088fee 18  19   .rsrc   ascii   method AdvanceFilm
+2232 0x0007a002 0x10089002 22  23   .rsrc   ascii   method StopFilmDriveWW
+2233 0x0007a01a 0x1008901a 26  27   .rsrc   ascii   method GetScannerInfo000WW
+2234 0x0007a036 0x10089036 26  27   .rsrc   ascii   method PutScannerInfo000WW
+2235 0x0007a052 0x10089052 26  27   .rsrc   ascii   method GetScannerInfo001WW
+2236 0x0007a06e 0x1008906e 26  27   .rsrc   ascii   method PutScannerInfo001WW
+2237 0x0007a08a 0x1008908a 26  27   .rsrc   ascii   method GetScannerInfo002WW
+2238 0x0007a0a6 0x100890a6 31  32   .rsrc   ascii   method GetScannerInfoPreFrameW!
+2239 0x0007a0c6 0x100890c6 35  36   .rsrc   ascii   method GetScannerInfoPreFrameUserW!
+2240 0x0007a0ea 0x100890ea 35  36   .rsrc   ascii   method PutScannerInfoPreFrameUserW\e
+2241 0x0007a10e 0x1008910e 30  31   .rsrc   ascii   method ResetFactoryDefaultsWWW
+2242 0x0007a12e 0x1008912e 22  23   .rsrc   ascii   method ImportFromFileW
+2243 0x0007a146 0x10089146 26  27   .rsrc   ascii   ISavePictures InterfaceWWW
+2244 0x0007a162 0x10089162 30  31   .rsrc   ascii   method GetRollCountScanGroupWW
+2245 0x0007a182 0x10089182 34  36   .rsrc   ascii   method GetPictureCountScanGroupWWW
+2246 0x0007a1a6 0x100891a6 34  35   .rsrc   ascii   method MoveOldestRollToSaveGroupWW
+2247 0x0007a1ca 0x100891ca 30  31   .rsrc   ascii   method DeleteRollInScanGroupWW
+2248 0x0007a1ea 0x100891ea 34  35   .rsrc   ascii   method GetPictureCountSaveGroupWWW
+2249 0x0007a20e 0x1008920e 26  27   .rsrc   ascii   method ReleaseSaveGroupWWW
+2250 0x0007a22a 0x1008922a 18  19   .rsrc   ascii   method SaveToDiskW
+2251 0x0007a23e 0x1008923e 31  32   .rsrc   ascii   method ClientMemoryBufferAddWW#
+2252 0x0007a25e 0x1008925e 38  39   .rsrc   ascii   method ClientMemoryBufferDismissAllWWW
+2253 0x0007a286 0x10089286 26  27   .rsrc   ascii   method SaveToClientMemoryW
+2254 0x0007a2a2 0x100892a2 26  27   .rsrc   ascii   method SaveToSharedMemoryW
+2255 0x0007a2be 0x100892be 18  19   .rsrc   ascii   method SaveCancelW
+2256 0x0007a2d2 0x100892d2 22  23   .rsrc   ascii   method InsertPictureWW
+2257 0x0007a2ea 0x100892ea 22  23   .rsrc   ascii   method DeletePictureWW
+2258 0x0007a302 0x10089302 18  19   .rsrc   ascii   method GetSaveInfo
+2259 0x0007a316 0x10089316 18  19   .rsrc   ascii   method PutSaveInfo
+2260 0x0007a32a 0x1008932a 22  23   .rsrc   ascii   method GetStripInfoWWW
+2261 0x0007a342 0x10089342 22  23   .rsrc   ascii   method GetPictureInfoW
+2262 0x0007a35a 0x1008935a 22  23   .rsrc   ascii   method PutPictureInfoW
+2263 0x0007a372 0x10089372 22  23   .rsrc   ascii   method GetPictureInfo1
+2264 0x0007a38a 0x1008938a 22  23   .rsrc   ascii   method PutPictureInfo1
+2265 0x0007a3a2 0x100893a2 22  23   .rsrc   ascii   method GetPictureInfo2
+2266 0x0007a3ba 0x100893ba 26  27   .rsrc   ascii   method GetPictureRotationW
+2267 0x0007a3d6 0x100893d6 26  27   .rsrc   ascii   method PutPictureRotationW
+2268 0x0007a3f2 0x100893f2 26  27   .rsrc   ascii   method GetPictureSelection
+2269 0x0007a40e 0x1008940e 26  27   .rsrc   ascii   method PutPictureSelection
+2270 0x0007a42a 0x1008942a 30  32   .rsrc   ascii   method GetPictureFramingInfoWW
+2271 0x0007a44a 0x1008944a 35  36   .rsrc   ascii   method GetPictureFramingUserInfoWW&
+2272 0x0007a46e 0x1008946e 38  40   .rsrc   ascii   method GetPictureFramingUserInfoLowRes
+2273 0x0007a496 0x10089496 34  35   .rsrc   ascii   method PutPictureFramingUserInfoWW
+2274 0x0007a4ba 0x100894ba 30  31   .rsrc   ascii   method GetPictureColorSettings
+2275 0x0007a4da 0x100894da 31  32   .rsrc   ascii   method PutPictureColorSettings*
+2276 0x0007a4fa 0x100894fa 43  44   .rsrc   ascii   method PutPictureColorSettingsDifferential"
+2277 0x0007a526 0x10089526 35  36   .rsrc   ascii   method GetPictureLightingDirection"
+2278 0x0007a54a 0x1008954a 34  35   .rsrc   ascii   method PutPictureLightingDirection
+2279 0x0007a56e 0x1008956e 34  35   .rsrc   ascii   method GetPictureRedEyeSettingsWWW
+2280 0x0007a592 0x10089592 34  35   .rsrc   ascii   method PutPictureRedEyeSettingsWWW
+2281 0x0007a5b6 0x100895b6 30  31   .rsrc   ascii   ICalibrationWizard InterfaceWW
+2282 0x0007a5d6 0x100895d6 30  31   .rsrc   ascii   method EnableFullCalibrationWW
+2283 0x0007a5f6 0x100895f6 22  23   .rsrc   ascii   method CalibrateBeginW
+2284 0x0007a60e 0x1008960e 26  27   .rsrc   ascii   method GetCalibrateInfoDpi
+2285 0x0007a62a 0x1008962a 26  27   .rsrc   ascii   method PutCalibrateInfoDpi
+2286 0x0007a646 0x10089646 30  31   .rsrc   ascii   method GetCalibrateInfoLightWW
+2287 0x0007a666 0x10089666 31  32   .rsrc   ascii   method PutCalibrateInfoLightWW"
+2288 0x0007a686 0x10089686 35  36   .rsrc   ascii   method GetCalibrateInfoColorMatrix"
+2289 0x0007a6aa 0x100896aa 35  36   .rsrc   ascii   method PutCalibrateInfoColorMatrix%
+2290 0x0007a6ce 0x100896ce 38  39   .rsrc   ascii   method PutCalibrateInfoIdentificationW
+2291 0x0007a6f6 0x100896f6 22  23   .rsrc   ascii   method CalibrateChange
+2292 0x0007a70e 0x1008970e 27  28   .rsrc   ascii   method CalibrateAcquireWWW\e
+2293 0x0007a72a 0x1008972a 30  31   .rsrc   ascii   method CalibrateAdvanceFilmWWW
+2294 0x0007a74a 0x1008974a 22  23   .rsrc   ascii   method CalibrateFocusW
+2295 0x0007a762 0x10089762 30  31   .rsrc   ascii   method CalibrateFocusResultsWW
+2296 0x0007a782 0x10089782 26  27   .rsrc   ascii   method PutCalibrateEEPromW
+2297 0x0007a79e 0x1008979e 22  23   .rsrc   ascii   method CalibrateEndWWW
+2298 0x0007a7b6 0x100897b6 26  27   .rsrc   ascii   IScanPictures1 InterfaceWW
+2299 0x0007a7d2 0x100897d2 22  23   .rsrc   ascii   method ScanPictures1WW
+2300 0x0007a7ea 0x100897ea 22  23   .rsrc   ascii   method ImportFromFile1
+2301 0x0007a802 0x10089802 26  27   .rsrc   ascii   ISavePictures1 InterfaceWW
+2302 0x0007a81e 0x1008981e 22  23   .rsrc   ascii   method GetStripInfo1WW
+2303 0x0007a836 0x10089836 26  27   .rsrc   ascii   IScanPictures2 InterfaceWW
+2304 0x0007a852 0x10089852 22  23   .rsrc   ascii   method ImportFromFile2
+2305 0x0007a86a 0x1008986a 26  27   .rsrc   ascii   ISavePictures2 InterfaceWW
+2306 0x0007a886 0x10089886 26  27   .rsrc   ascii   method PutPictureBnWEffect
+2307 0x0007a8a2 0x100898a2 27  28   .rsrc   ascii   method GetPictureBnWEffect\e
+2308 0x0007a8be 0x100898be 31  32   .rsrc   ascii   method PutPictureSaturationWWW\e
+2309 0x0007a8de 0x100898de 30  31   .rsrc   ascii   method GetPictureSaturationWWW
+2310 0x0007a93a 0x1008993a 62  63   .rsrc   ascii   Created by MIDL version 6.00.0361 at Wed Apr 18 12:46:19 2007\n
+2311 0x0007a97a 0x1008997a 6   7    .rsrc   ascii   lY&FWW
+2312 0x0007a9a0 0x100899a0 5   24   .rsrc   utf32le HL\fÀD
+2313 0x0007ab50 0x10089b50 4   20   .rsrc   utf32le 8d88
+2314 0x0007b1c0 0x1008a1c0 7   32   .rsrc   utf32le \a\b\t\n\v\f\r
+2315 0x0007bf34 0x1008af34 7   32   .rsrc   utf32le \a\b\t\n\v\f\r
+2316 0x0007bf90 0x1008af90 8   36   .rsrc   utf32le  !"#$%&'
+2317 0x0007ca44 0x1008ba44 7   32   .rsrc   utf32le \a\b\t\n\v\f\r

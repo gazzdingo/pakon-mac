@@ -1,0 +1,642 @@
+nth paddr      vaddr      len size section type    string
+―――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+0   0x0000004d 0x0000004d 44  45           ascii   !This program cannot be run in DOS mode.\r\r\n$
+1   0x00000096 0x00000096 6   8            utf8    *:܀3:$
+2   0x000000e6 0x000000e6 6   8            utf8    *:ʨt:'
+3   0x000000f6 0x000000f6 7   8            ascii   *:Rich&
+4   0x00000210 0x00000210 5   6            ascii   .text
+5   0x00000237 0x00000237 7   8            ascii   `.rdata
+6   0x0000025f 0x0000025f 6   7            ascii   @.data
+7   0x00000288 0x00000288 5   6            ascii   .rsrc
+8   0x0000103f 0x0040103f 5   6    .text   ascii   L$\fQh
+9   0x00001058 0x00401058 6   8    .text   utf8    D$\fS3۩
+10  0x000010c5 0x004010c5 4   5    .text   ascii   _^]3
+11  0x00001134 0x00401134 4   5    .text   ascii   D$$3
+12  0x0000113b 0x0040113b 4   5    .text   ascii   L$,P
+13  0x00001145 0x00401145 4   5    .text   ascii   |$4h
+14  0x000011c8 0x004011c8 4   5    .text   ascii   h!2@
+15  0x0000120a 0x0040120a 5   6    .text   ascii   D$\fPh
+16  0x0000126b 0x0040126b 5   8    .text   utf8    L$\fƄ$
+17  0x0000127d 0x0040127d 5   7    .text   utf8    L$\fƄ$
+18  0x00001322 0x00401322 4   5    .text   ascii   h82@
+19  0x00001360 0x00401360 5   6    .text   ascii   L$\b^d
+20  0x000013a2 0x004013a2 4   5    .text   ascii   hf2@
+21  0x0000144f 0x0040144f 4   6    .text   utf8    ̸0E@
+22  0x000014a2 0x004014a2 4   5    .text   ascii   hy2@
+23  0x000015c1 0x004015c1 4   5    .text   ascii   _^[d
+24  0x000015ff 0x004015ff 4   6    .text   utf8    ̋A j
+25  0x0000160f 0x0040160f 4   6    .text   utf8    ̋A j
+26  0x00001778 0x00401778 4   5    .text   ascii   Qj'R
+27  0x00001798 0x00401798 5   6    .text   ascii   D$\fPQ
+28  0x000017ce 0x004017ce 4   5    .text   ascii   D$,P
+29  0x000017e5 0x004017e5 4   5    .text   ascii   L$d3
+30  0x000017fb 0x004017fb 5   6    .text   ascii   L$h^3
+31  0x00001858 0x00401858 4   5    .text   ascii   h8L@
+32  0x00001875 0x00401875 5   7    .text   utf8    ̉d$\bh
+33  0x0000188e 0x0040188e 4   5    .text   ascii   D$\bP
+34  0x000018c5 0x004018c5 6   7    .text   ascii   tEhPH@
+35  0x000018fd 0x004018fd 4   5    .text   ascii   L$\fd
+36  0x00001922 0x00401922 5   6    .text   ascii   D$\bPP
+37  0x00001928 0x00401928 4   5    .text   ascii   D$\fh
+38  0x0000193f 0x0040193f 4   5    .text   ascii   h@K@
+39  0x0000199e 0x0040199e 4   5    .text   ascii   L$\fd
+40  0x000019d8 0x004019d8 4   5    .text   ascii   L$\fd
+41  0x000019ef 0x004019ef 4   6    .text   utf8    ̋D$\b
+42  0x00001a51 0x00401a51 4   5    .text   ascii   htM@
+43  0x00001aab 0x00401aab 4   5    .text   ascii   hLM@
+44  0x00001ac0 0x00401ac0 4   5    .text   ascii   h$M@
+45  0x00001b14 0x00401b14 4   5    .text   ascii   hxL@
+46  0x00001b9b 0x00401b9b 5   6    .text   ascii   L$ QP
+47  0x00001bac 0x00401bac 4   5    .text   ascii   D$ P
+48  0x00001bea 0x00401bea 4   5    .text   ascii   D$,P
+49  0x00001bfd 0x00401bfd 8   9    .text   ascii   T$ RhlN@
+50  0x00001c12 0x00401c12 5   6    .text   ascii   t39|$
+51  0x00001c35 0x00401c35 7   8    .text   ascii   T$ hTN@
+52  0x00001c52 0x00401c52 4   5    .text   ascii   D$\fP
+53  0x00001cb5 0x00401cb5 4   5    .text   ascii   QVWh
+54  0x00001cca 0x00401cca 4   5    .text   ascii   D$\bP
+55  0x00001d04 0x00401d04 4   5    .text   ascii   hpN@
+56  0x00001d1e 0x00401d1e 4   5    .text   ascii   =pC@
+57  0x00001d32 0x00401d32 4   5    .text   ascii   V Pj
+58  0x00001d95 0x00401d95 4   5    .text   ascii   L$\f_
+59  0x00001dcc 0x00401dcc 5   6    .text   ascii   T$\bRP
+60  0x00001ddc 0x00401ddc 5   6    .text   ascii   D$\bPh
+61  0x00001df2 0x00401df2 5   6    .text   ascii   T$\bRh
+62  0x00001e08 0x00401e08 5   6    .text   ascii   D$\bPh
+63  0x00001e1e 0x00401e1e 5   6    .text   ascii   T$\bRh
+64  0x00001e34 0x00401e34 5   6    .text   ascii   D$\bPh
+65  0x00001e4a 0x00401e4a 5   6    .text   ascii   T$\bRh
+66  0x00001e60 0x00401e60 5   6    .text   ascii   D$\bPh
+67  0x00001e76 0x00401e76 5   6    .text   ascii   T$\bRh
+68  0x00001e8c 0x00401e8c 5   6    .text   ascii   D$\bPh
+69  0x00001edc 0x00401edc 30  31   .text   ascii   \n\a\n\b\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\t
+70  0x00001f02 0x00401f02 4   5    .text   ascii   L$\bj
+71  0x00001f0a 0x00401f0a 5   6    .text   ascii   D$\bPh
+72  0x00001f25 0x00401f25 4   5    .text   ascii   L$\fR
+73  0x00001f7b 0x00401f7b 4   5    .text   ascii   L$<3
+74  0x00001f9e 0x00401f9e 5   6    .text   ascii   D$8u\n
+75  0x00001fb5 0x00401fb5 5   6    .text   ascii   T$<Rh
+76  0x00001fd2 0x00401fd2 5   6    .text   ascii   D$DPS
+77  0x00001fdd 0x00401fdd 4   5    .text   ascii   L$LQ
+78  0x00001fe2 0x00401fe2 7   8    .text   ascii   T$ h`Q@
+79  0x00002020 0x00402020 4   5    .text   ascii   t$$V
+80  0x00002025 0x00402025 4   5    .text   ascii   t$ V
+81  0x0000202a 0x0040202a 5   6    .text   ascii   t$ V3
+82  0x00002050 0x00402050 5   6    .text   ascii   D$@PV
+83  0x0000205b 0x0040205b 4   5    .text   ascii   L$HQ
+84  0x00002063 0x00402063 4   5    .text   ascii   h8Q@
+85  0x0000207e 0x0040207e 5   6    .text   ascii   9|$$t
+86  0x00002098 0x00402098 4   5    .text   ascii   5HC@
+87  0x000020f2 0x004020f2 4   5    .text   ascii   D$(=
+88  0x00002112 0x00402112 5   6    .text   ascii   L$<Qh
+89  0x0000212a 0x0040212a 4   5    .text   ascii   T$4R
+90  0x00002139 0x00402139 4   5    .text   ascii   D$4P
+91  0x00002151 0x00402151 4   5    .text   ascii   h4Q@
+92  0x0000217c 0x0040217c 4   5    .text   ascii   L$\ft
+93  0x000021af 0x004021af 6   7    .text   ascii   L$\bPQh
+94  0x0000224c 0x0040224c 4   5    .text   ascii   D$\f3
+95  0x0000225a 0x0040225a 5   6    .text   ascii   L$\bQh
+96  0x0000229d 0x0040229d 4   5    .text   ascii   L$\b3
+97  0x000022a9 0x004022a9 5   7    .text   utf8    \fËL$\f
+98  0x0000230e 0x0040230e 5   6    .text   ascii   Ph q@
+99  0x00002351 0x00402351 5   6    .text   ascii   T$\bRh
+100 0x000023e6 0x004023e6 6   7    .text   ascii   T$ QRP
+101 0x000023ed 0x004023ed 6   7    .text   ascii   D$ VWP
+102 0x0000244f 0x0040244f 4   6    .text   utf8    ̋D$\f
+103 0x00002482 0x00402482 4   5    .text   ascii   F\bPh
+104 0x00002565 0x00402565 4   5    .text   ascii   H Rh
+105 0x000025b7 0x004025b7 4   5    .text   ascii   ~\fWh
+106 0x0000260f 0x0040260f 6   7    .text   ascii   H Sj)h
+107 0x00002692 0x00402692 4   5    .text   ascii   tpWj
+108 0x000026ad 0x004026ad 5   6    .text   ascii   @\fP%@
+109 0x000026cc 0x004026cc 6   7    .text   ascii   N\bSSQh
+110 0x000026ec 0x004026ec 4   5    .text   ascii   _^]3
+111 0x000026f9 0x004026f9 4   5    .text   ascii   P\b_^
+112 0x0000271a 0x0040271a 6   7    .text   ascii   N\bSSQh
+113 0x00002779 0x00402779 4   5    .text   ascii   %\C@
+114 0x0000277f 0x0040277f 4   5    .text   ascii   %XC@
+115 0x00002785 0x00402785 4   5    .text   ascii   %TC@
+116 0x0000278b 0x0040278b 4   5    .text   ascii   %`C@
+117 0x000027eb 0x004027eb 4   5    .text   ascii   %|B@
+118 0x000027f1 0x004027f1 4   5    .text   ascii   %xB@
+119 0x000027f7 0x004027f7 4   5    .text   ascii   %tB@
+120 0x000027fd 0x004027fd 4   5    .text   ascii   %pB@
+121 0x00002803 0x00402803 4   5    .text   ascii   %lB@
+122 0x00002809 0x00402809 4   5    .text   ascii   %hB@
+123 0x0000280f 0x0040280f 4   5    .text   ascii   %hA@
+124 0x00002815 0x00402815 4   5    .text   ascii   %d@@
+125 0x0000281b 0x0040281b 4   5    .text   ascii   %h@@
+126 0x00002821 0x00402821 4   5    .text   ascii   %l@@
+127 0x00002827 0x00402827 4   5    .text   ascii   %p@@
+128 0x0000282d 0x0040282d 4   5    .text   ascii   %t@@
+129 0x00002833 0x00402833 4   5    .text   ascii   %x@@
+130 0x00002839 0x00402839 4   5    .text   ascii   %|@@
+131 0x000028ff 0x004028ff 4   5    .text   ascii   %\bA@
+132 0x00002905 0x00402905 4   5    .text   ascii   %\fA@
+133 0x00002923 0x00402923 4   5    .text   ascii   % A@
+134 0x00002929 0x00402929 4   5    .text   ascii   %$A@
+135 0x0000292f 0x0040292f 4   5    .text   ascii   %(A@
+136 0x00002935 0x00402935 4   5    .text   ascii   %,A@
+137 0x0000293b 0x0040293b 4   5    .text   ascii   %0A@
+138 0x00002941 0x00402941 4   5    .text   ascii   %4A@
+139 0x00002947 0x00402947 4   5    .text   ascii   %8A@
+140 0x0000294d 0x0040294d 4   5    .text   ascii   %<A@
+141 0x00002953 0x00402953 4   5    .text   ascii   %@A@
+142 0x00002959 0x00402959 4   5    .text   ascii   %DA@
+143 0x0000295f 0x0040295f 4   5    .text   ascii   %HA@
+144 0x00002965 0x00402965 4   5    .text   ascii   %LA@
+145 0x0000296b 0x0040296b 4   5    .text   ascii   %PA@
+146 0x00002971 0x00402971 4   5    .text   ascii   %TA@
+147 0x00002977 0x00402977 4   5    .text   ascii   %XA@
+148 0x0000297d 0x0040297d 4   5    .text   ascii   %\A@
+149 0x00002983 0x00402983 4   5    .text   ascii   %`A@
+150 0x00002989 0x00402989 4   5    .text   ascii   %dA@
+151 0x00002995 0x00402995 4   5    .text   ascii   %lA@
+152 0x0000299b 0x0040299b 4   5    .text   ascii   %pA@
+153 0x000029a1 0x004029a1 4   5    .text   ascii   %tA@
+154 0x000029a7 0x004029a7 4   5    .text   ascii   %xA@
+155 0x000029ad 0x004029ad 4   5    .text   ascii   %|A@
+156 0x00002a7f 0x00402a7f 4   5    .text   ascii   %\bB@
+157 0x00002a85 0x00402a85 4   5    .text   ascii   %\fB@
+158 0x00002aa3 0x00402aa3 4   5    .text   ascii   % B@
+159 0x00002aa9 0x00402aa9 4   5    .text   ascii   %$B@
+160 0x00002aaf 0x00402aaf 4   5    .text   ascii   %(B@
+161 0x00002ab5 0x00402ab5 4   5    .text   ascii   %,B@
+162 0x00002abb 0x00402abb 4   5    .text   ascii   %0B@
+163 0x00002ac1 0x00402ac1 4   5    .text   ascii   %4B@
+164 0x00002ac7 0x00402ac7 4   5    .text   ascii   %8B@
+165 0x00002acd 0x00402acd 4   5    .text   ascii   %<B@
+166 0x00002ad3 0x00402ad3 4   5    .text   ascii   %@B@
+167 0x00002ad9 0x00402ad9 4   5    .text   ascii   %HB@
+168 0x00002adf 0x00402adf 4   5    .text   ascii   %LB@
+169 0x00002ae5 0x00402ae5 4   5    .text   ascii   %PB@
+170 0x00002aeb 0x00402aeb 4   5    .text   ascii   %TB@
+171 0x00002af1 0x00402af1 4   5    .text   ascii   %XB@
+172 0x00002af7 0x00402af7 4   5    .text   ascii   %dB@
+173 0x00002b10 0x00402b10 6   7    .text   ascii   j\fh@S@
+174 0x00002b60 0x00402b60 6   7    .text   ascii   jthPS@
+175 0x00002b7c 0x00402b7c 4   5    .text   ascii   8MZu
+176 0x00002b85 0x00402b85 4   6    .text   utf8    ȁ9PE
+177 0x00002bed 0x00402bed 4   5    .text   ascii   \r|r@
+178 0x00002bfb 0x00402bfb 4   5    .text   ascii   \rxr@
+179 0x00002c1e 0x00402c1e 6   7    .text   ascii   u\fhN0@
+180 0x00002c57 0x00402c57 4   5    .text   ascii   5pr@
+181 0x00002c76 0x00402c76 4   5    .text   ascii   }\bj\b
+182 0x00002cb4 0x00402cb4 4   5    .text   ascii   wcf;
+183 0x00002cc6 0x00402cc6 4   6    .text   ascii   t\rf=
+184 0x00002ccc 0x00402ccc 4   5    .text   ascii   w\aFF
+185 0x00002cf1 0x00402cf1 7   8    .text   ascii   j\nXPVWW
+186 0x00002d18 0x00402d18 4   5    .text   ascii   Ef="
+187 0x00002d42 0x00402d42 4   6    .text   utf8    YYËe
+188 0x00002d6a 0x00402d6a 6   7    .text   ascii   j\bh`S@
+189 0x00002def 0x00402def 4   5    .text   ascii   %<C@
+190 0x00002e0b 0x00402e0b 4   5    .text   ascii   t$Wh
+191 0x00002e17 0x00402e17 4   5    .text   ascii   7j\fV
+192 0x00002e85 0x00402e85 4   5    .text   ascii   %4C@
+193 0x00002ed1 0x00402ed1 4   5    .text   ascii   Y_^[
+194 0x00002ed9 0x00402ed9 4   5    .text   ascii   %0C@
+195 0x00002edf 0x00402edf 4   5    .text   ascii   %,C@
+196 0x00002ee6 0x00402ee6 4   5    .text   ascii   hxS@
+197 0x00002efa 0x00402efa 5   6    .text   ascii   M\b+M\f
+198 0x00002f25 0x00402f25 4   5    .text   ascii   8csm
+199 0x00002f65 0x00402f65 5   6    .text   ascii   x\v)u\b
+200 0x00002fa3 0x00402fa3 4   5    .text   ascii   % C@
+201 0x00003037 0x00403037 4   5    .text   ascii   %\bC@
+202 0x0000305e 0x0040305e 4   5    .text   ascii   t\a=N
+203 0x00003191 0x00403191 4   5    .text   ascii   w\bu\n
+204 0x0000332a 0x0040332a 4   5    .text   ascii   h`3@
+205 0x00003340 0x00403340 4   5    .text   ascii   hj3@
+206 0x000043cc 0x004043cc 9   20   .rdata  utf16le <unknown>
+207 0x000044e0 0x004044e0 38  78   .rdata  utf16le Local AppWizard-Generated Applications
+208 0x000045c8 0x004045c8 131 264  .rdata  utf16le \n\n\nThe scanner reported error number %d.\n\nPlease cycle power on the scanner.\nWait five seconds and click OK to retry the operation.
+209 0x000046d0 0x004046d0 190 382  .rdata  utf16le \n\n\nThe scanner was not found.\n\nPlease make sure the scanner's Power Indicator LED is on and\nthe scanner is connected to the computer.\n\nWait five seconds and click OK to retry the operation.\n
+210 0x00004850 0x00404850 30  62   .rdata  utf16le \n\n\n\n\nUpdating Firmware . . .\n\n
+211 0x00004b40 0x00404b40 34  70   .rdata  utf16le \n\nClick OK to retry the operation.
+212 0x00004b88 0x00404b88 72  146  .rdata  utf16le \n\n\n\nThe %s application is currently using the scanner.\n\nPlease close %s.
+213 0x00004c1c 0x00404c1c 13  28   .rdata  utf16le PakonImau.dll
+214 0x00004c38 0x00404c38 31  64   .rdata  utf16le \n\n\n\n\nChecking For Scanner . . .
+215 0x00004c78 0x00404c78 20  42   .rdata  utf16le Initializing Scanner
+216 0x00004ca4 0x00404ca4 21  44   .rdata  utf16le Firmware Update Motor
+217 0x00004cd0 0x00404cd0 20  42   .rdata  utf16le Firmware Update Lamp
+218 0x00004cfc 0x00404cfc 18  38   .rdata  utf16le Firmware Update DX
+219 0x00004d24 0x00404d24 19  40   .rdata  utf16le Firmware Update CCD
+220 0x00004d4c 0x00404d4c 19  40   .rdata  utf16le Firmware Update Aps
+221 0x00004d74 0x00404d74 8   18   .rdata  utf16le Finished
+222 0x00004d88 0x00404d88 100 202  .rdata  utf16le \n\n\nCongratulations!\n\nThe scanner firmware is up to date.\n\nPress the OK button to close this program.
+223 0x00004e54 0x00404e54 11  24   .rdata  utf16le %d.%d.%d.%d
+224 0x00004e74 0x00404e74 19  40   .rdata  utf16le kon Firmware Loader
+225 0x00004ea0 0x00404ea0 297 596  .rdata  utf16le \n\nWelcome to the Pakon Firmware Loader.\n\nThis program will update the firmware in the FX35 scanner.\n\nPlease verify the scanner is turned on and other programs that use the scanner are closed.\n\nDo not turn off the scanner or the computer until the update is complete.\n\nPress the OK button to start.
+226 0x000050f4 0x004050f4 5   12   .rdata  utf16le %s\n%s
+227 0x00005100 0x00405100 25  52   .rdata  utf16le Error reported improperly
+228 0x0000513c 0x0040513c 17  36   .rdata  utf16le ror Function\n  %s
+229 0x00005160 0x00405160 48  98   .rdata  utf16le QueryInterface for Error Function Interface\n  %s
+230 0x000051cd 0x004051cd 4   5    .rdata  ascii   HV-5
+231 0x000051ed 0x004051ed 6   7    .rdata  ascii   'tLhb_
+232 0x0000521e 0x0040521e 4   5    .rdata  ascii   XE{\v
+233 0x0000522e 0x0040522e 4   5    .rdata  ascii   3sLm
+234 0x0000524d 0x0040524d 7   8    .rdata  ascii   6-X0Zb,
+235 0x00005291 0x00405291 6   7    .rdata  ascii   !m.LV@
+236 0x000052e6 0x004052e6 7   16   .rdata  utf16le @Delete
+237 0x000052f8 0x004052f8 8   18   .rdata  utf16le NoRemove
+238 0x0000530c 0x0040530c 11  24   .rdata  utf16le ForceRemove
+239 0x0000532c 0x0040532c 4   20   .rdata  utf32le BDMS
+240 0x000053b4 0x004053b4 6   8    .rdata  utf8    `=\vߏT\e
+241 0x000053d5 0x004053d5 5   6    .rdata  ascii   =L9o<
+242 0x00005430 0x00405430 8   9    .rdata  ascii   RSDSgPEm
+243 0x00005448 0x00405448 71  72   .rdata  ascii   c:\DATA\SCANNERSW\FirmwareLoaderSimple\Release\FirmwareLoaderSimple.pdb
+244 0x00005d1e 0x00405d1e 20  21   .rdata  ascii   GetModuleFileNameExW
+245 0x00005d36 0x00405d36 18  19   .rdata  ascii   EnumProcessModules
+246 0x00005d4c 0x00405d4c 18  19   .rdata  ascii   GetModuleBaseNameW
+247 0x00005d62 0x00405d62 13  14   .rdata  ascii   EnumProcesses
+248 0x00005d70 0x00405d70 9   10   .rdata  ascii   PSAPI.DLL
+249 0x00005d7c 0x00405d7c 14  15   .rdata  ascii   VerQueryValueW
+250 0x00005d8e 0x00405d8e 19  20   .rdata  ascii   GetFileVersionInfoW
+251 0x00005da4 0x00405da4 23  24   .rdata  ascii   GetFileVersionInfoSizeW
+252 0x00005dbc 0x00405dbc 11  12   .rdata  ascii   VERSION.dll
+253 0x00005dc8 0x00405dc8 10  11   .rdata  ascii   MFC71U.DLL
+254 0x00005dd6 0x00405dd6 6   7    .rdata  ascii   wcsstr
+255 0x00005de0 0x00405de0 17  18   .rdata  ascii   __CxxFrameHandler
+256 0x00005df4 0x00405df4 5   6    .rdata  ascii   _wtoi
+257 0x00005dfc 0x00405dfc 6   7    .rdata  ascii   memset
+258 0x00005e06 0x00405e06 16  17   .rdata  ascii   _except_handler3
+259 0x00005e1a 0x00405e1a 4   5    .rdata  ascii   free
+260 0x00005e22 0x00405e22 7   8    .rdata  ascii   _c_exit
+261 0x00005e2c 0x00405e2c 5   6    .rdata  ascii   _exit
+262 0x00005e34 0x00405e34 11  12   .rdata  ascii   _XcptFilter
+263 0x00005e42 0x00405e42 6   7    .rdata  ascii   _cexit
+264 0x00005e4c 0x00405e4c 4   5    .rdata  ascii   exit
+265 0x00005e54 0x00405e54 7   8    .rdata  ascii   _wcmdln
+266 0x00005e5e 0x00405e5e 10  11   .rdata  ascii   _amsg_exit
+267 0x00005e6c 0x00405e6c 14  15   .rdata  ascii   __wgetmainargs
+268 0x00005e7e 0x00405e7e 9   10   .rdata  ascii   _initterm
+269 0x00005e8a 0x00405e8a 16  17   .rdata  ascii   __setusermatherr
+270 0x00005e9e 0x00405e9e 12  13   .rdata  ascii   _adjust_fdiv
+271 0x00005eae 0x00405eae 12  13   .rdata  ascii   __p__commode
+272 0x00005ebe 0x00405ebe 10  11   .rdata  ascii   __p__fmode
+273 0x00005ecc 0x00405ecc 14  15   .rdata  ascii   __set_app_type
+274 0x00005edc 0x00405edc 11  12   .rdata  ascii   MSVCR71.dll
+275 0x00005eea 0x00405eea 24  25   .rdata  ascii   __security_error_handler
+276 0x00005f06 0x00405f06 20  21   .rdata  ascii   ??1type_info@@UAE@XZ
+277 0x00005f1e 0x00405f1e 11  12   .rdata  ascii   __dllonexit
+278 0x00005f2c 0x00405f2c 7   8    .rdata  ascii   _onexit
+279 0x00005f36 0x00405f36 17  18   .rdata  ascii   ?terminate@@YAXXZ
+280 0x00005f4a 0x00405f4a 10  11   .rdata  ascii   _controlfp
+281 0x00005f58 0x00405f58 11  12   .rdata  ascii   CloseHandle
+282 0x00005f66 0x00405f66 11  12   .rdata  ascii   OpenProcess
+283 0x00005f74 0x00405f74 5   6    .rdata  ascii   Sleep
+284 0x00005f7c 0x00405f7c 18  19   .rdata  ascii   GetModuleFileNameW
+285 0x00005f92 0x00405f92 9   10   .rdata  ascii   LocalFree
+286 0x00005f9e 0x00405f9e 14  15   .rdata  ascii   FormatMessageW
+287 0x00005fb0 0x00405fb0 19  20   .rdata  ascii   InterlockedExchange
+288 0x00005fc6 0x00405fc6 6   7    .rdata  ascii   GetACP
+289 0x00005fd0 0x00405fd0 14  15   .rdata  ascii   GetLocaleInfoA
+290 0x00005fe2 0x00405fe2 15  16   .rdata  ascii   GetThreadLocale
+291 0x00005ff4 0x00405ff4 13  14   .rdata  ascii   GetVersionExW
+292 0x00006004 0x00406004 25  26   .rdata  ascii   InitializeCriticalSection
+293 0x00006020 0x00406020 21  22   .rdata  ascii   DeleteCriticalSection
+294 0x00006038 0x00406038 16  17   .rdata  ascii   GetModuleHandleA
+295 0x0000604c 0x0040604c 15  16   .rdata  ascii   GetStartupInfoW
+296 0x0000605e 0x0040605e 11  12   .rdata  ascii   ExitProcess
+297 0x0000606c 0x0040606c 23  24   .rdata  ascii   QueryPerformanceCounter
+298 0x00006086 0x00406086 12  13   .rdata  ascii   GetTickCount
+299 0x00006096 0x00406096 18  19   .rdata  ascii   GetCurrentThreadId
+300 0x000060ac 0x004060ac 19  20   .rdata  ascii   GetCurrentProcessId
+301 0x000060c2 0x004060c2 23  24   .rdata  ascii   GetSystemTimeAsFileTime
+302 0x000060da 0x004060da 12  13   .rdata  ascii   KERNEL32.dll
+303 0x000060ea 0x004060ea 8   9    .rdata  ascii   DrawIcon
+304 0x000060f6 0x004060f6 12  13   .rdata  ascii   SendMessageW
+305 0x00006106 0x00406106 8   9    .rdata  ascii   IsIconic
+306 0x00006112 0x00406112 13  14   .rdata  ascii   GetClientRect
+307 0x00006122 0x00406122 9   10   .rdata  ascii   LoadIconW
+308 0x0000612e 0x0040612e 12  13   .rdata  ascii   EnableWindow
+309 0x0000613e 0x0040613e 16  17   .rdata  ascii   GetSystemMetrics
+310 0x00006152 0x00406152 12  13   .rdata  ascii   PostMessageW
+311 0x00006160 0x00406160 10  11   .rdata  ascii   USER32.dll
+312 0x0000616c 0x0040616c 12  13   .rdata  ascii   ADVAPI32.dll
+313 0x0000617a 0x0040617a 12  13   .rdata  ascii   COMCTL32.dll
+314 0x0000618a 0x0040618a 16  17   .rdata  ascii   CoCreateInstance
+315 0x0000619e 0x0040619e 14  15   .rdata  ascii   CoInitializeEx
+316 0x000061ae 0x004061ae 9   10   .rdata  ascii   ole32.dll
+317 0x000061b8 0x004061b8 12  13   .rdata  ascii   OLEAUT32.dll
+318 0x000061c8 0x004061c8 13  14   .rdata  ascii   GetVersionExA
+319 0x00007028 0x00407028 13  14   .data   ascii   .?AVCObject@@
+320 0x00007040 0x00407040 16  17   .data   ascii   .?AVCCmdTarget@@
+321 0x0000705c 0x0040705c 16  17   .data   ascii   .?AVCWinThread@@
+322 0x00007078 0x00407078 13  14   .data   ascii   .?AVCWinApp@@
+323 0x00007090 0x00407090 30  31   .data   ascii   .?AVCFirmwareLoaderSimpleApp@@
+324 0x000070b8 0x004070b8 10  11   .data   ascii   .?AVCWnd@@
+325 0x000070cc 0x004070cc 19  20   .data   ascii   .?AVCProgressCtrl@@
+326 0x000070e8 0x004070e8 13  14   .data   ascii   .?AVCDialog@@
+327 0x00007100 0x00407100 30  31   .data   ascii   .?AVCFirmwareLoaderSimpleDlg@@
+328 0x0000712c 0x0040712c 16  17   .data   ascii   .?AVCTLXClient@@
+329 0x00007148 0x00407148 14  15   .data   ascii   .?AUIUnknown@@
+330 0x00007160 0x00407160 21  22   .data   ascii   .?AUICallBackClient@@
+331 0x00007180 0x00407180 24  25   .data   ascii   .?AVCTLXCallBackClient@@
+332 0x000071a8 0x004071a8 15  16   .data   ascii   .?AVtype_info@@
+333 0x00008429 0x00408429 22  23   .rsrc   ascii   wwwwwwwwwwwwwwwwwwwwww
+334 0x00008639 0x00408639 22  23   .rsrc   ascii   wwwwwwwwwwwwwwwwwwwwww
+335 0x000086a9 0x004086a9 4   5    .rsrc   ascii   wwww
+336 0x0000884e 0x0040884e 12  13   .rsrc   ascii   wwwwwwwwwww}
+337 0x00008898 0x00408898 8   9    .rsrc   ascii   wwwwwwww
+338 0x00008a91 0x00408a91 14  15   .rsrc   ascii   wwwwwwwwwwwwww
+339 0x00008b71 0x00408b71 14  15   .rsrc   ascii   wwwwwwwwwwwwww
+340 0x00008c54 0x00408c54 8   9    .rsrc   ascii   wwwwwww}
+341 0x00008c86 0x00408c86 4   5    .rsrc   ascii   wwww
+342 0x00008d78 0x00408d78 9   10   .rsrc   ascii   wwwwwww}x
+343 0x00008db7 0x00408db7 10  12   .rsrc   utf8    }wwwwwww}ׇ
+344 0x00008df2 0x00408df2 4   5    .rsrc   ascii   wwww
+345 0x000092c3 0x004092c3 19  20   .rsrc   ascii   _`__``_``a`_`_aaaa`
+346 0x000092d7 0x004092d7 15  21   .rsrc   ascii        !        !
+347 0x000092f2 0x004092f2 41  42   .rsrc   ascii   i\\\\\\\\[\\\\\\\[\\a///2/////////2/22///
+348 0x00009335 0x00409335 4   5    .rsrc   ascii   da2/
+349 0x0000933a 0x0040933a 17  18   .rsrc   ascii   BB<<<<777111,,,*/
+350 0x00009365 0x00409365 4   5    .rsrc   ascii   na2/
+351 0x0000936a 0x0040936a 17  18   .rsrc   ascii   RFGHJCDKLL=>>88+/
+352 0x00009395 0x00409395 9   10   .rsrc   ascii   [`//"QRT$
+353 0x000093a4 0x004093a4 7   8    .rsrc   ascii   1=>>8+2
+354 0x000093b9 0x004093b9 4   5    .rsrc   ascii   sccy
+355 0x000093c5 0x004093c5 7   8    .rsrc   ascii   \`2/"OQ
+356 0x000093d4 0x004093d4 7   8    .rsrc   ascii   $%=>>*2
+357 0x000093e9 0x004093e9 4   5    .rsrc   ascii   sccy
+358 0x000093f5 0x004093f5 7   8    .rsrc   ascii   \a//"NO
+359 0x000093ff 0x004093ff 4   5    .rsrc   ascii   66**
+360 0x00009406 0x00409406 5   6    .rsrc   ascii   L=>(2
+361 0x00009412 0x00409412 4   5    .rsrc   ascii   i\]~
+362 0x00009419 0x00409419 4   5    .rsrc   ascii   rccy
+363 0x00009425 0x00409425 7   8    .rsrc   ascii   \a//"WN
+364 0x0000942f 0x0040942f 12  13   .rsrc   ascii   FTHI*++LL=(/
+365 0x00009442 0x00409442 5   6    .rsrc   ascii   h\^|~
+366 0x00009449 0x00409449 4   5    .rsrc   ascii   rccs
+367 0x00009455 0x00409455 7   8    .rsrc   ascii   \`//'VW
+368 0x0000945f 0x0040945f 12  13   .rsrc   ascii   RFTHJCDKLL)2
+369 0x00009472 0x00409472 6   7    .rsrc   ascii   j\]x|~
+370 0x00009479 0x00409479 5   6    .rsrc   ascii   rccp~
+371 0x00009485 0x00409485 7   8    .rsrc   ascii   \_//'VV
+372 0x0000948f 0x0040948f 12  13   .rsrc   ascii   QRFTHJCDKL(/
+373 0x000094a2 0x004094a2 14  15   .rsrc   ascii   i\^wx|~pcccccb
+374 0x000094b5 0x004094b5 7   8    .rsrc   ascii   \`//'UV
+375 0x000094bf 0x004094bf 12  13   .rsrc   ascii   OQRFGHJCDK(/
+376 0x000094d2 0x004094d2 14  15   .rsrc   ascii   i\]wwx|pcckrss
+377 0x000094e5 0x004094e5 7   8    .rsrc   ascii   \a//0UU
+378 0x000094ef 0x004094ef 12  13   .rsrc   ascii   NOQRSGHIJD(2
+379 0x00009502 0x00409502 11  12   .rsrc   ascii   i\^vwwxpccr
+380 0x00009515 0x00409515 7   8    .rsrc   ascii   \`///YU
+381 0x0000951f 0x0040951f 12  13   .rsrc   ascii   WNOQRFTHIJ)/
+382 0x00009532 0x00409532 11  12   .rsrc   ascii   j\]uvwwmccp
+383 0x00009545 0x00409545 7   8    .rsrc   ascii   \`//9YY
+384 0x0000954f 0x0040954f 12  13   .rsrc   ascii   VWNO5;*THI)2
+385 0x00009562 0x00409562 11  12   .rsrc   ascii   j\]uuvwmccp
+386 0x00009575 0x00409575 7   8    .rsrc   ascii   \a//9XY
+387 0x0000957f 0x0040957f 4   5    .rsrc   ascii   VVWN
+388 0x00009586 0x00409586 5   6    .rsrc   ascii   STH)2
+389 0x00009592 0x00409592 16  17   .rsrc   ascii   i\]ouuvmccbbbbbs
+390 0x000095a5 0x004095a5 8   9    .rsrc   ascii   \a//@XX0
+391 0x000095b6 0x004095b6 5   6    .rsrc   ascii   RST)/
+392 0x000095c2 0x004095c2 16  17   .rsrc   ascii   i\]oouulefffggkt
+393 0x000095d5 0x004095d5 9   10   .rsrc   ascii   \`/2@ZXX:
+394 0x000095e4 0x004095e4 7   8    .rsrc   ascii   ;NPRF(/
+395 0x000095f2 0x004095f2 14  15   .rsrc   ascii   h\]loouuvwwx|~
+396 0x00009605 0x00409605 22  23   .rsrc   ascii   \_2/@ZZXXYYUUUVWNOPQ(/
+397 0x00009622 0x00409622 18  19   .rsrc   ascii   i\]ffggkkqqqzzz{{{
+398 0x00009635 0x00409635 20  21   .rsrc   ascii   \_//?MMMMEEEAAAA3345
+399 0x00009652 0x00409652 41  42   .rsrc   ascii   i\\\\\\\\\\\\\\\\\\\`//&&&&&--&&&&-&&&&./
+400 0x00009682 0x00409682 10  11   .rsrc   ascii   illlllllll
+401 0x000096d4 0x004096d4 4   5    .rsrc   ascii   \f\r\t\t
+402 0x00009705 0x00409705 4   5    .rsrc   ascii   \f\r\t\v
+403 0x0000a149 0x0040a149 28  29   .rsrc   ascii   ]ZZZZZZZZZZZWV-1---------1-\a
+404 0x0000a175 0x0040a175 16  17   .rsrc   ascii   mV2.AHBC5D;<<(-\a
+405 0x0000a195 0x0040a195 7   8    .rsrc   ascii   kV2.P:#
+406 0x0000a19d 0x0040a19d 8   9    .rsrc   ascii   !!+=>(-\a
+407 0x0000a1b5 0x0040a1b5 5   6    .rsrc   ascii   kV239
+408 0x0000a1c0 0x0040a1c0 5   6    .rsrc   ascii   $=(-\a
+409 0x0000a1d5 0x0040a1d5 6   7    .rsrc   ascii   kV73@\t
+410 0x0000a1e0 0x0040a1e0 4   5    .rsrc   ascii   0<(-
+411 0x0000a1f5 0x0040a1f5 6   7    .rsrc   ascii   kV78@\t
+412 0x0000a1fc 0x0040a1fc 9   10   .rsrc   ascii   OGJKD;*1\a
+413 0x0000a209 0x0040a209 9   10   .rsrc   ascii   ]d}~wca``
+414 0x0000a215 0x0040a215 6   7    .rsrc   ascii   kV78F\t
+415 0x0000a21c 0x0040a21c 8   9    .rsrc   ascii   OOGJKD*1
+416 0x0000a229 0x0040a229 8   9    .rsrc   ascii   \dy}rch{
+417 0x0000a235 0x0040a235 6   7    .rsrc   ascii   kV7EF\t
+418 0x0000a23c 0x0040a23c 9   10   .rsrc   ascii   MNOGIK/1\a
+419 0x0000a249 0x0040a249 7   8    .rsrc   ascii   \buyrcj
+420 0x0000a255 0x0040a255 6   7    .rsrc   ascii   kV?EE\t
+421 0x0000a25c 0x0040a25c 9   10   .rsrc   ascii   RR.#:I/-\a
+422 0x0000a269 0x0040a269 10  11   .rsrc   ascii   [btuncfssv
+423 0x0000a275 0x0040a275 5   6    .rsrc   ascii   kV?LE
+424 0x0000a280 0x0040a280 5   6    .rsrc   ascii   9G41\a
+425 0x0000a289 0x0040a289 10  11   .rsrc   ascii   ]_ptqhhhjj
+426 0x0000a295 0x0040a295 6   7    .rsrc   ascii   kV?LTE
+427 0x0000a29f 0x0040a29f 6   7    .rsrc   ascii   @NO41\a
+428 0x0000a2a9 0x0040a2a9 9   10   .rsrc   ascii   ]_mptuy}~
+429 0x0000a2b5 0x0040a2b5 16  17   .rsrc   ascii   lV6SUTTQQQRRN91\a
+430 0x0000a2c9 0x0040a2c9 28  29   .rsrc   ascii   [WXXXYXXYXYYWV-)))))))))),,\a
+431 0x0000a9b0 0x0040a9b0 8   9    .rsrc   ascii   F5><<==.
+432 0x0000a9c0 0x0040a9c0 8   9    .rsrc   ascii   ECK2LPV.
+433 0x0000a9d0 0x0040a9d0 8   9    .rsrc   ascii   E@J3MOU.
+434 0x0000a9e0 0x0040a9e0 8   9    .rsrc   ascii   D?H31IT.
+435 0x0000a9f0 0x0040a9f0 10  11   .rsrc   ascii   B;G1JKS.(\r
+436 0x0000aa00 0x0040aa00 14  15   .rsrc   ascii   E9A011R.&#\a\a++
+437 0x0000aa10 0x0040aa10 11  13   .rsrc   ascii   E/4678:."&'
+438 0x0000aa21 0x0040aa21 10  11   .rsrc   ascii   NQWhX^XXXe
+439 0x0000aa37 0x0040aa37 4   5    .rsrc   ascii   t}~]
+440 0x0000aa84 0x0040aa84 7   8    .rsrc   ascii   djklnoc
+441 0x0000aa94 0x0040aa94 8   9    .rsrc   ascii   sgba`_f|
+442 0x0000aaa5 0x0040aaa5 6   7    .rsrc   ascii   ux||||
+443 0x0000abb9 0x0040abb9 7   9    .rsrc   ascii   #  #  #
+444 0x0000abcb 0x0040abcb 4   6    .rsrc   ascii   #! #
+445 0x0000abd1 0x0040abd1 7   9    .rsrc   ascii   #! #! #
+446 0x0000abda 0x0040abda 4   6    .rsrc   ascii   #  #
+447 0x0000abec 0x0040abec 4   6    .rsrc   ascii   #gdc
+448 0x0000abf5 0x0040abf5 7   9    .rsrc   ascii   #  #! #
+449 0x0000ac01 0x0040ac01 7   9    .rsrc   ascii   #  #  #
+450 0x0000ac0d 0x0040ac0d 4   6    .rsrc   ascii   #  #
+451 0x0000ac13 0x0040ac13 4   6    .rsrc   ascii   #  #
+452 0x0000ac22 0x0040ac22 10  11   .rsrc   ascii   #  #  #  #
+453 0x0000acb7 0x0040acb7 8   9    .rsrc   ascii   t5! #! #
+454 0x0000ad0d 0x0040ad0d 40  61   .rsrc   utf8    ʋ=ʋ=ˌ=ʋ=ʋ=ʋ=ˋ=ˋ=ʋ=ʋ=ʋ=ʋ=ˋ=ʋ=ʋ=ˌ=ʋ=ʋ=ˌ=ʋ=
+455 0x0000ad4a 0x0040ad4a 5   6    .rsrc   ascii   lR! #
+456 0x0000ad8e 0x0040ad8e 5   9    .rsrc   utf8    rėsĘj
+457 0x0000ad9d 0x0040ad9d 6   10   .rsrc   utf8    ʋ=ʋ=À5
+458 0x0000adda 0x0040adda 5   6    .rsrc   ascii   mS! #
+459 0x0000ae2d 0x0040ae2d 6   10   .rsrc   utf8    ʋ=ʋ=À5
+460 0x0000ae6a 0x0040ae6a 5   6    .rsrc   ascii   lR! #
+461 0x0000aebd 0x0040aebd 6   10   .rsrc   utf8    ʋ=ʋ=À5
+462 0x0000aefa 0x0040aefa 5   6    .rsrc   ascii   lR! #
+463 0x0000af4d 0x0040af4d 6   10   .rsrc   utf8    ʋ=ˋ=À5
+464 0x0000af8a 0x0040af8a 5   6    .rsrc   ascii   lR! #
+465 0x0000afb5 0x0040afb5 6   7    .rsrc   ascii   b0`\e0_
+466 0x0000afdd 0x0040afdd 6   10   .rsrc   utf8    ˋ=ʋ=À5
+467 0x0000aff3 0x0040aff3 6   15   .rsrc   utf8    C,㺆伋佐侓
+468 0x0000b013 0x0040b013 4   7    .rsrc   utf8    ٦nʋ=
+469 0x0000b01a 0x0040b01a 5   6    .rsrc   ascii   lR! #
+470 0x0000b049 0x0040b049 4   5    .rsrc   ascii   1`\el
+471 0x0000b06d 0x0040b06d 6   10   .rsrc   utf8    ˌ=ʋ=À5
+472 0x0000b0a3 0x0040b0a3 4   7    .rsrc   utf8    ڧnʋ=
+473 0x0000b0aa 0x0040b0aa 5   6    .rsrc   ascii   lR! #
+474 0x0000b0d5 0x0040b0d5 6   7    .rsrc   ascii   ]1`\e0_
+475 0x0000b0fd 0x0040b0fd 6   10   .rsrc   utf8    ˌ=ˋ=À5
+476 0x0000b133 0x0040b133 4   7    .rsrc   utf8    ڦnʋ=
+477 0x0000b13a 0x0040b13a 5   6    .rsrc   ascii   lR! #
+478 0x0000b18d 0x0040b18d 6   10   .rsrc   utf8    ʋ=ʋ=À5
+479 0x0000b1c3 0x0040b1c3 4   7    .rsrc   utf8    ڦnʋ=
+480 0x0000b1ca 0x0040b1ca 5   6    .rsrc   ascii   lR! #
+481 0x0000b202 0x0040b202 5   6    .rsrc   ascii   1`\e7m
+482 0x0000b21d 0x0040b21d 6   10   .rsrc   utf8    ʋ=ˌ=À5
+483 0x0000b253 0x0040b253 4   7    .rsrc   utf8    ٦nʋ=
+484 0x0000b25a 0x0040b25a 5   6    .rsrc   ascii   lR! #
+485 0x0000b289 0x0040b289 4   5    .rsrc   ascii   1`\eI
+486 0x0000b2ad 0x0040b2ad 6   10   .rsrc   utf8    ˌ=ʋ=À5
+487 0x0000b2e3 0x0040b2e3 4   7    .rsrc   utf8    ڧoˌ=
+488 0x0000b2ea 0x0040b2ea 5   6    .rsrc   ascii   lR! #
+489 0x0000b33d 0x0040b33d 6   10   .rsrc   utf8    ˌ=ˋ=À5
+490 0x0000b373 0x0040b373 4   7    .rsrc   utf8    ٦nˋ=
+491 0x0000b37a 0x0040b37a 5   6    .rsrc   ascii   lR! #
+492 0x0000b3cd 0x0040b3cd 6   10   .rsrc   utf8    ʋ=ˋ=À5
+493 0x0000b401 0x0040b401 5   9    .rsrc   utf8    ۰٦nʋ=
+494 0x0000b40a 0x0040b40a 5   6    .rsrc   ascii   lR! #
+495 0x0000b45d 0x0040b45d 6   10   .rsrc   utf8    ˌ=ʋ=À5
+496 0x0000b491 0x0040b491 5   9    .rsrc   utf8    ڬ٦nˋ=
+497 0x0000b49a 0x0040b49a 5   6    .rsrc   ascii   lR! #
+498 0x0000b4ed 0x0040b4ed 6   10   .rsrc   utf8    ʋ=ʋ=À5
+499 0x0000b521 0x0040b521 5   9    .rsrc   utf8    ֤ڦnˌ=
+500 0x0000b52a 0x0040b52a 5   6    .rsrc   ascii   lR! #
+501 0x0000b572 0x0040b572 4   7    .rsrc   utf8    Σ}ΦI
+502 0x0000b57d 0x0040b57d 6   10   .rsrc   utf8    ˋ=ʋ=À5
+503 0x0000b5b3 0x0040b5b3 4   7    .rsrc   utf8    ڧoˋ=
+504 0x0000b5ba 0x0040b5ba 5   6    .rsrc   ascii   lR! #
+505 0x0000b602 0x0040b602 4   7    .rsrc   utf8    ˝y̢H
+506 0x0000b60d 0x0040b60d 6   10   .rsrc   utf8    ˋ=ʋ=À5
+507 0x0000b641 0x0040b641 5   9    .rsrc   utf8    ҙڦnʋ=
+508 0x0000b64a 0x0040b64a 5   6    .rsrc   ascii   lS! #
+509 0x0000b69d 0x0040b69d 4   7    .rsrc   utf8    ʋ=ˌ=
+510 0x0000b6db 0x0040b6db 4   5    .rsrc   ascii   R! #
+511 0x0000b72d 0x0040b72d 16  26   .rsrc   utf8    ˌ=ˌ=À5Á5À5À5À5À5
+512 0x0000b747 0x0040b747 23  35   .rsrc   utf8    5À5Á5À5Á5À5Á5Á5À5À5ǆ:ʋ=
+513 0x0000b76a 0x0040b76a 5   6    .rsrc   ascii   lR! #
+514 0x0000b79e 0x0040b79e 60  61   .rsrc   ascii   b;wi=ua=ua=ua=ua<u`=ua=ua<u`9d[qikunntnntnnunntnnunnunntpwyr
+515 0x0000b7fb 0x0040b7fb 4   5    .rsrc   ascii   Vgdc
+516 0x0000b887 0x0040b887 5   6    .rsrc   ascii   nkgdc
+517 0x0000ba69 0x0040ba69 5   6    .rsrc   ascii   y|~$s
+518 0x0000babb 0x0040babb 5   6    .rsrc   ascii   rcgdc
+519 0x0000bb3b 0x0040bb3b 6   7    .rsrc   ascii   4@egdc
+520 0x0000bbcb 0x0040bbcb 6   7    .rsrc   ascii   5@fgdc
+521 0x0000bc5b 0x0040bc5b 6   7    .rsrc   ascii   5@fgdc
+522 0x0000bceb 0x0040bceb 6   7    .rsrc   ascii   4@egdc
+523 0x0000bd7b 0x0040bd7b 6   7    .rsrc   ascii   5Afgdc
+524 0x0000be0b 0x0040be0b 6   7    .rsrc   ascii   4@egdc
+525 0x0000be9b 0x0040be9b 6   7    .rsrc   ascii   5@fgdc
+526 0x0000bf2b 0x0040bf2b 6   7    .rsrc   ascii   5@fgdc
+527 0x0000bfbb 0x0040bfbb 6   7    .rsrc   ascii   4@egdc
+528 0x0000c04b 0x0040c04b 6   7    .rsrc   ascii   4@egdc
+529 0x0000c0db 0x0040c0db 6   7    .rsrc   ascii   5@fgdc
+530 0x0000c16b 0x0040c16b 6   7    .rsrc   ascii   5Afgdc
+531 0x0000c1fb 0x0040c1fb 6   7    .rsrc   ascii   5@egdc
+532 0x0000c28b 0x0040c28b 6   7    .rsrc   ascii   5@fgdc
+533 0x0000c826 0x0040c826 36  38   .rsrc   ascii   BL@BM@BM@BL@BL@BL@BL@BM@CMABM@BL@BL@
+534 0x0000c84c 0x0040c84c 43  45   .rsrc   ascii   #w\Rv\Rw]Sw\Rw\Rw\Sv\Rv\Rw\Rw]Sw]Sw]StYQ1-/
+535 0x0000c8aa 0x0040c8aa 27  40   .rsrc   utf8    _s-ʋ=ˌ=ˋ=ʋ=ʋ=ˌ=ʋ=ˋ=ʋ=ˌ=ˌ=ʋ=
+536 0x0000c8d2 0x0040c8d2 5   7    .rsrc   ascii   t6REE
+537 0x0000c909 0x0040c909 8   11   .rsrc   utf8    F_s-ӛVݯ}
+538 0x0000c932 0x0040c932 5   7    .rsrc   ascii   t6RDD
+539 0x0000c969 0x0040c969 8   11   .rsrc   utf8    <_s-ӚTݰy
+540 0x0000c992 0x0040c992 5   7    .rsrc   ascii   t5REE
+541 0x0000c9c9 0x0040c9c9 9   14   .rsrc   utf8    =^s,ҚQݮp彂
+542 0x0000c9f2 0x0040c9f2 5   7    .rsrc   ascii   t5RDE
+543 0x0000ca12 0x0040ca12 4   5    .rsrc   ascii   0`\eL
+544 0x0000ca29 0x0040ca29 8   11   .rsrc   utf8    =_s-ҙM۫k
+545 0x0000ca40 0x0040ca40 4   9    .rsrc   utf8    ۰ດÍq
+546 0x0000ca52 0x0040ca52 5   7    .rsrc   ascii   u6RDD
+547 0x0000ca89 0x0040ca89 8   11   .rsrc   utf8    =_s-ҙK۩_
+548 0x0000caaf 0x0040caaf 6   10   .rsrc   utf8    şʋ=REE
+549 0x0000cae9 0x0040cae9 8   11   .rsrc   utf8    =^s,ҙFܪ]
+550 0x0000cb0f 0x0040cb0f 6   10   .rsrc   utf8    ěˌ=REE
+551 0x0000cb49 0x0040cb49 10  14   .rsrc   utf8    =_s-їEڦP߯]
+552 0x0000cb71 0x0040cb71 5   8    .rsrc   utf8    ʋ=SEE
+553 0x0000cba9 0x0040cba9 10  14   .rsrc   utf8    =_s-ї>٥IެQ
+554 0x0000cbd1 0x0040cbd1 5   8    .rsrc   utf8    ʋ=REE
+555 0x0000cbf5 0x0040cbf5 4   5    .rsrc   ascii   >w+^
+556 0x0000cc09 0x0040cc09 10  14   .rsrc   utf8    =^s,җ=٢<ݪH
+557 0x0000cc2c 0x0040cc2c 7   13   .rsrc   utf8    ب彊ʋ=REE
+558 0x0000cc69 0x0040cc69 8   11   .rsrc   utf8    =_s-і7١/
+559 0x0000cc8c 0x0040cc8c 7   13   .rsrc   utf8    ӛ澊ˌ=SEE
+560 0x0000ccc9 0x0040ccc9 7   10   .rsrc   utf8    <^s,ΐ;ؠ
+561 0x0000ccec 0x0040ccec 7   13   .rsrc   utf8    є廂ʋ=SEE
+562 0x0000cd2a 0x0040cd2a 13  20   .rsrc   utf8    _s-ʋ=À5À5À5À5
+563 0x0000cd3e 0x0040cd3e 13  21   .rsrc   utf8    5À5Á5Á5À5À5Ń8
+564 0x0000cd53 0x0040cd53 4   6    .rsrc   ascii   ;tcc
+565 0x0000cd8a 0x0040cd8a 5   6    .rsrc   ascii   3ZzWo
+566 0x0000d47c 0x0040d47c 16  23   .rsrc   utf8    =_s-̏IҘXҘXҙYҘXҙY
+567 0x0000d493 0x0040d493 5   6    .rsrc   ascii   |Xfdc
+568 0x0000d49f 0x0040d49f 4   6    .rsrc   utf8    ѩ;w\f
+569 0x0000d4ad 0x0040d4ad 5   7    .rsrc   utf8    _s-Ԟd
+570 0x0000d4c4 0x0040d4c4 4   5    .rsrc   ascii   Zgec
+571 0x0000d4cf 0x0040d4cf 4   6    .rsrc   utf8    ˜;w\r
+572 0x0000d4dd 0x0040d4dd 5   7    .rsrc   utf8    _s-ӜY
+573 0x0000d4f4 0x0040d4f4 4   5    .rsrc   ascii   Zfdc
+574 0x0000d501 0x0040d501 5   6    .rsrc   ascii   ;w\r<y
+575 0x0000d50d 0x0040d50d 5   7    .rsrc   utf8    _s-ԛQ
+576 0x0000d524 0x0040d524 4   5    .rsrc   ascii   Zfdc
+577 0x0000d53b 0x0040d53b 6   9    .rsrc   utf8    ظ^s-Ҙ?
+578 0x0000d554 0x0040d554 4   5    .rsrc   ascii   Zfdc
+579 0x0000d56b 0x0040d56b 8   12   .rsrc   utf8    Υ_s-ї9ȍ8
+580 0x0000d584 0x0040d584 4   5    .rsrc   ascii   Yfdc
+581 0x0000d59c 0x0040d59c 16  23   .rsrc   utf8    >_s-Ǉ)і9җ<ԛQӜYӞe
+582 0x0000d84e 0x0040d84e 20  42   .rsrc   utf16le FirmwareLoaderSimple
+583 0x0000d87e 0x0040d87e 20  42   .rsrc   utf16le Microsoft Sans Serif
+584 0x0000d8e8 0x0040d8e8 6   14   .rsrc   utf16le Cancel
+585 0x0000d910 0x0040d910 17  36   .rsrc   utf16le msctls_progress32
+586 0x0000d954 0x0040d954 8   18   .rsrc   utf16le Progress
+587 0x0000d984 0x0040d984 7   16   .rsrc   utf16le Welcome
+588 0x0000d9b4 0x0040d9b4 6   14   .rsrc   utf16le Static
+589 0x0000d9ce 0x0040d9ce 15  32   .rsrc   utf16le VS_VERSION_INFO
+590 0x0000da2a 0x0040da2a 14  30   .rsrc   utf16le StringFileInfo
+591 0x0000da4e 0x0040da4e 8   18   .rsrc   utf16le 040904e4
+592 0x0000da66 0x0040da66 11  24   .rsrc   utf16le CompanyName
+593 0x0000da80 0x0040da80 11  24   .rsrc   utf16le Pakon, Inc.
+594 0x0000da9e 0x0040da9e 15  32   .rsrc   utf16le FileDescription
+595 0x0000dac0 0x0040dac0 22  46   .rsrc   utf16le Firmware Loader Simple
+596 0x0000daf6 0x0040daf6 11  24   .rsrc   utf16le FileVersion
+597 0x0000db10 0x0040db10 7   16   .rsrc   utf16le 1.0.0.1
+598 0x0000db26 0x0040db26 12  26   .rsrc   utf16le InternalName
+599 0x0000db40 0x0040db40 24  50   .rsrc   utf16le FirmwareLoaderSimple.exe
+600 0x0000db7a 0x0040db7a 14  30   .rsrc   utf16le LegalCopyright
+601 0x0000db98 0x0040db98 33  68   .rsrc   utf16le Pakon, Inc.  All rights reserved.
+602 0x0000dbe2 0x0040dbe2 16  34   .rsrc   utf16le OriginalFilename
+603 0x0000dc04 0x0040dc04 24  50   .rsrc   utf16le FirmwareLoaderSimple.exe
+604 0x0000dc3e 0x0040dc3e 11  24   .rsrc   utf16le ProductName
+605 0x0000dc58 0x0040dc58 22  46   .rsrc   utf16le Firmware Loader Simple
+606 0x0000dc8e 0x0040dc8e 14  30   .rsrc   utf16le ProductVersion
+607 0x0000dcac 0x0040dcac 7   16   .rsrc   utf16le 1.0.0.1
+608 0x0000dcc4 0x0040dcc4 10  22   .rsrc   utf16le arFileInfo
+609 0x0000dce2 0x0040dce2 11  24   .rsrc   utf16le Translation
+610 0x0000dd0c 0x0040dd0c 30  62   .rsrc   utf16le &About FirmwareLoaderSimple...
+611 0x0000dd5a 0x0040dd5a 56  114  .rsrc   utf16le F235 COM Server Error"Invalid Pointer To Client Callback
+612 0x0000ddd2 0x0040ddd2 101 204  .rsrc   utf16le Worker Thread Already Exists"QueryInterface for Client CallBack%CoMarshalInterThreadInterfaceInStream
+613 0x0000de9e 0x0040de9e 30  62   .rsrc   utf16le Unable To Create Worker Thread
+614 0x0000dedc 0x0040dedc 125 252  .rsrc   utf16le WorkerThreadCoInitialize,Worker Thread CoGetInterfaceAndReleaseStream\eWorker Thread Client Signal\eWorker Thread Start Timeout
+615 0x0000dfd8 0x0040dfd8 23  48   .rsrc   utf16le Scanner Not Initialized
+616 0x0000e008 0x0040e008 21  44   .rsrc   utf16le No Pictures Or Strips
+617 0x0000e034 0x0040e034 28  58   .rsrc   utf16le Too Many Rolls\rInvalid Index
+618 0x0000e06e 0x0040e06e 23  48   .rsrc   utf16le Invalid Member Variable
+619 0x0000e09e 0x0040e09e 60  122  .rsrc   utf16le Invalid Parameter*No Worker Thread For Multiple SaveToMemory
+620 0x0000e118 0x0040e118 23  48   .rsrc   utf16le No Client Memory Buffer
+621 0x0000e148 0x0040e148 33  68   .rsrc   utf16le  One File Name For Multiple Saves
+622 0x0000e18c 0x0040e18c 14  30   .rsrc   utf16le Start Up Error
+623 0x0000e1aa 0x0040e1aa 23  48   .rsrc   utf16le CBAdvise Already Called
+624 0x0000e1da 0x0040e1da 53  108  .rsrc   utf16le CBAdvise Not Called!Initialize Scanner Already Called
+625 0x0000e246 0x0040e246 76  154  .rsrc   utf16le Motor Adjust Speed is Zero1This function is not implemented in the hardware.
+626 0x0000e2e0 0x0040e2e0 14  30   .rsrc   utf16le Previous Error
+627 0x0000e2fe 0x0040e2fe 28  58   .rsrc   utf16le Call Enable Full Calibration
+628 0x0000e338 0x0040e338 31  64   .rsrc   utf16le File Name List Empty\nLamp Error
+629 0x0000e378 0x0040e378 30  62   .rsrc   utf16le Changing Frame Number With Aps
+630 0x0000e3b6 0x0040e3b6 20  42   .rsrc   utf16le Not Allowed With Aps
+631 0x0000e3ee 0x0040e3ee 19  40   .rsrc   utf16le WTO_InitializeError
+632 0x0000e416 0x0040e416 17  36   .rsrc   utf16le WTO_HardwareError
+633 0x0000e43e 0x0040e43e 26  54   .rsrc   utf16le WTO_FirmwareUpdateApsError
+634 0x0000e474 0x0040e474 26  54   .rsrc   utf16le WTO_FirmwareUpdateCcdError
+635 0x0000e4aa 0x0040e4aa 53  108  .rsrc   utf16le WTO_FirmwareUpdateDxError\eWTO_FirmwareUpdateLampError
+636 0x0000e516 0x0040e516 28  58   .rsrc   utf16le WTO_FirmwareUpdateMotorError
+637 0x0000e550 0x0040e550 13  28   .rsrc   utf16le \fWTO_TLXError
+638 0x0000e584 0x0040e584 35  72   .rsrc   utf16le "The application will shut down now
+639 0x0000e5ce 0x0040e5ce 25  52   .rsrc   utf16le Error reported improperly

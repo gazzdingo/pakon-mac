@@ -1,0 +1,172 @@
+PSI-FX35 Installation CD Release Notes 
+____________________________________________________________________
+Installation Instructions:
+Remove all currently installed Pakon software using the Add/Remove Programs in the control panel. You may need the original CD to succesfully remove the software.
+Install the FX35 Redistributable Software.
+Insert the CD
+On the Windows task bar Click “Start” and then “Run”
+Type “R:\fx35install\setup.exe”
+Click OK and follow the instructions of the install wizard
+Install the PSI FX35 software by .
+Insert the CD
+On the Windows task bar Click “Start” and then “Run”
+Type “R:\setup.exe”
+Click OK and follow the instructions of the install wizard
+Start IQueue III Setup program to configure your output devices.  If you previously used IQueue II, the setup should carry through to IQueue III.
+Close IQueue III Setup program
+Start PSI and IQueue
+Setup PSI EasyOrder
+PSI/IQueue II Version 3.0 Build 3.26
+May 17, 2007
+Changes in this version:
+NEW! IQueue III program that adds order management features such as:
+Easily view and asses the status of an order in IQueue.
+View completed orders and easily make over all or part of the completed order.
+View thumbnails of any order to facilitate correlation of an order number to completed prints without back printing.
+This version of IQueue does not support the production of Contact and Impak Sleeving!  If your lab uses IQueue to produce either of these products, then you should not install this upgrade.  You need to continue to use PSI 2.4 which supports these legacy products.
+
+Built with FX35 SDK 3.1 that adds black and white scanning on an F135 and F135 Plus. PSI EasyOrder and classic view scan dialog now include options for scanning Black and White C41 when connected to either an F135 or an F135 Plus scanner.
+
+Enabled the 16 base Gain Test for an F-135 plus.  Previously this option was incorrectly hidden.
+
+Fixed bug where in classic mode you could export an order to make prints, then edit the images using the bottom tool bar or the key board short cuts and then re-make prints but the new prints did not have the new edits included.
+
+Removed the Contact and Pakon Sleeve options from the product order entry screens.  These products are no longer supported.
+
+Hiding the Internet option in the product order entry screens unless the CustomInet dll is present.
+
+Removed EasyOrder package buttons that had floppy or Impak Sleeving and replace with new package mix.
+
+DLSQueue interface should not be enabled in this release since the DLSQueue interface has not been tested.
+
+PSI/IQueue II Version 3.0 Build 2.25
+November 7 2006
+Changes in this version:
+
+Change Products2.pkn file from a PSI proprietary format to an .ini format (Products2.cfg).  If you previously deleted the Products2.pkn file and restarted the software to clear up a configuration problem then you should now delete products2.pkn and products2.cfg and then restart the software in order to clear up a configuration problem.
+Upon return from SID mode no longer re-saving all images; only the images that need resaving get resaved. 
+
+PSI/IQueue II Version 3.0 Build 0.22
+August 17 2006
+Changes in this version:
+Add registry setting to hide the dialog tool bars at the bottom of the PSI Classic view.  These dialog toolbars include the Image edit tool bars and the Print Quantity tool bars.  This registry affects the classic view only and does not affect easy order mode.  It is intended for people that don't use EasyOrder and don't want to consume screen space with tool bars.  I.E manufacturing and service people.  To turn off the tool bars in classic view use regedit to add a new DWORD value ShowToolbars=0 in the registry hive “HKLM\Software\pakon\psi\setup”.
+
+PSI/IQueue II Version 3.0 Build 0.20
+July 14 2006
+Changes in this version:
+Added new image edit tool bar controls and new menu commands for saturation and BnW effects.
+
+Now displaying color descriptors for sharpness as well as the new saturation.
+
+Fixed bug where extra pictures were selected upon return from SID mode. 
+
+Upon return from SID mode no longer re-saving all images; only the images that need resaving get resaved. 
+
+Now showing color and print descriptors in SID Mode
+
+Added guard file to prevent PSI archive clean up from deleting a DLS order folder from the archive before DLSQueue has a chance to write the control file.
+
+Fixed bug where DLSQueue was grabbing orders from Picture Maker before Picture Maker was finished writing the order.
+PSI/IQueue II Version 3.0 Build 0.19
+May 23 2006
+Changes in this version:
+Built with FX35 SDK 3.0 that adds premium color path for scanned images and upgrades the path for images from file to Ansel 4.1.
+
+Added options for Premium color path when scanning in both PSI EasyOrder and in classic view.  You must install the Premium Color Path enabler to see and use this option.
+
+Updated Floppy Package Icon to be KPCD w/o thumb packages.
+
+Updated Preview and Select + Prints + KPCD package icon to be a Kpcd w/o thumb + Prints package.
+
+Added LiteOn 160P to list of approved KPCD writers.  160P is the ROS compliant version of the 1693.
+
+Added extensive logging to the DLSQueue.  Registry setting controls weather logging is on or off.
+
+Fixed bug where archive manager would not always be deleting the oldest archives first.  Was checking access time, now checking created time.
+PSI/IQueue II Version 2.4 Build 0.3
+March 2006
+Changes in this version:
+Added TEAC DV-W28 and LITE-ON SHW-1635S to list of approved KPCD writers
+
+Added F135 Plus Scan dialog
+
+Includes FX35 1.2 which supports the F135 Plus
+
+Fix bug in 2.3.0.9 Single Print method that would occassionaly casue an exception when printing.
+PSI/IQueue II Version 2.3 Build 0.9
+February 2006
+Changes in this version:
+every 24 hours, PSI cleans up the archive
+
+Adds support for Picture Center Manager
+
+Adds support for EZPrints Specialty products via DLSQueue
+
+On a KPCD the OrderId is now contained in info.cd so a lab can look in Info.cd and associate a CD to an order.
+
+Single Print method changed to queue two jobs at once in order to increase output of the printers.  This has not been tested thouroughly and likely has a bug.  Therefore 2.3.0.9 should not be used for printing service prints.
+PSI/IQueue II Version 2.2 Build 0.5
+December 2005
+Changes in this version:
+One PSI/IQueue software installation that works with any Pakon scanner.
+
+Improved Image quality, especially on overs and unders.  Images should have more consistent dark point levels that are dark and bright white levels.  Less noise should be present in the final images as well.
+
+Improved DX reading on all film types.
+
+Improved APS Cartridge handling, including Print Aspect Ratio and frame number editing and improved MOF reading.
+
+Improved Workflow screens in PSI easy order including skipping of screens with only one option and more informative messages on others.
+
+Can now scroll through images in the order using the hi res data (double click an image and scroll using the previous next buttons.)
+
+More menu options in the Picture context menu for greater flexibiltiy in EasyOrder.
+
+Increased the number of print types from 3 to 6 and improved print quantity selection. Added print summary to products dialog.  Removed the Skip command.
+
+Added Error logging for IQueue.
+
+Improved printer status and printer monitoring in IQueue.
+
+Enabled the FrameType command in the main menu.
+
+Improved the image quality of pictures printed on Kodak 6800 printers.
+
+Updated GoldenHawk to 4.0B.
+
+New work flow options in IQueue including New Running Jobs Grid, Dual Printing, Group Jobs by Device, Pause Job at completion, and Promote Job.  See table below
+
+IQueue Running Grid Feature
+Description
+New Running Jobs Grid
+The running jobs grid now shows a list of output devices instead of output products.  A device may be paused and resumed.
+Dual Printing
+Singles, indexes may be setup to output on multiple devices for increased productivity
+Group Jobs by Device
+Jobs from the same order and that are output on the same device may be grouped by device to enhance order collation
+Pause Job at completion
+The job will automatically pause at completion allowing the operator to see the Roll ID for which the product is associated with.
+Promote Job
+Allows the operator to promote a job in the pending grid so it is next to be produced.
+More Information
+CD Jobs are now displayed as either Pakon CD or Kodak Picture CD.
+
+CR 679 –Added new cdr to list of KPCD approved writers."SOHW-1693S")
+Bug 676 - Archive dialog column heading use static strings that can't be translated 
+Bug 640 - Switching between EasyOrder and classic view could leave the 
+		Frames per strip setting in an invalid state.  This could result in an
+		EC_InvalidParameter when leaving the Scan Dialog.
+CR 639 - Color adjust dialog placement and sharpness adjust dialog placement should be 
+		 persistent 
+CR 638 – Add PSI command “Setup->Color Preference”   
+CR 637 - Add splice mode 
+Bug 636 - Cropping does not mark an order as modified, so cropping does
+		     not always show up in prints.
+Bug 595 – CD burner not visible from PSI or Windows Explorer when IQueue running.
+Bug 582 - Too many files being imported EC 3012 should be handled better
+Bug 575 - PSI doesn't recover well from an error code 
+		     EC_BufferDriveMegabytesRollTooSmall
+Bug 573 - Open from Archive problems
+KIAS orders can now be opened via archive search
+Open button is disabled until valid search results
+Message box when search returns no results

@@ -1,0 +1,316 @@
+770  0x00009f57 0x10009f57 6   13   .text   utf16le jjjjjj
+824  0x0000adac 0x1000adac 7   15   .text   utf16le jjjjjjj
+1186 0x00011395 0x10011395 5   11   .text   utf16le jjjjj
+1783 0x000212f4 0x100212f4 13  28   .rdata  utf16le uiStatus = %u
+1784 0x00021310 0x10021310 23  48   .rdata  utf16le Addr 0x%02X, Cmd 0x%02X
+1785 0x00021340 0x10021340 11  24   .rdata  utf16le EventDriver
+1786 0x00021358 0x10021358 30  62   .rdata  utf16le Type %x, PktLen %x, Address %x
+1787 0x00021398 0x10021398 13  28   .rdata  utf16le iScannerModel
+1788 0x000213b4 0x100213b4 7   16   .rdata  utf16le iDriver
+1789 0x000213c4 0x100213c4 17  36   .rdata  utf16le iPersonalityIndex
+1790 0x000213f0 0x100213f0 23  48   .rdata  utf16le \\?\%s\Personalities\%s
+1791 0x00021420 0x10021420 12  26   .rdata  utf16le USB FIFO.bin
+1792 0x0002143c 0x1002143c 11  24   .rdata  utf16le USB DDR.bin
+1793 0x00021454 0x10021454 12  26   .rdata  utf16le USB F135.bin
+1794 0x00021470 0x10021470 12  26   .rdata  utf16le USB F335.bin
+1795 0x000214b4 0x100214b4 4   10   .rdata  utf16le Lamp
+1796 0x000214c8 0x100214c8 5   12   .rdata  utf16le Motor
+1797 0x000214dc 0x100214dc 21  44   .rdata  utf16le Second Section Failed
+1798 0x00021508 0x10021508 20  42   .rdata  utf16le First Section Failed
+1799 0x00021534 0x10021534 20  42   .rdata  utf16le Both Sections Failed
+1800 0x00021568 0x10021568 28  58   .rdata  utf16le m_DriverOverlappedPPB.hEvent
+1801 0x000215a4 0x100215a4 12  26   .rdata  utf16le \\.\Pakonx35
+1802 0x000215c0 0x100215c0 12  26   .rdata  utf16le \\.\Pakon135
+1803 0x000215dc 0x100215dc 12  26   .rdata  utf16le \\.\Loopback
+1804 0x000215f8 0x100215f8 4   10   .rdata  utf16le PicL
+1805 0x0002160c 0x1002160c 4   10   .rdata  utf16le PicM
+1806 0x00021680 0x10021680 37  76   .rdata  utf16le C:\Program Files\Pakon\FirmwareLoader
+1807 0x000216d4 0x100216d4 7   16   .rdata  utf16le UseF335
+1808 0x000216e4 0x100216e4 7   16   .rdata  utf16le UseF135
+1809 0x00021700 0x10021700 11  24   .rdata  utf16le ProgramPath
+1810 0x00021718 0x10021718 5   12   .rdata  utf16le \Scan
+1811 0x00021724 0x10021724 7   16   .rdata  utf16le Version
+1812 0x00021738 0x10021738 39  80   .rdata  utf16le \StringFileInfo\040904B0\ProductVersion
+1813 0x00021788 0x10021788 18  38   .rdata  utf16le Software\Pakon\TLC
+1814 0x000217b0 0x100217b0 18  38   .rdata  utf16le Software\Pakon\TLB
+1815 0x000217d8 0x100217d8 30  62   .rdata  utf16le Software\Pakon\TLA\ProgramPath
+1816 0x00021818 0x10021818 18  38   .rdata  utf16le Software\Pakon\TLA
+1817 0x00021840 0x10021840 27  56   .rdata  utf16le \Logs\PakonErrorLogMain.txt
+1819 0x0002194e 0x1002194e 7   15   .rdata  utf16le \bH\b\bp\f\b
+1820 0x0002197c 0x1002197c 5   11   .rdata  utf16le \b\bp\f\b
+1821 0x000219a2 0x100219a2 4   9    .rdata  utf16le \bp\b\b
+1822 0x000219c6 0x100219c6 7   15   .rdata  utf16le \bH\b\bp\f\b
+1823 0x00021a5e 0x10021a5e 4   9    .rdata  utf16le \n\f\b\b
+1824 0x00021a74 0x10021a74 4   9    .rdata  utf16le \bp\b\b
+1825 0x00021af6 0x10021af6 5   11   .rdata  utf16le D\bpH\b
+1826 0x00021b20 0x10021b20 6   14   .rdata  utf16le \bHH\f\bp
+1827 0x00021b6a 0x10021b6a 4   9    .rdata  utf16le \bp\b\b
+1828 0x00021bac 0x10021bac 4   9    .rdata  utf16le \bp\b\b
+1829 0x00021bee 0x10021bee 8   18   .rdata  utf16le \rH\b\rH\f\rH
+1830 0x00021c12 0x10021c12 19  40   .rdata  utf16le \rH \rH$\rH(\rH,\rH0\rp4\b
+1834 0x00021e28 0x10021e28 57  116  .rdata  utf16le IOCTL_EZUSB_VENDOR_OR_CLASS_REQUEST, Request %x, Value %x
+1835 0x00021e9c 0x10021e9c 25  52   .rdata  utf16le EC_DRV_TransferInProgress
+1836 0x00021ed0 0x10021ed0 23  48   .rdata  utf16le EC_DRV_InfoBufferString
+1837 0x00021f00 0x10021f00 30  62   .rdata  utf16le EC_DRV_PacketReadWriteMismatch
+1838 0x00021f40 0x10021f40 31  64   .rdata  utf16le EC_DRV_PacketHostErrorUndefined
+1839 0x00021f80 0x10021f80 25  52   .rdata  utf16le EC_DRV_PacketHostErrorBus
+1840 0x00021fb4 0x10021fb4 26  54   .rdata  utf16le EC_DRV_PacketHostErrorAlgo
+1841 0x00021ff0 0x10021ff0 36  74   .rdata  utf16le EC_DRV_PacketHostErrorEndPointLength
+1842 0x00022040 0x10022040 37  76   .rdata  utf16le EC_DRV_PacketHostErrorEndPointTimeOut
+1843 0x00022090 0x10022090 36  74   .rdata  utf16le EC_DRV_PacketHostErrorEndPointFormat
+1844 0x000220dc 0x100220dc 27  56   .rdata  utf16le EC_DRV_PacketHostErrorCkSum
+1845 0x00022114 0x10022114 28  58   .rdata  utf16le EC_DRV_PacketHostErrorFormat
+1846 0x00022150 0x10022150 27  56   .rdata  utf16le EC_DRV_PacketHostErrorNoAck
+1847 0x00022188 0x10022188 19  40   .rdata  utf16le EC_DRV_PacketCmdErr
+1848 0x000221b0 0x100221b0 20  42   .rdata  utf16le EC_DRV_PacketCommErr
+1849 0x000221dc 0x100221dc 24  50   .rdata  utf16le EC_DRV_PacketChecksumErr
+1850 0x00022210 0x10022210 19  40   .rdata  utf16le EC_DRV_FifoOverflow
+1851 0x00022238 0x10022238 17  36   .rdata  utf16le EC_DRV_PacketBusy
+1852 0x0002225c 0x1002225c 24  50   .rdata  utf16le EC_DRV_InvalidPacketType
+1853 0x00022290 0x10022290 15  32   .rdata  utf16le EC_DRV_LostSync
+1854 0x000222b0 0x100222b0 23  48   .rdata  utf16le EC_DRV_RingTailOverflow
+1855 0x000222e0 0x100222e0 32  66   .rdata  utf16le EC_DRV_CannotFindStartOfScanLine
+1856 0x00022324 0x10022324 14  30   .rdata  utf16le EC_DRV_Unknown
+1857 0x00022344 0x10022344 26  54   .rdata  utf16le EC_WIN_WaitForSingleObject
+1858 0x0002237c 0x1002237c 20  42   .rdata  utf16le EC_WIN_VirtualUnlock
+1859 0x000223a8 0x100223a8 18  38   .rdata  utf16le EC_WIN_VirtualLock
+1860 0x000223d0 0x100223d0 18  38   .rdata  utf16le EC_WIN_VirtualFree
+1861 0x000223f8 0x100223f8 19  40   .rdata  utf16le EC_WIN_VirtualAlloc
+1862 0x00022420 0x10022420 22  46   .rdata  utf16le EC_WIN_UnmapViewOfFile
+1863 0x00022450 0x10022450 31  64   .rdata  utf16le EC_WIN_SetProcessWorkingSetSize
+1864 0x00022490 0x10022490 23  48   .rdata  utf16le EC_WIN_SetFilePointerEx
+1865 0x000224c0 0x100224c0 15  32   .rdata  utf16le EC_WIN_SetEvent
+1866 0x000224e0 0x100224e0 19  40   .rdata  utf16le EC_WIN_SetEndOfFile
+1867 0x00022508 0x10022508 17  36   .rdata  utf16le EC_WIN_ResetEvent
+1868 0x0002252c 0x1002252c 22  46   .rdata  utf16le EC_WIN_OpenFileMapping
+1869 0x0002255c 0x1002255c 16  34   .rdata  utf16le EC_WIN_OpenEvent
+1870 0x00022580 0x10022580 20  42   .rdata  utf16le EC_WIN_MapViewOfFile
+1871 0x000225ac 0x100225ac 18  38   .rdata  utf16le EC_WIN_LoadLibrary
+1872 0x000225d8 0x100225d8 31  64   .rdata  utf16le EC_WIN_GetProcessWorkingSetSize
+1873 0x00022618 0x10022618 26  54   .rdata  utf16le EC_WIN_GetOverlappedResult
+1874 0x00022650 0x10022650 18  38   .rdata  utf16le EC_WIN_GetFileSize
+1875 0x00022678 0x10022678 25  52   .rdata  utf16le EC_WIN_GetDiskFreeSpaceEx
+1876 0x000226ac 0x100226ac 23  48   .rdata  utf16le EC_WIN_GetDiskFreeSpace
+1877 0x000226dc 0x100226dc 18  38   .rdata  utf16le EC_WIN_FreeLibrary
+1878 0x00022704 0x10022704 20  42   .rdata  utf16le EC_WIN_FindFirstFile
+1879 0x00022730 0x10022730 16  34   .rdata  utf16le EC_WIN_FileWrite
+1880 0x00022754 0x10022754 27  56   .rdata  utf16le EC_WIN_FileTimeToSystemTime
+1881 0x0002278c 0x1002278c 21  44   .rdata  utf16le EC_WIN_FileSetPointer
+1882 0x000227b8 0x100227b8 15  32   .rdata  utf16le EC_WIN_FileRead
+1883 0x000227d8 0x100227d8 15  32   .rdata  utf16le EC_WIN_FileOpen
+1884 0x000227f8 0x100227f8 16  34   .rdata  utf16le EC_WIN_FileClose
+1885 0x0002281c 0x1002281c 22  46   .rdata  utf16le EC_WIN_DeviceIoControl
+1886 0x0002284c 0x1002284c 24  50   .rdata  utf16le EC_WIN_CreateFileMapping
+1887 0x00022880 0x10022880 18  38   .rdata  utf16le EC_WIN_CreateEvent
+1888 0x000228a8 0x100228a8 22  46   .rdata  utf16le EC_WIN_CreateDirectory
+1889 0x000228d8 0x100228d8 15  32   .rdata  utf16le EC_WIN_CancelIo
+1890 0x000228f8 0x100228f8 17  36   .rdata  utf16le EC_WrongByteCount
+1891 0x0002291c 0x1002291c 15  32   .rdata  utf16le EC_VerifyFailed
+1892 0x0002293c 0x1002293c 13  28   .rdata  utf16le EC_UuidCreate
+1893 0x00022958 0x10022958 10  22   .rdata  utf16le EC_TimeOut
+1894 0x00022970 0x10022970 18  38   .rdata  utf16le EC_StepperPosition
+1895 0x00022998 0x10022998 20  42   .rdata  utf16le EC_StepperDidNotStop
+1896 0x000229c4 0x100229c4 23  48   .rdata  utf16le EC_StepperAlreadyMoving
+1897 0x000229f4 0x100229f4 15  32   .rdata  utf16le EC_StartUpError
+1898 0x00022a14 0x10022a14 28  58   .rdata  utf16le EC_SelfTestFailedLensStepper
+1899 0x00022a50 0x10022a50 26  54   .rdata  utf16le EC_SelfTestFailedFilmDrive
+1900 0x00022a88 0x10022a88 27  56   .rdata  utf16le EC_SelfTestFailedCcdStepper
+1901 0x00022ac0 0x10022ac0 18  38   .rdata  utf16le EC_ScannerNotFound
+1902 0x00022ae8 0x10022ae8 15  32   .rdata  utf16le EC_ReadRegistry
+1903 0x00022b08 0x10022b08 17  36   .rdata  utf16le EC_PpbFailureTest
+1904 0x00022b2c 0x10022b2c 13  28   .rdata  utf16le EC_PpbFailure
+1905 0x00022b48 0x10022b48 15  32   .rdata  utf16le EC_ParsingError
+1906 0x00022b68 0x10022b68 15  32   .rdata  utf16le EC_NoBootLoader
+1907 0x00022b88 0x10022b88 21  44   .rdata  utf16le EC_MotorBoardNotFound
+1908 0x00022bb4 0x10022bb4 12  26   .rdata  utf16le EC_MemoryNew
+1909 0x00022bd0 0x10022bd0 20  42   .rdata  utf16le EC_LogHardwareString
+1910 0x00022bfc 0x10022bfc 23  48   .rdata  utf16le EC_FirmwareVerification
+1911 0x00022c2c 0x10022c2c 15  32   .rdata  utf16le EC_FileNotFound
+1912 0x00022c4c 0x10022c4c 16  34   .rdata  utf16le EC_FileCorrupted
+1913 0x00022c70 0x10022c70 22  46   .rdata  utf16le EC_EEPromMemoryAddress
+1914 0x00022ca0 0x10022ca0 15  32   .rdata  utf16le EC_EEPromLength
+1915 0x00022cc0 0x10022cc0 18  38   .rdata  utf16le EC_EEPromCorrupted
+1916 0x00022ce8 0x10022ce8 16  34   .rdata  utf16le EC_EEPromAddress
+1917 0x00022d0c 0x10022d0c 29  60   .rdata  utf16le EC_CreateDirectoryInvalidForm
+1918 0x00022d48 0x10022d48 16  34   .rdata  utf16le EC_PreviousError
+1919 0x00022d70 0x10022d70 33  68   .rdata  utf16le EC_InitializeScannerAlreadyCalled
+1920 0x00022db4 0x10022db4 20  42   .rdata  utf16le EC_CBAdviseNotCalled
+1921 0x00022de0 0x10022de0 24  50   .rdata  utf16le EC_CBAdviseAlreadyCalled
+1922 0x00022e14 0x10022e14 19  40   .rdata  utf16le EC_InvalidParameter
+1923 0x00022e3c 0x10022e3c 24  50   .rdata  utf16le EC_InvalidMemberVariable
+1924 0x00022e70 0x10022e70 15  32   .rdata  utf16le EC_InvalidIndex
+1925 0x00022e90 0x10022e90 27  56   .rdata  utf16le EC_WorkerThreadStartTimeout
+1926 0x00022ec8 0x10022ec8 27  56   .rdata  utf16le EC_WorkerThreadClientSignal
+1927 0x00022f00 0x10022f00 45  92   .rdata  utf16le EC_WorkerThreadCoGetInterfaceAndReleaseStream
+1928 0x00022f5c 0x10022f5c 27  56   .rdata  utf16le EC_WorkerThreadCoInitialize
+1929 0x00022f94 0x10022f94 29  60   .rdata  utf16le EC_UnableToCreateWorkerThread
+1930 0x00022fd0 0x10022fd0 40  82   .rdata  utf16le EC_CoMarshalInterThreadInterfaceInStream
+1931 0x00023024 0x10023024 17  36   .rdata  utf16le EC_QueryInterface
+1932 0x00023048 0x10023048 21  44   .rdata  utf16le EC_WorkerThreadExists
+1933 0x00023074 0x10023074 29  60   .rdata  utf16le EC_InvalidPtrToClientCallback
+1934 0x000230b0 0x100230b0 20  42   .rdata  utf16le FN_bWritePersonality
+1935 0x000230dc 0x100230dc 18  38   .rdata  utf16le FN_bVerifyPicLarge
+1936 0x00023104 0x10023104 21  44   .rdata  utf16le FN_bVerifyPersonality
+1937 0x00023130 0x10023130 19  40   .rdata  utf16le FN_bSetScannerModel
+1938 0x00023158 0x10023158 17  36   .rdata  utf16le FN_SetPersonality
+1939 0x0002317c 0x1002317c 26  54   .rdata  utf16le FN_bSetHeartBeatTimeOut335
+1940 0x000231b4 0x100231b4 22  46   .rdata  utf16le FN_bSendClientCallBack
+1941 0x000231e4 0x100231e4 25  52   .rdata  utf16le FN_ReleasePressureRollers
+1942 0x00023218 0x10023218 21  44   .rdata  utf16le FN_bReadPicEEPromByte
+1943 0x00023244 0x10023244 24  50   .rdata  utf16le FN_bReadPersonalityFiles
+1944 0x00023278 0x10023278 15  32   .rdata  utf16le FN_bReadHexFile
+1945 0x00023298 0x10023298 21  44   .rdata  utf16le FN_bReadGeneralParams
+1946 0x000232c4 0x100232c4 28  58   .rdata  utf16le FN_bReadEEPromBasicsCheckSum
+1947 0x00023300 0x10023300 20  42   .rdata  utf16le FN_bReadEEPromBasics
+1948 0x0002332c 0x1002332c 22  46   .rdata  utf16le FN_bProcessHexFileLine
+1949 0x0002335c 0x1002335c 24  50   .rdata  utf16le FN_bPicToBootLoaderState
+1950 0x00023390 0x10023390 7   16   .rdata  utf16le FN_OnOK
+1951 0x000233a0 0x100233a0 28  58   .rdata  utf16le FN_OnMsgLoadFirmwareCallBack
+1952 0x000233dc 0x100233dc 15  32   .rdata  utf16le FN_OnInitDialog
+1953 0x000233fc 0x100233fc 17  36   .rdata  utf16le FN_MoveFilmGuides
+1954 0x00023420 0x10023420 16  34   .rdata  utf16le FN_bLoadPicLarge
+1955 0x00023444 0x10023444 11  24   .rdata  utf16le FN_bLoadPic
+1956 0x0002345c 0x1002345c 29  60   .rdata  utf16le FN_LoadPersonalityAndFirmware
+1957 0x00023498 0x10023498 20  42   .rdata  utf16le FN_uiLoadFirmwareNow
+1958 0x000234c4 0x100234c4 19  40   .rdata  utf16le FN_bLoadFirmwareNow
+1959 0x000234ec 0x100234ec 15  32   .rdata  utf16le FN_LoadFirmware
+1960 0x0002350c 0x1002350c 17  36   .rdata  utf16le FN_bInitWorkerSub
+1961 0x00023530 0x10023530 20  42   .rdata  utf16le FN_InitializeScanner
+1962 0x0002355c 0x1002355c 8   18   .rdata  utf16le FN_bInit
+1963 0x00023570 0x10023570 18  38   .rdata  utf16le FN_bHexToWordArray
+1964 0x00023598 0x10023598 24  50   .rdata  utf16le FN_FuncInitializeScanner
+1965 0x000235cc 0x100235cc 25  52   .rdata  utf16le FN_bFirmwareWritePacketNL
+1966 0x00023600 0x10023600 26  54   .rdata  utf16le FN_bFirmwarePutProgramWord
+1967 0x00023638 0x10023638 26  54   .rdata  utf16le FN_bFirmwarePutProgramData
+1968 0x00023670 0x10023670 28  58   .rdata  utf16le FN_bFirmwareGetProgramWords8
+1969 0x000236ac 0x100236ac 26  54   .rdata  utf16le FN_bFirmwareGetProgramWord
+1970 0x000236e4 0x100236e4 26  54   .rdata  utf16le FN_bFirmwareGetByteArrayNL
+1971 0x0002371c 0x1002371c 18  38   .rdata  utf16le FN_bFirmwareAssess
+1972 0x00023744 0x10023744 17  36   .rdata  utf16le FN_FirmwareAssess
+1973 0x00023768 0x10023768 27  56   .rdata  utf16le FN_bFindPicControllerStatus
+1974 0x000237a0 0x100237a0 19  40   .rdata  utf16le FN_bFindPersonality
+1975 0x000237c8 0x100237c8 18  38   .rdata  utf16le FN_FindPersonality
+1976 0x000237f0 0x100237f0 14  30   .rdata  utf16le FN_EraseEEPROM
+1977 0x00023810 0x10023810 17  36   .rdata  utf16le FN_EnableControls
+1978 0x00023834 0x10023834 15  32   .rdata  utf16le FN_bEEPromWrite
+1979 0x00023854 0x10023854 21  44   .rdata  utf16le FN_bEEPromReadSection
+1980 0x00023880 0x10023880 14  30   .rdata  utf16le FN_bEEPromRead
+1981 0x000238a0 0x100238a0 21  44   .rdata  utf16le FN_bEEPromSendVendReq
+1982 0x000238cc 0x100238cc 20  42   .rdata  utf16le FN_bDrvWritePacketNL
+1983 0x000238f8 0x100238f8 22  46   .rdata  utf16le FN_bDrvPutRegisterWord
+1984 0x00023928 0x10023928 22  46   .rdata  utf16le FN_bDrvPutRegisterByte
+1985 0x00023958 0x10023958 18  38   .rdata  utf16le FN_bDrvPutRegister
+1986 0x00023980 0x10023980 17  36   .rdata  utf16le FN_bDrvPutCommand
+1987 0x000239a4 0x100239a4 26  54   .rdata  utf16le FN_bDrvPacketHandleErrorNL
+1988 0x000239dc 0x100239dc 22  46   .rdata  utf16le FN_bDrvPacketExecuteNL
+1989 0x00023a0c 0x10023a0c 11  24   .rdata  utf16le FN_bDrvOpen
+1990 0x00023a24 0x10023a24 22  46   .rdata  utf16le FN_bDrvGetRegisterWord
+1991 0x00023a54 0x10023a54 22  46   .rdata  utf16le FN_bDrvGetRegisterByte
+1992 0x00023a84 0x10023a84 26  54   .rdata  utf16le FN_bDrvGetPpbDeviceReadyNL
+1993 0x00023abc 0x10023abc 23  48   .rdata  utf16le FN_bDrvGetPpbDeviceBusy
+1994 0x00023aec 0x10023aec 17  36   .rdata  utf16le FN_bDrvGetDevInfo
+1995 0x00023b10 0x10023b10 21  44   .rdata  utf16le FN_bDrvGetByteArrayNL
+1996 0x00023b3c 0x10023b3c 19  40   .rdata  utf16le FN_bDrvGetByteArray
+1997 0x00023b64 0x10023b64 24  50   .rdata  utf16le FN_bDrvFindPicController
+1998 0x00023b98 0x10023b98 12  26   .rdata  utf16le FN_bDrvClose
+1999 0x00023bb4 0x10023bb4 18  38   .rdata  utf16le FN_bDriveMotorStop
+2000 0x00023bdc 0x10023bdc 17  36   .rdata  utf16le FN_bDriveMotorRun
+2001 0x00023c00 0x10023c00 16  34   .rdata  utf16le FN_DriveMotorRun
+2002 0x00023c24 0x10023c24 13  28   .rdata  utf16le FN_Destructor
+2003 0x00023c40 0x10023c40 19  40   .rdata  utf16le FN_bCreateDirectory
+2004 0x00023c68 0x10023c68 22  46   .rdata  utf16le FN_bClientCallBackLoop
+2005 0x00023c98 0x10023c98 17  36   .rdata  utf16le FN_bBuildFileList
+2006 0x00023cc4 0x10023cc4 22  46   .rdata  utf16le CN_CiThreadDataLongOps
+2007 0x00023cf4 0x10023cf4 25  52   .rdata  utf16le CN_CiThreadDataScanDriver
+2008 0x00023d28 0x10023d28 9   20   .rdata  utf16le CN_Global
+2009 0x00023d3c 0x10023d3c 17  36   .rdata  utf16le CN_CiFWLoaderMain
+2010 0x00023d60 0x10023d60 13  28   .rdata  utf16le CN_CiFirmware
+2011 0x00023d7c 0x10023d7c 20  42   .rdata  utf16le CN_CiDlgLoadFirmware
+2012 0x00023da8 0x10023da8 15  32   .rdata  utf16le CN_CiConfigScan
+2013 0x00023dc8 0x10023dc8 15  32   .rdata  utf16le CN_CiConfigMain
+2014 0x00023de8 0x10023de8 11  24   .rdata  utf16le CN_CiConfig
+2015 0x00023e00 0x10023e00 12  26   .rdata  utf16le CN_CiCmdComm
+2018 0x00023e7c 0x10023e7c 13  28   .rdata  utf16le  %d %d %u %s\n
+2019 0x00023e98 0x10023e98 19  40   .rdata  utf16le %s %s %s (%d) %u %s
+2020 0x00023ec0 0x10023ec0 19  40   .rdata  utf16le %s %s %s (%d) %s %s
+2021 0x00023ee8 0x10023ee8 12  26   .rdata  utf16le %d %d %d %u\n
+2022 0x00023f04 0x10023f04 16  34   .rdata  utf16le %s %s %s (%d) %u
+2023 0x00023f28 0x10023f28 14  30   .rdata  utf16le %d %d %d 0x%X\n
+2024 0x00023f48 0x10023f48 18  38   .rdata  utf16le %s %s %s (%d) 0x%X
+2025 0x00023f70 0x10023f70 16  34   .rdata  utf16le %s %s %s (%d) %s
+2026 0x00023f9c 0x10023f9c 12  26   .rdata  utf16le pvParameters
+2027 0x00023fb8 0x10023fb8 10  22   .rdata  utf16le %s%02X%02X
+2028 0x00023fd0 0x10023fd0 14  30   .rdata  utf16le %*c%*c%02X%02X
+2029 0x00023ff0 0x10023ff0 29  60   .rdata  utf16le %s\Config\Firmware\%s????.hex
+2030 0x0002405c 0x1002405c 7   16   .rdata  utf16le TypeLib
+2031 0x0002406c 0x1002406c 8   18   .rdata  utf16le Software
+2032 0x00024080 0x10024080 6   14   .rdata  utf16le SYSTEM
+2033 0x00024090 0x10024090 8   18   .rdata  utf16le SECURITY
+2034 0x000240ac 0x100240ac 4   10   .rdata  utf16le Mime
+2035 0x000240b8 0x100240b8 8   18   .rdata  utf16le Hardware
+2036 0x000240cc 0x100240cc 9   20   .rdata  utf16le Interface
+2037 0x000240e0 0x100240e0 8   18   .rdata  utf16le FileType
+2038 0x000240f4 0x100240f4 20  42   .rdata  utf16le Component Categories
+2039 0x00024120 0x10024120 5   12   .rdata  utf16le CLSID
+2040 0x0002412c 0x1002412c 5   12   .rdata  utf16le AppID
+2041 0x00024158 0x10024158 6   14   .rdata  utf16le Delete
+2042 0x00024168 0x10024168 8   18   .rdata  utf16le NoRemove
+2043 0x0002417c 0x1002417c 11  24   .rdata  utf16le ForceRemove
+2045 0x000241c0 0x100241c0 38  78   .rdata  utf16le {061705A3-E441-44F8-9FA6-597E1544594C}
+2046 0x00024210 0x10024210 19  40   .rdata  utf16le HKEY_CURRENT_CONFIG
+2047 0x00024238 0x10024238 13  28   .rdata  utf16le HKEY_DYN_DATA
+2048 0x00024254 0x10024254 21  44   .rdata  utf16le HKEY_PERFORMANCE_DATA
+2049 0x00024280 0x10024280 10  22   .rdata  utf16le HKEY_USERS
+2050 0x00024298 0x10024298 18  38   .rdata  utf16le HKEY_LOCAL_MACHINE
+2051 0x000242c0 0x100242c0 17  36   .rdata  utf16le HKEY_CURRENT_USER
+2052 0x000242e4 0x100242e4 17  36   .rdata  utf16le HKEY_CLASSES_ROOT
+2053 0x00024308 0x10024308 4   10   .rdata  utf16le HKCC
+2054 0x00024314 0x10024314 4   10   .rdata  utf16le HKDD
+2055 0x00024320 0x10024320 4   10   .rdata  utf16le HKPD
+2056 0x00024334 0x10024334 4   10   .rdata  utf16le HKLM
+2057 0x00024340 0x10024340 4   10   .rdata  utf16le HKCU
+2058 0x0002434c 0x1002434c 4   10   .rdata  utf16le HKCR
+2059 0x000243c8 0x100243c8 4   10   .rdata  utf16le .tlb
+2060 0x000243f0 0x100243f0 23  48   .rdata  utf16le \Implemented Categories
+2061 0x00024420 0x10024420 20  42   .rdata  utf16le \Required Categories
+2062 0x0002444c 0x1002444c 6   14   .rdata  utf16le CLSID\
+2063 0x00024498 0x10024498 5   12   .rdata  utf16le APPID
+2064 0x000244b4 0x100244b4 8   18   .rdata  utf16le REGISTRY
+2065 0x000244c8 0x100244c8 10  22   .rdata  utf16le Module_Raw
+2066 0x000244e0 0x100244e0 6   14   .rdata  utf16le Module
+2068 0x00024528 0x10024528 29  60   .rdata  utf16le Software\Pakon\FirmwareLoader
+2069 0x00024590 0x10024590 13  28   .rdata  utf16le Unknown Error
+2071 0x00024728 0x10024728 20  42   .rdata  utf16le bstrFirmwareFileName
+2072 0x00024754 0x10024754 9   20   .rdata  utf16le iPicIndex
+2073 0x00024768 0x10024768 15  32   .rdata  utf16le m_iScannerModel
+2074 0x000247e4 0x100247e4 19  40   .rdata  utf16le EventCallBackClient
+2075 0x0002480c 0x1002480c 10  22   .rdata  utf16le lOperation
+2076 0x00024824 0x10024824 22  46   .rdata  utf16le m_hEventCallBackClient
+2101 0x00024ea8 0x10024ea8 4   10   .rdata  utf16le ull)
+2107 0x00025048 0x10025048 33  68   .rdata  utf16le          (((((                  H
+2108 0x0002524a 0x1002524a 33  68   .rdata  utf16le          h((((                  H
+2109 0x00025348 0x10025348 34  70   .rdata  utf16le                                  H
+2110 0x00025450 0x10025450 32  66   .rdata  utf16le         h((((                  H
+2399 0x0002b160 0x1002d160 17  36   .rsrc   utf16le \bREGISTRY\aTYPELIB
+2400 0x0002b196 0x1002d196 15  32   .rsrc   utf16le VS_VERSION_INFO
+2401 0x0002b1f2 0x1002d1f2 14  30   .rsrc   utf16le StringFileInfo
+2402 0x0002b216 0x1002d216 8   18   .rsrc   utf16le 040904e4
+2403 0x0002b22e 0x1002d22e 11  24   .rsrc   utf16le CompanyName
+2404 0x0002b248 0x1002d248 11  24   .rsrc   utf16le Pakon, Inc.
+2405 0x0002b266 0x1002d266 15  32   .rsrc   utf16le FileDescription
+2406 0x0002b288 0x1002d288 28  58   .rsrc   utf16le Scanner low level com server
+2407 0x0002b2ca 0x1002d2ca 11  24   .rsrc   utf16le FileVersion
+2408 0x0002b2e4 0x1002d2e4 11  24   .rsrc   utf16le 1, 2, 0, 17
+2409 0x0002b302 0x1002d302 12  26   .rsrc   utf16le InternalName
+2410 0x0002b31c 0x1002d31c 21  44   .rsrc   utf16le FirmwareLoaderCom.dll
+2411 0x0002b34e 0x1002d34e 14  30   .rsrc   utf16le LegalCopyright
+2412 0x0002b36c 0x1002d36c 14  30   .rsrc   utf16le Copyright 2005
+2413 0x0002b392 0x1002d392 16  34   .rsrc   utf16le OriginalFilename
+2414 0x0002b3b4 0x1002d3b4 21  44   .rsrc   utf16le FirmwareLoaderCom.dll
+2415 0x0002b3e6 0x1002d3e6 11  24   .rsrc   utf16le ProductName
+2416 0x0002b400 0x1002d400 16  34   .rsrc   utf16le ScannerLLCServer
+2417 0x0002b42a 0x1002d42a 14  30   .rsrc   utf16le ProductVersion
+2418 0x0002b448 0x1002d448 11  24   .rsrc   utf16le 1, 2, 0, 17
+2419 0x0002b468 0x1002d468 10  22   .rsrc   utf16le arFileInfo
+2420 0x0002b486 0x1002d486 11  24   .rsrc   utf16le Translation
+2719 0x00030372 0x10032372 17  36   .rsrc   utf16le FirmwareLoaderCom

@@ -1,0 +1,1474 @@
+ F-335 Series
+Service Manual
+                              Scanner Specifications
+Minimum Host Computer Specifications
+•   Pentium IV CPU 1.7GHZ or higher
+•   1 40GB hard drive to be used for the operating system, application programs, and storage. If
+    IDE, it must be configured as Primary Master.
+•   1 40GB hard drive capable of a sustained transfer rate of 30MB/sec. This is to be a dedicated
+    drive for the scan data buffer. If IDE, it must either be a Secondary Master drive or con-
+    nected using a serial ATA connection. Drive letter must be N:\ and it must NOT be format-
+    ted. This should be a 7200rpm drive. See the “Disk Management” chapter for more
+    information on configuring this drive.
+•   Windows 2000, Service Pack 2
+•   512MB of RAM
+•   A motherboard with an integrated USB 2.0 controller as part of the motherboard chipset. A
+    dedicated port is recommended. USB 2.0 hubs have not been fully tested for reliability.
+•   Separate AGP Graphics card. Using a motherboard with a built-in graphics card will be prob-
+    lematic.
+•   Microsoft USB 2.0 drivers.
+•   SCSI CD-RW drive if both hard drives are IDE. (Plextor 12/10/32S or 40/10/40S recom-
+    mended, and required for Kodak Picture CD support.) If using a serial ATA hard drive, the
+    CD-R can be an IDE drive. (Plextor CD-R PX-W48, 52/24/52A, or PlexWriter Premium rec-
+    ommended, and required for Kodak Picture CD support)
+•   1.5GB Pagefile.(Virtual Memory)
+
+Power
+•   External power supply
+•   15V, 4.6 amps,
+•   50-60 Hz Input voltage frequency
+•   Plug polarity is plus center, minus outside
+•   5.5mm outer diameter, 2.1 mm inner diameter
+
+Contents of Box
+•   F-335 Film Scanner
+•   6ft. USB 2.0 Cable
+•   Software and User Manual CD
+•   Power suppy and power cord
+
+Size
+•   17.3”W x 13.6”H x 12.6”D with cover on
+
+
+
+
+Pakon Part#125383-A                  February 9, 2005                                        1
+Resolutions
+       There are three supported resolutions.
+
+                                    4Base          1000 x 1500
+                                    8Base          1400 x 2100
+                                    16Base         2000 x 3000
+
+Light Source
+       The F-335 uses an LED light source. The LED consists of blue, green, orange, and red
+LED’s. The light source is expected to last for the life of the scanner and should not require main-
+tenance.
+
+Film Types and Variations
+•   The F-335 is designed to scan film in 35mm and 24mm (APS) formats. Color negative, color
+    reversal (positive or slide) film, black and white, C-41 processed black and white films are all
+    supported.
+•   APS film can only be scanned once removed from the canister for the F-335, but cannot be cut
+    into strips. All APS formats (C, H, and P) will scan only in full frame (H) format.
+•   The F-335C can scan APS film while still in the APS canister.
+•   35mm cut strips are supported in sizes from 2 frames to 40 frames. However, to ensure DX
+    code reading, the strips must be a minimum of 3 frames.
+•   Mounted slides are not supported.
+
+
+DX Code Reading
+•   35mm DX codes are read using the ISO 1007 specifications and are used by the host manager.
+•   APS encoding will only be read by a full roll of film, and will not be read from an APS strip.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                          2
+                                     Scanner Theory
+       The F-335 film scanner is a stand alone USB 2.0 device, designed as a high speed scan-
+ning solution. It is highly flexible, and can easily be integrated into a larger digital photo process-
+ing system, or operated as an independent scanning device, attached to a host computer.
+
+
+Optical Tower
+       The scanner is designed around an optical tower, which suspends the lens and CCD
+assembly above the film track. Both the lens and CCD assembly are on stepper motors that move
+up and down on these stepper bars. There are four sets of stepper positions: one for 8 Base and 16
+Base focus positions for 35MM and APS. Each of these positions are determined by calibration,
+performed during manufacturing or by authorized service technicians. 4 Base scan resolution uses
+16 Base resolution that uses CCD binning to create a lower resolution. The client interface soft-
+ware moves the lens and CCD assembly into the proper position after the user selects the resolu-
+tion in which to scan.
+
+
+Light Assembly
+       At the bottom of the optical tower is a small piece of glass suspended by two set screws.
+This glass piece is the illuminator, or light transfer bar. The film track transports the film under-
+neath the optical tower, but above the light transfer bar. The light transfer bar illuminates the
+scanning area. The CCD chip senses the light and converts it into digital information.
+       The light assembly houses the Digital ICE hardware. This hardware is responsible for
+removing scratches and defects in the film. When a four channel scan is initialized, this hardware
+activates. The software then looks at the fourth channel (defect channel) and removes defects
+from the RGB channels.
+
+
+CCD Chip and Assembly
+       The CCD chip is trilinear--it senses three colors: red, green, and blue. A skew in the CCD
+assembly will cause scanned images to be skewed. The result would turn “Skew” into “Skew.”
+(The image would appear slanted, as the italicized “skew” demonstrates.) A skew adjustment pro-
+cedure is performed during the scanner’s original manufacturing calibration process to properly
+align the CCD board. Epoxy is used to glue the CCD board into the proper skew position.
+
+
+
+Pakon Part#125383-A                    February 9, 2005                                           3
+       The CCD board requires a tilt adjustment be done to ensure that the distance from one end
+of the CCD is the same as the opposite end. If these distances are not equal, then one edge of a
+scanned picture will be in focus, and the other edge of the picture will be out of focus. This proce-
+dure is performed during the scanner’s original manufacturing calibration process. Epoxy is used
+to glue the CCD board into the proper tilt position.
+       As the film is scanned, the data is converted into raw digital data through the 14 bit A/D
+chip on the CCD board. This data is transferred from the CCD board to the USB interface board
+and sent to the host PC. The host computer saves this data in a buffer in a specific path (typically
+the N:\, which is an unformatted partition), where it is later accessed by the client.
+
+
+Lens
+       The lens is mounted to a bracket that can swivel from side to side and forward and back-
+ward. During the manufacturing process a lens alignment fixture is used to position the lens in the
+proper alignment with the film track and CCD chip. Once the proper position is determined, the
+lens mount bracket is glued so the lens cannot move after the manufacturing calibration process.
+
+
+Motor Control and DX Board
+       The motor control and DX functions of the scanner are all performed by the largest circuit
+board in the scanner. It is located on the undercarriage of the frame. This board controls all
+motors: lens and CCD steppers, film guides, film rollers, and the filter wheel.
+       The lens and CCD steppers move the lens and CCD to predefined focus positions, as out-
+lined in the “Optical Tower” section. The film guides open and close the film gate to accommo-
+date 35MM and APS (24MM) film.               The film rollers grip the film using rubber o-rings to
+transport the film through the film track.
+
+Motor Speed
+      The calibration wizard sets the film speed in the final phase of the calibration procedure.
+Each resolution, film type, and 3 channel and 4 channel setting must have its own film speed.
+These settings, as all calibration settings are stored in the EEPROM of the scanner, on the USB
+board in the scanner.
+
+
+
+
+Pakon Part#125383-A                    February 9, 2005                                         4
+APS and 35MM Film Guides
+      The film track is designed to default to 35MM size film. A stepper motor can contract the
+film track to accommodate APS (24MM) film. The guides will open and close as the user deter-
+mines the position by selecting the desired film type in the interface software.
+
+DX Sensors
+      The film track has DX sensors built into the assembly. These sensors are positioned so
+they have the ability to read DX code on both sides of the film. The DX codes will report film
+type and film specifier values. They also determine index numbers for each frame. To see require-
+ments for DX code reading, please refer to the “Scanner Specifications” chapter.
+
+
+USB Board
+       The F-335 scanner communicates to a host PC via a USB 2.0 interface. The scanner has a
+USB interface board built into it. This board communicates with the scanner, and then relays that
+information to the host PC.
+       The USB board has an EEPROM chip built into it to store calibration information. The
+Calibration Wizard program writes all calibration data to this EEPROM chip. When the scanner
+interface software is launched, this calibration data in the EEPROM is written to the Windows
+registry. This means that a F-335 scanner will be properly calibrated and functional when attached
+to any PC that meets the Computer Requirements outlined in the first chapter.
+
+
+MOF Assembly
+       The MOF reader extracts APS film from an APS cartridge and transports it through the
+film transport assembly. The MOF assembly opens the APS cartridge door once it has been
+inserted into the MOF door. Once the operator begins a scan operation, the film will move for-
+ward until it is held by both rollers. The scan operation will then begin.
+       The scanner will recognize the end of the roll of film and rewind the film. While rewind-
+ing, the MOF reader will read the data from the film for the three different film aspect ratios (C,
+H, and P). The cartridge door will be closed when the door is re-opened by the operator.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                         5
+                             Hard Disk Configuration
+       The F-335 software requires that there be a hard drive partition set up specifically for the
+software to use. This drive needs to be the secondary master drive, configured as the N: drive, and
+must NOT be formatted.
+       Configure the drive as instructed below:
+
+1. Right-click on “My Computer” and select “Manage.”
+2. Click on “Disk Management” to begin configuring the drives.
+3. Right-click on the un-allocated space on disk 1, which should be the secondary master drive.
+
+
+
+
+4. The “Create Partition Wizard” will open. Click “Next” to begin.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                         6
+5. Select “Primary Partition” and click “Next.”
+
+
+
+
+6. Use the full size of the drive, unless making a Disaster Recovery partition.
+
+A “Disaster Recovery” partition is used by Pakon, to back-up the C:\ to make a system recovery
+option available. If no system back-up drive will be used, use the full size of the secondary drive
+for the scanne buffer drive.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                         7
+7. Assign this drive to be N:. Select N: and click “Next.”
+
+
+
+
+8. It is imperative to NOT format this partition. Select “Do not format this partition.”
+
+
+
+
+9. Review the settings on the new drive, to finish click “Next.”
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                     8
+10. Verify that the Disk Management screen looks correct before closing the program.
+
+
+
+
+Pakon Part#125383-A                 February 9, 2005                                   9
+                                 Installing the F-335
+The F-335 is a peripheral device. It must be connected to a computer that meets the required spec-
+ifications listed on page 1 of this manual.
+
+1. Clear a space near your computer system to place the F-335 scanner. The USB 2.0 cable must
+   be able to reach the PC, so it cannot be more than 6 feet (2m) from the computer. There must
+   also be 4 inches (10cm) clearance above and behind the scanner’s ventilation duct.
+
+2. Connect the power cord to the power supply plug on the back of the scanner.
+
+
+
+
+3. Connect the USB 2.0 cable to the back of the scanner.
+
+
+
+
+4. Connect the USB 2.0 cable to the back of the computer, in a USB 2.0 port. Do not plug in to
+   a USB 1.0 connector!
+
+
+
+
+Pakon Part#125383-A                  February 9, 2005                                       10
+5. While the computer is on and Windows 2000 is loaded, turn the scanner power switch into the
+   ‘on’ position.
+
+
+
+
+6. The install will ask for authorization to install the driver despite it not having been “digitally
+   signed.” Yes must be selected for the driver to install.
+
+
+
+
+Pakon Part#125383-A                    February 9, 2005                                         11
+7. After the driver is finished installing, verify that the scanner driver is properly installed, by
+   viewing the scanner properties in the Device Manager under the heading, “Imaging Devices.”
+
+8. As a final step, it is recommended that the installer clean the F-335 from any dust that may be
+   inside the scanner. Please refer to these procedures in the “Operator Maintenance” chapter.
+
+
+BIOS Configuration
+The following BIOS options are used on systems configured by Pakon, and are recommended to
+be configured as outlined below.
+
+
+                                        Option             Setting
+
+                                Plug and Play O/S          Disable
+                                AGP Aperture Size          32MB
+                                PCI Latency Timer          248
+                                ACPI Suspend State         S1 State
+                                USB Boot                   Disable
+                                PXE Boot to Lan            Disable
+                                PCI to DRAM Prefetch       Disable
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                        12
+                            Operational Information
+Powering On
+       Power on the host PC, and allow it to finish loading Windows before turning the F-335
+scanner on. This will ensure that the scanner can properly communicate with the host computer.
+
+Operation and Film Insertion
+       When scanning film, ensure the appropriate film type is selected in the scanner interface
+software program supplied. Do not attempt to scan 35mm film when APS is selected, and like-
+wise do not scan APS film when 35mm film has been selected.
+        Inserting the film properly will ensure that the DX codes are read and that the fram-
+ing will be done correctly. Insert the film with the emulsion up, DX Code to the back of the
+scanner, and starting with the lowest number first, as shown below:
+
+
+
+
+        Do not attempt to remove film from the scanner while the scanner motor is moving! This
+will cause damage to both the film and the scanner.
+
+APS Cartridge Handling
+      The F-335C scanner has the ability to scan film from an APS cartridge without having to
+manually remove the film from the cartridge.
+1. Open the MOF door by pressing down on the button to the right of the door itself.
+
+
+
+
+Pakon Part#125383-A                 February 9, 2005                                      13
+2. Insert the cartridge with the film door facing the film track entrance.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                       14
+3. Close the door by pushing the drawer forward until it it clicks shut.
+
+
+
+
+In the software interface program, select “APS”.
+
+Calibration
+       There are two types of calibration for the F-335.
+       Color calibration is set during the manufacturing process, as well as any service that
+involves the CCD or any optical filter. This is to be performed by trained and authorized service
+personnel only.
+       Scanner corrections are performed automatically. They consist of a series of steps per-
+formed when the scanner is first turned on, as shown below:
+• Start-up corrections
+• Initial bulb warm-up
+• Gain and exposure Control Corrections
+• Run Time Corrections
+
+Format Change
+        The scanner will automatically change the film guide, lens position, CCD position, or
+color filter position whenever one of the following steps take place:
+• Film Format change between 35mm and APS
+• Film type change between color negative, color reversal, and black and white
+• Magnification Change (Change of scanning resolution)
+
+
+Film Gate Change
+        The film gate opens and closes depending on the size of the film being scanned. It will
+open for 35mm film and close for APS film. This gate will open or close automatically when a
+different film size is selected.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                     15
+LED Indicator Lights
+
+
+                               Power LED      Function
+
+                               Solid Green    +5V is functioning
+                               Off            +5V is not functioning
+
+
+                              Status LED                 Function
+
+                            Solid Green         Scanner Ready
+                            Blinking Green      Scanner is Scanning
+                            Blinking Yellow     Scanner is Calibrating
+                            Blinking Red        Scanner Error
+                            Off                 Scanner not Functioning
+
+
+
+
+                                  APS LED              Function
+
+                            Solid Green        Scanner in APS mode
+                            Blinking Green     Scanner is Scanning
+                            Blinking Red       APS mode Error
+                            Off                Scanner in 35MM mode
+
+Digital ICE
+        Digital ICE is designed to assist in removing scratches, dust, and debris artifacts from
+scanned film. It should be used as a complement to a photo lab’s normal cleaning procedures.
+Customers are still advised to clean the floors and work surfaces regularly to keep the lab environ-
+ment as dust-free as possible.
+        It is also recommended to clean all film with a lint-free cloth before attempting to make
+prints 8”x10” or higher.
+        If a lab is having persistent dust problems, it is recommended to perform the following
+regularly:
+        •Clean all customer film with a lint-free cloth before scanning it.
+        •When the scanner is turned off, cover it with a plastic, or lint-free cover.
+        •Use a lint-free cloth daily to clean the cover of the scanner and the surface of the table it
+          is positioned on.
+        •Clean or replace the air filter on the back of the scanner once per week.
+
+
+
+Pakon Part#125383-A                    February 9, 2005                                         16
+                                Operator Maintenance
+Warning: These procedures require the operator to remove up to two of the three covers on
+the scanner. Do not attempt to operate the scanner without these covers properly in place!
+
+
+       WARNUNG: Bei diesen Verfahren muss der Bediener bis zu zwei der drei Abdeckungen am Scanner
+       entfernen. Der Scanner darf nicht betrieben werden, wenn diese Abdeckungen nicht ordnungsgemäß
+       angebracht sind!
+
+
+
+       ATTENTION : au cours de ces procédures, vous devez ôter deux des trois couvercles du
+       scanner. N'essayez pas de faire fonctionner le scanner sans que ces couvercles de
+       protection soient correctement à leur place !
+
+
+Dust cleaning of illumination
+        The F-335 is a precision optical device. A relatively smoke and dust free environment is
+necessary. The scanner must be cleaned periodically to remove large collections of dust or debris
+inside the scanner, on the illumination. This procedure is recommended to be performed every
+two weeks. Software is designed to compensate for smaller collections of dust or debris, but
+cleaning may be required. Digital ICE is only designed to complement the lab’s normal cleaning
+procedures--which should include cleaning the floor and work surfaces regularly.
+        Follow each step by a verification process to determine if the cleaning was effective. If the
+verification determines that level of cleaning was ineffective, the next level is required.
+
+1. Simple cleaning with compressed air and or lens brushes.
+2. Cleaning with rubbing alcohol and a cotton swab.
+3. Service call.
+
+Cleaning the Illumination with Compressed Air
+1. Turn off the scanner.
+2. Disconnect the USB and power cables.
+3. Gently remove the side panel of scanner, by pulling back on it. It should snap out of place.
+
+
+
+
+Pakon Part#125383-A                     February 9, 2005                                                17
+  Do not touch anything inside the scanner while the power is on. The cover is only off to
+                  allow dust and debris to be blown out of the scanner.
+
+
+       WARNUNG: Berühren Sie keine Bauteile innerhalb des Scanners, während das Gerät eingeschaltet ist. Die
+         Abdeckung wird nur deshalb abgenommen, damit Staub und Verschmutzungen aus dem Inneren des
+                                   Scanners heraus geblasen werden können.
+
+
+
+        ATTENTION : ne touchez aucun élément interne du scanner lorsque ce dernier est sous
+       tension. Le couvercle est ouvert pour permettre d'éliminer poussière et débris du scanner.
+4. Connect power to the scanner.
+5. Turn the scanner on.
+6. Remove the small film path cover.
+
+
+
+
+Pakon Part#125383-A                     February 9, 2005                                              18
+7. Aim the hose of a can of compressed air into the film path--aiming for the clear piece of glass
+   in the middle.
+
+
+
+
+8. It may be beneficial to insert a strip of film into the scanner before blowing it out. This will
+    focus all the air onto the light transfer bar, and should dislodge any dust or debris.
+9. When finished, put the film path cover back in place.
+       Turn off the scanner immediately when finished cleaning the scanner!
+10. Turn off the scanner and unplug the power cable.
+11. Replace the side cover by snapping into place.
+12. Plug in the USB and power cables.
+
+Cleaning Illumination with Cotton Swab
+         CAUTION--Be Careful not to scratch or damage the top of the glass light bar!
+1.   Turn off the scanner.
+1.   Disconnect the USB and power cables.
+2.   Gently remove the side cover.
+3.   Using a long cotton swab, dabbed in isopropyl alcohol, clean the illumination bar inside the
+     film track assembly.
+4.   The illumination bar is a small piece of glass, sitting upright.
+
+
+
+Pakon Part#125383-A                    February 9, 2005                                         19
+5. After cleaning the illumation bar, replace side cover and turn on.
+
+Cleaning the Fan Filter
+                                        Click to Watch Video
+
+       The fan filter keeps dust from inside the scanner. This filter needs to be cleaned every two
+weeks, or more depending on the conditions of the lab environment.
+
+1. Close scanner software.
+2. Turn off the scanner.
+3. Disconnect USB and power cables.
+4. Gently remove side cover by pulling on it. It should snap off.
+5. Gently remove back cover by pulling on it. It too, should snap off.
+Be Careful not to touch anything other than the fan and filter assembly. Many pieces on the
+             back of the scanner will be hot to the touch, and are to be avoided.
+
+
+           VORSICHT: Berühren Sie keine Bauteile, mit Ausnahme des Ventilators und der Filter. Zahlreiche
+              Bauteile an der Rückseite des Scanners sind heiß und dürfen daher nicht berührt werden.
+
+
+
+        ATTENTION : ne touchez rien d'autre que le module ventilateur et filtre. De nombreux
+             éléments situés à l'arrière du scanner sont chauds, évitez de les toucher.
+
+
+
+
+Pakon Part#125383-A                      February 9, 2005                                             20
+6. Locate the Fan filter (123816). It is located on the back of the scanner, just under the plastic
+   fan cover.
+
+
+
+
+7. Pull straight back on the plastic fan cover until it comes free from the scanner housing.
+
+
+
+
+8. Remove the filter from inside the cover, and rinse with tap water; replace if necessary.
+   Replace the filter only after it has dried completely.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                         21
+9. Re-attach the fan cover by applying moderate pressure to each of the four sides, until it snaps
+   back in to place.
+
+Cleaning the Film Track
+       It is recommended to clean the film track every two weeks, along with the illumination
+cleaning. Keeping the film track clean will ensure that DX code reading remains reliable. It will
+also maintain the proper motor speed for each resolution.
+1. Remove the film path cover.
+2. Position the tip of the compressed air hose on both sides of the film track entrance, and blow.
+
+
+
+
+3. Position the tip of the compressed air hose on both sides of the film track exit, and blow.
+
+
+
+
+4. After cleaning the film track, run the ‘Film Track Test’ in the client interface program.
+5. Verify the scanner is properly reading DX codes by scanning a roll of film.
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                           22
+MOF Head Cleaning
+        The MOF heads on F-335C models require monthly cleaning. These heads read the mag-
+netic data from APS films.
+1. Remove the film guide assembly piece shown below:
+
+
+
+
+2. Pinching the tab on both sides of the film guide assembly.
+
+
+
+
+3. This will expose the MOF heads on the scanner.
+
+
+
+Pakon Part#125383-A                  February 9, 2005                                23
+4. Use a cotton swab with isopropyl (rubbing) alcohol to gently clean the MOF heads.
+
+
+
+
+5. Clean the film path guide with compressed air.
+
+
+
+
+Exterior Surface Cleaning
+        Clean surfaces with lint-free cloths or mild, non-abrasive spray type cleaners, where the
+cleaner is sprayed onto the cleaning cloth and not directly onto the equipment. Perform this type
+of cleaning only with the equipment disconnected and powered down.
+
+
+
+
+Pakon Part#125383-A                  February 9, 2005                                      24
+                                        Field Service
+Service and Repair
+        The scanner has the ability to determine failures at or below the FRU (Field Replaceable
+Unit) level, in most cases. Only qualified service personnel are authorized to service the F-335
+scanner.
+
+                                  Field Replaceable Units
+
+                           Film Path Assembly (124560)
+                           Blower Assembly (124803)
+                           USB Board (123681)
+                           CCD Power Module (123685)
+                           LED Board
+                           Magnetic Head Module (If Applicable)
+
+Removing Covers - Click to Watch Video
+Removing the F-335 covers is made easy by a locking system, that eliminates the need for all but
+three screws.
+
+1.   Turn off power on scanner.
+2.   Disconnect all cables from scanner.
+3.   Remove film catch basket from side of scanner.
+4.   Gently pull on the side of the scanner. There are three locks that will snap out of place.
+
+
+
+
+Pakon Part#125383-A                     February 9, 2005                                          25
+5. Gently pull off the back of the scanner. There are three locks that will snap out of place.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                           26
+6. The fan on the left side of the back side of the scanner will need to be taken off to access one
+   of the three screws for the front cover. Use a phillips screw driver to remove the two screws
+7. Gently, but firmly pull up on the fan to dislodge the sealant from the base of the scanner. Put
+   the fan to the side of the scanner.
+8. Remove the three screws from the back of the scanner.
+
+
+
+
+9. Remove the cover in the front on top of the black film entry.
+10. Loosen the two screws holding the film entry point in place; and remove the film entry point.
+
+Replacing the Motor Control Board - Click to Watch Video
+Important: This procedure requires that the Calibration Wizard program be used. If this
+program is inaccessible, DO NOT attempt this procedure!
+
+1. Turn off power on scanner.
+2. Disconnect all cables from scanner.
+3. Remove the bottom plate of the scanner. There is a screw in each corner, and two phillips
+   screws as well.
+4. Removing the bottom plate will expose the USB board, motor control board, and filter wheel.
+
+
+
+
+5. Each wire connector is labeled with the board it should connect to, and which pin block.
+6. Disconnect each cable from the motor control board.
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                        27
+7. Remove all the screws holding the motor control board in place.
+8. Remove the motor control board.
+9. Mount the new motor control board into place.
+10. Plug in all cables.
+11. Mount bottom plate into place.
+12. Connect USB and power cables, and turn scanner on.
+13. In the calibration wizard, run the “Film Track Test” before attempting a scan. Repeat if nece-
+    sary.
+
+Replacing the USB Board - Click to Watch Video
+Important: This procedure requires that the Calibration Wizard program be used. If this
+program is inaccessible, DO NOT attempt this procedure!
+
+1.   Turn the scanner off.
+2.   Disconnect USB and power cables.
+3.   Remove the side cover.
+4.   Turn scanner onto the exposed side.
+5.   Unscrew the four screws holding the bottom plate in place.
+6.   Remove the bottom plate from scanner.
+
+
+
+
+7. Disconnect the wires attached to the USB board.
+8. Unscrew the USB board from the scanner frame.
+9. Mount new USB board onto frame, and tighten all the screws.
+10. Reconnect all wires back to the USB board.
+11. Mount bottom plate into place, and tighten the four screws.
+12. Put the scanner back into place, and replace the side cover.
+13. Plug in USB and power cables.
+14. Turn the scanner on.
+15. Run the calibration wizard program in C:\Program Files\Pakon\Calibration Wizard\.
+16. Complete the full calibration including magnification, film speed, and 64 color matrix genera-
+    tion.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                       28
+17. If all the calibration data is still stored in the Windows registry, full calibration is not required.
+    Follow these steps to copy the calibration data to the scanner EEPROM:
+         a.Run the Calibration Wizard.
+         b.Run the “Film Track Test.”
+         c.Enter the proper values for model type, hardware version, and serial number in the
+         “Scanner Initialization” window.
+
+
+
+
+        d.Verify the values, and click “Next.”
+        e.Click on the skip button next to “Next” and “Close.”
+
+
+
+        f.Select “Scanner Calibration Completion.”
+
+
+
+
+        g.After values are displayed on the screen, and not zeroes, click on “Close.”
+        h.The calibration values from the registry have now been written to the EEPROM of the
+        scanner.
+
+Replacing the Blower Assembly - Click to Watch Video
+1. Turn the scanner off.
+2. Unplug the USB and power cables from the back of the F-235 scanner.
+3. Remove the side and back covers from the scanner.
+
+
+
+
+Pakon Part#125383-A                      February 9, 2005                                            29
+4. Disconnect the blower power from the lamp board.
+5. Unscrew the blower assembly from the frame.
+6. Remove the blower assembly, and replace with new blower assembly.
+7. Mount the blower onto the frame with the two phillips head screws.
+8. Reconnect the blower power cable to the lamp board.
+9. Replace the back and side covers of the scanner.
+10. Reconnect the USB and power cables to the scanner.
+11. Turn the scanner on.
+
+Replacing the CCD Power Module
+1. Turn the scanner off.
+2. Unplug the USB and power cables from the back of the F-235 scanner.
+3. Remove all three covers from the scanner.
+
+
+
+
+4.   Disconnect the power and sync cables from the CCD power module board.
+5.   Unscrew the CCD power module board from the scanner chassis.
+6.   Remove the circuit board from the scanner.
+7.   Mount the new CCD power module board to the scanner chassis.
+8.   Connect the sync and power cables to the CCD power module board.
+
+
+
+Pakon Part#125383-A                 February 9, 2005                         30
+9. Replace all three covers.
+10. Connect USB 2.0 and power cables.
+11. Turn scanner on.
+
+Replacing the LED Board
+1.   Turn the scanner off.
+2.   Disconnect USB and power cables.
+3.   Remove the side cover.
+4.   Turn scanner onto the exposed side.
+5.   Unscrew the four screws holding the bottom plate in place.
+6.   Remove the bottom plate from scanner.
+
+
+
+
+7. Disconnect the wires attached to the LED board.
+8. Unscrew the LED board from the scanner frame.
+9. Mount new LED board onto frame, and tighten all the screws.
+10. Reconnect all wires back to the LED board.
+11. Mount bottom plate into place, and tighten the four screws.
+12. Put the scanner back into place, and replace the side cover.
+13. Plug in USB and power cables.
+14. Turn the scanner on.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005             31
+Setup335
+        Setup335.exe is an important diagnostic tool used to verify basic hardware functionality.
+This program is accessible in the Pakon software directory, which will vary depending on the cli-
+ent interface software in use. Generally it is in C:\Program Files\Pakon\F-335\TLC COM
+Server\Setup335.exe.
+        This program should be used to ensure that the following hardware is functioning prop-
+erly:
+
+
+                     Hardware                       Test Function
+
+                 APS/35MM Gate         Opening and Closing
+                 Lens Stepper          Moving up and Down
+                 CCD Stepper           Moving up and Down
+                 Motor                 Moves forwards and backwards
+
+       Each button reports its function when the mouse cursor sits on top of it.
+
+
+
+
+ Command             Function            Command                Function
+
+ g            start filmstrip motor      “           move right cursor -100
+ h            stop filmstrip motor       L           move right cursor -10
+ f            move filmstrip forward     l           move right cursor -1
+ r            move filmstrip reverse     ;           move right cursor +1
+
+
+Pakon Part#125383-A                    February 9, 2005                                    32
+ Command             Function            Command                  Function
+ @            gain/offset correction     :           move right cursor +10
+ !            fixed pattern correction   ‘           move right cursor +100
+ +            focus calibration          RGB ON      lamp high
+              magnification distance     RGB OFF     lamp low
+ <            move CCD down 100
+ {            move CCD down 10                       calculate film sizes
+ [            move CCD down 1            Rese        lamp reset
+ ]            move CCD up 1              &           skew calibration
+ }            move CCD up 10             REG         load calibration data
+ >            move CCD up 100            SNS         calibrate insertion sensors
+ I            move left cursor -100      Lens Test   lens stepper validation test
+ J            move left cursor -10       CCD Test    CCD stepper validation test
+ j            move left cursor -1        APS         set filmguides to APS
+ k            move left cursor +1        35MM        set filmguides to 35MM
+ K            move left cursor +10       IR ON       IR on
+ i            move left cursor +100      IR OFF      IR off
+ x            move lens down 100         MOF         MOF off
+                                         OFF
+ c            move lens down 10          MOF         MOF Extract
+                                         EXT
+ v            move lens down 1
+ b            move lens up 1
+ n            move lens up 10
+ m            move lens up 100
+ “            move right cursor -100
+
+Appropriate Uses
+Deceiving Information
+       Setup335 is a useful tool, however, it can be misunderstood very easily. In the picture of
+setup335 shown above, the left side of the three color channels appears to be erroneous. Below
+
+
+Pakon Part#125383-A                    February 9, 2005                                      33
+there is a small cross-section of this errata. Though this does not appear correct, this is not a prob-
+lem. The CCD chip is being flooded with light from the light transfer bar, this will not be the case
+when film is inside the scanner.
+        Keep this in mind when using setup335 to diagnose problems. Not everything visible in
+setup335 can be used for troubleshooting.
+
+
+
+
+Lens Stepper Test
+The lens test function is a great way to ensure that the lens stepper is moving correctly. To use
+this function:
+1. Move lens stepper to 2000 using the ‘x’ key.
+2. Click on the “LENS TEST” button.
+3. The lens stepper will move one step at a time until it reaches the home position.
+4. Setup335 will report the number of steps it took to reach the home position. This number
+    should be equal to the stepper position (2000) before the “LENS TEST” button was clicked.
+
+CCD Stepper Test
+The CCD Test function, like the Lens Test function, is a great way to ensure that the CCD stepper
+is moving correctly. To use this function:
+1. Move CCD stepper to 1200 using the ‘<’ key.
+2. Click on the “CCD TEST” button.
+3. The CCD stepper will move one step at a time until it reaches the home position.
+4. Setup335 will report the number of steps it took to reach the home position. This number
+    should be equal to the stepper position (1200) before the “CCD TEST” button was clicked.
+
+
+Lens Positioning Verification
+This will test that the lens is properly aligned. If the scanner fails, the scanner will have to be ser-
+viced at a service depot.
+1. Click on the “@” button.
+2. Select 8 Base 35 Color Negative.
+3. Click the “LO” button to turn the lamp into low power mode.
+4. Click on “NEG” to move the filter wheel to the negative position.
+5. Insert a clear piece of color negative film.
+
+
+
+
+Pakon Part#125383-A                     February 9, 2005                                          34
+6. Apply light pressure to each side of the lens, and make sure that none of the color channels
+   drop.
+
+APS/35MM Film Gate Verification
+This test will ensure that the film gate is opening and closing properly.
+1. Click on the “APS” button.
+2. Observe the film gate close to the APS position.
+3. Click the “35MM” button.
+4. Observe the film gate open to the 35MM position.
+5. Repeat this procedure ten times to verify functionality.
+
+Drive Motor Verification
+This test will ensure that the motor is functioning properly.
+1. Click the “g” button.
+2. Observe the motor start.
+3. Click the “h” button.
+4. Observe the motor stop.
+5. Repeat this ten times to verify functionality.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                      35
+                                    Troubleshooting
+Basics
+        The scanner will not work properly unless the scanner is turned on after Windows 2000
+has finished the loading process. Ensure this is done before attempting more advanced trouble-
+shooting.
+
+ Error Logs
+        There are four primary error logs generated by the scanner software. These error logs are a
+very important tool to determine the cause of any reported error codes. When contacting technical
+support, it is advisable to provide these logs to ensure a more informed response. Dealers and dis-
+tributors can request a list of the error codes with information on troubleshooting them.
+        These logs can be located in C:\Program Files\Pakon\TLA COM Server.
+        These logs include:
+
+   PakonErrorLogMain
+      Logs any errors associated with scanner communications with the host PC.
+   PakonErrorLogScan
+      Logs any errors associated with the scan process.
+   PakonErrorLogSave
+      Logs any errors associated with the save process.
+   PakonErrorLogPI
+      Logs any errors associated with the color correction process.
+
+Error Code 1002 or 1006
+      These two error codes relate to the speed of the computer hardware. Verify that the host
+PC meets the requirements outlined in the “Specifications” chapter.
+
+Error Code 1003 (Lost Sync)
+       Attach grounding straps to film track. Contact Pakon technical support for further infor-
+mation.
+
+Error Code 3016
+       Verify that there is an N:\ drive is left unformatted, and it is a minimum of 5GB.
+
+Error: EC_PFS_FileSystemExists (Error Code 3001)
+        The N: is formatted. The N: partition cannot be formatted. Re-create this partition using
+the instructions in the “Hard Disk Configuration” chapter of this manual.
+
+Error Code 3013
+       Buffer drive, (N:) is bad. Replace this drive partition.
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                       36
+Scanner will not stop scanning.
+        Change this registry key:
+
+       "HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLA\Scan\Test\DriverSimultaneous-
+Packets" to 1.
+
+EC_WIN_SetProcessWorkingSetSize
+     The operator does not have Administrative privileges, or does not have enough available
+RAM. 512MB is required, as outlined in the “Specifications” chapter.
+
+         Also, try increasing the ‘scheduling priority’ for all users:
+1.   Go to the Control Panel.
+2.   Double-click on “Administrative Tools.”
+3.   Double-click on “Local Security Policy.”
+4.   Select “Local Policies.”
+5.   Select “User Rights Assignment.”
+6.   Select “Increase Scheduling Priority” on the right side of the window.
+7.   Add “Everyone” to the list.
+
+
+
+
+        Decrease the “Ringtail Bytes” as well:
+        [HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI F-235\Scanner Settings]
+        Set:
+        DriverRingTailBytes to 0x800000
+        ProcessedRingTailBytes to 0x400000.
+
+Images Stretched
+        Blow out the DX sensors with compressed air. If that does not help:
+
+        The Calibration Wizard program is required to perform this procedure.
+
+1.   Run the calibration wizard, located in C:\Program Files\Pakon\Calibwiz235\Calibwiz235.exe.
+2.   Click on the button on the bottom left corner of the calibration window.
+3.   Select “Film Speed Adjustment.”
+4.   Follow the on-screen instructions to set the motor speed and framing adjustment.
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                   37
+Images out of Focus
+        The Calibration Wizard program is required to perform this procedure.
+
+1. Run the calibration wizard, located in C:\Program Files\Pakon\Calibwiz235\Calibwiz235.exe.
+2. Ensure there are no cables blocking the home stepper positions on the scanner.
+
+
+
+
+3. Run the “Magnification Calculation” steps in the calibration wizard.
+
+Images not Framed Properly
+        Blow out the DX sensors with compressed air. If that does not improve it:
+
+        The Calibration Wizard program is required to perform this procedure.
+
+1.   Run the calibration wizard, located in C:\Program Files\Pakon\Calibwiz235\Calibwiz235.exe.
+2.   Click on the button on the bottom left corner of the calibration window.
+3.   Select “Motor Speed.”
+4.   Follow the on-screen instructions to set the motor speed and framing adjustment.
+
+Image is out of focus in part of frame
+        The Calibration Wizard program is required to perform this procedure.
+
+        If this is a problem on every roll of film, the ‘Tilt Adjustment’ will need to be run in the
+calibration wizard.
+        The problem is that the CCD chip is not parallel with the film--part of the CCD chip is
+focused, and part of it is out of focus. The ‘tilt adjustment’ will level the CCD board and put it in
+parallel with the film and light transport.
+
+Scanning stops after one frame
+       The scanner calibrations may need to be re-done every two hours because the lamp tem-
+perature may vary throughout the day.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                         38
+DX code reading is not working
+        The film track should be cleaned every two weeks to ensure proper DX code reading. This
+procedure can be found in the “Operator Service” chapter in this manual. When finished, run the
+'Track Test” calibration in the client interface program.
+        This requires a four frame strip of film with DX codes on it. Be sure to insert the film
+emulsion up, starting with the lowest number first, with the DX codes to the back of the scanner.
+        If DX code reading does not improve after cleaning and running the client film track test,
+the film track test should be run using the Calibration Wizard program.
+
+Black images
+       Black images are usually caused by one of two problems. Firstly, the light shield has a
+removable piece for cleaning the lens. The screw holding this light shield in place is a thumb
+screw, and can come loose if shaken during shipment. Ensure this light shield is properly
+mounted and is not loose.
+
+
+
+
+        A fuse on the LED board can be damaged causing this board to flood the CCD board with
+infra-red light and will cause scanned images to appear black. To test this, unplug the LED cable
+on either the LED board, or the lamp board.
+        Removing this cable will remove the defect channel from being used. If the scanner scans
+
+
+
+
+properly after removing this defect channel, the LED board will need to be replaced.
+
+
+
+
+Pakon Part#125383-A                  February 9, 2005                                       39
+‘1155: File C:\INSTMSIW.EXE was not found’ error when installing PSI
+      The Windows Installer program is not installed on the host PC. Download the installer
+from Microsoft’s website, or from www.pakon.com.
+      http://www.microsoft.com/downloads/release.asp?releaseid=32832&NewList=1
+
+Noritsu2611.txt Error Log File
+         PSI will create an error log file in the C:\Program Files\Pakon\PSI\IQ\Logs folder to
+report any errors in connecting to a Noritsu 2611 printer.
+         There are three error levels--one, two, and three. A level one error is informational, repor-
+tin that the printer is warming up for example. A level two error is a warning, reporting that the
+water tank needs to be filled or similar such errors. A level three error is reporting a failure in
+connecting to the Noritsu 2611 printer.
+         The Noritsu needs to be turned on, with a SCSI cable connected between the printer and
+the PC prior to the PC being booted, along with PSI 1.3 or above, and the printer must be in
+“AUX2” mode for PSI to be able to print to a 2611 printer.
+
+Black bar across top or bottom of image
+       The Calibration Wizard program is required to perform this procedure.
+
+        A black bar at the top or bottom of all images in all rolls of film is caused by the magnifi-
+cation ratio not being set properly. This requires that the scanner be recalibrated using the Cali-
+bration Wizard. This program is only supplied to dealers trained in its use, and supplied with the
+required calibration strips.
+
+Magnetic APS data not being read
+       Clean the MOF heads, as shown in the Operator Service Chapter. These heads should be
+cleaned once per month. The film may not contain MOF data, or meet the APS specification.
+Also, APS film is designed for a limited number of uses, try another film to ensure that this is not
+the problem.
+
+
+
+
+Pakon Part#125383-A                    February 9, 2005                                         40
+                             Regulatory Information
+
+
+
+
+Warning:
+        This is a class A product. In a domestic environment this product may cause radio interfer-
+ence in which case the user may be required to take adequate measures.
+
+Note:
+        This equipment has been tested and found to comply with the limits for a Class A digital
+device, pursuant to part 15 of the FCC rules. These limits are designed to provide reasonable pro-
+tection against harmful interference when the equipment is operated in a commercial environ-
+ment. This equipment generates, uses and can radiate radio frequency energy and, if not installed
+and used in accordance with the instruction manual, may cause harmful interference to radio com-
+munications. Operation of this equipment in a residential area is likely to cause harmful interfer-
+ence in which case the user will be required to correct the interference at his own expense.
+
+Note:
+
+Taiwan:
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                       41
+Site Conditions
+
+
+
+                   Temperature               59-89.6 degrees Fahrenheit
+                                             15-32 degrees Celsius
+                   Humidity                  30-75% (non-condensing)
+                   Vibration                 Not to Exceed 0.05G RMS
+                                             5-200Hz
+                   Ventilation               A 4” clearance above and
+                                             behind the scanners venti-
+                                             lation duct is necessary
+                   Lighting                  <1000 LUX ambient light
+                   Noise                     < 70db(A)
+
+Shipping and Storage Conditions
+Temperature: -13 to 140 degrees Fahrenheit
+Humidity: 30%-90% (non-condensing)
+
+
+
+
+Pakon Part#125383-A                 February 9, 2005                      42
+                        Contacting Technical Support
+
+When contacting support by phone, please follow these guidelines to ensure
+timely assistance:
+•   Have the computer and scanner on.
+•   Have PSI F-235 loaded, if possible.
+•   Have any reported error codes written down for quick reference.
+•   Know the version of PSI being used. Click here for more information on this.
+•   Know the serial number of your scanner.
+
+If you prefer to email support, please include the following information in your
+email request:
+•   Any applicable error log files.
+•   Version number of PSI.
+•   Serial number of your F-235 scanner.
+•   A sample image, if helpful.
+•   Your company name and location.
+•   Details on the problem and what has been attempted so far to resolve the problem.
+
+Pakon Contact Information
+Phone:
+Within the United States - 877.217.2566
+Outside the United States - 952.936.4390
+
+Email:
+support@pakon.com
+
+On the Web:
+http://www.pakon.com
+ftp://ftp.pakon.com
+
+
+
+
+Pakon Part#125383-A                  February 9, 2005                                   43
+                       Important Part Numbers
+                      Part Number             Description
+
+                      123677         Motor Control Board
+                      123681         USB Board
+                      123685         CCD Power Module
+                      123689         Sensor Board
+                      123691         LED Board (Digital ICE)
+                      123816         Filter, Air
+                      123819         Cooling Fan
+                      124803         Blower Assembly
+                      124943         F-235+ Film Path Assembly
+                      124559         Optical Tower Assembly
+                      12XXXX         Power Supply
+                      123841         Bulb
+                      123936         Cable Data
+                      124805         Lamp Holder Assembly
+                      123938         CCD Cable
+                      123939         USB 2.0 Cable 6ft.
+                      124516         CCD Cable Power
+                      124511-01      Cover, Film Entrance
+
+
+
+
+Pakon Part#125383-A               February 9, 2005               44
+                                          Warranty
+Pakon, Inc. warrants to the original purchaser that each Pakon product is free from defects in
+workmanship and material for the lesser of 12 months, 2000 metered working hours, or the equiv-
+alent thereof in normal usage, from the date of purchase. In the event any Pakon product or com-
+ponent of equipment is replaced by Pakon, Inc. under this warranty, such item is covered by this
+same warranty for the remainder of the original warranty period, or sixty days from the date of
+installation, whichever is longer. OEM products supplied by Pakon will be covered by the
+remainder of the original equipment manufacturer’s warranty.
+
+Pakon’s obligation during this warranty period is expressly limited to repair, or in its discretion,
+replacement of non-expendable original equipment or components which it finds defective; ser-
+vice and labor costs for such repairs or replacement will be covered under this warranty for the
+first 30 days following the date of installation. Upon authorization from Pakon, Inc. a proper party
+asserting a claim under this warranty shall prepay all transportation costs and return the equip-
+ment to a location specified by Pakon, Inc. That party shall also bear all reasonable service and
+labor charges incident to any warranty claim and those service and labor charges beyond the 30
+day labor warranty period.
+
+This warranty does not apply to (1) to any expendable parts, (2) to any Pakon product or compo-
+nent which as been repaired or altered with parts or by persons not approved in writing by Pakon,
+Inc. provided, however, that such approval is not to be unreasonable withheld, or (3) to any prod-
+uct on which this serial number or name has been altered, defaced or removed. This warranty also
+shall not apply to any Pakon product whose unsatisfactory performance or condition is due to:
+
+•   Use of any expendable parts or consumable products not tested and approved by Pakon, Inc.
+•   Failure to follow the maintenance or safety procedures recommended for Pakon product oper-
+    ation
+•   Unusual physical or electrical stress
+•   Accident, neglect, misuse, failure of electric power, air conditioning, humidity control, trans-
+    portation or causes other than ordinary use in the purposes for which the product was
+    intended.
+
+The above express limited warranty is in lieu of all other warranties, express or implied, and there
+are no warranties beyond those stated in this document. The implied warranties of merchantability
+and fitness for a particular purpose, and all other warranties, express or implied, or inferable from
+the course, of dealing or usage of trade, are excluded and shall not apply to this product.
+
+The provisions for repair or replacement of defective parts provided in this warranty shall be the
+exclusive and sole remedy of the purchaser. Pakon, Inc. shall not be liable for any other damages
+(Whether in tort, due to negligence or otherwise) including but not limited to loss or labor, time,
+materials, customer profits, goodwill, or any other indirect, special, incidental, or consequential
+damages in connection with the furnishing operation or faulty performance of this product. This
+exclusive remedy shall not be deemed to have failed of its essential purpose so long as Pakon is
+willing and able to repair or replace defective parts in the prescribed manner.
+
+
+
+Pakon Part#125383-A                    February 9, 2005                                        45
+This writing constitutes the final, complete and exclusive expression of the terms of warranty and
+remedy as agreed to by the parties to this sale. Pakon, Inc. neither authorizes nor adopts any state-
+ment made by any representative which differs from the terms of this writing, and all such state-
+ments are superseded by this document.
+
+
+
+
+Pakon Part#125383-A                   February 9, 2005                                         46
+                                       Service Policy
+Warranty Period
+• Parts - One year (expendables excluded)
+• Phone Service & Factory labor - 30 days
+• OEM Equipment - Remainder of original manufacturer’s warranty
+
+Warranty Service
+• Phone Service - First 30 days, no charge
+• Defective parts - First year Pakon will send a part replacement (expendables excluded), no
+  charge
+• Factory Repair / Replacement - First 30 days, if necessary, Pakon will repair or replace, at its
+  discretion, any defective unit. Pakon, Inc. will pay standard freight costs both ways for the
+  repaired or replaced unit. Any expedited shipping fees are the responsibility of the buyer.
+
+After Warranty Service / OEM Service
+• Scanner Phone Service - Incident charge of $35.00 per incident payable via credit card or with
+   pre-approved credit terms
+• OEM Phone Service - Helping buyer install or service Pakon supported OEM equipment or
+   software is considered an incident and charged accordingly. Pakon does not service unsup-
+   ported products. (Supported products are those sold or recommended by Pakon.)
+• Factory Repair / Replacement - Buyer pays freight both ways, plus service labor charges at
+   $65.00 per hour and packing costs if needed to return unit safely. Beyond one year the buyer
+   is responsible for parts.
+
+Software
+Software updates are provided at no charge. Any software offering new features is optional and
+billable.
+
+Annual Service Contract
+Agreement includes scanner telephone technical support. All factory parts (excluding expend-
+ables) and factory labor are free. Pakon will pay for all standard freight in case a need for factory
+repair arises. Any expedited shipping fees are the responsibility of the buyer. The agreement takes
+effect at the end of the Labor Warranty and is for a 12-month period and may be renewed annu-
+ally. The price is $1,000.00 per year payable in advance. If purchased with the unit, the price is
+$750.00 and if kept in force can be renewed at the $750.00 price-an annual savings of $250.00.
+
+Service Rental Scanners
+Pakon will provide a limited pool of scanners for rent, if the customer’s scanner is sent in for ser-
+vice. Service rental scanners can be rented for $250.00 plus freight both ways if available. Avail-
+ability will be first come first serve priority given to customers on an annual service contract.
+
+
+
+
+Pakon Part#125383-A                    February 9, 2005                                        47
+                                         Index
+Symbols
+‘tilt’ adjustment 4
+A
+APS Cartridge Handling 13
+APS film 2
+APS LED 16
+APS/35MM Film Gate Verification 35
+APS/35MM Gate 32
+B
+BIOS Configuration 12
+Black bar across top or bottom of image 40
+Black images 39
+C
+Calibration 15
+CCD assembly 3
+CCD Stepper 32
+CCD Stepper Test 34
+Cleaning Illumination with Cotton Swab 19
+Cleaning the Illumination with Compressed Air 17
+Contents of Box 1
+D
+Digital ICE 16
+Drive Motor Verification 35
+Dust cleaning of illumination 17
+DX code reading is not working 39
+DX codes 13
+DX Sensors 5
+E
+EC_WIN_SetProcessWorkingSetSize 37
+Email 43
+Error
+     EC_PFS_FileSystemExists 36
+Error 161 37
+Error Code 1002 36
+Error Code 1002 or 1006 36
+Error Code 1006 36
+Error Code 145 36
+Error Code 3001 36
+Error Code 3013 36
+Error Codes 36
+Error Codes 126, 127, 128, and 129 36
+Error Logs 36
+
+
+
+
+Pakon Part#125383-A                February 9, 2005   48
+F
+Fan filter 21
+Film Gate Change 15
+Film Guides 5
+Film Insertion 13
+film track 3
+Film Types and Variations 2
+Focus 15
+Format Change 15
+I
+Image is out of focus in part of frame 38
+Images not Framed Properly 38
+Images out of Focus 38
+Images Stretched 37
+Installing 10
+Installing the F-235 10
+L
+LED board 39
+LED Indicator Lights 16
+Lens 4
+lens alignment fixture 4
+Lens Positioning Verification 34
+Lens Stepper 32
+Lens Stepper Test 34
+Light Bulb Replacement 20
+light shield 39
+Light Source 2
+M
+Magnetic APS data not beind read 40
+Minimum Host Computer Specifications 1
+MOF Assembly 5
+MOF Head Cleaning 23
+MOF heads 23
+Motor 32
+motor control 4
+Motor Speed 37
+Mounted slides 2
+N
+Noritsu 40
+Noritsu 2611 40
+Noritsu2611.txt 40
+O
+Operation 13
+optical tower 3
+P
+Pakon Contact Information 43
+
+
+Pakon Part#125383-A                 February 9, 2005   49
+PakonErrorLog 36
+PCI Latency Timer 12
+Phone 43
+power cord 10
+Power LED 16
+Powering On 13
+R
+Regulatory Information 41
+Removing Covers 25
+Replacing the Blower Assembly 29
+Replacing the CCD Power Module 30
+Replacing the Fan Filter 24
+Replacing the Filter Wheel 29
+Replacing the LED Board 31
+Replacing the Motor Control Board 27
+Replacing the USB Board 28
+Resolutions 2
+S
+Scanner Theory 3
+Scanner will not stop scanning. 37
+Scanning stops 38
+SCSI BIOS 12
+Service and Repair 25
+Setup1300 32
+skew 3
+Status LED 16
+Surface Cleaning 20
+T
+Tilt Adjustment 38
+Track Test 39
+U
+USB 2.0 hub 1
+USB Board 5
+W
+Windows Customizations 12
+
+
+
+
+Pakon Part#125383-A               February 9, 2005   50
+

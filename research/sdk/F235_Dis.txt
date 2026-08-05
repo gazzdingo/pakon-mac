@@ -1,0 +1,738 @@
+       F-235 Series
+Disassembly Service Manual
+
+
+
+
+           8/5/05
+8/5/05 1
+                  F-235 Series Dissembly Service Manual
+     1.0. General Information 1
+             1.1. - Regulatory Information 1
+             1.2. - EU WEEE Directive 2
+             1.3. - Tool List for Unit Dissembly 3
+     2.0. - Module and Board Removal Procedures 4
+             2.1. - Removing Covers 4
+             2.2. - Film Entrance Ramp Stand 8
+             2.3 - Light Shield 8
+             2.4. - USB Board 9
+             2.5. - Motor Control Board 10
+             2.6. - Filter Wheel Assembly 10
+             2.7. - Transport Drive Motor 13
+             2.8. - Power Supply Module 14
+             2.9. - Blower Assembly 15
+             2.10. - Power Supply 16
+             2.11. - Fan Motor 18
+             2.12. - Lamp Board Assembly 18
+             2.13. - Lamp Holder 21
+             2.14. - MOF unit (F235C Unit Only) 21
+             2.15. - CCD Power Module 23
+             2.16. - CCD Board 24
+             2.17. - Sensor Board for CCD and Lens 25
+             2.18. - Optical Tower Assembly 25
+             2.19. - Film Path (Transport) Assembly 26
+             2.20. - LED Board 27
+
+
+
+
+Pakon F-235 Dissembly Manual                 8/5/05       i
+Pakon F-235 Dissembly Manual   8/5/05   ii
+                                1.0. General Information
+
+1.1. - Regulatory Information
+
+
+
+
+       Warning: This is a class A product. In a domestic environment this product may cause radio
+               interference in which case the user may be required to take adequate measures.
+
+      NOTE: This equipment has been tested and found to comply with the limits for a Class A digital
+             device, pursuant to part 15 of the FCC rules. These limits are designed to provide rea-
+             sonable protection against harmful interference when the equipment is operated in a
+             commercial environment. This equipment generates, uses and can radiate radio fre-
+             quency energy and, if not installed and used in accordance with the instruction manual,
+             may cause harmful interference to radio communications. Operation of this equipment
+             in a residential area is likely to cause harmful interference in which case the user will be
+             required to correct the interference at his own expense.
+
+Taiwan:
+
+
+
+
+Site Conditions
+
+                  Temperature                   59-85 degrees Fahrenheit
+                  Humidity                      30-75% (non-condensing)
+                  Vibration                     Not to Exceed 0.05G RMS 5-200Hz
+                  Ventilation                   A 4” clearance above and behind the
+                                                scanners ventilation duct is necessary
+                  Lighting                      <1000 LUX ambient light
+                  Noise                         < 70db(A)
+
+
+
+
+Pakon F-235 Dissembly Manual                    8/5/05                                          1
+Shipping and Storage Conditions
+Temperature: -13 to 140 degrees Fahrenheit
+Humidity: 30%-90% (non-condensing)
+
+Fuse Ratings
+        Only Pakon service technicians are qualified to replace fuses in the F-235 Scanner.
+
+
+              Die Sicherungen im Scanner F-235 dürfen nur von Pakon-Servicetechnikern ausgetauscht werden.
+
+
+
+            Seuls les techniciens du service d'entretien de Pakon sont qualifiés pour remplacer les
+                                          fusibles du scanner F-235.
+
+
+
+                                            Factory Fuse Rating
+
+                                               3 Amps, 250V
+
+
+1.2. - EU WEEE Directive
+                                                        In the European Union, this symbol indicates that
+                                                       when the last user wishes to discard this product, it
+                                                       must be sent to appropriate facilities for recovery and
+                                                       recycling.
+                                                         Contact your local Kodak representative or refer to
+                                                       www.kodak.com/go/recycle for additional informa-
+                                                       tion on the collection and recovery programs avail-
+                                                       able for this product.
+
+
+
+
+Pakon F-235 Dissembly Manual                        8/5/05                                              2
+1.3. - Tool List for Unit Dissembly
+
+             Tool Description   Tool Size      Screw Location                                Screw Qty
+             Diagonal Cutter    Small          Cable Ties                                        15
+             Flat Blade         6 inch         MOF Circuit Card                                  0
+             Phillips           3 inch / No. 2 Blower Motor Assembly                             8
+                                               Bottom Cover                                      2
+                                               Cover Brackets (Brass)                            12
+                                               Fan Motor Brackets                                4
+                                               MOF Circuit Board                                 2
+                                               MOF Per Board                                     4
+                                               Side Cover Brackets (Brass)                       6
+             Hex W rench        2.5 mm         Power Supply                                      3
+                                               Unit Cover                                        3
+                                               Unit Feet                                         4
+             Hex W rench        4.5 mm         MOF Magnetic Heads                                4
+             Hex W rench        7/64 inch      CCD Board                                         1
+                                               CCD Bracket (Optic Tower)                         2
+                                               CCD Power Module (Bracket to Case)                1
+                                               Drive Motor                                       2
+                                               Drive Motor Adjustment                            1
+                                               Entrance Ramp                                     2
+                                               Entrance Ramp Base                                4
+                                               Fan Motor Bracket                                 4
+                                               Grounding Screw                                   1
+                                               IR Filter Cover                                   1
+                                               Lens Bracket (Optic Tower)                        2
+                                               Lamp Board (behind Fan Motor)                     4
+                                               Lamp Bracket                                      4
+                                               Light Cover                                       3
+                                               MOF Assembly                                      4
+                                               Motor Control Board (Located in Base of Unit)     5
+                                               Optic Lens                                        1
+                                               Optical Tower Assembly                            4
+                                               Sensor Board for CCD and Lens Assembly            3
+                                               Transport Base                                    4
+                                               USB Board (Located in Base Unit)                  4
+             Hex W rench        3/32 inch      Back Cover (Brass)                                6
+                                               CCD Board (Top of Optic Tower)                    3
+                                               CCD Chip Holder Bracket                           3
+                                               CCD Power Module (Bracket to Board)               1
+                                               CCD Motor (Optic Tower)                           2
+                                               Filter W heel Assembly                            2
+                                               Filter W heel Disk                                1
+                                               Filter W heel Motor                               2
+                                               Filter W heel Sensor                              2
+                                               IR Bracket Assembly                               4
+                                               IR Filter Cover                                   1
+                                               Lens Motor (Optic Tower)                          2
+                                               Transport Assembly (Main Connect Screws)          6
+                                               Transport Motors (Mounted on Assembly)            6
+             Hex W rench        5/64 inch      Light Cone Assembly                               4
+                                               Light Cone and Illuminator Block                  2
+                                               MOF Motor Gear                                    1
+                                               MOF Motor                                         2
+                                               USB Jack (Back of Base)                           1
+             Hex W rench        .050 inch      Transport Assembly Couplers                       5
+
+
+
+
+Pakon F-235 Dissembly Manual                          8/5/05                                             3
+                 2.0. - Module and Board Removal Procedures
+
+2.1. - Removing Covers
+   Removing the F-235 covers is made easy by a locking system, that eliminates the need for all but
+   three screws.
+1. Turn off power on scanner.
+2. Disconnect all cables from scanner.
+3. Remove film catch basket from side of scanner.
+4. Gently pull on the side of the scanner. There are three locks that will snap out of place.
+
+Attention: Do not touch anything inside the scanner while the power is on. The cover is only off to
+allow dust and debris to be blown out of the scanner.
+
+WARNUNG: Berhren Sie keine Bauteile innerhalb des Scanners, whrend das Gert eingeschaltet ist. Die
+Abdeckung wird nur deshalb abgenommen, damit Staub und Verschmutzungen aus dem Inneren des
+Scanners heraus geblasen werden knnen.
+
+ATTENTION: ne touchez aucun lment eienterne du scanner lorsque ce dernier est sous
+tension. Le couvercle est ouvert pour permettre deliminer poussiere et debris du scanner.
+
+
+
+
+Pakon F-235 Dissembly Manual                        8/5/05                                           4
+5. Gently pull off the back of the scanner. There are three locks that will snap out of place.
+
+
+
+
+6. Remove the small film path cover in the front on top of the black film entry.
+
+
+
+
+Pakon F-235 Dissembly Manual                      8/5/05                                         5
+7. Unscrew the two (Hex 7/64”) screws holding the film entry point in place and remove the film entry
+   point (Above procedure for F235 unit only).
+
+
+
+
+8. Depress the two tabs inward on both side of the film entry point and lift up and outward for removal.
+   (Above procedure for F235C unit only).
+
+
+
+
+Pakon F-235 Dissembly Manual                     8/5/05                                        6
+9. Unscrew the three (Hex 2.5 mm) screws from the back of the scanner.
+
+
+
+
+10. Take off the front cover.
+11. Unscrew the six (Hex 3/32 “) screws from back cover releasing brass connectors.
+12. Unscrew the six (Phillips 3” No. 2 bit) screws from side cover releasing brass connectors.
+13. Unscrew the twelve (Phillips 3” No. 2 bit) screws from scanner frame releasing brass connectors.
+
+
+
+
+Pakon F-235 Dissembly Manual                    8/5/05                                        7
+2.2. - Film Entrance Ramp Stand
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page 4).
+4.   Unscrew the four (Hex 7/64”) screws and washers which secure ramp base to unit chassis.
+5.   Remove Film Entrance Ramp from the scanner unit.
+
+
+
+
+2.3 - Light Shield
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page 4).
+4.   Unscrew the three (Hex 7/64 screws and washers holding light shield to optical tower assembly.
+5.   Slide light shield assembly over optical tower as shown.
+.
+
+
+
+
+Pakon F-235 Dissembly Manual                     8/5/05                                        8
+2.4. - USB Board
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page 4).
+4.   Turn scanner onto the left exposed side.
+5.   Unscrew the four (Hex 2.5 mm) screws holding the bottom plate in place.
+6.   Unscrew the two (Phillips 3” No. 2 Bit) screws holding the bottom plate in place.
+7.   Remove the bottom plate from the scanner unit.
+8.   Disconnect the wires attached to the USB board.
+
+
+
+
+9. Unscrew the four (Hex 7/64”) screw holding the USB board from the scanner frame.
+10. Unscrew the one (Hex 5/64”) screw holding the USB jack to scanner frame.
+11. Remove USB Board from the Scanner unit.
+
+
+
+
+Pakon F-235 Dissembly Manual                      8/5/05                                 9
+2.5. - Motor Control Board
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page 4).
+4.   Turn scanner onto the left exposed side.
+5.   Unscrew the four (Hex 2.5 mm) screws holding the bottom plate in place.
+6.   Unscrew the two (Phillips 3” No. 2 Bit) screws holding the bottom plate in place.
+7.   Remove the bottom plate from the scanner unit.
+8.   Disconnect the fifteen wires attached to the Motor Control board.
+
+
+
+
+9. Cut the three cable ties holding the wires for the Motor Control board.
+10. Unscrew the five (Hex 7/64”) screws holding the motor control board in place.
+11. Remove the Motor Control Board from the scanner unit.
+
+2.6. - Filter Wheel Assembly
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page 4).
+4.   Turn scanner onto the left exposed side.
+5.   Unscrew the four (Hex 2.5 mm) screws holding the bottom plate in place.
+6.   Unscrew the two (Phillips 3” No. 2 Bit) screws holding the bottom plate in place.
+7.   Remove the bottom plate from the scanner unit.
+
+
+
+Pakon F-235 Dissembly Manual                      8/5/05                                 10
+8. Located black filer wheel cover
+
+
+
+
+9. Loosen the two (Hex 3/32”) screws on the Filter Wheel motor.
+
+
+
+
+Pakon F-235 Dissembly Manual                  8/5/05              11
+10. Remove black Filter Wheel cover from the Scanner unit.
+
+
+
+
+11. Cut the three wires attached to the Filter Wheel Assembly.
+12. Unscrew the two (Hex 3/32”) screws holding the filter wheel assembly in place.
+
+
+
+
+13. Remove the Filter Wheel Assembly from the scanner unit.
+14. Unscrew the two (Hex 3/32”) screws holding the filter wheel motor to the Filter Wheel Assembly.
+15. Unscrew the two (Hex 3/32”) screws holding the filter wheel sensor to the Filter Wheel Assembly.
+16. Unscrew the one (Hex 3/32”) screws holding the filter wheel disk to the Filter Wheel Assembly.
+
+
+
+
+Pakon F-235 Dissembly Manual                   8/5/05                                      12
+2.7. - Transport Drive Motor
+1. Turn the scanner off.
+2. Unplug the USB and power cables from the back of the F-235 scanner.
+3. Remove all three covers (see 2.1 page 4).
+4. Turn scanner onto the left exposed side.
+5. Unscrew the four (Hex 2.5 mm) screws holding the bottom plate in place.
+6. Unscrew the two (Phillips 3” No. 2 Bit) screws holding the bottom plate in place.
+7. Remove the bottom plate from the scanner unit.
+8. Cut the two wires attached to the Transport Drive motor.
+9. Cut the one cable tie attached to the side wall of the scanner unit.
+10. Cut the one cable tie attached to the ferrite bead mounded on the Transport Drive motor.
+11. Remove the ferrite bead from the scanner unit.
+
+
+
+
+12. Place scanner in the upright position with the left side of the scanner facing technician.
+
+
+
+
+Pakon F-235 Dissembly Manual                      8/5/05                                         13
+13. Unscrew the three (Hex 7/64”) screws holding the Transport Drive motor in place.
+14. Turn scanner onto the left exposed side.
+15. Remove the drive belt attached to the Transport Drive motor from the scanner unit.
+16. Remove the Drive Motor from the scanner unit.
+
+
+
+
+2.8. - Power Supply Module
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page 4).
+4.   Turn scanner onto the left exposed side.
+5.   Unscrew the four (Hex 2.5 mm) screws holding the bottom plate in place.
+6.   Unscrew the two (Phillips 3” No. 2 Bit) screws holding the bottom plate in place.
+7.   Remove the bottom plate from the scanner unit.
+8.   Cut the four wires attached to the Power Supply Module.
+
+
+
+
+Pakon F-235 Dissembly Manual                      8/5/05                                 14
+9. Press the four tab holding the Power Supply Module to the Scanner frame.
+10. Slide the Power Supply Module out the back of the scanner unit.
+
+
+
+
+2.9. - Blower Assembly
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page ).
+4.   Locate the Fan filter. It is located on the back of the scanner, just under the plastic fan cover.
+
+
+
+
+Pakon F-235 Dissembly Manual                         8/5/05                                          15
+5. Pull straight back on the plastic fan cover until it comes free from the scanner housing.
+
+
+
+
+6. Remove the filter from inside the cover.
+
+
+
+
+7. Unscrew the eight (Phillips 3” No. 2 Bit) screws holding the blower assembly to scanner frame.
+   Note: Blower Motor is held to the Scanner chassis by double sided tape.
+8. Separate Blower Motor from assembly brackets.
+9. Proceed to next Section (Power Supply) to remove power cable or cut.
+
+2.10. - Power Supply
+1. Turn the scanner off.
+2. Unplug the USB and power cables from the back of the F-235 scanner.
+
+
+
+Pakon F-235 Dissembly Manual                      8/5/05                                       16
+3. Remove all three covers (see 2.1 page 4).
+4. Place scanner in the up-right position with the front of scanner unit is facing technician.
+5. Unscrew the three (Hex 2.5mm) screws from the front of the vertical plate.
+
+
+
+
+6. Turn scanner onto the left exposed side.
+7. Unscrew the four (Hex 2.5 mm) screws holding the bottom plate in place.
+8. Unscrew the two (Phillips 3” No. 2 Bit) screws holding the bottom plate in place.
+9. Slide Power Supply back exposing Power Supply Terminal Board.
+10. Remove all wires from Power Supply terminal board.
+.
+
+
+
+
+11. Remove Blower Motor from the scanner unit.
+12. Remove Power Supply Module from the scanner unit.
+
+
+
+Pakon F-235 Dissembly Manual                      8/5/05                                         17
+2.11. - Fan Motor
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page 4).
+4.   Turn Scanner so back of scanner unit is facing technician.
+
+
+
+
+5. Unscrew the four (Hex 7/64”) screws from scanner unit frame
+
+
+
+
+6.   Pull Fan Assembly and support brackets away from scanner unit.
+7.   Remove two cables from Lamp Assembly board.
+8.   Unscrew the four (Phillips 3” No. 2 bit) screws from the Fan brackets.
+9.   Remove Fan assembly from Fan Support brackets.
+
+2.12. - Lamp Board Assembly
+1. Turn the scanner off.
+2. Unplug the USB and power cables from the back of the F-235 scanner.
+3. Remove all three covers (see 2.1 page 5).
+
+
+Pakon F-235 Dissembly Manual                      8/5/05                      18
+4. Turn Scanner so back of scanner unit is facing technician.
+
+
+
+
+5. Unscrew the four (Hex 7/64”) screws from scanner unit frame.
+
+
+
+
+6.   Pull Fan Assembly and support brackets away from Scanner Unit.
+7.   Remove two cables from Lamp Assembly board.
+8.   Unscrew the four (Phillips 3” No. 2 bit) screws from the Fan brackets.
+9.   Remove fan assembly from Fan support brackets
+
+
+
+
+Pakon F-235 Dissembly Manual                      8/5/05                      19
+10. Remove the four (Hex 7/64”) screws holding the lamp board to scanner base. There is one screw in
+    each corner of the board.
+
+
+
+
+Pakon F-235 Dissembly Manual                   8/5/05                                      20
+11. Remove two cables attached to the lamp board.
+12. Remove Lamp Board from the scanner unit.
+
+2.13. - Lamp Holder
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page 4).
+4.   Turn Scanner so back of scanner unit is facing technician.
+5.   Allow lamp to cool down before attempting to replace the lamp holder.
+6.   Remove the light bulb from the Lamp Holder by pulling the lamp lever towards the power supply
+     connection and gently lifing the lamp bulb upward
+
+
+
+
+7. Ensure lamp holder power cable from the Lamp Board if NOT remove cable.
+8. Unscrew the four (Hex 7/64”) screws that mount the Lamp Holder to the scanner frame.
+9. Remove the Lamp Holder from the scanner unit.
+
+2.14. - MOF unit (F235C Unit Only)
+1. Turn the scanner off.
+2. Unplug the USB and power cables from the back of the F-235 scanner.
+3. Remove all three covers (see 2.1 page 4).
+
+
+
+
+Pakon F-235 Dissembly Manual                    8/5/05                                     21
+4.   Turn Scanner so front of scanner unit is facing technician.
+5.   Unscrew the four (Hex 7/64”) screws that mount the MOF assembly to the scanner frame.
+6.   Unplug the two MOF cable from main wiring harness.
+7.   Remove the MOF assembly from the scanner uni.t
+
+
+
+
+8. Unscrew the one (Hex 5/64”) screws which holds the White gear to the MOF Motor.
+9. Remove the White gear from the MOF assembly.
+10. Unscrew the two (Hex 5/64”) screws which holds the MOF Motor to the MOF assembly.
+
+
+
+
+11. Remove the MOF Motor from the MOF assembly.
+
+
+
+
+Pakon F-235 Dissembly Manual                    8/5/05                                       22
+12. Unscrew the four (Hex 2.5mm) screws which holds the MOF Magnetic Heads to the MOF assembly.
+13. Remove the MOF Magnetic heads from the MOF assembly.
+14. Unscrew the four phillips screws which holds the MOF Perf board to the MOF assembly.
+15. Remove the MOF Perf board from the MOF assembly.
+16. Turn MOF assembly so the bottom of the MOF assembly is facing technician.
+17. Unscrew the two phillips screws which holds the MOF circuit board to the MOF assembly.
+18. Remove the MOF circuit board from the MOF assembly.
+
+
+
+
+2.15. - CCD Power Module
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page 4).
+4.   Turn Scanner so front of scanner unit is facing technician.
+5.   Disconnect the power and sync cables from the CCD power module board.
+6.   Unscrew the one (Hex 3/32”) screw from the CCD power module board and the CCD Power Module
+     bracket.
+
+
+
+
+Pakon F-235 Dissembly Manual                 8/5/05                                   23
+7. Remove the CCD Power Module from scanner.
+8. Unscrew the one (Hex 3/32”) screw from the CCD Power Module bracket and the scanner chassis.
+9. Remove the CCD Power Module bracket from the scanner unit.
+
+2.16. - CCD Board
+1.   Turn the scanner off.
+2.   Unplug the USB and power cables from the back of the F-235 scanner.
+3.   Remove all three covers (see 2.1 page 4).
+4.   Remove Light Shield (see 2.3. page 8).
+5.   Cut cable tie located on the back left corner of the CCD Board.
+6.   Disconnect the four cables from the CCD board.
+7.   Unscrew one (Hex 7/64”) screw mounting the CCD board to the CCD support.
+8.   Unscrew three (Hex 3/32”) screws mounting the CCD board to the CCD support.
+
+
+
+
+                                         #1                                        #3
+
+
+
+          #2                                                                       #4
+
+
+
+
+9. The board is still connected to the CCD chip, which is mounted to the CCD support.
+10. Carefully pry the CCD board from the support mount.
+11. Remove the CCD Board from the scanner unit.
+12. Unscrew the three (Hex 3/32”) screws mounting the CCD Module to the CCD Bracket (Screws are
+    located under the CCD bracket.
+13. Remove the CCD module from the scanner unit.
+
+
+Pakon F-235 Dissembly Manual                   8/5/05                                   24
+14. Unscrew the two (Hex 7/64”) screws mounting the CCD bracket to the Optical tower Assembly
+   (Screws are located under the CCD bracket).
+
+2.17. - Sensor Board for CCD and Lens
+1. Turn the scanner off.
+2. Unplug the USB and power cables from the back of the F-235 scanner.
+3. Remove all three covers (see 2.1 page 4).
+4. Remove Light Shield (see 2.3. page 8).
+5. If the CCD and Lens assemblies are in the home position turn optical tower spindle to move the
+   assemblies out of the home position other proceed to next step.
+6. Disconnect the Sensor cable from the Sensor Board.
+
+
+
+
+7. Unscrew three (Hex 7/64”) screws from the Sensor Board and the scanner chassis.
+
+
+
+
+8. Remove the Sensor Board from the Scanner unit.
+
+2.18. - Optical Tower Assembly
+1. Turn the scanner off.
+
+
+
+Pakon F-235 Dissembly Manual                    8/5/05                                      25
+2. Unplug the USB and power cables from the back of the F-235 scanner.
+3. Remove all three covers (see 2.1. page 4).
+4. Remove Light Shield (see 2.3. page 8).
+5. Ensure the Fan Motor (2.11 pg 18), Lamp Board Assembly (2.12 pg 18), CCD Power Module (2.15
+   pg 23) and CCD Board (2.16 pg 24) have been removed before proceeding to the next step.
+6. Cut the three cable straps located on the CCD motor leg, Scanner unit chassis and supporting wiring.
+7. Unscrew the four (Hex 7/32”) screws to remove the Optic Tower assembly from back of the frame.
+
+
+
+
+8. Remove the Optical Tower assembly from the scanner unit.
+9. Unscrew two (Hex 3/32”) screws mounting CCD motor to the top of the Optical Tower assembly.
+10. Remove the CCD motor from the scanner unit.
+11. Unscrew two (Hex 3/32”) screws mounting Lens motor to the bottom of the Optical Tower assembly.
+12. Remove the Lens motor from the scanner unit.
+13. Unscrew one (Hex 7/64) screw mounting the Lens to the Lens bracket located on the Optical Tower.
+14. Remove the Lens form the Lens bracket.
+15. Unscrew two (Hex 7/64) screw mounting the Lens bracket to the Optical Tower.
+16. Remove the Lens bracket from the Optical Tower.
+
+2.19. - Film Path (Transport) Assembly
+1. Turn the scanner off.
+2. Unplug the USB and power cables from the back of the F-235 scanner.
+3. Remove all three covers (see 2.1 page 4).
+4. Turn scanner onto the exposed side.
+5. Unscrew the six screws holding the bottom plate in place.
+6. Remove the bottom plate from scanner.
+7. Disconnect all film path assembly cables from the motor control board. (J2, J3, J6, J7, J12, J16, and
+   J17) if they have not already been removed.
+8. Turn the scanner into its proper orientation (front facing technician).
+
+
+
+Pakon F-235 Dissembly Manual                     8/5/05                                        26
+9. Ensure the Entrance Film Ramp (2.2 pg 8) and Light Shield (2.3 pg 8) have been removed from the
+    scanner unit. before proceeding to the next step.
+10. . Remove one (Hex 7/64”) screw and washer mounting the ground straps to the scanner chassis.
+11. Cut the three cable straps located on the wiring harness let to the Film Path (transport) assembly.
+12. Unscrew the four (Hex 7/64”) screws holding the Film Path assembly on the scanner frame.
+13. Remove the Film Path (Transport) assembly from the scanner unit.
+14. Unscrew the Six (Hex 3/32”) screws holding the Transport motors to the Film Path assembly.
+15. Remove the Transport motors from the Film Path (Transport) assembly.
+
+
+
+
+2.20. - LED Board
+1. Turn the scanner off.
+2. Unplug the USB and power cables from the back of the F-235 scanner.
+3. Remove all three covers (see 2.1 page 4).
+4. Turn scanner onto the left exposed side.
+5. Unscrew the four (Hex 2.5 mm) screws holding the bottom plate in place.
+6. Unscrew the two (Phillips 3” No. 2 Bit) screws holding the bottom plate in place.
+7. Remove the bottom plate from the scanner unit.
+8. Ensure the Entrance Film Ramp (2.2 pg 8), Light Shield (2.3 pg 8), Film Path Assembly (2.19 pg 26)
+   have been removed from the scanner unit before proceeding to the next step.
+9. The LED board should now be exposed.
+
+
+
+
+Pakon F-235 Dissembly Manual                     8/5/05                                       27
+10. Unscrew the four (Hex 5/64”) screws holding the Light Cavity to the scanner chassis.
+
+
+
+
+11. Turn Scanner up-right with the scanner front facing the technician.
+12. Unscrew the one (Hex 7/64”) screw (left side) holding the Light Shield (cover) to the scanner
+    chassis.
+13. Unscrew the one (Hex 3/32”) screw (right side) holding the Light Shield (cover) to the scanner
+    chassis.
+14. Remove Light Shield (cover) from the scanner unit.
+
+
+
+
+Pakon F-235 Dissembly Manual                    8/5/05                                       28
+15. Unscrew the four (Hex 3/32”) screws holding the IR bracket to the front of the scanner chassis.
+16. Remove the IR Bracket assembly and IR glass lens from the scanner unit.
+
+
+
+
+17. Unplug the thin ribbon cable from the right side of the LED board.
+
+
+
+
+                                                     #1
+
+
+
+18. Unscrew the one screw mounting the LED board to the illumination assembly.
+19. Remove the LED board from the scanner unit.
+20. Unscrew two (Hex 5/64”) screws connecting the Light Cone and illuminator block.
+21. Remove Light Cone and Illuminator Block.
+
+
+
+
+Pakon F-235 Dissembly Manual                     8/5/05                                       29
+

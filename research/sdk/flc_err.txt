@@ -1,0 +1,14 @@
+[33mINFO:[0m Analyze all flags starting with sym. and entry0 (aa)
+[33mINFO:[0m Analyze imports (af@@@i)
+[33mINFO:[0m Analyze entrypoint (af@ entry0)
+[33mINFO:[0m Analyze symbols (af@@@s)
+[33mINFO:[0m Running plugin pre-analysis hooks
+[33mINFO:[0m Analyze all functions arguments/locals (afva@@F)
+[33mINFO:[0m Analyze function calls (aac)
+[33mINFO:[0m Analyze len bytes of instructions for references (aar)
+[33mINFO:[0m Finding and parsing C++ vtables (avrr)
+[33mINFO:[0m Analyzing methods (af @@ method.*)
+[33mINFO:[0m Recovering local variables (afva@@@F)
+[33mINFO:[0m Type matching analysis for all functions (aaft)
+[33mINFO:[0m Propagate noreturn information (aanr)
+[33mINFO:[0m Use -AA or aaaa to perform additional experimental analysis

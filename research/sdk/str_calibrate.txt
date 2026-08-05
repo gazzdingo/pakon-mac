@@ -1,0 +1,108 @@
+604  0x00061678 0x10061678 33  68   .rdata  utf16le FN_PutCalibrateInfoIdentification
+605  0x000616bc 0x100616bc 30  62   .rdata  utf16le FN_PutCalibrateInfoColorMatrix
+611  0x000617bc 0x100617bc 30  62   .rdata  utf16le FN_GetCalibrateInfoColorMatrix
+626  0x00061aa8 0x10061aa8 34  70   .rdata  utf16le FN_CalibratePutFilterWheelPosition
+627  0x00061af0 0x10061af0 28  58   .rdata  utf16le FN_bCalibrateFindSmearAndFPC
+628  0x00061b2c 0x10061b2c 28  58   .rdata  utf16le FN_bCalibrateFindLiteAndDark
+697  0x000625f4 0x100625f4 24  50   .rdata  utf16le FN_PutCalibrateInfoLight
+698  0x00062628 0x10062628 22  46   .rdata  utf16le FN_PutCalibrateInfoDpi
+699  0x00062658 0x10062658 21  44   .rdata  utf16le FN_PutCalibrateEEProm
+755  0x00062f4c 0x10062f4c 24  50   .rdata  utf16le FN_GetCalibrateInfoLight
+756  0x00062f80 0x10062f80 22  46   .rdata  utf16le FN_GetCalibrateInfoDpi
+757  0x00062fb0 0x10062fb0 21  44   .rdata  utf16le FN_GetCalibrateEEProm
+901  0x000648ec 0x100648ec 19  40   .rdata  utf16le FN_bCalibrateWizard
+902  0x00064914 0x10064914 29  60   .rdata  utf16le FN_CalibrateTestTowerSteppers
+903  0x00064950 0x10064950 26  54   .rdata  utf16le FN_bCalibrateStartDataFlow
+904  0x00064988 0x10064988 41  84   .rdata  utf16le FN_CalibratePutFilmPressureRollerPosition
+905  0x000649dc 0x100649dc 21  44   .rdata  utf16le FN_CalibrateMofReader
+906  0x00064a08 0x10064a08 17  36   .rdata  utf16le FN_bCalibrateLEDs
+907  0x00064a2c 0x10064a2c 17  36   .rdata  utf16le FN_CalibrateFocus
+908  0x00064a50 0x10064a50 18  38   .rdata  utf16le FN_bCalibrateFlush
+909  0x00064a78 0x10064a78 30  62   .rdata  utf16le FN_bCalibrateFixedPatternIrLag
+910  0x00064ab8 0x10064ab8 29  60   .rdata  utf16le FN_bCalibrateFixedPatternDark
+911  0x00064af8 0x10064af8 31  64   .rdata  utf16le FN_bCalibrateFixedPatternBright
+912  0x00064b38 0x10064b38 34  70   .rdata  utf16le FN_bCalibrateFindOpenGateExposures
+913  0x00064b80 0x10064b80 29  60   .rdata  utf16le FN_bCalibrateFindLedDutyCycle
+914  0x00064bbc 0x10064bbc 30  62   .rdata  utf16le FN_bCalibrateFindLedCurrentSub
+915  0x00064bfc 0x10064bfc 27  56   .rdata  utf16le FN_bCalibrateFindLedCurrent
+916  0x00064c34 0x10064c34 26  54   .rdata  utf16le FN_bCalibrateFindExposures
+917  0x00064c6c 0x10064c6c 27  56   .rdata  utf16le FN_bCalibrateFindDarkOffset
+918  0x00064ca4 0x10064ca4 28  58   .rdata  utf16le FN_bCalibrateFindCorrections
+919  0x00064ce0 0x10064ce0 24  50   .rdata  utf16le FN_bCalibrateEndDataFlow
+920  0x00064d14 0x10064d14 16  34   .rdata  utf16le FN_bCalibrateEnd
+921  0x00064d38 0x10064d38 18  38   .rdata  utf16le FN_CalibrateChange
+922  0x00064d60 0x10064d60 17  36   .rdata  utf16le FN_CalibrateBegin
+923  0x00064d84 0x10064d84 19  40   .rdata  utf16le FN_bCalibrateBefore
+924  0x00064dac 0x10064dac 18  38   .rdata  utf16le FN_bCalibrateAfter
+925  0x00064dd4 0x10064dd4 23  48   .rdata  utf16le FN_CalibrateAdvanceFilm
+926  0x00064e08 0x10064e08 35  72   .rdata  utf16le FN_bCalibrateAcquireAndAverageLines
+927  0x00064e50 0x10064e50 19  40   .rdata  utf16le FN_CalibrateAcquire
+1019 0x00065c90 0x10065c90 24  50   .rdata  utf16le bCalibrateFindDarkOffset
+1021 0x00065cd0 0x10065cd0 26  54   .rdata  utf16le bCalibrateFixedPatternDark
+1022 0x00065d08 0x10065d08 24  50   .rdata  utf16le bCalibrateFindLedCurrent
+1024 0x00065d58 0x10065d58 26  54   .rdata  utf16le bCalibrateFindLedDutyCycle
+1025 0x00065d90 0x10065d90 28  58   .rdata  utf16le bCalibrateFixedPatternBright
+1026 0x00065dcc 0x10065dcc 27  56   .rdata  utf16le bCalibrateFixedPatternIrLag
+1138 0x00067cd4 0x10067cd4 18  38   .rdata  utf16le EventScanCalibrate
+1155 0x00068014 0x10068014 21  44   .rdata  utf16le m_hEventScanCalibrate
+1166 0x000681d8 0x100681d8 17  36   .rdata  utf16le iCalibrateControl
+1842 0x0007749f 0x1008649f 21  22   .rsrc   ascii   +iCalibrateControlWWW
+2047 0x00078c03 0x10087c03 17  18   .rsrc   ascii   )CalibrateBeginWW
+2049 0x00078c3f 0x10087c3f 21  22   .rsrc   ascii   $GetCalibrateInfoDpiW
+2061 0x00078d84 0x10087d84 20  21   .rsrc   ascii   PutCalibrateInfoDpiW
+2062 0x00078da3 0x10087da3 17  18   .rsrc   ascii   BbCalibrateGroupW
+2070 0x00078e64 0x10087e64 24  25   .rsrc   ascii   GetCalibrateInfoLightWWW
+2091 0x00079096 0x10088096 26  27   .rsrc   ascii   P!PutCalibrateInfoLightWWW
+2108 0x00079248 0x10088248 28  29   .rsrc   ascii   GetCalibrateInfoColorMatrixW
+2139 0x000795b8 0x100885b8 28  29   .rsrc   ascii   PutCalibrateInfoColorMatrixW
+2170 0x00079928 0x10088928 32  33   .rsrc   ascii   PutCalibrateInfoIdentificationWW
+2174 0x000799aa 0x100889aa 18  19   .rsrc   ascii   ncCalibrateChangeW
+2175 0x000799c8 0x100889c8 16  17   .rsrc   ascii   CalibrateAcquire
+2177 0x000799fb 0x100889fb 21  22   .rsrc   ascii   \CalibrateAdvanceFilm
+2178 0x00079a1c 0x10088a1c 16  17   .rsrc   ascii   CalibrateFocusWW
+2180 0x00079a54 0x10088a54 24  25   .rsrc   ascii   CalibrateFocusResultsWWW
+2181 0x00079a77 0x10088a77 29  30   .rsrc   ascii   FpiCalibrateFocusErrorCenterW
+2182 0x00079aa0 0x10088aa0 28  29   .rsrc   ascii   piCalibrateFocusErrorLeftWWW
+2183 0x00079ac8 0x10088ac8 28  29   .rsrc   ascii   piCalibrateFocusErrorRightWW
+2184 0x00079af0 0x10088af0 28  29   .rsrc   ascii   piCalibrateFocusOffsetCenter
+2185 0x00079b18 0x10088b18 28  29   .rsrc   ascii   piCalibrateFocusOffsetLeftWW
+2186 0x00079b40 0x10088b40 28  29   .rsrc   ascii   piCalibrateFocusOffsetRightW
+2187 0x00079b68 0x10088b68 28  29   .rsrc   ascii   piCalibrateTiltEighthTurnsWW
+2188 0x00079b90 0x10088b90 20  21   .rsrc   ascii   PutCalibrateEEPromWW
+2189 0x00079baf 0x10088baf 13  15   .rsrc   ascii   HCalibrateEnd
+2283 0x0007a5f6 0x100895f6 22  23   .rsrc   ascii   method CalibrateBeginW
+2284 0x0007a60e 0x1008960e 26  27   .rsrc   ascii   method GetCalibrateInfoDpi
+2285 0x0007a62a 0x1008962a 26  27   .rsrc   ascii   method PutCalibrateInfoDpi
+2286 0x0007a646 0x10089646 30  31   .rsrc   ascii   method GetCalibrateInfoLightWW
+2287 0x0007a666 0x10089666 31  32   .rsrc   ascii   method PutCalibrateInfoLightWW"
+2288 0x0007a686 0x10089686 35  36   .rsrc   ascii   method GetCalibrateInfoColorMatrix"
+2289 0x0007a6aa 0x100896aa 35  36   .rsrc   ascii   method PutCalibrateInfoColorMatrix%
+2290 0x0007a6ce 0x100896ce 38  39   .rsrc   ascii   method PutCalibrateInfoIdentificationW
+2291 0x0007a6f6 0x100896f6 22  23   .rsrc   ascii   method CalibrateChange
+2292 0x0007a70e 0x1008970e 27  28   .rsrc   ascii   method CalibrateAcquireWWW\e
+2293 0x0007a72a 0x1008972a 30  31   .rsrc   ascii   method CalibrateAdvanceFilmWWW
+2294 0x0007a74a 0x1008974a 22  23   .rsrc   ascii   method CalibrateFocusW
+2295 0x0007a762 0x10089762 30  31   .rsrc   ascii   method CalibrateFocusResultsWW
+2296 0x0007a782 0x10089782 26  27   .rsrc   ascii   method PutCalibrateEEPromW
+2297 0x0007a79e 0x1008979e 22  23   .rsrc   ascii   method CalibrateEndWWW
+83   0x0005c260 0x1005c260 27  56   .rdata  utf16le \Logs\LightStabilityLog.txt
+177  0x0005cf98 0x1005cf98 20  42   .rdata  utf16le FullLightCorrections
+227  0x0005d5e8 0x1005d5e8 22  46   .rdata  utf16le WriteLightStabilityLog
+229  0x0005d648 0x1005d648 38  78   .rdata  utf16le RequireDxSensorsDuringLightCalibration
+430  0x0005f6f8 0x1005f6f8 32  66   .rdata  utf16le EC_BistPiclLightBdTempSensorFail
+527  0x00060824 0x10060824 20  42   .rdata  utf16le EC_InsufficientLight
+697  0x000625f4 0x100625f4 24  50   .rdata  utf16le FN_PutCalibrateInfoLight
+755  0x00062f4c 0x10062f4c 24  50   .rdata  utf16le FN_GetCalibrateInfoLight
+975  0x00065578 0x10065578 16  34   .rdata  utf16le CN_CiConfigLight
+1106 0x00067054 0x10067054 14  30   .rdata  utf16le m_pConfigLight
+1687 0x000732c4 0x100732c4 19  20   .data   ascii   .?AVCiConfigLight@@
+2036 0x00078a98 0x10087a98 28  29   .rsrc   ascii   GetPictureLightingDirectionW
+2037 0x00078ac0 0x10087ac0 29  30   .rsrc   ascii   piPictureLightingDirectionWWX
+2038 0x00078ae7 0x10087ae7 29  30   .rsrc   ascii   qPutPictureLightingDirectionW
+2039 0x00078b10 0x10087b10 29  30   .rsrc   ascii   iPictureLightingDirectionWWWX
+2070 0x00078e64 0x10087e64 24  25   .rsrc   ascii   GetCalibrateInfoLightWWW
+2091 0x00079096 0x10088096 26  27   .rsrc   ascii   P!PutCalibrateInfoLightWWW
+2277 0x0007a526 0x10089526 35  36   .rsrc   ascii   method GetPictureLightingDirection"
+2278 0x0007a54a 0x1008954a 34  35   .rsrc   ascii   method PutPictureLightingDirection
+2286 0x0007a646 0x10089646 30  31   .rsrc   ascii   method GetCalibrateInfoLightWW
+2287 0x0007a666 0x10089666 31  32   .rsrc   ascii   method PutCalibrateInfoLightWW"

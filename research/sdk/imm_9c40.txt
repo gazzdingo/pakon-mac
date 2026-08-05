@@ -1,0 +1,2 @@
+0x1001e9c8         81fa409c0000  cmp edx, 0x9c40
+0x1001f18e         81f9409c0000  cmp ecx, 0x9c40

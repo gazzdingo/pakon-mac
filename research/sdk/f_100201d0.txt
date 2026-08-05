@@ -1,0 +1,34 @@
+            ; XREFS: CALL 0x1001e20d  CALL 0x1001e221  CALL 0x1001e235  
+            ; XREFS: CALL 0x1001ff0a  CALL 0x1001ff1e  CALL 0x1001ff32  
+            ; XREFS: CALL 0x10020f9f  CALL 0x10020fb3  CALL 0x10020fc7  
+            ; XREFS: CALL 0x1002116c  CALL 0x10021182  CALL 0x10021198  
+            ; XREFS: CALL 0x100212c7  CALL 0x1002130c  CALL 0x10021351  
+┌ 94: fcn.100201d0 ();
+│           0x100201d0      dd442404       fld qword [esp + 4]
+│           0x100201d4      dc15785c0610   fcom qword [0x10065c78]
+│           0x100201da      dfe0           fnstsw ax
+│           0x100201dc      f6c405         test ah, 5                  ; 5
+│       ┌─< 0x100201df      7a0a           jp 0x100201eb
+│       │   0x100201e1      ddd8           fstp st(0)
+│       │   0x100201e3      dd05785c0610   fld qword [0x10065c78]
+│      ┌──< 0x100201e9      eb17           jmp 0x10020202
+│      ││   ; CODE XREF from fcn.100201d0 @ 0x100201df(x)
+│      │└─> 0x100201eb      dd05785e0610   fld qword [0x10065e78]
+│      │    0x100201f1      d8d9           fcomp st(1)
+│      │    0x100201f3      dfe0           fnstsw ax
+│      │    0x100201f5      f6c405         test ah, 5                  ; 5
+│      │┌─< 0x100201f8      7a08           jp 0x10020202
+│      ││   0x100201fa      ddd8           fstp st(0)
+│      ││   0x100201fc      dd05785e0610   fld qword [0x10065e78]
+│      ││   ; CODE XREFS from fcn.100201d0 @ 0x100201e9(x), 0x100201f8(x)
+│      └└─> 0x10020202      dd05785c0610   fld qword [0x10065c78]
+│           0x10020208      83ec08         sub esp, 8
+│           0x1002020b      d8f1           fdiv st(1)
+│           0x1002020d      dc2d785c0610   fsubr qword [0x10065c78]    ; [0x10065c78:8]=0x3ff0000000000000
+│           0x10020213      dc0d705e0610   fmul qword [str.fffff]      ; [0x10065e70:8]=0x4052e66666666666 ; "fffff"
+│           0x10020219      dd1c24         fstp qword [esp]
+│           0x1002021c      ddd8           fstp st(0)
+│           0x1002021e      e88d8e0200     call fcn.100490b0
+│           0x10020223      83c408         add esp, 8
+│           0x10020226      e8718c0200     call fcn.10048e9c
+└           0x1002022b      c20800         ret 8

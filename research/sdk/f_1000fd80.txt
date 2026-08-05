@@ -1,0 +1,186 @@
+┌ 515: fcn.1000fd80 ();
+│           0x1000fd80      56             push esi
+│           0x1000fd81      57             push edi
+│           0x1000fd82      8bf9           mov edi, ecx
+│           0x1000fd84      8d4740         lea eax, [edi + 0x40]
+│           0x1000fd87      50             push eax
+│           0x1000fd88      68c4d10510     push str.SpliceDarkness     ; 0x1005d1c4 ; "SpliceDarkness"
+│           0x1000fd8d      be01000000     mov esi, 1
+│           0x1000fd92      e8a9cbffff     call 0x1000c940
+│           0x1000fd97      85c0           test eax, eax
+│       ┌─< 0x1000fd99      7502           jne 0x1000fd9d
+│       │   0x1000fd9b      33f6           xor esi, esi
+│       └─> 0x1000fd9d      8d4f44         lea ecx, [edi + 0x44]
+│           0x1000fda0      51             push ecx
+│           0x1000fda1      68a8d10510     push str.DetectWhite_G      ; 0x1005d1a8 ; "DetectWhite_G"
+│           0x1000fda6      8bcf           mov ecx, edi
+│           0x1000fda8      e893cbffff     call 0x1000c940
+│           0x1000fdad      85c0           test eax, eax
+│       ┌─< 0x1000fdaf      7502           jne 0x1000fdb3
+│       │   0x1000fdb1      33f6           xor esi, esi
+│       └─> 0x1000fdb3      8d5748         lea edx, [edi + 0x48]
+│           0x1000fdb6      52             push edx
+│           0x1000fdb7      688cd10510     push str.DetectFilm_G       ; 0x1005d18c ; "DetectFilm_G"
+│           0x1000fdbc      8bcf           mov ecx, edi
+│           0x1000fdbe      e87dcbffff     call 0x1000c940
+│           0x1000fdc3      85c0           test eax, eax
+│       ┌─< 0x1000fdc5      7502           jne 0x1000fdc9
+│       │   0x1000fdc7      33f6           xor esi, esi
+│       └─> 0x1000fdc9      8d4734         lea eax, [edi + 0x34]
+│           0x1000fdcc      50             push eax
+│           0x1000fdcd      687cd10510     push str.Gain_R             ; 0x1005d17c ; "Gain_R"
+│           0x1000fdd2      8bcf           mov ecx, edi
+│           0x1000fdd4      e867cbffff     call 0x1000c940
+│           0x1000fdd9      85c0           test eax, eax
+│       ┌─< 0x1000fddb      7502           jne 0x1000fddf
+│       │   0x1000fddd      33f6           xor esi, esi
+│       └─> 0x1000fddf      8d4f38         lea ecx, [edi + 0x38]
+│           0x1000fde2      51             push ecx
+│           0x1000fde3      686cd10510     push str.Gain_G             ; 0x1005d16c ; "Gain_G"
+│           0x1000fde8      8bcf           mov ecx, edi
+│           0x1000fdea      e851cbffff     call 0x1000c940
+│           0x1000fdef      85c0           test eax, eax
+│       ┌─< 0x1000fdf1      7502           jne 0x1000fdf5
+│       │   0x1000fdf3      33f6           xor esi, esi
+│       └─> 0x1000fdf5      8d573c         lea edx, [edi + 0x3c]
+│           0x1000fdf8      52             push edx
+│           0x1000fdf9      685cd10510     push str.Gain_B             ; 0x1005d15c ; "Gain_B"
+│           0x1000fdfe      8bcf           mov ecx, edi
+│           0x1000fe00      e83bcbffff     call 0x1000c940
+│           0x1000fe05      85c0           test eax, eax
+│       ┌─< 0x1000fe07      7502           jne 0x1000fe0b
+│       │   0x1000fe09      33f6           xor esi, esi
+│       └─> 0x1000fe0b      8d474c         lea eax, [edi + 0x4c]
+│           0x1000fe0e      50             push eax
+│           0x1000fe0f      6848d10510     push str.Offset_R           ; 0x1005d148 ; "Offset_R"
+│           0x1000fe14      8bcf           mov ecx, edi
+│           0x1000fe16      e825cbffff     call 0x1000c940
+│           0x1000fe1b      85c0           test eax, eax
+│       ┌─< 0x1000fe1d      7502           jne 0x1000fe21
+│       │   0x1000fe1f      33f6           xor esi, esi
+│       └─> 0x1000fe21      8d4f50         lea ecx, [edi + 0x50]
+│           0x1000fe24      51             push ecx
+│           0x1000fe25      6834d10510     push str.Offset_G           ; 0x1005d134 ; "Offset_G"
+│           0x1000fe2a      8bcf           mov ecx, edi
+│           0x1000fe2c      e80fcbffff     call 0x1000c940
+│           0x1000fe31      85c0           test eax, eax
+│       ┌─< 0x1000fe33      7502           jne 0x1000fe37
+│       │   0x1000fe35      33f6           xor esi, esi
+│       └─> 0x1000fe37      8d5754         lea edx, [edi + 0x54]
+│           0x1000fe3a      52             push edx
+│           0x1000fe3b      6820d10510     push str.Offset_B           ; 0x1005d120 ; "Offset_B"
+│           0x1000fe40      8bcf           mov ecx, edi
+│           0x1000fe42      e8f9caffff     call 0x1000c940
+│           0x1000fe47      85c0           test eax, eax
+│       ┌─< 0x1000fe49      7502           jne 0x1000fe4d
+│       │   0x1000fe4b      33f6           xor esi, esi
+│       └─> 0x1000fe4d      8d4758         lea eax, [edi + 0x58]
+│           0x1000fe50      50             push eax
+│           0x1000fe51      680cd10510     push str.Current_R          ; 0x1005d10c ; "Current_R"
+│           0x1000fe56      8bcf           mov ecx, edi
+│           0x1000fe58      e8e3caffff     call 0x1000c940
+│           0x1000fe5d      85c0           test eax, eax
+│       ┌─< 0x1000fe5f      7502           jne 0x1000fe63
+│       │   0x1000fe61      33f6           xor esi, esi
+│       └─> 0x1000fe63      8d4f5c         lea ecx, [edi + 0x5c]
+│           0x1000fe66      51             push ecx
+│           0x1000fe67      68f8d00510     push str.Current_G          ; 0x1005d0f8 ; "Current_G"
+│           0x1000fe6c      8bcf           mov ecx, edi
+│           0x1000fe6e      e8cdcaffff     call 0x1000c940
+│           0x1000fe73      85c0           test eax, eax
+│       ┌─< 0x1000fe75      7502           jne 0x1000fe79
+│       │   0x1000fe77      33f6           xor esi, esi
+│       └─> 0x1000fe79      8d5760         lea edx, [edi + 0x60]
+│           0x1000fe7c      52             push edx
+│           0x1000fe7d      68e4d00510     push str.Current_B          ; 0x1005d0e4 ; "Current_B"
+│           0x1000fe82      8bcf           mov ecx, edi
+│           0x1000fe84      e8b7caffff     call 0x1000c940
+│           0x1000fe89      85c0           test eax, eax
+│       ┌─< 0x1000fe8b      7502           jne 0x1000fe8f
+│       │   0x1000fe8d      33f6           xor esi, esi
+│       └─> 0x1000fe8f      8d4764         lea eax, [edi + 0x64]
+│           0x1000fe92      50             push eax
+│           0x1000fe93      68ccd00510     push str.Current_Ir         ; 0x1005d0cc ; "Current_Ir"
+│           0x1000fe98      8bcf           mov ecx, edi
+│           0x1000fe9a      e8a1caffff     call 0x1000c940
+│           0x1000fe9f      85c0           test eax, eax
+│       ┌─< 0x1000fea1      7502           jne 0x1000fea5
+│       │   0x1000fea3      33f6           xor esi, esi
+│       └─> 0x1000fea5      8d4f70         lea ecx, [edi + 0x70]
+│           0x1000fea8      51             push ecx
+│           0x1000fea9      68b4d00510     push str.DutyCycle_R        ; 0x1005d0b4 ; "DutyCycle_R"
+│           0x1000feae      8bcf           mov ecx, edi
+│           0x1000feb0      e83bccffff     call 0x1000caf0
+│           0x1000feb5      85c0           test eax, eax
+│       ┌─< 0x1000feb7      7502           jne 0x1000febb
+│       │   0x1000feb9      33f6           xor esi, esi
+│       └─> 0x1000febb      8d5778         lea edx, [edi + 0x78]
+│           0x1000febe      52             push edx
+│           0x1000febf      689cd00510     push str.DutyCycle_G        ; 0x1005d09c ; "DutyCycle_G"
+│           0x1000fec4      8bcf           mov ecx, edi
+│           0x1000fec6      e825ccffff     call 0x1000caf0
+│           0x1000fecb      85c0           test eax, eax
+│       ┌─< 0x1000fecd      7502           jne 0x1000fed1
+│       │   0x1000fecf      33f6           xor esi, esi
+│       └─> 0x1000fed1      8d8780000000   lea eax, [edi + 0x80]
+│           0x1000fed7      50             push eax
+│           0x1000fed8      6884d00510     push str.DutyCycle_B        ; 0x1005d084 ; "DutyCycle_B"
+│           0x1000fedd      8bcf           mov ecx, edi
+│           0x1000fedf      e80cccffff     call 0x1000caf0
+│           0x1000fee4      85c0           test eax, eax
+│       ┌─< 0x1000fee6      7502           jne 0x1000feea
+│       │   0x1000fee8      33f6           xor esi, esi
+│       └─> 0x1000feea      8d8f88000000   lea ecx, [edi + 0x88]
+│           0x1000fef0      51             push ecx
+│           0x1000fef1      6868d00510     push str.DutyCycle_Ir       ; 0x1005d068 ; "DutyCycle_Ir"
+│           0x1000fef6      8bcf           mov ecx, edi
+│           0x1000fef8      e8f3cbffff     call 0x1000caf0
+│           0x1000fefd      85c0           test eax, eax
+│       ┌─< 0x1000feff      7502           jne 0x1000ff03
+│       │   0x1000ff01      33f6           xor esi, esi
+│       └─> 0x1000ff03      8d9790000000   lea edx, [edi + 0x90]
+│           0x1000ff09      52             push edx
+│           0x1000ff0a      6840d00510     push str.DutyCycleOpenGate_R ; 0x1005d040 ; "DutyCycleOpenGate_R"
+│           0x1000ff0f      8bcf           mov ecx, edi
+│           0x1000ff11      e8dacbffff     call 0x1000caf0
+│           0x1000ff16      85c0           test eax, eax
+│       ┌─< 0x1000ff18      7502           jne 0x1000ff1c
+│       │   0x1000ff1a      33f6           xor esi, esi
+│       └─> 0x1000ff1c      8d8798000000   lea eax, [edi + 0x98]
+│           0x1000ff22      50             push eax
+│           0x1000ff23      6818d00510     push str.DutyCycleOpenGate_G ; 0x1005d018 ; "DutyCycleOpenGate_G"
+│           0x1000ff28      8bcf           mov ecx, edi
+│           0x1000ff2a      e8c1cbffff     call 0x1000caf0
+│           0x1000ff2f      85c0           test eax, eax
+│       ┌─< 0x1000ff31      7502           jne 0x1000ff35
+│       │   0x1000ff33      33f6           xor esi, esi
+│       └─> 0x1000ff35      8d8fa0000000   lea ecx, [edi + 0xa0]
+│           0x1000ff3b      51             push ecx
+│           0x1000ff3c      68f0cf0510     push str.DutyCycleOpenGate_B ; 0x1005cff0 ; "DutyCycleOpenGate_B"
+│           0x1000ff41      8bcf           mov ecx, edi
+│           0x1000ff43      e8a8cbffff     call 0x1000caf0
+│           0x1000ff48      85c0           test eax, eax
+│       ┌─< 0x1000ff4a      7502           jne 0x1000ff4e
+│       │   0x1000ff4c      33f6           xor esi, esi
+│       └─> 0x1000ff4e      8d97a8000000   lea edx, [edi + 0xa8]
+│           0x1000ff54      52             push edx
+│           0x1000ff55      68c4cf0510     push str.DutyCycleOpenGate_Ir ; 0x1005cfc4 ; "DutyCycleOpenGate_Ir"
+│           0x1000ff5a      8bcf           mov ecx, edi
+│           0x1000ff5c      e88fcbffff     call 0x1000caf0
+│           0x1000ff61      85c0           test eax, eax
+│       ┌─< 0x1000ff63      7502           jne 0x1000ff67
+│       │   0x1000ff65      33f6           xor esi, esi
+│       └─> 0x1000ff67      8d4730         lea eax, [edi + 0x30]
+│           0x1000ff6a      50             push eax
+│           0x1000ff6b      6898cf0510     push str.FullLightCorrections ; 0x1005cf98 ; "FullLightCorrections"
+│           0x1000ff70      8bcf           mov ecx, edi
+│           0x1000ff72      e8c9c9ffff     call 0x1000c940
+│           0x1000ff77      85c0           test eax, eax
+│       ┌─< 0x1000ff79      7503           jne 0x1000ff7e
+│       │   0x1000ff7b      5f             pop edi
+│       │   0x1000ff7c      5e             pop esi
+│       │   0x1000ff7d      c3             ret
+│       └─> 0x1000ff7e      5f             pop edi
+│           0x1000ff7f      8bc6           mov eax, esi
+│           0x1000ff81      5e             pop esi
+└           0x1000ff82      c3             ret

@@ -1,0 +1,614 @@
+                               Scanner Specifications
+Minimum Host Computer Specifications
+•   Pentium IV or AMD Athlon CPU 1.7GHZ or higher
+•   1 40GB hard drive to be used for the operating system, application programs, and storage. If
+    IDE, it must be configured as primary master.
+•   1 40GB hard drive capable of a sustained transfer rate of 30MB/sec. This is to be a dedicated
+    drive for the scan data buffer. If IDE, it must be a secondary master drive. Drive letter must be
+    N:\ and it must NOT be formatted. This should be a 7200rpm drive. See the “Disk Man-
+    agement” chapter for more information on configuring this drive.
+•   Windows 2000, Service Pack 2
+•   512MB of RAM
+•   A motherboard with an integrated USB 2.0 controller as part of the motherboard chipset. A
+    dedicated port is recommended. USB 2.0 hubs have not been fully tested for reliability.
+•   Separate AGP Graphics card. Using a motherboard with a built-in graphics card will be prob-
+    lematic.
+•   Motherboards with the following chipsets are recommended:
+
+
+                                         Recommended
+                                    Motherboards and Chipsets
+
+                             Intel 845E
+                             Intel 845GE
+                             Intel 845G
+                             Intel 845PE
+                             Intel 845E
+                             SIS 651
+                             SIS 962
+                             SIS 645DX
+                             SIS 648
+                             VIA VT8235 integrated USB controller
+
+•   Microsoft USB 2.0 drivers.
+•   Integrated video cannot be used. Use an add-on AGP video card.
+•   SCSI CD-RW drive. (Plextor 12/10/32S recommended.)
+•   1.5GB Pagefile.(Virtual Memory)
+
+
+
+
+                                                 1
+Power
+•   Auto-switching power supply for 100-240VAC
+•   50-60Hz Input voltage frequency
+•   Standard 3 conductor IEC 320 male power cable connector
+
+Contents of Box
+•   F-235 Film Scanner
+•   6ft. USB 2.0 Cable
+•   Software and User Manual CD
+•   Power Cord
+•   Region Specific accessory pack, if applicable.
+
+Size
+•   17.3”W x 13.6”H x 12.6”D with cover on
+
+Light Source
+        The F-235 uses a 50 Watt Solux Halogen light bulb. During scans, the bulb operate at stan-
+dard voltage. After completing a scan operation, the bulb power will be reduced to a lower volt-
+age to increase the bulb’s life expectancy.
+
+Film Types and Variations
+•   The F-235 is designed to scan film in 35mm and 24mm (APS) formats. Color negative, color
+    reversal (positive or slide) film, black and white, C-41 processed black and white films are all
+    supported.
+•   APS film can only be scanned once removed from the canister, but cannot be cut into strips.
+    All APS formats (C, H, and P) will scan only in full frame (H) format.
+•   35mm cut strips are supported in sizes from 2 frames to 41 frames. However, to ensure DX
+    code reading, the strips must be a minimum of 3 frames.
+•   Mounted slides are not supported.
+
+
+DX Code Reading
+•   35mm DX codes are read using the ISO 1007 specifications and are used by the host manager.
+•   APS encoding will only be read by a full roll of film, and will not be read from an APS strip.
+
+
+
+
+                                                 2
+                                 Installing the F-235
+The F-235 is a peripheral device. It cannot operate apart from a computer that meets the required
+specifications listed on page 2 of this manual.
+
+1. Clear a space near your computer system to place the F-235 scanner. The USB 2.0 cable must
+   be able to reach the PC, so it cannot be more than 6 feet (2m) from the computer. There must
+   also be 4 inches (10cm) clearance above and behind the scanner’s ventilation duct.
+
+2. Connect the power cord to the power supply plug on the back of the scanner.
+
+
+
+
+3. Connect the USB 2.0 cable to the back of the scanner.
+
+
+
+
+4. Connect the USB 2.0 cable to the back of the computer, in a USB 2.0 port. Do not plug in to
+   a USB 1.0 connector!
+
+
+
+
+5. Insert the F235 software CD. Run ‘setup.exe’ from the CD-ROM drive.
+
+6. While computer is on and Windows 2000 is loaded, turn the scanner power switch into the
+   ‘on’ position.
+
+
+
+
+                                                3
+7. Insert F-235 Software CD. The computer will prompt the user to locate the driver software.
+   This driver software is located on the CD in \Program Files\Pakon\F235Driver. This driver is
+   also on the C:\ if the software has already been installed.
+
+
+
+
+8. The install will ask for authorization to install the driver despite it not having been “digitally
+   signed.” Yes must be selected for the driver to install.
+
+
+
+
+9. After the driver is finished installing, verify that the scanner is recognized by viewing the
+   scanner properties in the Device Manager under the heading, “Imaging Devices.”
+
+
+
+
+                                                  4
+BIOS Configuration
+The following BIOS options are used on systems configured by Pakon, and are recommended to
+be configured as outlined below:
+
+
+                                      Option            Setting
+
+                              Plug and Play            Disable
+                              AGP Aperture Size        32
+                              PCI Latency Timer        255
+                              ACPI Suspend State       S1 State
+                              USB Boot                 Disable
+                              PXE Boot to Lan          Enable
+                              PCI to DRAM Prefetch     Disable
+
+SCSI BIOS Configuration
+These settings should be followed in the SCSI BIOS of the SCSI card used in the Pakon computer
+system.
+
+
+                                      Option                Setting
+
+                           Sync. Transfer Rates             10
+                           Bootable CD-ROM                  Disable
+                           BIOS Support for Int. 13 Ext.    Disable
+
+
+
+
+                                               5
+                            Operational Information
+Operation
+        When scanning film, ensure the appropriate film type is selected. Do not attempt to scan
+35mm film when APS is selected, and likewise do not scan APS film when 35mm film has been
+selected.
+        Insert the film emulsion side-up, with the first frame first on the right side of the
+scanner. This will ensure that the DX codes are read and that the framing will be done cor-
+rectly.
+        Do not attempt to remove film from the scanner while the scanner motor is moving! This
+will cause damage to both the film and the scanner.
+
+Calibration
+       There are two types of calibration for the F-235.
+       Color calibration is set during the manufacturing process, as well as any service that
+involves the CCD or any optical filter. This is to be performed by trained and authorized service
+personnel only.
+       Scanner corrections are performed automatically. They consist of a series of steps per-
+formed when the scanner is first turned on, as shown below:
+• Start-up corrections
+• Initial bulb warm-up
+• Gain and exposure Control Corrections
+• Run Time Corrections
+
+Format Change
+        The scanner will automatically change the film guide, lens position, CCD position, or
+color filter position whenever one of the following steps take place:
+• Film Format change between 35mm and APS
+• Film type change between color negative, color reversal, and black and white
+• Magnification Change (Change of scanning resolution)
+
+
+Film Gate Change
+        The film gate opens and closes depending on the size of the film being scanned. It will
+open for 35mm film and close for APS film. This gate will open or close automatically when a
+different film size is selected
+
+Post Warm-Up
+        The steppers will take less than 20 seconds to move the lens and CCD into proper position
+for the selected focus position.
+
+
+
+
+                                               6
+LED Indicator Lights
+
+
+                               Power LED      Function
+
+                               Solid Green    +5V is functioning
+                               Off            +5V is not functioning
+
+
+                              Status LED                 Function
+
+                            Solid Green         Scanner Ready
+                            Blinking Green      Scanner is Scanning
+                            Blinking Yellow     Scanner is Calibrating
+                            Blinking Red        Scanner Error
+                            Off                 Scanner not Functioning
+
+
+
+
+                                  APS LED              Function
+
+                            Solid Green        Scanner in APS mode
+                            Blinking Green     Scanner is Scanning
+                            Blinking Red       APS mode Error
+                            Off                Scanner in 35MM mode
+
+Digital ICE
+        Digital ICE is designed to assist in removing scratches, dust, and debris artifacts from
+scanned film. It should be used as a complement to a photo lab’s normal cleaning procedures.
+Photo lab’s are still advised to clean the floors and work surfaces regularly.
+        It is also recommended to clean all film with a lint-free cloth before attempting to make
+prints 8”x10” or higher.
+        If a lab is having persistent dust problems, it is recommended to perform the following
+regularly:
+        •Clean all customer film with a lint-free cloth before scanning it.
+        •When the scanner is turned off, cover it with a plastic, or lint-free cover.
+        •Use a lint-free cloth daily to clean the cover of the scanner and the surface of the table it
+          is positioned on.
+        •Clean or replace the air filter on the back of the scanner once per week.
+
+
+
+
+                                                  7
+                                Operator Maintenance
+Warning: These procedures require the operator to remove up to two of the three covers on
+the scanner. Do not attempt to operate the scanner without these covers properly in place!
+
+
+       WARNUNG: Bei diesen Verfahren muss der Bediener bis zu zwei der drei Abdeckungen am Scanner
+       entfernen. Der Scanner darf nicht betrieben werden, wenn diese Abdeckungen nicht ordnungsgemäß
+       angebracht sind!
+
+
+
+       ATTENTION : au cours de ces procédures, vous devez ôter deux des trois couvercles du
+       scanner. N'essayez pas de faire fonctionner le scanner sans que ces couvercles de
+       protection soient correctement à leur place !
+
+
+Dust cleaning of illumination
+        The F-235 is a precision optical device. A relatively smoke and dust free environment is
+necessary. The scanner must be cleaned periodically to remove large collections of dust or debris
+inside the scanner, on the illumination. This procedure is recommended to be performed every
+two weeks. Software is designed to compensate for smaller collections of dust or debris, but
+cleaning may be required. Digital ICE is only designed to complement the lab’s normal cleaning
+procedures--which should include cleaning the floor and work surfaces regularly.
+        Follow each step by a verification process to determine if the cleaning was effective. If the
+verification determines that level of cleaning was ineffective, the next level is required.
+
+1. Simple cleaning with compressed air and or lens brushes.
+2. Cleaning with rubbing alcohol and a cotton swab.
+3. Service call.
+
+Cleaning the Illumination with Compressed Air
+1. Turn off the scanner.
+2. Disconnect the USB and power cables.
+3. Gently remove the side panel of scanner, by pulling back on it. It should snap out of place.
+
+
+
+
+                                                    8
+  Do not touch anything inside the scanner while the power is on. The cover is only off to
+                  allow dust and debris to be blown out of the scanner.
+
+
+       WARNUNG: Berühren Sie keine Bauteile innerhalb des Scanners, während das Gerät eingeschaltet ist. Die
+         Abdeckung wird nur deshalb abgenommen, damit Staub und Verschmutzungen aus dem Inneren des
+                                   Scanners heraus geblasen werden können.
+
+
+
+         ATTENTION : ne touchez aucun élément interne du scanner lorsque ce dernier est sous
+        tension. Le couvercle est ouvert pour permettre d'éliminer poussière et débris du scanner.
+4. Connect power to the scanner.
+5. Turn the scanner on.
+6. Remove the small film path cover.
+
+
+
+
+7. Aim the hose of a can of compressed air into the film path--aiming for the clear piece of glass
+   in the middle.
+
+
+                                                    9
+8. It may be beneficial to insert a strip of film into the scanner before blowing it out. This will
+    focus all the air onto the light transfer bar, and should dislodge any dust or debris.
+9. When finished, put the film path cover back in place.
+       Turn off the scanner immediately when finished cleaning the scanner!
+10. Turn off the scanner and unplug the power cable.
+11. Replace the side cover by snapping into place.
+12. Plug in the USB and power cables.
+
+Cleaning Illumination with Cotton Swab
+       CAUTION--Be Careful not to scratch or damage the top of the glass light bar!
+1. Turn off the scanner.
+1. Disconnect the USB and power cables.
+2. Gently remove the side cover.
+3. Using a long cotton swab, dabbed in isopropyl alcohol, clean the illumination bar inside the
+   film track assembly.
+4. The illumination bar is a small piece of glass, sitting upright.
+
+
+
+
+                                                10
+5. After cleaning the illumation bar, replace side cover and turn on.
+
+Light Bulb Replacement
+        The light bulb will have a nominal life of 100 working days or longer, depending on cer-
+tain variables. This number is based on the following assumptions:
+• 6 working days per week
+• 10hours per day
+
+       Changing the light bulb does not require any special tools.
+
+
+Replacing the Scanner Light Bulb
+ CAUTION: The lamp may be hot. Allow the bulb to cool before attempting to replace it.
+   Use gloves when replacing the scanner light bulb. Fingerprints can damage the light
+                                          bulb.
+
+
+        VORSICHT: Die Lampe kann heiß sein. Lassen Sie die Glühlampe abkühlen, bevor Sie sie austauschen.
+         Berühren Sie die Scanner-Glühlampe nur mit Handschuhen. Fingerabdrücke können die Glühlampe
+                                                 beschädigen.
+
+
+
+            ATTENTION : l'ampoule risque d'être chaude. Attendez qu'elle refroidisse avant
+         d'essayer de la remplacer. Utilisez des gants pour remplacer l'ampoule du scanner. Les
+                               empreintes digitales peuvent l'endommager.
+
+
+
+
+                                                  11
+1.   Close all scanning software.
+2.   Turn off the scanner.
+3.   Disconnect the USB and power cables.
+4.   Gently remove the side cover by pulling on it. It should snap out of place.
+
+
+
+
+5. Gently pull off the back cover. It should snap off much like the side cover.
+
+
+
+
+6. Locate the small lever, just to the back of the bulb.
+
+
+
+
+                                                 12
+        Gloves must be worn to ensure the bulb is not damaged by dirt or skin oils.
+7. With one hand, gently pull the lever towards the back of the scanner.
+8. As the lever is pulled, the bulb will be pushed up, and partially out of its wire harness.
+9. Once the bulb has been pushed up far enough, use your other hand to gently remove the bulb
+    from the harness.
+10. Orient the new light bulb so that the largest, or widest part of the bell shape is facing the front
+    of the scanner. And place the smaller end with the prongs, facing the back.
+11. Rest the wide end of the bulb on the top edge of the wire harness, do not push or force it
+    downward.
+12. Spin or rotate the bulb so that the two prongs line up with the grooves in the lamp ballast.
+
+
+
+
+13. Gently apply downward pressure equally to both the front and the back of the bulb.
+14. Slide the bulb into place, until it fits securely.
+15. Replace the back cover by snapping it into place.
+
+
+                                                  13
+16. Replace the side cover by snapping it back into place.
+17. Plug in USB and power cables.
+18. Turn scanner on, and allow to warm up before using again.
+
+
+                                Cleaning the Fan Filter
+      The fan filter collects dust from inside the scanner. This filter needs to be cleaned every
+two weeks.
+
+1. Close scanner software.
+2. Turn off the scanner.
+3. Disconnect USB and power cables.
+4. Gently remove side cover by pulling on it. It should snap off.
+5. Gently remove back cover by pulling on it. It too, should snap off.
+Be Careful not to touch anything other than the fan and filter assembly. Many pieces on the
+             back of the scanner will be hot to the touch, and are to be avoided.
+
+
+           VORSICHT: Berühren Sie keine Bauteile, mit Ausnahme des Ventilators und der Filter. Zahlreiche
+              Bauteile an der Rückseite des Scanners sind heiß und dürfen daher nicht berührt werden.
+
+
+
+        ATTENTION : ne touchez rien d'autre que le module ventilateur et filtre. De nombreux
+             éléments situés à l'arrière du scanner sont chauds, évitez de les toucher.
+6. Locate the Fan filter (123816). It is located on the back of the scanner, just under the plastic
+   fan cover.
+
+
+
+
+                                                    14
+7. Pull straight back on the plastic fan cover until it comes free from the scanner housing.
+
+
+
+
+8. Remove the filter from inside the cover, and rinse with tap water; replace if necessary.
+
+
+
+
+                                                15
+9. Re-attach the fan cover by applying moderate pressure to each of the four sides, until it snaps
+   back in to place.
+
+Cleaning the Film Track
+       It is recommended to clean the film track every two weeks, along with the illumination.
+cleaning. Keeping the film track clean will ensure that DX code reading remains reliable. It will
+also maintain the proper motor speed for each resolution.
+1. Remove the film path cover.
+2. Position the tip of the compressed air hose on both sides of the film track entrance, and blow.
+
+
+
+
+3. Position the tip of the compressed air hose on both sides of the film track exit, and blow.
+
+
+
+
+4. After cleaning the film track, run the ‘Film Track Test’ in the client interface program.
+5. Verify the scanner is properly reading DX codes by scanning a roll of film.
+
+
+
+                                                16
+Surface Cleaning
+        Clean surfaces with lint-free cloths or mild, non-abrasive spray type cleaners, where the
+cleaner is sprayed onto the cleaning cloth and not directly onto the equipment. Perform this type
+of cleaning only with the equipment disconnected and powered down.
+
+
+
+
+                                               17
+                             Regulatory Information
+
+
+
+
+Warning:
+        This is a class A product. In a domestic environment this product may cause radio interfer-
+ence in which case the user may be required to take adequate measures.
+
+Note:
+        This equipment has been tested and found to comply with the limits for a Class A digital
+device, pursuant to part 15 of the FCC rules. These limits are designed to provide reasonable pro-
+tection against harmful interference when the equipment is operated in a commercial environ-
+ment. This equipment generates, uses and can radiate radio frequency energy and, if not installed
+and used in accordance with the instruction manual, may cause harmful interference to radio com-
+munications. Operation of this equipment in a residential area is likely to cause harmful interfer-
+ence in which case the user will be required to correct the interference at his own expense.
+
+Note:
+
+
+Japan:
+
+
+
+
+       English Translation:
+       This is a Class A product. In a domestic environment this product may cause radio inter-
+ference in which case the user may be required to take adequate measures. VCCI-A
+
+
+Taiwan:
+
+
+
+
+                                                18
+Site Conditions
+
+
+
+                   Temperature                       59-85 degrees Fahrenheit
+                   Humidity                          30-75% (non-condensing)
+                   Vibration                         Not to Exceed 0.05G RMS
+                                                     5-200Hz
+                   Ventilation                       A 4” clearance above and
+                                                     behind the scanners venti-
+                                                     lation duct is necessary
+                   Lighting                          <1000 LUX ambient light
+                   Noise                             < 70db(A)
+
+Shipping and Storage Conditions
+Temperature: -13 to 140 degrees Fahrenheit
+Humidity: 30%-90% (non-condensing)
+
+Fuse Ratings
+    Only Pakon service technicians are qualified to replace fuses in the F-235 Scanner.
+
+
+          Die Sicherungen im Scanner F-235 dürfen nur von Pakon-Servicetechnikern ausgetauscht werden.
+
+
+
+         Seuls les techniciens du service d'entretien de Pakon sont qualifiés pour remplacer les
+                                       fusibles du scanner F-235.
+
+
+
+                                        Factory Fuse Rating
+
+                                           3 Amps, 250V
+
+
+
+
+                                                  19
+                                         Index
+A
+APS film 3
+APS LED 8
+B
+BIOS 6
+C
+Calibration 7
+Cleaning Illumination with Cotton Swab 11
+Cleaning the Illumination with Compressed Air 9
+Contents of Box 3
+D
+driver software 5
+Dust cleaning of illumination 9
+DX codes 7
+F
+Fan filter 15
+Film Gate Change 7
+Film Types and Variations 3
+Focus 7
+Format Change 7
+Fuse Ratings 18
+I
+Installing 4
+Installing the F-235 4
+L
+latency timer 6
+LED Indicator Lights 8
+Light Bulb Replacement 12
+Light Source 3
+M
+Minimum Host Computer Specifications 2
+Mounted slides 3
+O
+Operation 7
+P
+power cord 4
+Power LED 8
+R
+Regulatory Information 17
+Replacing the Fan Filter 16
+S
+Status LED 8
+Surface Cleaning 15
+
+
+
+                                            20
+U
+USB 2.0 hub 2
+
+
+
+
+                21
+

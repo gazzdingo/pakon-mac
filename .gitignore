@@ -6,3 +6,6 @@ vendor/
 # repository ships no LICENSE file. Obtain it yourself:
 #   git clone https://github.com/ktkaufman03/FX35 vendor/FX35
 vendor/
+
+# Large research binaries - kept on disk, not in git history
+research/sdk/*.iso

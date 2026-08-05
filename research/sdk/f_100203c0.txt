@@ -1,0 +1,51 @@
+            ; CALL XREF from fcn.1001e7b0 @ 0x1001e7dc(x)
+            ; CALL XREF from fcn.10020dc0 @ 0x10020e56(x)
+            ; CALL XREF from fcn.1002c5f0 @ 0x1002c676(x)
+┌ 193: fcn.100203c0 (int32_t arg_4h, int32_t arg_8h, int32_t arg_ch, int32_t arg_10h, int32_t arg_14h);
+│ `- args(sp[0x4..0x14])
+│           0x100203c0      80b9f80200..   cmp byte [ecx + 0x2f8], 0x44 ; 'D'
+│           0x100203c7      8b442404       mov eax, dword [arg_4h]
+│       ┌─< 0x100203cb      755a           jne 0x10020427
+│       │   0x100203cd      85c0           test eax, eax
+│      ┌──< 0x100203cf      742b           je 0x100203fc
+│      ││   0x100203d1      8b442408       mov eax, dword [arg_8h]
+│      ││   0x100203d5      8b4c240c       mov ecx, dword [arg_ch]
+│      ││   0x100203d9      8b542410       mov edx, dword [arg_10h]
+│      ││   0x100203dd      c70008000000   mov dword [eax], 8
+│      ││   0x100203e3      8b442414       mov eax, dword [arg_14h]
+│      ││   0x100203e7      c70118000000   mov dword [ecx], 0x18       ; [0x18:4]=-1 ; 24
+│      ││   0x100203ed      c70218000000   mov dword [edx], 0x18       ; [0x18:4]=-1 ; 24
+│      ││   0x100203f3      c70008000000   mov dword [eax], 8
+│      ││   0x100203f9      c21400         ret 0x14
+│      ││   ; CODE XREF from fcn.100203c0 @ 0x100203cf(x)
+│      └──> 0x100203fc      8b4c2408       mov ecx, dword [arg_8h]
+│       │   0x10020400      8b54240c       mov edx, dword [arg_ch]
+│       │   0x10020404      8b442410       mov eax, dword [arg_10h]
+│       │   0x10020408      c70104000000   mov dword [ecx], 4
+│       │   0x1002040e      8b4c2414       mov ecx, dword [arg_14h]
+│       │   0x10020412      c70214000000   mov dword [edx], 0x14       ; [0x14:4]=-1 ; 20
+│       │   0x10020418      c70014000000   mov dword [eax], 0x14       ; [0x14:4]=-1 ; 20
+│       │   0x1002041e      c70100000000   mov dword [ecx], 0
+│       │   0x10020424      c21400         ret 0x14
+│       │   ; CODE XREF from fcn.100203c0 @ 0x100203cb(x)
+│       └─> 0x10020427      85c0           test eax, eax
+│       ┌─< 0x10020429      742b           je 0x10020456
+│       │   0x1002042b      8b542408       mov edx, dword [arg_8h]
+│       │   0x1002042f      8b44240c       mov eax, dword [arg_ch]
+│       │   0x10020433      8b4c2410       mov ecx, dword [arg_10h]
+│       │   0x10020437      c70208000000   mov dword [edx], 8
+│       │   0x1002043d      8b542414       mov edx, dword [arg_14h]
+│       │   0x10020441      c70008000000   mov dword [eax], 8
+│       │   0x10020447      c70108000000   mov dword [ecx], 8
+│       │   0x1002044d      c70208000000   mov dword [edx], 8
+│       │   0x10020453      c21400         ret 0x14
+│       │   ; CODE XREF from fcn.100203c0 @ 0x10020429(x)
+│       └─> 0x10020456      8b442408       mov eax, dword [arg_8h]
+│           0x1002045a      8b4c240c       mov ecx, dword [arg_ch]
+│           0x1002045e      8b542410       mov edx, dword [arg_10h]
+│           0x10020462      c70006000000   mov dword [eax], 6
+│           0x10020468      8b442414       mov eax, dword [arg_14h]
+│           0x1002046c      c70108000000   mov dword [ecx], 8
+│           0x10020472      c70208000000   mov dword [edx], 8
+│           0x10020478      c70000000000   mov dword [eax], 0
+└           0x1002047e      c21400         ret 0x14

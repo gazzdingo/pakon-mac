@@ -1,0 +1,1003 @@
+===CMD_10009a40===
+153: fcn.10009a40 (int32_t arg_34h, int32_t arg_2ch, int32_t arg_3ch, int32_t arg_40h);
+0x10009a40      83ec24         sub esp, 0x24
+0x10009a43      8a44242c       mov al, byte [esp + 0x2c]
+0x10009a47      53             push ebx
+0x10009a48      56             push esi
+0x10009a49      57             push edi
+0x10009a4a      8b7c2440       mov edi, dword [esp + 0x40]
+0x10009a4e      85ff           test edi, edi
+0x10009a50      8bf1           mov esi, ecx
+0x10009a52      8a4c243c       mov cl, byte [esp + 0x3c]
+0x10009a56      c644240c04     mov byte [esp + 0xc], 4
+0x10009a5b      8844240e       mov byte [esp + 0xe], al
+0x10009a5f      c644240f00     mov byte [esp + 0xf], 0
+0x10009a64      884c2410       mov byte [esp + 0x10], cl
+0x10009a68      750d           jne 0x10009a77
+0x10009a6a      8b5628         mov edx, dword [esi + 0x28]
+0x10009a6d      83c25c         add edx, 0x5c
+0x10009a70      52             push edx
+0x10009a71      ff1568b10510   call dword [sym.imp.KERNEL32.dll_EnterCriticalSection]
+0x10009a77      8b5c2434       mov ebx, dword [esp + 0x34]
+0x10009a7b      8d44240c       lea eax, [esp + 0xc]
+0x10009a7f      50             push eax
+0x10009a80      53             push ebx
+0x10009a81      8bce           mov ecx, esi
+0x10009a83      e818fbffff     call fcn.100095a0
+0x10009a88      85c0           test eax, eax
+0x10009a8a      752e           jne 0x10009aba
+0x10009a8c      8b4e08         mov ecx, dword [esi + 8]
+0x10009a8f      50             push eax
+0x10009a90      50             push eax
+0x10009a91      50             push eax
+0x10009a92      6a19           push 0x19
+0x10009a94      6a7b           push 0x7b
+0x10009a96      51             push ecx
+0x10009a97      8bcb           mov ecx, ebx
+0x10009a99      e832120100     call fcn.1001acd0
+0x10009a9e      85ff           test edi, edi
+0x10009aa0      750d           jne 0x10009aaf
+0x10009aa2      8b5628         mov edx, dword [esi + 0x28]
+0x10009aa5      83c25c         add edx, 0x5c
+0x10009aa8      52             push edx
+0x10009aa9      ff155cb10510   call dword [sym.imp.KERNEL32.dll_LeaveCriticalSection]
+0x10009aaf      5f             pop edi
+0x10009ab0      5e             pop esi
+0x10009ab1      33c0           xor eax, eax
+0x10009ab3      5b             pop ebx
+0x10009ab4      83c424         add esp, 0x24
+0x10009ab7      c21000         ret 0x10
+0x10009aba      85ff           test edi, edi
+0x10009abc      750d           jne 0x10009acb
+0x10009abe      8b4628         mov eax, dword [esi + 0x28]
+0x10009ac1      83c05c         add eax, 0x5c
+0x10009ac4      50             push eax
+0x10009ac5      ff155cb10510   call dword [sym.imp.KERNEL32.dll_LeaveCriticalSection]
+0x10009acb      5f             pop edi
+0x10009acc      5e             pop esi
+0x10009acd      b801000000     mov eax, 1
+0x10009ad2      5b             pop ebx
+0x10009ad3      83c424         add esp, 0x24
+0x10009ad6      c21000         ret 0x10
+0x10009ad9      cc             int3
+0x10009ada      cc             int3
+0x10009adb      cc             int3
+0x10009adc      cc             int3
+0x10009add      cc             int3
+0x10009ade      cc             int3
+0x10009adf      cc             int3
+===VER_1000a370===
+204: fcn.1000a370 (int32_t arg_34h, int32_t arg_38h);
+0x1000a370      83ec24         sub esp, 0x24
+0x1000a373      53             push ebx
+0x1000a374      56             push esi
+0x1000a375      8bf1           mov esi, ecx
+0x1000a377      8b4628         mov eax, dword [esi + 0x28]
+0x1000a37a      57             push edi
+0x1000a37b      83c05c         add eax, 0x5c
+0x1000a37e      50             push eax
+0x1000a37f      ff1568b10510   call dword [sym.imp.KERNEL32.dll_EnterCriticalSection]
+0x1000a385      8b7c2434       mov edi, dword [esp + 0x34]
+0x1000a389      8b5c2438       mov ebx, dword [esp + 0x38]
+0x1000a38d      8d4c240c       lea ecx, [esp + 0xc]
+0x1000a391      51             push ecx
+0x1000a392      b001           mov al, 1
+0x1000a394      57             push edi
+0x1000a395      8bce           mov ecx, esi
+0x1000a397      c644241402     mov byte [esp + 0x14], 2
+0x1000a39c      885c2416       mov byte [esp + 0x16], bl
+0x1000a3a0      88442417       mov byte [esp + 0x17], al
+0x1000a3a4      c644241803     mov byte [esp + 0x18], 3
+0x1000a3a9      88442419       mov byte [esp + 0x19], al
+0x1000a3ad      e8eef1ffff     call fcn.100095a0
+0x1000a3b2      85c0           test eax, eax
+0x1000a3b4      6a00           push 0
+0x1000a3b6      7553           jne 0x1000a40b
+0x1000a3b8      8b5608         mov edx, dword [esi + 8]
+0x1000a3bb      50             push eax
+0x1000a3bc      50             push eax
+0x1000a3bd      6a19           push 0x19
+0x1000a3bf      6a7e           push 0x7e
+0x1000a3c1      52             push edx
+0x1000a3c2      8bcf           mov ecx, edi
+0x1000a3c4      e807090100     call fcn.1001acd0
+0x1000a3c9      8b4608         mov eax, dword [esi + 8]
+0x1000a3cc      6a00           push 0
+0x1000a3ce      6a00           push 0
+0x1000a3d0      6a00           push 0
+0x1000a3d2      6a19           push 0x19
+0x1000a3d4      6a7f           push 0x7f
+0x1000a3d6      50             push eax
+0x1000a3d7      8bcf           mov ecx, edi
+0x1000a3d9      e8f2080100     call fcn.1001acd0
+0x1000a3de      8b4e08         mov ecx, dword [esi + 8]
+0x1000a3e1      6a00           push 0
+0x1000a3e3      6a00           push 0
+0x1000a3e5      6a00           push 0
+0x1000a3e7      6a19           push 0x19
+0x1000a3e9      6a5e           push 0x5e
+0x1000a3eb      51             push ecx
+0x1000a3ec      8bcf           mov ecx, edi
+0x1000a3ee      e8dd080100     call fcn.1001acd0
+0x1000a3f3      8b5628         mov edx, dword [esi + 0x28]
+0x1000a3f6      83c25c         add edx, 0x5c
+0x1000a3f9      52             push edx
+0x1000a3fa      ff155cb10510   call dword [sym.imp.KERNEL32.dll_LeaveCriticalSection]
+0x1000a400      5f             pop edi
+0x1000a401      5e             pop esi
+0x1000a402      33c0           xor eax, eax
+0x1000a404      5b             pop ebx
+0x1000a405      83c424         add esp, 0x24
+0x1000a408      c20c00         ret 0xc
+0x1000a40b      8b442440       mov eax, dword [esp + 0x40]
+0x1000a40f      6a0c           push 0xc
+0x1000a411      50             push eax
+0x1000a412      6a07           push 7
+0x1000a414      53             push ebx
+0x1000a415      57             push edi
+0x1000a416      8bce           mov ecx, esi
+0x1000a418      e8f3efffff     call fcn.10009410
+0x1000a41d      85c0           test eax, eax
+0x1000a41f      74bd           je 0x1000a3de
+0x1000a421      8b4628         mov eax, dword [esi + 0x28]
+0x1000a424      83c05c         add eax, 0x5c
+0x1000a427      50             push eax
+0x1000a428      ff155cb10510   call dword [sym.imp.KERNEL32.dll_LeaveCriticalSection]
+0x1000a42e      5f             pop edi
+0x1000a42f      5e             pop esi
+0x1000a430      b801000000     mov eax, 1
+0x1000a435      5b             pop ebx
+0x1000a436      83c424         add esp, 0x24
+0x1000a439      c20c00         ret 0xc
+0x1000a43c      cc             int3
+0x1000a43d      cc             int3
+0x1000a43e      cc             int3
+0x1000a43f      cc             int3
+67: fcn.1000a440 (int32_t arg_ch);
+0x1000a440      56             push esi
+0x1000a441      8b             invalid
+===GETPW8_10008f80===
+364: fcn.10008f80 (int32_t arg_5ch_2, int32_t arg_64h_2, int32_t arg_5ch, int32_t arg_64h);
+0x10008f80      83ec4c         sub esp, 0x4c
+0x10008f83      8b54245c       mov edx, dword [esp + 0x5c]
+0x10008f87      53             push ebx
+0x10008f88      8b5c2464       mov ebx, dword [esp + 0x64]
+0x10008f8c      56             push esi
+0x10008f8d      8bf1           mov esi, ecx
+0x10008f8f      8b8688000000   mov eax, dword [esi + 0x88]
+0x10008f95      03c2           add eax, edx
+0x10008f97      3bc3           cmp eax, ebx
+0x10008f99      57             push edi
+0x10008f9a      8b7c245c       mov edi, dword [esp + 0x5c]
+0x10008f9e      c744240c01..   mov dword [esp + 0xc], 1
+0x10008fa6      7475           je 0x1000901d
+0x10008fa8      8a4c2460       mov cl, byte [esp + 0x60]
+0x10008fac      884c2412       mov byte [esp + 0x12], cl
+0x10008fb0      8bd3           mov edx, ebx
+0x10008fb2      c1ea08         shr edx, 8
+0x10008fb5      8d4c2434       lea ecx, [esp + 0x34]
+0x10008fb9      51             push ecx
+0x10008fba      8854241a       mov byte [esp + 0x1a], dl
+0x10008fbe      8d542414       lea edx, [esp + 0x14]
+0x10008fc2      8bc3           mov eax, ebx
+0x10008fc4      52             push edx
+0x10008fc5      c1e810         shr eax, 0x10
+0x10008fc8      57             push edi
+0x10008fc9      8bce           mov ecx, esi
+0x10008fcb      c644241c02     mov byte [esp + 0x1c], 2
+0x10008fd0      c644241d06     mov byte [esp + 0x1d], 6
+0x10008fd5      c644241f03     mov byte [esp + 0x1f], 3
+0x10008fda      c644242001     mov byte [esp + 0x20], 1
+0x10008fdf      885c2421       mov byte [esp + 0x21], bl
+0x10008fe3      88442423       mov byte [esp + 0x23], al
+0x10008fe7      e844f5ffff     call fcn.10008530
+0x10008fec      85c0           test eax, eax
+0x10008fee      0f84ad000000   je 0x100090a1
+0x10008ff4      8d4c246c       lea ecx, [esp + 0x6c]
+0x10008ff8      51             push ecx
+0x10008ff9      8d542410       lea edx, [esp + 0x10]
+0x10008ffd      52             push edx
+0x10008ffe      8b542468       mov edx, dword [esp + 0x68]
+0x10009002      8d44243c       lea eax, [esp + 0x3c]
+0x10009006      50             push eax
+0x10009007      8d4c241c       lea ecx, [esp + 0x1c]
+0x1000900b      51             push ecx
+0x1000900c      52             push edx
+0x1000900d      57             push edi
+0x1000900e      8bce           mov ecx, esi
+0x10009010      e88bf7ffff     call fcn.100087a0
+0x10009015      85c0           test eax, eax
+0x10009017      0f8484000000   je 0x100090a1
+0x1000901d      8a4c2468       mov cl, byte [esp + 0x68]
+0x10009021      8d542434       lea edx, [esp + 0x34]
+0x10009025      52             push edx
+0x10009026      8d442414       lea eax, [esp + 0x14]
+0x1000902a      899e88000000   mov dword [esi + 0x88], ebx
+0x10009030      8b5c2464       mov ebx, dword [esp + 0x64]
+0x10009034      50             push eax
+0x10009035      884c241b       mov byte [esp + 0x1b], cl
+0x10009039      57             push edi
+0x1000903a      8bce           mov ecx, esi
+0x1000903c      c644241c01     mov byte [esp + 0x1c], 1
+0x10009041      c644241d03     mov byte [esp + 0x1d], 3
+0x10009046      885c241e       mov byte [esp + 0x1e], bl
+0x1000904a      c644242007     mov byte [esp + 0x20], 7
+0x1000904f      e8dcf4ffff     call fcn.10008530
+0x10009054      85c0           test eax, eax
+0x10009056      7520           jne 0x10009078
+0x10009058      8b4e08         mov ecx, dword [esi + 8]
+0x1000905b      50             push eax
+0x1000905c      50             push eax
+0x1000905d      50             push eax
+0x1000905e      6a19           push 0x19
+0x10009060      689f000000     push 0x9f
+0x10009065      51             push ecx
+0x10009066      8bcf           mov ecx, edi
+0x10009068      e8631c0100     call fcn.1001acd0
+0x1000906d      5f             pop edi
+0x1000906e      5e             pop esi
+0x1000906f      33c0           xor eax, eax
+0x10009071      5b             pop ebx
+0x10009072      83c44c         add esp, 0x4c
+0x10009075      c21400         ret 0x14
+0x10009078      8d54246c       lea edx, [esp + 0x6c]
+0x1000907c      52             push edx
+0x1000907d      8d442410       lea eax, [esp + 0x10]
+0x10009081      50             push eax
+0x10009082      8d4c243c       lea ecx, [esp + 0x3c]
+0x10009086      51             push ecx
+0x10009087      8d54241c       lea edx, [esp + 0x1c]
+0x1000908b      52             push edx
+0x1000908c      53             push ebx
+0x1000908d      57             push edi
+0x1000908e      8bce           mov ecx, esi
+0x10009090      c744242401..   mov dword [esp + 0x24], 1
+0x10009098      e803f7ffff     call fcn.100087a0
+0x1000909d      85c0           test eax, eax
+0x1000909f      7523           jne 0x100090c4
+0x100090a1      8b4608         mov eax, dword [esi + 8]
+0x100090a4      6a00           push 0
+0x100090a6      6a00           push 0
+0x100090a8      6a00           push 0
+0x100090aa      6a19           push 0x19
+0x100090ac      689f000000     push 0x9f
+0x100090b1      50             push eax
+0x100090b2      8bcf           mov ecx, edi
+0x100090b4      e8171c0100     call fcn.1001acd0
+0x100090b9      5f             pop edi
+0x100090ba      5e             pop esi
+0x100090bb      33c0           xor eax, eax
+0x100090bd      5b             pop ebx
+0x100090be      83c44c         add esp, 0x4c
+0x100090c1      c21400         ret 0x14
+0x100090c4      8b4c2468       mov ecx, dword [esp + 0x68]
+0x100090c8      8b7c2464       mov edi, dword [esp + 0x64]
+0x100090cc      8bd1           mov edx, ecx
+0x100090ce      c1e902         shr ecx, 2
+0x100090d1      8d742438       lea esi, [esp + 0x38]
+0x100090d5      f3a5           rep movsd dword es:[edi], dword [esi]
+0x100090d7      8bca           mov ecx, edx
+0x100090d9      83e103         and ecx, 3
+0x100090dc      f3a4           rep movsb byte es:[edi], byte [esi]
+0x100090de      5f             pop edi
+0x100090df      5e             pop esi
+0x100090e0      b801000000     mov eax, 1
+0x100090e5      5b             pop ebx
+0x100090e6      83c44c         add esp, 0x4c
+0x100090e9      c21400         ret 0x14
+===GETPW_100090f0===
+100: fcn.100090f0 (int32_t arg_10h, int32_t arg_14h, int32_t arg_18h, int32_t arg_1ch);
+0x100090f0      53             push ebx
+0x100090f1      56             push esi
+0x100090f2      8bf1           mov esi, ecx
+0x100090f4      8b4628         mov eax, dword [esi + 0x28]
+0x100090f7      57             push edi
+0x100090f8      83c05c         add eax, 0x5c
+0x100090fb      50             push eax
+0x100090fc      bf01000000     mov edi, 1
+0x10009101      ff1568b10510   call dword [sym.imp.KERNEL32.dll_EnterCriticalSection]
+0x10009107      8b4c241c       mov ecx, dword [esp + 0x1c]
+0x1000910b      8b542418       mov edx, dword [esp + 0x18]
+0x1000910f      8b442414       mov eax, dword [esp + 0x14]
+0x10009113      8b5c2410       mov ebx, dword [esp + 0x10]
+0x10009117      51             push ecx
+0x10009118      6a10           push 0x10
+0x1000911a      52             push edx
+0x1000911b      50             push eax
+0x1000911c      53             push ebx
+0x1000911d      8bce           mov ecx, esi
+0x1000911f      e85cfeffff     call fcn.10008f80
+0x10009124      85c0           test eax, eax
+0x10009126      7517           jne 0x1000913f
+0x10009128      8b4e08         mov ecx, dword [esi + 8]
+0x1000912b      50             push eax
+0x1000912c      50             push eax
+0x1000912d      50             push eax
+0x1000912e      6a19           push 0x19
+0x10009130      68a1000000     push 0xa1
+0x10009135      51             push ecx
+0x10009136      8bcb           mov ecx, ebx
+0x10009138      e8931b0100     call fcn.1001acd0
+0x1000913d      33ff           xor edi, edi
+0x1000913f      8b5628         mov edx, dword [esi + 0x28]
+0x10009142      83c25c         add edx, 0x5c
+0x10009145      52             push edx
+0x10009146      ff155cb10510   call dword [sym.imp.KERNEL32.dll_LeaveCriticalSection]
+0x1000914c      8bc7           mov eax, edi
+0x1000914e      5f             pop edi
+0x1000914f      5e             pop esi
+0x10009150      5b             pop ebx
+0x10009151      c21000         ret 0x10
+0x10009154      cc             int3
+0x10009155      cc             int3
+0x10009156      cc             int3
+0x10009157      cc             int3
+0x10009158      cc             int3
+0x10009159      cc             int3
+0x1000915a      cc             int3
+0x1000915b      cc             int3
+0x1000915c      cc             int3
+0x1000915d      cc             int3
+0x1000915e      cc             int3
+0x1000915f      cc             int3
+0x10009160      8b01           mov eax, dword [ecx]
+0x10009162      50             push eax
+0x10009163      ff1534b20510   call dword [sym.imp.OLEAUT32.dll_SysStringLen]
+0x10009169      c3             ret
+0x1000916a      cc             int3
+0x1000916b      cc             int3
+0x1000916c      cc             int3
+0x1000916d      cc             int3
+0x1000916e      cc             int3
+0x1000916f      cc             int3
+351: fcn.10009170 ();
+0x10009170      6aff           push 0xffffffffffffffff
+0x10009172      6800950510     push 0x10059500
+0x10009177      64a100000000   mov eax, dword fs:[0]
+0x1000917d      50             push eax
+0x1000917e      6489250000..   mov dword fs:[0], esp
+0x10009185      51             push ecx
+0x10009186      56             push esi
+0x10009187      8bf1           mov esi, ecx
+0x10009189      57             push edi
+0x1000918a      89742408       mov dword [esp + 8], esi
+0x1000918e      c70614be0510   mov dword [esi], 0x1005be14
+0x10009194      8b4e38         mov ecx, dword [esi + 0x38]
+0x10009197      85c9           test ecx, ecx
+0x10009199      8b3d50550710   mov edi, dword [0x10075550]
+0x1000919f      c744241404..   mov dword [esp + 0x14], 4
+0x100091a7      740d           je 0x100091b6
+0x100091a9      8b01           mov eax, dword [ecx]
+0x100091ab      6a01           push 1
+0x100091ad      ff10           call dword [eax]
+0x100091af      c746380000..   mov dword [esi + 0x38], 0
+0x100091b6      57             push edi
+0x100091b7      8b             invalid
+===RESP_100087a0===
+972: fcn.100087a0 (int32_t arg_4ch_2, uint32_t arg_40h, int32_t arg_44h_2, int32_t arg_44h, int32_t arg_4ch, int32_t arg_50h, uint32_t arg_40h_2, int32_t arg_4ch_3, int32_t arg_54h, int32_t arg_4ch_4, int32_t arg_54h_2, int32_t arg_4ch_5);
+0x100087a0      64a100000000   mov eax, dword fs:[0]
+0x100087a6      6aff           push 0xffffffffffffffff
+0x100087a8      68b0940510     push 0x100594b0
+0x100087ad      50             push eax
+0x100087ae      6489250000..   mov dword fs:[0], esp
+0x100087b5      83ec20         sub esp, 0x20
+0x100087b8      53             push ebx
+0x100087b9      56             push esi
+0x100087ba      8b742444       mov esi, dword [esp + 0x44]
+0x100087be      803e07         cmp byte [esi], 7
+0x100087c1      0fb65e03       movzx ebx, byte [esi + 3]
+0x100087c5      57             push edi
+0x100087c6      8bf9           mov edi, ecx
+0x100087c8      0f857d020000   jne 0x10008a4b
+0x100087ce      83fb09         cmp ebx, 9
+0x100087d1      0f87fd010000   ja case.default.0x100087d7
+0x100087d7      ff249d6c8b..   jmp dword [ebx*4 + 0x10008b6c]
+0x100087de      8b44244c       mov eax, dword [esp + 0x4c]
+0x100087e2      c70000000000   mov dword [eax], 0
+0x100087e8      e966030000     jmp 0x10008b53
+0x100087ed      8d4c240c       lea ecx, [esp + 0xc]
+0x100087f1      e87a930200     call fcn.10031b70
+0x100087f6      8b442444       mov eax, dword [esp + 0x44]
+0x100087fa      0fb64804       movzx ecx, byte [eax + 4]
+0x100087fe      0fb65002       movzx edx, byte [eax + 2]
+0x10008802      51             push ecx
+0x10008803      52             push edx
+0x10008804      8d442414       lea eax, [esp + 0x14]
+0x10008808      6894bd0510     push str.Addr_0x_02X__Cmd_0x_02X
+0x1000880d      50             push eax
+0x1000880e      c744244400..   mov dword [esp + 0x44], 0
+0x10008816      e875970200     call fcn.10031f90
+0x1000881b      8b4c2420       mov ecx, dword [esp + 0x20]
+0x1000881f      0fb65602       movzx edx, byte [esi + 2]
+0x10008823      8b4708         mov eax, dword [edi + 8]
+0x10008826      83c410         add esp, 0x10
+0x10008829      6a00           push 0
+0x1000882b      51             push ecx
+0x1000882c      8b4c2444       mov ecx, dword [esp + 0x44]
+0x10008830      52             push edx
+0x10008831      68f3030000     push 0x3f3
+0x10008836      6a74           push 0x74
+0x10008838      50             push eax
+0x10008839      e892240100     call fcn.1001acd0
+0x1000883e      8b4c2410       mov ecx, dword [esp + 0x10]
+0x10008842      51             push ecx
+0x10008843      c7442438ff..   mov dword [esp + 0x38], 0xffffffff
+0x1000884b      c7442410c4..   mov dword [esp + 0x10], vtable.CiStringUC.0
+0x10008853      e8f0e40300     call fcn.10046d48
+0x10008858      83c404         add esp, 4
+0x1000885b      5f             pop edi
+0x1000885c      5e             pop esi
+0x1000885d      33c0           xor eax, eax
+0x1000885f      5b             pop ebx
+0x10008860      8b4c2420       mov ecx, dword [esp + 0x20]
+0x10008864      64890d0000..   mov dword fs:[0], ecx
+0x1000886b      83c42c         add esp, 0x2c
+0x1000886e      c21800         ret 0x18
+0x10008871      807c244010     cmp byte [esp + 0x40], 0x10
+0x10008876      740a           je 0x10008882
+0x10008878      8b542450       mov edx, dword [esp + 0x50]
+0x1000887c      c70200000000   mov dword [edx], 0
+0x10008882      8b4c244c       mov ecx, dword [esp + 0x4c]
+0x10008886      8b01           mov eax, dword [ecx]
+0x10008888      83f801         cmp eax, 1
+0x1000888b      0f8f48020000   jg 0x10008ad9
+0x10008891      0fb64602       movzx eax, byte [esi + 2]
+0x10008895      8b4f08         mov ecx, dword [edi + 8]
+0x10008898      6a00           push 0
+0x1000889a      6a00           push 0
+0x1000889c      50             push eax
+0x1000889d      68f5030000     push 0x3f5
+0x100088a2      6a74           push 0x74
+0x100088a4      51             push ecx
+0x100088a5      8b4c2454       mov ecx, dword [esp + 0x54]
+0x100088a9      e822240100     call fcn.1001acd0
+0x100088ae      5f             pop edi
+0x100088af      5e             pop esi
+0x100088b0      33c0           xor eax, eax
+0x100088b2      5b             pop ebx
+0x100088b3      8b4c2420       mov ecx, dword [esp + 0x20]
+0x100088b7      64890d0000..   mov dword fs:[0], ecx
+0x100088be      83c42c         add esp, 0x2c
+0x100088c1      c21800         ret 0x18
+0x100088c4      0fb65602       movzx edx, byte [esi + 2]
+0x100088c8      6a00           push 0
+0x100088ca      6a00           push 0
+0x100088cc      52             push edx
+0x100088cd      68f4030000     push 0x3f4
+0x100088d2      e94d020000     jmp 0x10008b24
+0x100088d7      0fb64e02       movzx ecx, byte [esi + 2]
+0x100088db      8b5708         mov edx, dword [edi + 8]
+0x100088de      6a00           push 0
+0x100088e0      6a00           push 0
+0x100088e2      51             push ecx
+0x100088e3      8b4c2448       mov ecx, dword [esp + 0x48]
+0x100088e7      68f6030000     push 0x3f6
+0x100088ec      6a74           push 0x74
+0x100088ee      52             push edx
+0x100088ef      e8dc230100     call fcn.1001acd0
+0x100088f4      5f             pop edi
+0x100088f5      5e             pop esi
+0x100088f6      33c0           xor eax, eax
+0x100088f8      5b             pop ebx
+0x100088f9      8b4c2420       mov ecx, dword [esp + 0x20]
+0x100088fd      64890d0000..   mov dword fs:[0], ecx
+0x10008904      83c42c         add esp, 0x2c
+0x10008907      c21800         ret 0x18
+0x1000890a      8b4c244c       mov ecx, dword [esp + 0x4c]
+0x1000890e      8b01           mov eax, dword [ecx]
+0x10008910      83f801         cmp eax, 1
+0x10008913      0f8fc0010000   jg 0x10008ad9
+0x10008919      0fb64602       movzx eax, byte [esi + 2]
+0x1000891d      8b4f08         mov ecx, dword [edi + 8]
+0x10008920      6a00           push 0
+0x10008922      6a00           push 0
+0x10008924      50             push eax
+0x10008925      68f7030000     push 0x3f7
+0x1000892a      6a74           push 0x74
+0x1000892c      51             push ecx
+0x1000892d      8b4c2454       mov ecx, dword [esp + 0x54]
+0x10008931      e89a230100     call fcn.1001acd0
+0x10008936      5f             pop edi
+0x10008937      5e             pop esi
+0x10008938      33c0           xor eax, eax
+0x1000893a      5b             pop ebx
+0x1000893b      8b4c2420       mov ecx, dword [esp + 0x20]
+0x1000893f      64890d0000..   mov dword fs:[0], ecx
+0x10008946      83c42c         add esp, 0x2c
+0x10008949      c21800         ret 0x18
+0x1000894c      0fb65602       movzx edx, byte [esi + 2]
+0x10008950      6a00           push 0
+0x10008952      6a00           push 0
+0x10008954      52             push edx
+0x10008955      68f8030000     push 0x3f8
+0x1000895a      e9c5010000     jmp 0x10008b24
+0x1000895f      0fb64e02       movzx ecx, byte [esi + 2]
+0x10008963      8b5708         mov edx, dword [edi + 8]
+0x10008966      6a00           push 0
+0x10008968      6a00           push 0
+0x1000896a      51             push ecx
+0x1000896b      8b4c2448       mov ecx, dword [esp + 0x48]
+0x1000896f      68f9030000     push 0x3f9
+0x10008974      6a74           push 0x74
+0x10008976      52             push edx
+0x10008977      e854230100     call fcn.1001acd0
+0x1000897c      5f             pop edi
+0x1000897d      5e             pop esi
+0x1000897e      33c0           xor eax, eax
+===CYCLE_1000afd0===
+292: fcn.1000afd0 (int32_t arg_10h);
+0x1000afd0      51             push ecx
+0x1000afd1      56             push esi
+0x1000afd2      57             push edi
+0x1000afd3      8b7c2410       mov edi, dword [esp + 0x10]
+0x1000afd7      6a00           push 0
+0x1000afd9      8d44240c       lea eax, [esp + 0xc]
+0x1000afdd      50             push eax
+0x1000afde      6a44           push 0x44
+0x1000afe0      57             push edi
+0x1000afe1      8bf1           mov esi, ecx
+0x1000afe3      c744241800..   mov dword [esp + 0x18], 0
+0x1000afeb      e8b0dbffff     call fcn.10008ba0
+0x1000aff0      85c0           test eax, eax
+0x1000aff2      0f84b9000000   je 0x1000b0b1
+0x1000aff8      8b442408       mov eax, dword [esp + 8]
+0x1000affc      85c0           test eax, eax
+0x1000affe      7521           jne 0x1000b021
+0x1000b000      6a00           push 0
+0x1000b002      8d44240c       lea eax, [esp + 0xc]
+0x1000b006      50             push eax
+0x1000b007      6a46           push 0x46
+0x1000b009      57             push edi
+0x1000b00a      8bce           mov ecx, esi
+0x1000b00c      e88fdbffff     call fcn.10008ba0
+0x1000b011      85c0           test eax, eax
+0x1000b013      0f8498000000   je 0x1000b0b1
+0x1000b019      8b442408       mov eax, dword [esp + 8]
+0x1000b01d      85c0           test eax, eax
+0x1000b01f      741b           je 0x1000b03c
+0x1000b021      8b1554550710   mov edx, dword [0x10075554]
+0x1000b027      c782e01500..   mov dword [edx + 0x15e0], 0
+0x1000b031      5f             pop edi
+0x1000b032      b801000000     mov eax, 1
+0x1000b037      5e             pop esi
+0x1000b038      59             pop ecx
+0x1000b039      c20400         ret 4
+0x1000b03c      6a00           push 0
+0x1000b03e      8d44240c       lea eax, [esp + 0xc]
+0x1000b042      50             push eax
+0x1000b043      6a24           push 0x24
+0x1000b045      57             push edi
+0x1000b046      8bce           mov ecx, esi
+0x1000b048      e853dbffff     call fcn.10008ba0
+0x1000b04d      85c0           test eax, eax
+0x1000b04f      7460           je 0x1000b0b1
+0x1000b051      8b442408       mov eax, dword [esp + 8]
+0x1000b055      85c0           test eax, eax
+0x1000b057      753a           jne 0x1000b093
+0x1000b059      6a00           push 0
+0x1000b05b      8d54240c       lea edx, [esp + 0xc]
+0x1000b05f      52             push edx
+0x1000b060      6a26           push 0x26
+0x1000b062      57             push edi
+0x1000b063      8bce           mov ecx, esi
+0x1000b065      e836dbffff     call fcn.10008ba0
+0x1000b06a      85c0           test eax, eax
+0x1000b06c      751d           jne 0x1000b08b
+0x1000b06e      50             push eax
+0x1000b06f      50             push eax
+0x1000b070      50             push eax
+0x1000b071      8b4608         mov eax, dword [esi + 8]
+0x1000b074      6a19           push 0x19
+0x1000b076      6866010000     push 0x166
+0x1000b07b      50             push eax
+0x1000b07c      8bcf           mov ecx, edi
+0x1000b07e      e84dfc0000     call fcn.1001acd0
+0x1000b083      5f             pop edi
+0x1000b084      33c0           xor eax, eax
+0x1000b086      5e             pop esi
+0x1000b087      59             pop ecx
+0x1000b088      c20400         ret 4
+0x1000b08b      8b442408       mov eax, dword [esp + 8]
+0x1000b08f      85c0           test eax, eax
+0x1000b091      743e           je 0x1000b0d1
+0x1000b093      c686300100..   mov byte [esi + 0x130], 0x24
+0x1000b09a      c686310100..   mov byte [esi + 0x131], 0x20
+0x1000b0a1      8b0d54550710   mov ecx, dword [0x10075554]
+0x1000b0a7      57             push edi
+0x1000b0a8      e863640000     call fcn.10011510
+0x1000b0ad      85c0           test eax, eax
+0x1000b0af      7580           jne 0x1000b031
+0x1000b0b1      8b4e08         mov ecx, dword [esi + 8]
+0x1000b0b4      6a00           push 0
+0x1000b0b6      6a00           push 0
+0x1000b0b8      6a00           push 0
+0x1000b0ba      6a19           push 0x19
+0x1000b0bc      6866010000     push 0x166
+0x1000b0c1      51             push ecx
+0x1000b0c2      8bcf           mov ecx, edi
+0x1000b0c4      e807fc0000     call fcn.1001acd0
+0x1000b0c9      5f             pop edi
+0x1000b0ca      33c0           xor eax, eax
+0x1000b0cc      5e             pop esi
+0x1000b0cd      59             pop ecx
+0x1000b0ce      c20400         ret 4
+0x1000b0d1      8b5608         mov edx, dword [esi + 8]
+0x1000b0d4      6a00           push 0
+0x1000b0d6      6a00           push 0
+0x1000b0d8      6a00           push 0
+0x1000b0da      68ec000000     push 0xec
+0x1000b0df      6866010000     push 0x166
+0x1000b0e4      52             push edx
+0x1000b0e5      8bcf           mov ecx, edi
+0x1000b0e7      e8e4fb0000     call fcn.1001acd0
+0x1000b0ec      5f             pop edi
+0x1000b0ed      33c0           xor eax, eax
+0x1000b0ef      5e             pop esi
+0x1000b0f0      59             pop ecx
+0x1000b0f1      c20400         ret 4
+0x1000b0f4      cc             int3
+0x1000b0f5      cc             int3
+0x1000b0f6      cc             int3
+0x1000b0f7      cc             int3
+0x1000b0f8      cc             int3
+0x1000b0f9      cc             int3
+0x1000b0fa      cc             int3
+0x1000b0fb      cc             int3
+0x1000b0fc      cc             int3
+0x1000b0fd      cc             int3
+0x1000b0fe      cc             int3
+0x1000b0ff      cc             int3
+1487: fcn.1000b100 (int32_t arg_5ch);
+0x1000b100      6aff           push 0xffffffffffffffff
+0x1000b102      64a100000000   mov eax, dword fs:[0]
+0x1000b108      68a8950510     push 0x100595a8
+0x1000b10d      50             push eax
+0x1000b10e      6489250000..   mov dword fs:[0], esp
+0x1000b115      83ec3c         sub esp, 0x3c
+0x1000b118      53             push ebx
+0x1000b119      55             push ebp
+0x1000b11a      8b2d54550710   mov ebp, dword [0x10075554]
+0x1000b120      56             push esi
+0x1000b121      57             push edi
+0x1000b122      8b7c245c       mov edi, dword [esp + 0x5c]
+0x1000b126      57             push edi
+0x1000b127      8bf1           mov esi, ecx
+0x1000b129      81c558040000   add ebp, 0x458
+0x1000b12f      e82cd3ffff     call fcn.10008460
+0x1000b134      85c0           test eax, eax
+0x1000b136      6a00           push 0
+0x1000b138      0f84cf030000   je 0x1000b50d
+0x1000b13e      6885000000     push 0x85
+0x1000b143      6a10           push 0x10
+0x1000b145      57             push edi
+0x1000b146      8bce           mov ecx, esi
+0x1000b148      e8f3e8ffff     call fcn.10009a40
+0x1000b14d      85c0           test eax, eax
+0x1000b14f      0f84fb000000   je 0x1000b250
+0x1000b155      8b86c4000000   mov eax, dword [esi + 0xc4]
+0x1000b15b      85c0           test eax, eax
+0x1000b15d      8d             invalid
+0x1000b15e      9e             sahf
+0x1000b15f      c4             invalid
+===B100_1000b100===
+1487: fcn.1000b100 (int32_t arg_5ch);
+0x1000b100      6aff           push 0xffffffffffffffff
+0x1000b102      64a100000000   mov eax, dword fs:[0]
+0x1000b108      68a8950510     push 0x100595a8
+0x1000b10d      50             push eax
+0x1000b10e      6489250000..   mov dword fs:[0], esp
+0x1000b115      83ec3c         sub esp, 0x3c
+0x1000b118      53             push ebx
+0x1000b119      55             push ebp
+0x1000b11a      8b2d54550710   mov ebp, dword [0x10075554]
+0x1000b120      56             push esi
+0x1000b121      57             push edi
+0x1000b122      8b7c245c       mov edi, dword [esp + 0x5c]
+0x1000b126      57             push edi
+0x1000b127      8bf1           mov esi, ecx
+0x1000b129      81c558040000   add ebp, 0x458
+0x1000b12f      e82cd3ffff     call fcn.10008460
+0x1000b134      85c0           test eax, eax
+0x1000b136      6a00           push 0
+0x1000b138      0f84cf030000   je 0x1000b50d
+0x1000b13e      6885000000     push 0x85
+0x1000b143      6a10           push 0x10
+0x1000b145      57             push edi
+0x1000b146      8bce           mov ecx, esi
+0x1000b148      e8f3e8ffff     call fcn.10009a40
+0x1000b14d      85c0           test eax, eax
+0x1000b14f      0f84fb000000   je 0x1000b250
+0x1000b155      8b86c4000000   mov eax, dword [esi + 0xc4]
+0x1000b15b      85c0           test eax, eax
+0x1000b15d      8d9ec4000000   lea ebx, [esi + 0xc4]
+0x1000b163      7417           je 0x1000b17c
+0x1000b165      6a00           push 0
+0x1000b167      6a00           push 0
+0x1000b169      688f000000     push 0x8f
+0x1000b16e      6a10           push 0x10
+0x1000b170      57             push edi
+0x1000b171      8bce           mov ecx, esi
+0x1000b173      e828eaffff     call fcn.10009ba0
+0x1000b178      85c0           test eax, eax
+0x1000b17a      746e           je 0x1000b1ea
+0x1000b17c      8b86bc000000   mov eax, dword [esi + 0xbc]
+0x1000b182      85c0           test eax, eax
+0x1000b184      8bce           mov ecx, esi
+0x1000b186      6a00           push 0
+0x1000b188      0f89f1000000   jns 0x1000b27f
+0x1000b18e      6a01           push 1
+0x1000b190      688f000000     push 0x8f
+0x1000b195      6a10           push 0x10
+0x1000b197      57             push edi
+0x1000b198      e803eaffff     call fcn.10009ba0
+0x1000b19d      85c0           test eax, eax
+0x1000b19f      0f8466030000   je 0x1000b50b
+0x1000b1a5      6a64           push 0x64
+0x1000b1a7      ff1588b00510   call dword [sym.imp.KERNEL32.dll_Sleep]
+0x1000b1ad      6a00           push 0
+0x1000b1af      53             push ebx
+0x1000b1b0      6a28           push 0x28
+0x1000b1b2      57             push edi
+0x1000b1b3      8bce           mov ecx, esi
+0x1000b1b5      e8e6d9ffff     call fcn.10008ba0
+0x1000b1ba      85c0           test eax, eax
+0x1000b1bc      755b           jne 0x1000b219
+0x1000b1be      8b4e08         mov ecx, dword [esi + 8]
+0x1000b1c1      50             push eax
+0x1000b1c2      50             push eax
+0x1000b1c3      50             push eax
+0x1000b1c4      6a19           push 0x19
+0x1000b1c6      68d6000000     push 0xd6
+0x1000b1cb      51             push ecx
+0x1000b1cc      8bcf           mov ecx, edi
+0x1000b1ce      e8fdfa0000     call fcn.1001acd0
+0x1000b1d3      6a00           push 0
+0x1000b1d5      6a00           push 0
+0x1000b1d7      688f000000     push 0x8f
+0x1000b1dc      6a10           push 0x10
+0x1000b1de      57             push edi
+0x1000b1df      8bce           mov ecx, esi
+0x1000b1e1      e8bae9ffff     call fcn.10009ba0
+0x1000b1e6      85c0           test eax, eax
+0x1000b1e8      7518           jne 0x1000b202
+0x1000b1ea      8b5608         mov edx, dword [esi + 8]
+0x1000b1ed      6a00           push 0
+0x1000b1ef      6a00           push 0
+0x1000b1f1      6a00           push 0
+0x1000b1f3      6a19           push 0x19
+0x1000b1f5      68d6000000     push 0xd6
+0x1000b1fa      52             push edx
+0x1000b1fb      8bcf           mov ecx, edi
+0x1000b1fd      e8cefa0000     call fcn.1001acd0
+0x1000b202      33c0           xor eax, eax
+0x1000b204      8b4c244c       mov ecx, dword [esp + 0x4c]
+0x1000b208      64890d0000..   mov dword fs:[0], ecx
+0x1000b20f      5f             pop edi
+0x1000b210      5e             pop esi
+0x1000b211      5d             pop ebp
+0x1000b212      5b             pop ebx
+0x1000b213      83c448         add esp, 0x48
+0x1000b216      c20400         ret 4
+0x1000b219      833b00         cmp dword [ebx], 0
+0x1000b21c      7578           jne 0x1000b296
+0x1000b21e      8b4608         mov eax, dword [esi + 8]
+0x1000b221      6a00           push 0
+0x1000b223      6a00           push 0
+0x1000b225      6a00           push 0
+0x1000b227      68db000000     push 0xdb
+0x1000b22c      68d6000000     push 0xd6
+0x1000b231      50             push eax
+0x1000b232      8bcf           mov ecx, edi
+0x1000b234      e897fa0000     call fcn.1001acd0
+0x1000b239      6a00           push 0
+0x1000b23b      6a00           push 0
+0x1000b23d      688f000000     push 0x8f
+0x1000b242      6a10           push 0x10
+0x1000b244      57             push edi
+0x1000b245      8bce           mov ecx, esi
+0x1000b247      e854e9ffff     call fcn.10009ba0
+0x1000b24c      85c0           test eax, eax
+0x1000b24e      7518           jne 0x1000b268
+0x1000b250      6a00           push 0
+0x1000b252      6a00           push 0
+0x1000b254      8b4e08         mov ecx, dword [esi + 8]
+0x1000b257      6a00           push 0
+0x1000b259      6a19           push 0x19
+0x1000b25b      68d6000000     push 0xd6
+0x1000b260      51             push ecx
+0x1000b261      8bcf           mov ecx, edi
+0x1000b263      e868fa0000     call fcn.1001acd0
+0x1000b268      33c0           xor eax, eax
+0x1000b26a      8b4c244c       mov ecx, dword [esp + 0x4c]
+0x1000b26e      64890d0000..   mov dword fs:[0], ecx
+0x1000b275      5f             pop edi
+0x1000b276      5e             pop esi
+0x1000b277      5d             pop ebp
+0x1000b278      5b             pop ebx
+0x1000b279      83c448         add esp, 0x48
+0x1000b27c      c20400         ret 4
+0x1000b27f      6a00           push 0
+0x1000b281      688f000000     push 0x8f
+0x1000b286      6a10           push 0x10
+0x1000b288      57             push edi
+0x1000b289      e812e9ffff     call fcn.10009ba0
+0x1000b28e      85c0           test eax, eax
+0x1000b290      0f8454ffffff   je 0x1000b1ea
+0x1000b296      57             push edi
+0x1000b297      8bce           mov ecx, esi
+0x1000b299      e832fdffff     call fcn.1000afd0
+0x1000b29e      85c0           test eax, eax
+0x1000b2a0      0f8465020000   je 0x1000b50b
+0x1000b2a6      8b0d54550710   mov ecx, dword [0x10075554]
+0x1000b2ac      56             push esi
+0x1000b2ad      57             push edi
+0x1000b2ae      e8ddb70000     call fcn.10016a90
+0x1000b2b3      85c0           test eax, eax
+0x1000b2b5      7499           je 0x1000b250
+0x1000b2b7      8b86c8000000   mov eax, dword [esi + 0xc8]
+0x1000b2bd      33db           xor ebx, ebx
+0x1000b2bf      3bc3           cmp eax, ebx
+0x1000b2c1      7424           je 0x1000b2e7
+0x1000b2c3      899d980c0000   mov dword [ebp + 0xc98], ebx
+0x1000b2c9      899d680d0000   mov dword [ebp + 0xd68], ebx
+0x1000b2cf      899d00070000   mov dword [ebp + 0x700], ebx
+0x1000b2d5      899dd0070000   mov dword [ebp + 0x7d0], ebx
+0x1000b2db      899d68010000   mov dword [ebp + 0x168], ebx
+0x1000b2e1      899d38020000   mov dword [ebp + 0x238], ebx
+0x1000b2e7      53             push ebx
+0x1000b2e8      8d542420       lea edx, [esp + 0x20]
+0x1000b2ec      52             push edx
+0x1000b2ed      6a03           push 3
+0x1000b2ef      6a10           push 0x10
+0x1000b2f1      57             push edi
+0x1000b2f2      8bce           mov ecx, esi
+0x1000b2f4      e8c7edffff     call fcn.1000a0c0
+0x1000b2f9      85c0           test eax, eax
+0x1000b2fb      7448           je 0x1000b345
+0x1000b2fd      0fb74c241c     movzx ecx, word [esp + 0x1c]
+0x1000b302      c1e908         shr ecx, 8
+0x1000b305      894d20         mov dword [ebp + 0x20], ecx
+0x1000b308      8b54241c       mov edx, dword [esp + 0x1c]
+0x1000b30c      6a01           push 1
+0x1000b30e      81e2ff000000   and edx, 0xff
+0x1000b314      53             push ebx
+0x1000b315      89552c         mov dword [ebp + 0x2c], edx
+0x1000b318      8b4e38         mov ecx, dword [esi + 0x38]
+0x1000b31b      57             push edi
+0x1000b31c      e8bf100100     call fcn.1001c3e0
+0x1000b321      85c0           test eax, eax
+0x1000b323      7420           je 0x1000b345
+0x1000b325      8b8ebc000000   mov ecx, dword [esi + 0xbc]
+0x1000b32b      33d2           xor edx, edx
+0x1000b32d      8a9631010000   mov dl, byte [esi + 0x131]
+0x1000b333      83e102         and ecx, 2
+0x1000b336      51             push ecx
+0x1000b337      8b4e38         mov ecx, dword [esi + 0x38]
+0x1000b33a      52             push edx
+0x1000b33b      57             push edi
+0x1000b33c      e89f100100     call fcn.1001c3e0
+0x1000b341      85c0           test eax, eax
+0x1000b343      752c           jne 0x1000b371
+0x1000b345      53             push ebx
+0x1000b346      53             push ebx
+0x1000b347      8b4608         mov eax, dword [esi + 8]
+0x1000b34a      53             push ebx
+0x1000b34b      6a19           push 0x19
+0x1000b34d      68d6000000     push 0xd6
+0x1000b352      50             push eax
+0x1000b353      8bcf           mov ecx, edi
+0x1000b355      e876f90000     call fcn.1001acd0
+0x1000b35a      33c0           xor eax, eax
+0x1000b35c      8b4c244c       mov ecx, dword [esp + 0x4c]
+0x1000b360      64890d0000..   mov dword fs:[0], ecx
+0x1000b367      5f             pop edi
+0x1000b368      5e             pop esi
+0x1000b369      5d             pop ebp
+0x1000b36a      5b             pop ebx
+0x1000b36b      83c448         add esp, 0x48
+0x1000b36e      c20400         ret 4
+0x1000b371      8b8ebc000000   mov ecx, dword [esi + 0xbc]
+0x1000b377      33d2           xor edx, edx
+0x1000b379      8a9630010000   mov dl, byte [esi + 0x130]
+0x1000b37f      83e102         and ecx, 2
+0x1000b382      51             push ecx
+0x1000b383      8b4e38         mov ecx, dword [esi + 0x38]
+0x1000b386      52             push edx
+0x1000b387      57             push edi
+0x1000b388      e853100100     call fcn.1001c3e0
+0x1000b38d      85c0           test eax, eax
+0x1000b38f      53             push ebx
+0x1000b390      53             push ebx
+0x1000b391      74b4           je 0x1000b347
+0x1000b393      a154550710     mov eax, dword [0x10075554]
+0x1000b398      8b888c040000   mov ecx, dword [eax + 0x48c]
+0x1000b39e      8b9080040000   mov edx, dword [eax + 0x480]
+0x1000b3a4      51             push ecx
+0x1000b3a5      52             push edx
+0x1000b3a6      8b907c040000   mov edx, dword [eax + 0x47c]
+0x1000b3ac      6a00           push 0
+0x1000b3ae      8da88c040000   lea ebp, [eax + 0x48c]
+0x1000b3b4      8d9880040000   lea ebx, [eax + 0x480]
+0x1000b3ba      6a00           push 0
+===GETREG_100095a0===
+344: fcn.100095a0 (int32_t arg_40h_2, int32_t arg_40h);
+0x100095a0      83ec2c         sub esp, 0x2c
+0x100095a3      53             push ebx
+0x100095a4      55             push ebp
+0x100095a5      56             push esi
+0x100095a6      8b742440       mov esi, dword [esp + 0x40]
+0x100095aa      8a4603         mov al, byte [esi + 3]
+0x100095ad      0403           add al, 3
+0x100095af      884601         mov byte [esi + 1], al
+0x100095b2      0fb64604       movzx eax, byte [esi + 4]
+0x100095b6      8944240c       mov dword [esp + 0xc], eax
+0x100095ba      48             dec eax
+0x100095bb      57             push edi
+0x100095bc      8bf9           mov edi, ecx
+0x100095be      740a           je 0x100095ca
+0x100095c0      83e80c         sub eax, 0xc
+0x100095c3      7405           je 0x100095ca
+0x100095c5      83e818         sub eax, 0x18
+0x100095c8      7508           jne 0x100095d2
+0x100095ca      c744241000..   mov dword [esp + 0x10], 0
+0x100095d2      8b5c2440       mov ebx, dword [esp + 0x40]
+0x100095d6      bd03000000     mov ebp, 3
+0x100095db      896c2444       mov dword [esp + 0x44], ebp
+0x100095df      90             nop
+0x100095e0      8d4c2418       lea ecx, [esp + 0x18]
+0x100095e4      51             push ecx
+0x100095e5      56             push esi
+0x100095e6      53             push ebx
+0x100095e7      8bcf           mov ecx, edi
+0x100095e9      e842efffff     call fcn.10008530
+0x100095ee      85c0           test eax, eax
+0x100095f0      0f84de000000   je 0x100096d4
+0x100095f6      8d542414       lea edx, [esp + 0x14]
+0x100095fa      52             push edx
+0x100095fb      33d2           xor edx, edx
+0x100095fd      8a5602         mov dl, byte [esi + 2]
+0x10009600      8d442444       lea eax, [esp + 0x44]
+0x10009604      50             push eax
+0x10009605      8d4c2420       lea ecx, [esp + 0x20]
+0x10009609      51             push ecx
+0x1000960a      56             push esi
+0x1000960b      8bcf           mov ecx, edi
+0x1000960d      52             push edx
+0x1000960e      53             push ebx
+0x1000960f      896c2458       mov dword [esp + 0x58], ebp
+0x10009613      e888f1ffff     call fcn.100087a0
+0x10009618      85c0           test eax, eax
+0x1000961a      7470           je 0x1000968c
+0x1000961c      8b442440       mov eax, dword [esp + 0x40]
+0x10009620      85c0           test eax, eax
+0x10009622      740c           je 0x10009630
+0x10009624      3bc5           cmp eax, ebp
+0x10009626      7d08           jge 0x10009630
+0x10009628      8be8           mov ebp, eax
+0x1000962a      896c2444       mov dword [esp + 0x44], ebp
+0x1000962e      eb45           jmp 0x10009675
+0x10009630      8b442410       mov eax, dword [esp + 0x10]
+0x10009634      85c0           test eax, eax
+0x10009636      7445           je 0x1000967d
+0x10009638      33c9           xor ecx, ecx
+0x1000963a      8a4e02         mov cl, byte [esi + 2]
+0x1000963d      8d44241b       lea eax, [esp + 0x1b]
+0x10009641      50             push eax
+0x10009642      51             push ecx
+0x10009643      53             push ebx
+0x10009644      8bcf           mov ecx, edi
+0x10009646      e8a5fcffff     call fcn.100092f0
+0x1000964b      85c0           test eax, eax
+0x1000964d      7461           je 0x100096b0
+0x1000964f      8d542414       lea edx, [esp + 0x14]
+0x10009653      52             push edx
+0x10009654      33d2           xor edx, edx
+0x10009656      8a5602         mov dl, byte [esi + 2]
+0x10009659      8d442448       lea eax, [esp + 0x48]
+0x1000965d      50             push eax
+0x1000965e      8d4c2420       lea ecx, [esp + 0x20]
+0x10009662      51             push ecx
+0x10009663      56             push esi
+0x10009664      8bcf           mov ecx, edi
+0x10009666      52             push edx
+0x10009667      53             push ebx

@@ -1,0 +1,4160 @@
+PSI
+                                          Table Of Contents
+Introduction ...........................................................................................................1
+How to Guides ......................................................................................................3
+   Getting Started ..................................................................................................3
+   How to: Scan .....................................................................................................3
+   How to Make a Pakon CD .................................................................................9
+   How to Make a Kodak Picture CD ...................................................................10
+   How to Print a Sleeve......................................................................................11
+   How To Make Single Prints .............................................................................12
+   Once there are scanned images on the screen, the Order Products Button will
+   become available. ...........................................................................................12
+   How to Make an Index Print ............................................................................14
+   Once there are scanned images on the screen, the Order Products Button will
+   become available. ...........................................................................................14
+   How to Crop an Image ....................................................................................15
+   How to Customize Logos ................................................................................17
+   Re-Print a CD Label ........................................................................................18
+   How to Shutdown the System .........................................................................19
+PSI Easy Order Mode .........................................................................................21
+   PSI Easy Order ...............................................................................................21
+   Switching to PSI Easy Order ...........................................................................21
+   Enter Roll ID ....................................................................................................22
+   Select Packages..............................................................................................23
+   Select Source ..................................................................................................24
+   Specify Film.....................................................................................................25
+   Scanning .........................................................................................................26
+   Image Editing ..................................................................................................28
+Order Menu.........................................................................................................31
+   Order Menu .....................................................................................................31
+   Add Roll From Scanner (ctrl S)........................................................................32
+   Add Roll From File...........................................................................................36
+   Add Roll From Archive ....................................................................................37
+   Save As...........................................................................................................38
+   Once there are scanned images on the screen, the "Save As" option will
+   become available in the "Order" menu. ...........................................................38
+   Create Products ..............................................................................................41
+   Notes/Label .....................................................................................................42
+   View Properties ...............................................................................................43
+Picture Menu.......................................................................................................45
+   Picture Menu ...................................................................................................45
+   Frame Placement ............................................................................................46
+   Rotate..............................................................................................................47
+   Flip ..................................................................................................................48
+   Color (ctrl c).....................................................................................................49
+   Sharpening ......................................................................................................50
+
+
+                                                                                                                           i
+Table Of Contents
+
+
+  Print Quantities................................................................................................50
+  Roll ID .............................................................................................................51
+  Index Number..................................................................................................51
+  View Properties ...............................................................................................52
+Setup Menu ........................................................................................................55
+  Setup Menu .....................................................................................................55
+  Packages: .......................................................................................................55
+  Make Popular Packages Easier to Produce! ...................................................56
+  Calibration Wizard ...........................................................................................57
+  Scan Mode ......................................................................................................59
+  Advanced ........................................................................................................61
+  Pakon CD Setup..............................................................................................62
+  Kodak Picture CD Setup .................................................................................63
+  General ...........................................................................................................65
+  Color Preferences ...........................................................................................69
+  IQueue ............................................................................................................71
+  Easy Order Setup............................................................................................74
+Tools Menu .........................................................................................................83
+  Tools ...............................................................................................................83
+Create Products ..................................................................................................85
+  Creating a Kodak Picture CD ..........................................................................85
+  Creating a Pakon CD ......................................................................................86
+  Creating a Sleeve............................................................................................89
+  Once there are scanned images on the screen, the Order Products Button will
+  become available. ...........................................................................................89
+  Creating a 4x6 Print.........................................................................................90
+  Once there are scanned images on the screen, the Order Products Button will
+  become available. ...........................................................................................90
+  Creating a 5x7 Print.........................................................................................92
+  Once there are scanned images on the screen, the Order Products Button will
+  become available. ...........................................................................................92
+  Creating an 8x10 Print.....................................................................................94
+  Once there are scanned images on the screen, the Order Products Button will
+  become available. ...........................................................................................94
+  Creating an Index Print....................................................................................96
+  Once there are scanned images on the screen, the Order Products Button will
+  become available. ...........................................................................................96
+  Creating a Contact Print ..................................................................................98
+  Once there are scanned images on the screen, the Order Products Button will
+  become available. ...........................................................................................98
+  Save As...........................................................................................................99
+  Once there are scanned images on the screen, the "Save As" option will
+  become available in the "Order" menu. ...........................................................99
+  Internet ..........................................................................................................102
+  Please contact Pakon Sales for more information about Internet Upload
+  Options..........................................................................................................102
+
+
+
+ii
+                                                                                             Table Of Contents
+
+
+  Once there are scanned images on the screen, the Order Products Button will
+  become available. .........................................................................................102
+Help Menu ........................................................................................................105
+  About Pakon..................................................................................................105
+IQueue ..............................................................................................................107
+  IQueue Program............................................................................................107
+  IQueue Settings.............................................................................................111
+  CD Label .......................................................................................................113
+  CD Jewel Case Insert....................................................................................115
+  Single ............................................................................................................117
+  CD-ROM .......................................................................................................122
+  Sleeve ...........................................................................................................122
+  Index .............................................................................................................126
+  Contact..........................................................................................................128
+  Directories .....................................................................................................130
+  Internet Account Setup..................................................................................131
+  Internet Receipt .............................................................................................131
+  Print to File ....................................................................................................133
+Required Maintenance......................................................................................137
+  F-135.............................................................................................................137
+     Cleaning the Film Track.............................................................................137
+     Cleaning the Scanner Cover......................................................................137
+  F-235 and F-335............................................................................................138
+     Operator Service........................................................................................138
+     Fan Filter Maintenance ..............................................................................139
+     Dust Cleaning of Film Track.......................................................................141
+     Dust Cleaning of Illumination .....................................................................142
+     Light Bulb Replacement (F-235 Only)........................................................145
+Troubleshooting ................................................................................................149
+  Troubleshooting.............................................................................................149
+  Lines in Scans ...............................................................................................149
+  Error Code 3013............................................................................................149
+  Scanner Stops Prematurely ..........................................................................149
+  Motor doesn't stop after scanning .................................................................149
+  DX Codes Not Being Read............................................................................150
+  Hardware Fault Codes ..................................................................................150
+  Stretched Images ..........................................................................................150
+  Error Log Files...............................................................................................150
+  Images Out of Focus .....................................................................................150
+  Picture Essentials Viewer ..............................................................................150
+  Load Disc Command Failed ..........................................................................151
+  Lamp Warm-Up Time (F-235 Only) ...............................................................151
+  Contacting Support........................................................................................152
+Noritsu 2611 Integration....................................................................................155
+  Noritsu 2611 ..................................................................................................155
+  Printing to the 2611 .......................................................................................156
+
+
+
+                                                                                                                     iii
+Table Of Contents
+
+
+Adding Extras ...................................................................................................159
+  Axiom Viewing Software................................................................................159
+  User Folder Option ........................................................................................160
+Primera Bravo CD-R .........................................................................................163
+  Bravo CD-R ...................................................................................................163
+Roll Film Feeder Accessory ..............................................................................165
+  F-235Plus Roll Film Feeder...........................................................................165
+Index .................................................................................................................171
+
+
+
+
+iv
+Introduction
+ Welcome to Pakon Digital Imaging!
+The PSI software is designed specifically for the Pakon F-235 and F-135 Digital
+Scanners. We hope you find this manual useful in learning how to use the Pakon
+scanner and PSI Interface Software.
+
+This manual will help you learn how to fully utilize the potential of the scanner
+and harness its abilities. It is divided into small sections to help you both learn
+quickly and use it as a reference in learning more and more about the capabilities
+of your Pakon scanner!
+
+
+
+
+                                                                                 1
+How to Guides
+Getting Started
+These simple instructions will ensure that the scanner communicates properly with
+the host PC.
+
+   1. Turn on the host computer.
+   2. Allow Windows to finish loading.
+   3. Turn on the Pakon film scanner.
+   4. Launch the PSI application.
+
+
+
+
+How to: Scan
+The scanning interface is designed to be simple and straightforward for even the
+most inexperienced operator. Once the PSI Software is loaded, the screen
+should look like this:
+
+
+
+
+           Click on the Scan button to order a roll from film. This will open the
+           Scan Settings dialog box, seen below.
+
+
+
+
+                                                                                    3
+PSI
+
+
+
+
+      The F-135 Scan Dialog will appear like this:
+
+
+
+
+                 Select the Film Color
+
+
+4
+                                                             How to Guides
+
+
+
+                       Film        Description
+                       Color
+                       Neg.        Color
+                                 Negative
+                       Pos.    Positive/Color
+                                 Reversal
+                        B/W     Black and
+                                  White
+
+
+
+
+              There are three resolutions available for the F-235.
+
+
+
+
+                         Select the Desired Resolution.
+
+
+Resolution      Pixel Size (HxW)       Advantage(s)       Disadvantage(s)
+ 4Base             1000x1500           Good Quality,       Lower Quality
+                                            Fast               Image
+  8Base           1400x2100             Very Good          Second Best
+                                       Quality, Fast      Quality, Slower
+                                          Speed             than 4Base
+ 16Base           2000x3000           Excellent Quality    Slowest Scan
+                                                              Speed
+
+             The F-235 can scan both 35mm and 24mm (APS) film.
+
+
+
+
+                                                                            5
+PSI
+
+
+
+            The F-235 can scan film in roll, or strip format. If scanning strips, the
+                                 minimum length of a strip
+                                     must be 4 frames.
+
+
+
+
+      The Roll ID, or Twin Check number can be added to identify the order.
+
+
+
+
+                                           Other Options:
+
+
+
+
+    Note: This option is not available when scanning in Black and White mode.
+
+
+
+
+When all the appropriate options are set, click on "OK" to begin the scan.
+
+F-235 and F-335
+Insert the film with the DX Code to the back of the scanner, starting with the
+lowest number first, as shown below:
+
+
+
+
+6
+                                                                         How to Guides
+
+
+
+
+F-135
+Insert the film with the DX code up starting with the lowest number first, as shown
+below:
+
+
+
+
+                                                                                      7
+PSI
+
+
+
+
+F-135 LED's
+
+
+
+
+Power LED
+Off - there is no power to the scanner.
+Green - the scanner is on.
+
+
+
+
+8
+                                                                   How to Guides
+
+
+
+Status LED
+
+Solid Green - The scanner is ready.
+Blinking Green - The scanner is scanning
+Blinking Yellow - The scanner is unable to scan at the moment
+Blinking Red - The scanner is reporting an error.
+Off - The scanner is not functioning properly.
+
+Film LED
+
+Off – there is no film in the scanner and there is no need to do anything
+Blinking Green – Insert film to be scanned
+Solid Green – Scanner is scanning the film in the scanner – do not insert film
+Blinking Yellow – Remove film from the scanner
+
+How to Make a Pakon CD
+Once there are scanned images on the screen, the Order Products Button will
+become available.
+
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+                                                                                 9
+PSI
+
+
+
+
+Check the "Pakon CD" box and select the quantity of Pakon CD's you wish to
+produce.
+
+The "Setup" button loads the Pakon CD-R Properties.
+
+How to Make a Kodak Picture CD
+Once there are scanned images on the screen, the Order Products Button will
+become available.
+
+
+
+
+10
+                                                                  How to Guides
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+Click on the "Kodak Picture CD" box and select the quantity desired. Click on
+"OK" to begin making the CD.
+
+How to Print a Sleeve
+Once there are scanned images on the screen, the Order Products Button will
+become available.
+
+
+
+
+                                                                                11
+PSI
+
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+Check the "Sleeve" box to print a Sleeve.
+
+
+How To Make Single Prints
+Once there are scanned images on the screen, the
+Order Products Button will become available.
+
+
+
+12
+                                                                   How to Guides
+
+
+
+
+Select the image or images you would like to print by holding down the 'Ctrl' key
+on the keyboard and clicking on the image(s) you would like printed.
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open. Check the box for the desired print size and
+quantity.
+
+
+
+
+                                                                                13
+PSI
+
+
+
+
+How to Make an Index Print
+Once there are scanned images on the screen, the
+Order Products Button will become available.
+
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+14
+                                                                How to Guides
+
+
+
+
+ Check the "Index" box to create an Index print.
+
+
+How to Crop an Image
+PSI can be used to crop images.
+
+After images are added to the order by scanning from the F-235 or imported from
+file, double-click on the image to crop.
+
+
+
+
+                                                                            15
+PSI
+
+
+
+
+The image will be enlarged on the screen.
+
+
+
+
+The crop tools are now displayed in the upper-right hand corner of the screen.
+
+
+
+
+The arrow will move crop area over new image area.
+
+
+
+16
+                                                                   How to Guides
+
+
+The box will allow the operator to change new image area by shrinking or
+enlarging the crop space.
+
+
+
+
+The cropped out image area will appear shaded in black.
+
+
+
+
+How to Customize Logos
+There are two logos that are used in the PSI program. They can be customized
+to reflect the name of the company or organization creating output materials.
+
+Logo_CD.bmp
+
+
+
+
+This is the logo printed onto Pakon CD's. The logo file is a bitmap and is 1083 x
+661 pixels in dimension.
+
+Logo_Master.bmp
+
+
+
+
+                                                                               17
+PSI
+
+
+
+
+This is the primary logo file, and is used for all printed output with the exception
+of Pakon CD's. This logo file is also a bitmap and is 1110 x 398 pixels in
+dimension.
+
+Custom Logo's
+
+To create custom logos, create files with the specified dimensions in an image
+editing software such as Microsoft Paint, Adobe Photoshop, Paint Shop Pro, etc.
+
+
+Save these files to the following directory:
+
+C:\Program Files\Pakon\PSI\IQ\Logos
+
+It is important to keep the file names as they are shown above. PSI looks for
+these files when creating the output, and will only look for these files.
+
+
+
+
+Re-Print a CD Label
+To re-print a CD label, a blank CD will need to be in the CD-R drive.
+
+When prompted to insert a blank CD, ensure that a blank CD is in the drive, and
+click, "OK."
+
+
+
+
+The next prompt has four options:
+
+
+
+
+18
+                                                                    How to Guides
+
+
+
+
+"OK" will continue the CD job printing the CD label and writing the CD.
+
+"Skip Print" will write the CD, but will NOT print the CD label. Use this option to
+make a second CD.
+
+"Skip CD Burn" will print the CD label, but will NOT write the CD. Use this
+option to make a new CD label.
+
+"Cancel Job" will cancel the entire job.
+
+How to Shutdown the System
+To turn the system off, click on the power button on the main tool bar, as shown
+below:
+
+
+
+
+This button will close PSI, and turn the computer off.
+
+Turn the monitor and scanner off using their respective power switches on each
+device.
+
+
+
+
+                                                                                 19
+PSI Easy Order Mode
+PSI Easy Order
+PSI Easy Order is offered as an optional user interface for the F-235 and is
+standard when using the F-135, designed so that the operator can interact with
+the Pakon scanner with a minimal amount of training.
+
+If this user interface is not available, please contact your sales representative for
+more information about activating this exciting feature.
+
+The PSI Easy Order is customized in the "Setup" menu in the Classic Mode.
+
+Switching to PSI Easy Order
+Enter Roll ID
+Select Package
+Select Source
+Specify Film
+Image Editing
+
+Switching to PSI Easy Order
+There are two modes of operation for PSI.
+
+The classic mode is typically the default mode of operation. This is the 'classic'
+toolbar:
+
+
+
+
+Click on the "Mode" button to switch to the "PSI Custom View."
+
+
+
+
+PSI will prompt the operator for the password to switch modes. There is no
+password, by default.
+
+If PSI is in the "PSI Easy Order," the toolbar appears as shown below:
+
+
+
+
+                                                                                   21
+PSI
+
+
+
+
+Click on the "Mode" button to switch to the "Classic" mode.
+
+
+
+
+PSI will prompt the operator for the password to switch modes. There is no
+password, by default.
+
+
+
+
+Enter Roll ID
+Input the roll ID using by clicking on the numbers, or with the keyboard.
+
+
+
+
+See the "General" options for information on the parameters for the Roll ID.
+
+
+
+22
+                                                              PSI Easy Order Mode
+
+
+
+
+Click on the "IQueue Toggle" button to switch to the IQueue II program.
+
+Click on the "Back" arrow to return to the previous screen.
+
+
+
+
+Click on the "Forward" arrow to go to the next screen.
+
+
+
+
+Select Packages
+Select the desired package and continue. Only one package can only be
+selected, and it can only be selected once, so it is important to select the proper
+package. When more than one product is requested, select a package that
+includes all desired products, for example a Kodak Picture CD with a Folio.
+
+
+
+
+                                                                                  23
+PSI
+
+
+
+
+The available packages can be modified by an operator with a password for the
+'classic' mode. Refer to the "Easy Order" Setup.
+
+
+
+
+Click on the "IQueue Toggle" button to switch to the IQueue II program.
+
+Click on the "Back" arrow to return to the previous screen.
+
+
+
+
+Click on the "Forward" arrow to go to the next screen.
+
+
+
+
+Select Source
+Select the "source" location for the images in the current order.
+
+
+
+24
+                                                              PSI Easy Order Mode
+
+
+
+
+Selecting "35 mm" or "APS" will use the F-235 scanner to scan film.
+
+Selecting "Archive" will open images from recently scanned film.
+
+Selecting "Browse" will open the Windows Explorer window and will allow the
+operator to open from file, or camera cards.
+
+
+
+
+Click on the "IQueue Toggle" button to switch to the IQueue II program.
+
+Click on the "Back" arrow to return to the previous screen.
+
+
+
+
+Click on the "Forward" arrow to go to the next screen.
+
+
+
+
+Specify Film
+
+                                                                              25
+PSI
+
+
+This screen allows the operator to select the type of film, and whether the film is
+still in roll format, or if it has been cut.
+
+
+
+
+Click on the "IQueue Toggle" button to switch to the IQueue II program.
+
+Click on the "Back" arrow to return to the previous screen.
+
+
+
+
+Click on the "Forward" arrow to go to the next screen.
+
+
+
+
+Scanning
+
+
+26
+                                                             PSI Easy Order Mode
+
+
+The scanning screen will appear as shown below:
+
+
+
+
+Insert film with the DX code towards the back of the scanner, starting with the
+lowest numbered frame, as shown below:
+
+Insert the film with the DX Code to the back of the scanner, starting with the
+lowest number first, as shown below:
+
+
+
+
+                                                                                  27
+PSI
+
+
+Cancel Scan - this button will cancel the current scan operation.
+
+
+
+
+Image Editing
+Once images have been scanned, or opened from file, the image editing screen
+will appear.
+
+
+
+
+All image corrections are done on the main screen.
+
+
+
+
+"Previous" and "Next" will scroll through the images on the screen, if there are
+more images in the order than can be displayed on one screen.
+
+
+28
+                                                              PSI Easy Order Mode
+
+
+
+"Accept" and "Reject" will include or exclude images from the job type (CD, folio,
+index print, etc.).
+
+"Select All" will highlight all images.
+
+"Preview Size" will adjust how many images are displayed on the screen at a
+time.
+
+"Start Over" will clear the screen of all images and begin a new order.
+
+
+
+
+Click on the "IQueue Toggle" button to switch to the IQueue II program.
+
+
+
+
+Toggles from the 'Image Edit' options to the 'Print Edit' options.
+
+
+
+
+Toggles from the 'Print Edit' options to the 'Image Edit' options.
+
+Color Correction - Available in the 'Image Edit' mode
+
+
+
+
+Rotate the selected image(s) clockwise or counter-clockwise.
+
+Adjust the sharpness up or down by clicking on the appropriate button.
+
+Adjust the brightness up or down by clicking on the appropriate button.
+
+
+                                                                                29
+PSI
+
+
+
+Adjust the contrast up or down by clicking on the appropriate button.
+
+Add color to the selected image(s) by clicking on the appropriate button.
+
+Print Quantities - Available in the 'Print Edit' mode
+
+
+
+
+Order Print Quantities - Selects the desired quantity of prints for the entire order.
+
+Selected Print Quantities - Selects the desired quantity of 'selected' prints.
+
+More Images and Start Job
+
+
+
+
+"More Images" allows the operator to add images to the current order.
+
+"Start Job" begins the pre-selected output jobs and begins a new order.
+
+
+
+
+30
+Order Menu
+Order Menu
+The Order Menu can be access from the main PSI screen. Click on "Order" at
+the top of the screen.
+
+
+
+
+"New" will clear the existing order, and begin a new order.
+
+"Add Roll From Scanner" will append the existing order, or if there
+is no current order, it will begin a new order.
+
+"Cancel Scan" cancels the previously selected scan operation.
+
+"Add Roll From File" will append the existing order, or if there is no
+current order, it will begin a new order.
+
+"Add Roll From Archive" will open a previous order from the IQueue II archive, or
+if there is no current order, it will begin a new order.
+
+"Add Roll From TWAIN Device" will import images from a compatible TWAIN
+device attached to the Host PC. This option is not currently available.
+
+
+                                                                               31
+PSI
+
+
+
+"Save As" will save the selected images to a local drive, such as
+a hard drive, ZIP drive, Memory Card, or floppy diskette.
+
+"Create Products" opens the Create Products Menu, where the
+user can select the desired product(s) to produce.
+
+"Run Package 1" runs the first script, setup in the Script Settings.
+
+"Run Package 2" runs the second script, setup in the Script Settings.
+
+"Run Package 3" runs the third script, setup in the Script Settings.
+
+"Cancel Export" cancels exporting images from the current order.
+
+"Notes/Label" can be added and printed on Index prints.
+
+"View Properties" displays order information.
+
+"Exit" will terminate the PSI application.
+
+"Products Again" will create the same product package as the last time a product
+was selected in the menu.
+
+
+
+
+Add Roll From Scanner (ctrl S)
+Click on the "Scan" button on the toolbar, or "Order" and "Add Roll from Scanner"
+to open this "Scan Settings" dialog box.
+
+
+
+
+32
+                                               Order Menu
+
+
+
+
+The F-135 Scan Dialog will appear like this:
+
+
+
+
+            Select the Film Color
+
+     Film      Description
+
+
+                                                      33
+PSI
+
+
+                             Color
+                             Neg.        Color
+                                       Negative
+                             Pos.    Positive/Color
+                                       Reversal
+                              B/W     Black and
+                                        White
+
+
+
+
+                    There are three resolutions available for the F-235.
+
+
+
+
+                               Select the Desired Resolution.
+
+
+      Resolution      Pixel Size (HxW)     Advantage(s)         Disadvantage(s)
+       4Base             1000x1500         Good Quality,         Lower Quality
+                                                Fast                 Image
+        8Base           1400x2100           Very Good            Second Best
+                                           Quality, Fast        Quality, Slower
+                                              Speed               than 4Base
+       16Base           2000x3000         Excellent Quality      Slowest Scan
+                                                                    Speed
+
+                   The F-235 can scan both 35mm and 24mm (APS) film.
+
+
+
+
+34
+                                                                             Order Menu
+
+
+             The F-235 can scan film in roll, or strip format. If scanning strips, the
+                                  minimum length of a strip
+                                      must be 2 frames.
+
+
+
+
+      The Roll ID, or Twin Check number can be added to identify the order.
+
+
+
+
+                                              Other Options:
+
+
+
+
+                  Removes dirt, dust, and scratches from images.
+
+
+When all the appropriate options are set, click on "OK" to begin the scan.
+
+Insert the film with the DX Code to the back of the scanner, starting with the lowest
+number first, as shown below:
+
+
+
+
+                                                                                        35
+PSI
+
+
+
+
+Add Roll From File
+Click on the "Open File" folder on the toolbar, or click on "Order" and "Add Roll
+From File" to open this dialog box.
+
+
+
+
+36
+                                                                        Order Menu
+
+
+
+
+Select the desired path for the imported file(s).
+
+Add Roll From Archive
+Click on "Order" and "Add Roll From Archive" to open this dialog box.
+
+Click "Search Now" to begin a new search and highlight the desired Order ID and
+then click on "Open" to open the desired order.
+
+
+
+
+                                                                               37
+PSI
+
+
+
+
+Search Options - PSI will search for the desired order by the Roll ID or the date it
+was created.
+
+Save As
+Once there are scanned images on the screen, the
+"Save As" option will become available in the
+"Order" menu.
+Click on this option to save the selected images to the host computer.
+
+
+
+
+38
+                                                                         Order Menu
+
+
+
+
+File Name Prefix
+
+This is the name that the selected images will be saved as. Inserting "ROLLID"
+will put the order's roll ID in the name of the saved file. Inserting "COUNT" will
+add the count of each picture within the order. For example, the first image in an
+order will be numbered "01" even if it has an index number of 04. Typing in
+anything else will add that as a prefix to the file name.
+
+For example, if this is in the "File name prefix" box, this is how images will be
+saved to disk, assuming a roll ID of 5625:
+
+"COUNT_ROLLID_Pakon_"
+
+An image that would otherwise be named AAA004 would become
+"01_5625_Pakon_AAA004.jpg"
+
+The next image would be named "02_5625_Pakon_AAA005.jpg"
+
+Location of Pictures
+
+This is the path where the selected images will be saved to.
+
+Create Subdirectory for each Roll ID
+
+This will create a sub folder for each unique Roll ID within the same order.
+
+
+                                                                                    39
+PSI
+
+
+
+Save as RAW
+
+This will save the image without any color correction. The image will appear as a
+negative.
+
+Selected Pictures Only
+
+This will save only the images which are selected with a red box around them.
+
+Image Settings
+
+Change these options to save the images as different file types, different sizes,
+and different compression schemes.
+
+
+
+
+Use Scanned Resolution
+
+This will save the image in the resolution in which the image was scanned.
+(1000 x 1500 for 4 Base, 1400 x 2100 for 8 Base, or 2000 x 3000 for 16 Base)
+
+Don't Scale Up
+
+Will not scale the image up to fit a larger size.
+
+Height
+
+
+40
+                                                                  Order Menu
+
+
+
+Sets the height of the output image, measured in pixels.
+
+File
+
+Available options are TIFF, Bitmap, JPEG, and EXIF JPEG.
+
+Quality
+
+Changes the compression ratio for the JPEG images.
+
+Create Products
+Once there are images scanned and on the screen, the "Create Products" option
+will become available.
+
+Note: This option can also be accessed on the main toolbar, as shown below:
+
+
+
+
+       This is the "Create Products" button .
+
+
+
+Once this button is selected, or the option selected
+from the "Order" menu, the "Create Products" box
+will open:
+
+
+
+
+                                                                              41
+PSI
+
+
+
+
+From this menu, the operator can select which type of
+product to create, as well as how many of each to make.
+
+To learn how to make each product, select below:
+
+     •   Kodak Picture CD
+     •   Pakon CD
+     •   Sleeve
+     •   Print 4x6
+     •   Print 5x7
+     •   Print 8x10
+     •   Index
+     •   Contact
+
+Notes/Label
+
+
+42
+                                                                        Order Menu
+
+
+The label and Notes are printed on Index prints.
+
+
+
+
+View Properties
+Order properties displays information about the current order. It lists the quantity
+of the products made with the current order, as well as which revision it was
+made with.
+
+
+
+
+                                                                                  43
+PSI
+
+
+
+
+44
+Picture Menu
+Picture Menu
+The Picture Menu can be accessed from the main PSI screen. Click on "Picture"
+at the top of the PSI window.
+
+
+
+
+"Select All" will highlight all images on the screen.
+
+"Skip" will mark the selected images with skip. Skipped images are included in
+the archive but are not printed as part of a single print product. Skipped images
+are included with all other products such as CD's, sleeves, internet orders, etc.
+
+"Undo Skip" will remove skip from the selected images.
+
+"Delete" will mark the selected images with delete. Deleted images are not
+exported to the archive and are not included in any products.
+
+"Undo Delete" will remove delete from the selected images.
+
+"Insert" will add an image in the selected location.
+
+"Frame Placement" will open the frame adjustment box.
+
+"Rotate" will rotate the selected image(s) by the desired angle.
+
+
+                                                                                45
+PSI
+
+
+
+"Flip" will flip the selected image(s) 180° on the selected axis.
+
+"Color" will open the color adjust box.
+
+"Sharpness" will open the "Sharpening" slider control window. This will sharpen
+or blur the selected image(s).
+
+"Roll ID" allows the operator to change the Roll ID after scanning.
+
+"Index Number" allows the operator to change the index number of the selected
+image(s).
+
+"View Properties" allows the operator to view specific information about the
+selected image.
+
+
+
+
+Frame Placement
+
+
+
+
+Click on the "Horizontal Arrow" button on the toolbar, or "Open" and "Frame
+Placement" to open this box.
+
+
+
+
+46
+                                                                       Picture Menu
+
+
+   1. Select the image or images which you desire to correct.
+   2. Click on "Picture" and "Frame Placement" to open the "Horizontal Frame
+      Adjust" box.
+   3. Use the appropriate correction box to fix the mis-framed image(s).
+
+
+Rotate
+To move images into the proper orientation, move the mouse cursor over
+"Rotate" in the "Picture" menu bar.
+
+
+
+
+Then select the desired degree of rotation.
+
+Rotation can also be done using the rotation buttons on the toolbar.
+
+
+
+
+                                                                                47
+PSI
+
+
+
+
+Flip
+"Flip" mirrors an image on the selected axis.
+
+
+
+
+"Up Down" will mirror the image on the X-axis.
+
+
+
+
+"Left Right" will mirror the image on the Y-axis.
+
+
+
+
+48
+                                                                           Picture Menu
+
+
+
+
+Color (ctrl c)
+
+
+Click on "Picture" and "Color" or click on the color button on the toolbar, to open
+the color correction window.
+
+
+
+
+The color corrections will appear in the image preview screen, and the correction value
+will be displayed to the right of the image.
+
+
+
+
+Color adjust can be used adjust the following:
+
+   •   Cyan <-> Red
+   •   Magenta <-> Green
+   •   Yellow <-> Blue
+   •   Brightness
+   •   Contrast
+
+            Color Control Short-Cuts
+
+  Shortcut                        Function
+
+
+                                                                                          49
+PSI
+
+
+      E          Change red in selected images
+      R          Change green in selected images
+      T          Change blue in selected images
+      A          (density) Change brightness of
+                 selected images
+       S         Decrease in selected mode
+       F         Increase in selected mode
+       D         Neutral in selected mode
+      Del        Deletes Selection
+      Ins        Inserts Selection
+
+The color properties of one image can be copied to another, by pressing "c" to
+copy and "v" to paste.
+
+Sharpening
+The "Sharpening" control will sharpen or blur the focus of the selected image or
+images.
+
+
+
+
+Print Quantities
+Select the desired number of prints for the desired print size using this window.
+
+
+
+
+For example, "Print 4 x 6 +" will add one 4 x 6 print to the order. Clicking on
+"Print 4 x 6 -" will remove one 4 x 6 print from the order.
+
+
+
+
+50
+                                                                            Picture Menu
+
+
+The quantity of prints requested for each image size will be displayed below the
+image. 4 x 6 is on the left, 5 x 7 is in the middle, and 8 x 10 is on the right.
+
+
+
+
+Roll ID
+Click on "Picture" and "Roll ID" to access this dialog box.
+
+This dialog box offers the ability to change the Roll ID (Twin Check Number) of
+the order in progress.
+
+
+
+
+To input the Roll ID, click on the value, or
+use the keyboard.
+
+Selection
+
+First selected roll - only the first selected roll will use this Roll ID
+
+All selected rolls - all selected rolls will use this Roll ID
+
+All rolls in order - all rolls in the current order will use this Roll ID
+
+Index Number
+
+                                                                                     51
+PSI
+
+
+Click on "Picture" and "Index Number" to open the index number dialog box.
+
+The operator can change the index number of the frame selected.
+
+
+
+
+Index All - all images will be re-indexed using this number as the first index
+number.
+
+View Properties
+This option is found in the "Picture" and "Image Properties" menu.
+
+The operator can review information about the selected image. This is helpful
+when there are both scanned images and imported images in the same order.
+
+
+
+
+52
+Picture Menu
+
+
+
+
+         53
+Setup Menu
+Setup Menu
+The Setup Menu is available at the top of the main PSI screen. Click on "Setup"
+to access this menu.
+
+
+
+
+"Package" accesses Package settings for Package 1, Package 2, and Package
+3.
+
+"Scanner" accesses the "Calibration Wizard," "Custom Framing," "Scan Mode,"
+and "Advanced."
+
+"Pakon CDR" opens the setup dialog for Pakon CD's
+
+"Kodak Picture CD" opens the print dialog for Kodak Picture CD's.
+
+"General" opens the scanner and software settings menu.
+
+"Color Preferences" opens the default color settings.
+
+"IQueue" opens the IQueue settings menu.
+
+"EasyOrder" opens the Custom View setup options.
+
+
+
+
+Packages:
+
+
+                                                                             55
+PSI
+
+
+Make Popular Packages Easier to Produce!
+There are three scripts that can be set up to create pre-defined product sets.
+
+
+
+
+Each script is set up individually and can have multiple products processed by
+clicking on the appropriate "Go" button on the toolbar.
+
+
+                  "Go 1" will run "Package 1."
+
+
+
+                  "Go 2" will run "Package 2."
+
+
+                  "Go 3" will run "Package 3."
+
+Popular Packages can be set up to run through the "Package " feature. Setup
+Kodak Picture CD packages with Sleeves in one Package . And setup print
+packages with index prints in another Package . It is all made for quick and
+frequent use!
+
+
+
+
+56
+                                                                     Setup Menu
+
+
+
+
+Calibration Wizard
+The Setup Menu is available at the top of the main PSI screen. Click on "Setup"
+to access this menu.
+
+
+
+
+Select "Scanner" and "Calibration Wizard" to open this dialog box.
+
+
+
+                                                                             57
+PSI
+
+
+
+The "Calibration Wizard" has three options for calibration.
+
+
+
+
+The F-135 Screen will appear like this:
+
+
+
+
+58
+                                                                          Setup Menu
+
+
+
+
+Track Test
+
+The track test should be run if DX code reading has become poor. It should be
+run after cleaning the film track.
+
+The operator will be prompted to insert a color negative film strip for the track
+test. It is recommended to insert the film with the DX codes towards the back of
+the scanner with the lowest number first.
+
+Focus Test
+
+The focus test should be run if the focus is off in a given resolution.
+
+The operator will be prompted to insert a color negative film strip for the focus
+test. The emulsion should be up when this film strip is inserted.
+
+Gain Test
+
+This test should be run as needed, if images are exhibiting banding or improper
+color balance.
+
+The operator will not have to insert film for this test.
+
+Scan Mode
+
+                                                                                    59
+PSI
+
+
+The Setup Menu is available at the top of the main PSI screen. Click on "Setup"
+to access this menu.
+
+
+
+
+Select "Scanner" and "Scan Mode" to open this window.
+
+This menu option opens a dialog to add long roll support when using a long roll
+adapter available from Pakon.
+
+
+
+
+Scan Mode (Available only when using the F-235)
+
+Normal Roll Mode -- This is the standard operational mode for PSI. Use this
+mode when scanning film strips up to 40 exposure rolls of film.
+
+
+
+60
+                                                                         Setup Menu
+
+
+Long Roll Mode -- This mode is for use when using PSI with a Long Roll Adaptor
+available from Pakon. After the film is scanned, it will reverse half a frame and
+begin scanning again. (Please call Pakon for availability.)
+
+Do not use this mode unless using the Long Roll Adaptor.
+
+Spliced Roll Mode -- This mode is only available when using a scanner
+purchased specifically for scanning spliced film along with the Long Roll Adaptor.
+ After the film is scanned, it will reverse half a frame and begin scanning again.
+
+Auto Run - These two options are used to automate scanning and output
+
+Enabling a script in this box will automatically run the selected package and
+complete all jobs setup in the selected package each time a new roll is added to
+the order.
+
+Scan Next Order will begin scanning again after the previous order has finished
+exporting.
+
+Portrait Mode
+
+This option will limit the range of color correction done throughout the roll. This is
+to be used when the entire roll of film was shot under the same conditions, as in
+a portrait studio.
+
+Enabling this option will allow automatic image rotation.
+
+Advanced
+The Setup Menu is available at the top of the main PSI screen. Click on "Setup"
+to access this menu.
+
+
+
+
+Select "Scanner" and "Advanced" to open this window.
+
+
+
+                                                                                   61
+PSI
+
+
+
+Do not change any values in this menu unless directed to do so by a Pakon
+authorized technician.
+
+
+
+
+Pakon CD Setup
+The Setup Menu is available at the top of the main PSI screen. Click on "Setup"
+to access this menu.
+
+
+
+
+The default settings for a Pakon CD are available in the "Pakon CD" dialog box.
+
+
+
+
+62
+                                                                         Setup Menu
+
+
+
+
+Add Extras to Disk
+
+CD Picture Essentials - This is a CD viewing program that allows customers to
+view their images on their Pakon CD at home, without the need to have a
+program already installed.
+
+User Files - Enabling this option will add any files in the C:\Program
+Files\Pakon\Extras\User folder.
+
+Other CDR Options
+
+Print Label - Print a CD label when making a Pakon CD.
+
+Multi-Session - This option is available when not adding CD Picture Essentials to
+the CD. It allows the operator to have more than one job to a Pakon CD.
+
+
+Kodak Picture CD Setup
+The Setup Menu is available at the top of the main PSI screen. Click on "Setup"
+to access this menu.
+
+
+
+
+                                                                                63
+PSI
+
+
+
+
+To select the label printing options when making a Kodak Picture CD, click on the
+"Kodak Picture CD Setup" option in the "Setup" menu.
+
+
+
+
+Select the desired options for each window.
+
+Print Media Select
+
+CD Label First Burn, Jewel Case After - A CD label will be printed, and a jewel
+case will print if there are more than 40 frames on the CD.
+
+Jewel Case - A jewel case will print displaying all images on the jewel case
+insert. No CD label will be printed.
+
+Frames Per Sheet
+
+
+64
+                                                                      Setup Menu
+
+
+
+One Roll Per Sheet: This is the only available option at this time.
+
+Jewel Insert Frame Size
+
+Variable Size, 40 Frames Max - Up to 40 frames will be displayed on the CD
+label, depending on the number of images on the CD.
+
+Fixed Size, 25 Frames Max - There will be 25 thumbnail images on the CD label,
+regardless of the number of images on the CD, some thumbnails may be blank.
+
+Fixed Size, 40 Frames Max - There will be 40 thumbnail images on the CD label,
+regardless of the number of images on the CD, some thumbnails will be blank.
+
+
+
+
+General
+The Setup Menu is available at the top of the main PSI screen. Click on "Setup"
+to access this menu.
+
+
+
+
+The "General" options menu will appear when selected.
+
+
+
+
+                                                                             65
+PSI
+
+
+
+
+The "Products" tab displays the following options:
+
+Internet Products
+
+Once this option becomes available, there will be an Internet upload method
+provided here.
+
+Available Products
+
+When the box is checked, the product will become available in the "Create
+Products" box.
+
+Lamp
+
+The F-235 lamp can be set into standby mode, or be turned off after a set
+amount of time.
+
+
+
+
+66
+                                                                  Setup Menu
+
+
+
+
+Lamp Saver
+
+Check the box "Enable Lamp Save" to have PSI set the lamp in standby mode,
+or to turn it off.
+
+Use the up and down arrows in each box to increase or decrease the desired
+amount of time for standby mode, and to turn the lamp off.
+
+Appearance
+Select the desired language and background color.
+
+
+
+
+                                                                             67
+PSI
+
+
+
+
+Roll ID
+
+
+Set the Roll ID parameters here.
+
+
+
+
+68
+                                                                     Setup Menu
+
+
+
+
+The operator can force the Roll ID to numeric only, and set the minimum and
+maximum values for the Roll ID.
+
+The Roll ID value will "Automatically Increment" by one, every time the Scan
+button is checked.
+
+Color Preferences
+The Setup Menu is available at the top of the main PSI screen. Click on "Setup"
+to access this menu.
+
+
+
+
+                                                                               69
+PSI
+
+
+
+
+Select "Color Preferences" to open this dialog box.
+
+
+
+
+This menu allows the operator to setup default color values for the following
+types of images:
+
+     •   Scanned Color Negative Images
+     •   Scanned Black and White Images
+     •   Scanned Color Reversal Images (Positive Film)
+     •   Images Opened from File (including Digital Media)
+
+The numeric values on the right side of each slider correspond to the values
+show next to each image on the main PSI screen.
+
+
+
+
+70
+                                                                    Setup Menu
+
+
+
+
+The bottom value is the "Sharpness" setting.
+
+IQueue
+The Setup Menu is available at the top of the main PSI screen. Click on "Setup"
+to access this menu.
+
+
+
+
+The "IQueue" settings displays the following options:
+
+
+
+
+                                                                             71
+PSI
+
+
+
+
+General
+Auto-Start IQueue
+
+When this box is checked, IQueue will automatically load when PSI is run.
+
+Maximum Image Storage
+
+The image archive will automatically be deleted when it reaches the size set (in
+MB) in this window.
+
+
+Hi-Res
+
+
+
+
+72
+                                                                    Setup Menu
+
+
+
+
+Dimensions
+
+Use Scanned Resolution - uses the resolution the image was scanned at when
+saving the file to disk.
+
+Don't Scale Up - does not allow the software to scale up an image resolution
+when saving to disk.
+
+Height - Changes the height of the image, when "Use Scanned Resolution" is not
+enabled.
+
+File
+
+There are four file types available when saving to disk.
+
+   •   JPEG
+   •   EXIF JPEG
+   •   BMP
+   •   TIFF
+
+Note: When making Kodak Picture CD's, "EXIF JPEG" and "Use Scanned
+Resolution" must be used.
+
+LoRes
+
+
+                                                                               73
+PSI
+
+
+
+
+LoRes options are used only when saving a low resolution image along with high
+resolution versions of each image. They can only be saved in JPEG format.
+
+Dimensions
+
+Use Scanned Resolution - uses the resolution the image was scanned at when
+saving the file to disk.
+
+Don't Scale Up - does not allow the software to scale up an image resolution
+when saving to disk.
+
+Height - Changes the height of the image, when "Use Scanned Resolution" is not
+enabled.
+
+Easy Order Setup
+The Setup Menu is available at the top of the main PSI screen. Click on "Setup"
+to access this menu. Please see the EasyOrder chapter for more information on
+this operational mode.
+
+
+
+
+74
+                                                                    Setup Menu
+
+
+
+
+Customize the Easy Order Settings in this dialog box. These settings affect the
+configuration for the PSI Easy Order.
+
+
+
+
+                                                                              75
+PSI
+
+
+
+
+The F-135 EasyOrder Settings Dialog will look like this:
+
+
+
+
+76
+                                                                      Setup Menu
+
+
+
+
+Make These Options Available in EasyOrder
+These options force the operator to select these options while creating a job.
+
+Dust and Scratch Removal/Digital ICE - Checking this option will force the
+operator to select whether or not to use this feature for all scans.
+
+Scanning Resolution - Checking this option will force the operator to select which
+resolution to use when beginning a scan job.
+
+35 mm Strip Mode Film Scanning - Checking this option will force the operator to
+select if the film is a full roll or cut strips.
+
+
+
+
+                                                                                 77
+PSI
+
+
+35 mm Strip Mode Frames per Strip - Checking this option will force the operator
+to select the number of images on each cut strip.
+
+Use These Options in EasyOrder
+
+These options will be the default values used when scanning in EasyOrder
+Mode.
+
+Dust and Scratch Removal/Digital ICE - Checking this option will use the Digital
+ICE feature for all scans.
+
+35 mm Settings
+
+If a box is checked, that option will be available in the PSI Easy Order, if
+unchecked, it will be unavailable.
+
+The number selected for "Strip Mode" is the default value for the size of cut
+strips.
+
+24 mm Settings (F-235 Only)
+
+If a box is checked, that option will be available in the PSI Easy Order, if
+unchecked, it will be unavailable.
+
+Resolution
+
+The selected resolution will be the scan resolution for PSI Easy Order.
+
+35 mm Strip Mode Frames per Strip - This option selects the number of images
+on each cut strip scanned. The operator will not be given a choice in the size of
+the cut strip.
+
+Change Password
+
+
+
+
+78
+                                                                    Setup Menu
+
+
+
+The password can be changed to change between 'Classic' and 'PSI Easy Order'
+modes. The current password is required to change the password.
+
+Package Setup
+
+Packages can only be selected once, so it is important to have an option for
+every available package, including Kodak Picture CD, Pakon CD, folio, Picture
+CD and folio, Pakon CD and folio, 4x6 prints, Picture CD with a folio and 4x6
+prints, etc.
+
+
+
+
+The operator can define up to fifteen individual packages and give each a custom
+name. Click on the blue box to define that package.
+
+
+
+
+                                                                                79
+PSI
+
+
+
+
+Each package can have multiple output options selected.
+
+Source Media Setup
+
+
+
+
+80
+                                                                    Setup Menu
+
+
+
+
+Fifteen source options can be made available to the operator. Click on the blue
+box to define that source media.
+
+Source Media Setup
+
+
+
+
+Name
+
+Name the Source Media (Compact Flash, Smart Media, Camera Card would be
+good examples) to make identification easier for the operator.
+
+Directory
+
+List the path or paths from which PSI will acquire images. In this example, a
+camera card is used. All camera cards save images in the "DCIM" folder on the
+camera card. Type the name of the drive letters assigned to the camera card
+adaptor, followed by "DCIM". The semicolon is used to open more than one
+directory location.
+
+
+                                                                              81
+PSI
+
+
+
+In this example, PSI will open all images stored on any camera card that is
+currently installed in the PC. It will look in drives D:\, E:\, F:\, and G:\.
+
+The "Browse" button will also show all available drives and folders from which to
+gather images.
+
+For CD's, all images on Pakon and Kodak Picture CD's are located in the
+"\Pictures" directory.
+
+Recursive
+
+Using the 'recursive' option will look in all subfolders in the folders specified in the
+"Directory" option. This option must be used for camera cards. It should not be
+used for CD's, as Pakon CD's will have low resolution images in a subfolder.
+
+
+
+
+82
+Tools Menu
+Tools
+If film gets stuck in the scanner, do not attempt to pull the film out manually.
+ Doing so can damage the scanner. Instead, use the "Tools" menu to advance
+the film.
+
+
+
+
+PSI Easy Order - Switches from "Classic"mode to "PSI Easy Order" mode.
+
+Advance Film - The motor will run until stopped manually.
+
+Stop Advance Film - Stops the running motor.
+
+These options are also available on the main toolbar.
+
+                Advance Film
+
+               Stop Advance Film
+
+
+
+
+                                                                                   83
+Create Products
+Creating a Kodak Picture CD
+Once there are scanned images on the screen, the Order Products Button will
+become available.
+
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+                                                                                85
+PSI
+
+
+
+
+Click on the "Kodak Picture CD" box and select the quantity desired. Click on
+"OK" to begin making the CD.
+
+
+Creating a Pakon CD
+Once there are scanned images on the screen, the Order Products Button will
+become available.
+
+
+
+
+86
+                                                                 Create Products
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+Check the "Pakon CD" box and select the quantity of Pakon CD's you wish to
+produce.
+
+The "Setup" button offers the following options, if clicked:
+
+
+
+
+                                                                                87
+PSI
+
+
+
+
+Add Extras to Disk
+
+PhotoParade - This is a CD viewing program that allows customers to view their
+images on their Pakon CD at home, without the need to have a program already
+installed.
+
+User Files - Enabling this option will add any files in the C:\Program
+Files\Pakon\Extras\User folder.
+
+File Naming Options
+
+Include Roll ID - This option will add the Roll ID number to each file name. This
+helps distinguish rolls when multiple rolls are saved onto one CD.
+
+Other CDR Options
+
+Add Low Res Images - A low resolution version of each image will be added in a
+separate folder on the Pakon CD.
+
+Multi-Session - This will allow another roll to be added to the Pakon CD at a later
+date. For this function to work, this option must be selected every time the CD is
+put in the drive, unless it is desired to close the CD, and no longer be able to add
+further sessions to the CD.
+
+Test Mode - Simulates the CD writing process. It is used to verify that the
+system can properly write CD's, without actually performing the write.
+
+
+88
+                                                                 Create Products
+
+
+
+
+Creating a Sleeve
+Once there are scanned images on the screen, the
+Order Products Button will become available.
+
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+                                                                                89
+PSI
+
+
+
+
+Check the "Sleeve" box to print a Sleeve.
+
+
+Creating a 4x6 Print
+Once there are scanned images on the screen, the
+Order Products Button will become available.
+
+
+
+
+90
+                                                                 Create Products
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+Check the "Print 4x6" box to print a 4x6.
+
+
+
+
+                                                                                91
+PSI
+
+
+
+
+Creating a 5x7 Print
+Once there are scanned images on the screen, the
+Order Products Button will become available.
+
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+92
+                                            Create Products
+
+
+
+
+Check the "Print 5x7" box to print a 5x7.
+
+
+
+
+                                                        93
+PSI
+
+
+
+
+Creating an 8x10 Print
+Once there are scanned images on the screen, the
+Order Products Button will become available.
+
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+94
+                                              Create Products
+
+
+
+
+Check the "Print 8x10" box to print a 8x10.
+
+
+
+
+                                                          95
+PSI
+
+
+
+
+Creating an Index Print
+Once there are scanned images on the screen, the
+Order Products Button will become available.
+
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+96
+                                                  Create Products
+
+
+
+
+Check the "Index" box to create an Index print.
+
+
+
+
+                                                              97
+PSI
+
+
+Creating a Contact Print
+Once there are scanned images on the screen, the
+Order Products Button will become available.
+
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+98
+                                                                Create Products
+
+
+
+
+Check the "Contact" box to create a Contact sheet.
+
+
+Save As
+Once there are scanned images on the screen, the
+"Save As" option will become available in the
+"Order" menu.
+Click on this option to save the selected images to the host computer.
+
+
+
+
+                                                                            99
+PSI
+
+
+
+
+File Name Prefix
+
+This is the name that the selected images will be saved as. Inserting "ROLLID"
+will put the order's roll ID in the name of the saved file. Inserting "COUNT" will
+add the count of each picture within the order. For example, the first image in an
+order will be numbered "01" even if it has an index number of 04. Typing in
+anything else will add that as a prefix to the file name.
+
+For example, if this is in the "File name prefix" box, this is how images will be
+saved to disk, assuming a roll ID of 5625:
+
+"COUNT_ROLLID_Pakon_"
+
+An image that would otherwise be named AAA004 would become
+"01_5625_Pakon_AAA004.jpg"
+
+The next image would be named "02_5625_Pakon_AAA005.jpg"
+
+Location of Pictures
+
+This is the path where the selected images will be saved to.
+
+Create Subdirectory for each Roll ID
+
+This will create a sub folder for each unique Roll ID within the same order.
+
+
+100
+                                                                  Create Products
+
+
+
+Save as RAW
+
+This will save the image without any color correction. The image will appear as a
+negative.
+
+Selected Pictures Only
+
+This will save only the images which are selected with a red box around them.
+
+Image Settings
+
+Change these options to save the images as different file types, different sizes,
+and different compression schemes.
+
+
+
+
+Use Scanned Resolution
+
+This will save the image in the resolution in which the image was scanned.
+(1000 x 1500 for 4 Base, 1400 x 2100 for 8 Base, or 2000 x 3000 for 16 Base)
+
+Don't Scale Up
+
+Will not scale the image up to fit a larger size.
+
+Height
+
+
+                                                                               101
+PSI
+
+
+
+Sets the height of the output image, measured in pixels.
+
+File
+
+Available options are TIFF, Bitmap, JPEG, and EXIF JPEG.
+
+Quality
+
+Changes the compression ratio for the JPEG images.
+
+Internet
+Please contact Pakon Sales for more information
+about Internet Upload Options.
+Once there are scanned images on the screen, the
+Order Products Button will become available.
+
+
+
+
+       Click on the Order Products Button to Open the Order Product Selection
+Box.
+
+The Order Products Menu will open.
+
+
+
+
+102
+                                                                Create Products
+
+
+
+
+Check the "Internet" box to upload the order to the Internet.
+
+
+
+
+                                                                           103
+Help Menu
+About Pakon
+To get detailed information about your F-235 and the version of PSI Software,
+click on "About."
+
+
+
+
+In the event that you call Technical Support, you may be asked to supply this
+information to your support representative.
+
+
+
+
+                                                                                105
+PSI
+
+
+
+
+106
+IQueue
+IQueue Program
+IQueue is an independent program from PSI, though it is dependent on PSI for
+any output. IQueue must load along with PSI for it to operate properly.
+ Therefore, there is an option in PSI to force IQueue to load with PSI.
+
+IQueue waits to receive a signal from PSI that there are images pending in the
+queue for IQueue to process and output. IQueue has three states that it
+operates in.
+
+IQueue allows the operator to assign multiple printers with multiple tasks. For
+example, an ink jet printer is required for sleeves and CD labels. But the
+operator can also set up IQueue to use a dye-sub printer for 4x6 prints and a
+digital mini-lab for 8x10's.
+
+IQueue has three modes of operation:
+
+Waiting - IQueue is waiting for jobs from PSI to begin.
+
+Running - IQueue is processing a job or jobs.
+
+Stopped - IQueue has stopped, or put all orders on hold, due to the operator
+having stopped it.
+
+
+
+
+                                                                               107
+PSI
+
+
+
+
+Clicking on this button will bring the operator back to PSI.
+
+Pending Jobs
+
+Jobs are sent to IQueue from PSI. A job consists of an Internet, CD-R, Sleeve,
+Index, or Single request.
+
+Jobs can sit in pending if IQueue is stopped. Otherwise they will move to
+"Running Jobs" as any previous job completes.
+
+Running Jobs
+
+
+
+
+108
+                                                                              IQueue
+
+
+Running jobs come from the "Pending Jobs" queue. These jobs are in process
+and can be cancelled, if so desired.
+
+Order Status
+
+Click on the "Status" button to access the control box for each order type.
+
+
+
+
+Each order can be paused independently of other orders, by clicking on the
+"Pause Current" button.
+
+File
+
+
+
+
+Process All Orders - Process orders once they reach the queue.
+
+Hold All Orders - Keep orders as "pending" until the operator chooses to process
+them.
+
+Setup - Change IQueue options.
+
+
+                                                                                109
+PSI
+
+
+
+Kiosk
+
+The Kiosk option is only used when an F-235 is connected to KIAS compliant
+kiosks, such as Kodak Picture Maker G3, that will process network jobs in
+IQueue II.
+
+
+
+
+Hold Kiosk Orders - Kiosk orders are stored on the computer, but not processed
+by IQueue II.
+
+Process Kiosk Orders - Kiosk orders, including those that were held, are
+processed in turn.
+
+
+
+
+110
+                                                                    IQueue
+
+
+
+
+IQueue Settings
+To open the IQueue Settings window, click on "File" and "Setup."
+
+
+
+
+Prints
+
+Type 1 - Change print options for this type.
+
+Type 2 - Change print options for this type.
+
+Type 3 - Change print options for this type.
+
+CD-ROM
+
+Select the CD-R drive to be used by IQueue when making Pakon or Kodak
+Picture CD's
+
+
+
+                                                                        111
+PSI
+
+
+Label Setup - Change the CD label print options
+
+Jewel Setup - Change the Jewel case insert print options
+
+Advanced - Change the options regarding how many processes to run
+simultaneously.
+
+Bravo Disc Publisher - enables Primera Bravo CD Burner and Printer.
+
+Sleeve
+
+Change the print options for sleeves
+
+Index
+
+Change the print options for index prints
+
+Contact
+
+Change the print options for contact prints
+
+Internet
+
+Account - Setup the Internet upload account information.
+
+Receipt - Setup the Internet upload receipt settings.
+
+Directories
+
+Change the directories used for IQueue.
+
+PAKON STRONGLY RECOMMENDS THESE DIRECTORIES NOT BE
+CHANGED!
+
+
+
+
+112
+                                                                          IQueue
+
+
+CD Label
+IQueue will print a label with thumbnail images.
+
+
+
+
+Index Numbers
+
+Print - Prints the index number in the corner of the thumbnail.
+
+Height - Specifies the height of the index number printed on the label.
+
+Print to File
+
+Select this option to save the CD label as a file on the computer.
+
+Setup
+
+Opens the printer setup for CD labels.
+
+
+
+
+                                                                            113
+PSI
+
+
+
+
+"Printer" opens the printer setup dialog box, to change the printer used for the
+selected output type.
+
+
+
+
+114
+                                                                           IQueue
+
+
+
+
+CD Jewel Case Insert
+IQueue will print a label with thumbnail images.
+
+
+
+
+Index Numbers
+
+Print - Prints the index number in the corner of the thumbnail.
+
+Height - Specifies the height of the index number printed on the jewel case insert.
+
+Print to File
+
+Select this option to save the CD jewel case insert as a file on the computer.
+
+
+
+
+                                                                                 115
+PSI
+
+
+Setup
+
+Opens the printer setup for CD labels.
+
+
+
+
+"Printer" opens the printer setup dialog box, to change the printer used for the
+selected output type.
+
+
+
+
+116
+                                                                              IQueue
+
+
+
+
+Single
+The setup is the same for all three single size prints.
+
+
+
+
+Print Mode
+
+To File - Print this output type to a file on the computer.
+
+Single Printer - Only one printer will be used when printing this single print.
+
+Dual Printer - If checked, the box will change to a new view enabling a second
+printer for the selected print type.
+
+
+                                                                                  117
+PSI
+
+
+
+
+Include index print - An index print will be printed with the order. It is
+                   recommended this be used to help identify network orders or
+                   orders in labs with a high volume.
+
+Page Setup
+
+These are the recommended margin settings for the following print types. This
+option can be modified to output to a desired print size.
+
+ Note: When using the Kodak 6400 printer, set the margins to "0.0" rather
+ than those shown below. This will eliminate white borders on the prints.
+
+4x6
+
+
+
+
+118
+      IQueue
+
+
+
+
+5x7
+
+
+
+
+        119
+PSI
+
+
+
+
+8x10
+
+
+
+
+120
+                                                                            IQueue
+
+
+
+
+"Printer" opens the printer setup dialog box, to change the printer used for the
+selected output type.
+
+
+
+
+                                                                                   121
+PSI
+
+
+
+
+CD-ROM
+If there are multiple CD-R devices installed on the system, this option allows you
+to select the desired drive.
+
+Sleeve
+This is the "Sleeve Setup" box.
+
+
+
+
+Sleeve Type
+
+
+
+
+122
+                                                                           IQueue
+
+
+4 Across - Four frames across sleeve, used when strips are cut into four frame
+strips.
+
+6 Across - Six frames across sleeve, used when strips are cut into six frame
+strips.
+
+Sleeving Method
+
+Start at Roll End - The default option. Begins last frame on bottom of sleeve.
+
+Sleeve Text Set to Print
+
+The text sets are customizable and can be changed.
+
+Change Text Set
+
+This button will open the Edit Sleeve Text Sets box.
+
+
+
+
+Create a new Text Set by clicking on "New."
+
+Check the "Make new sleeve text sets based on the selected set" to modify an
+existing text set and save as a new set.
+
+
+
+
+                                                                                 123
+PSI
+
+
+
+
+Click on "Font" for Font options.
+
+
+
+
+Click "OK" to save changes.
+
+
+
+124
+                                                                            IQueue
+
+
+Setup
+
+Use this to add or remove index numbers on the sleeve, and to change the size
+of the index number printed on the sleeve.
+
+
+
+
+"Setup" will open the page setup dialog box, to set margins.
+
+
+
+
+"Printer" opens the printer setup dialog box, to change the printer used for the
+selected output type.
+
+
+
+
+                                                                                   125
+PSI
+
+
+
+
+Index
+
+
+
+
+126
+                                                                         IQueue
+
+
+
+Index Numbers
+
+Use this to add or remove index numbers on the index print, and to change the
+size of the index number printed on the index print.
+
+Paper Prompt
+
+Uncheck "Paper Prompt" to avoid receiving a reminder to insert paper into the
+printer for index prints.
+
+Print to File
+
+Check this box to have IQueue save the index print as a file on the computer.
+
+Setup
+
+Opens the "Page Setup" dialog.
+
+
+
+
+                                                                                127
+PSI
+
+
+
+"Printer" opens the printer setup dialog box, to change the printer used for the
+selected output type.
+
+
+
+
+Contact
+
+
+
+
+Index Numbers
+
+Use this to add or remove index numbers on the index print, and to change the
+size of the index number printed on the index print.
+
+Paper Prompt
+
+
+
+128
+                                                                            IQueue
+
+
+
+Uncheck "Paper Prompt" to avoid receiving a reminder to insert paper into the
+printer for index prints.
+
+Print to File
+
+Check this option to print the contact sheet as a file on the computer.
+
+Setup
+
+Opens the "Page Setup" dialog.
+
+
+
+
+"Printer" opens the printer setup dialog box, to change the printer used for the
+selected output type.
+
+
+
+
+                                                                                   129
+PSI
+
+
+
+
+Directories
+Pakon does not recommend these options be changed!
+
+The IQueue directories path can be changed.
+
+
+
+
+Click on "Set" and input the new directory path.
+
+
+
+
+130
+                                                                         IQueue
+
+
+
+
+Internet Account Setup
+Input the required information in the fields shown.
+
+
+
+
+Internet Receipt
+An Internet upload receipt can be printed to supplied to the customer.
+
+
+
+
+                                                                           131
+PSI
+
+
+
+
+Setup
+
+Opens the page setup for margin and paper settings.
+
+
+
+
+Printer
+
+
+
+132
+                                                                            IQueue
+
+
+Opens the printer setup for Internet receipts.
+
+
+
+
+Print to File
+The following printed media may be "printed to file" using the IQueue II interface.
+For example, to print an index print 'to file' this is how to do it:
+
+From the IQueue II menu, click on "Index."
+
+
+
+
+Click on the "Print to File" box to enable the option.
+
+
+
+
+                                                                                133
+PSI
+
+
+
+
+To set the "Print to File" options, click on "Setup."
+
+
+
+
+Location
+
+Set the directory where the file will be saved. In the above example, this is
+"C:\temp".
+
+Filename
+
+
+
+
+134
+                                                                             IQueue
+
+
+Set the name of the file to be created on the computer. In the above example,
+this is "ImpakLabel". You can include the key word "ROLLID" in the file name.
+ "ROLLID" will be replaced with the actual roll ID number of the first roll of the
+order.
+
+Image Settings
+
+
+
+
+Orientation
+
+Rotate the image in the desired direction.
+
+Rotate 180°
+Rotate 90° Left
+Rotate 90° Right
+
+Dimensions
+
+Select the output size in dots.
+
+Dots Per Inch
+
+Select the dots per inch for the file to be saved at.
+
+File Type
+
+
+
+
+                                                                                 135
+PSI
+
+
+Select the desired file type.
+
+Available file types include:
+
+Bitmap
+JPEG
+TIFF
+EXIF JPEG
+
+
+
+
+136
+Required Maintenance
+F-135
+Cleaning the Film Track
+
+It is recommended to clean the film track every two weeks, along with the
+illumination cleaning. Keeping the film track clean will ensure that DX code
+reading remains reliable. It will also maintain the proper motor speed for each
+resolution. We recommend ensuring the film is clean before putting it into the
+scanner.
+
+1.) Position the tip of the compressed air hose in the film track entrance, and
+blow, moving the hose up and down while blowing inside.
+
+
+
+
+2.) Follow the cleaning instructions for Cleaning the Scanner Cover.
+3.) After cleaning the film track, run the Film Track Test.
+
+Cleaning the Scanner Cover
+
+1.) Aim the hose of a can of compressed air into the film path, blowing the air
+away from the film entrance.
+
+
+                                                                                  137
+PSI
+
+
+
+
+2.) On the film exit side, blow the air away from the film exit.
+
+
+
+
+F-235 and F-335
+Operator Service
+
+There are four primary operator service needs for the F-235 and F-335 scanners.
+These include:
+
+Dust Cleaning of Illumination
+
+
+138
+                                                             Required Maintenance
+
+
+Dust Cleaning of Film Track
+Light Bulb Replacement
+Fan Filter Maintenance
+
+ Warning: These procedures require the operator to remove up
+  to two of the three covers on the scanner. Do not attempt to
+   operate the scanner without these covers properly in place!
+
+
+
+
+Fan Filter Maintenance
+
+1. Close scanner software.
+2. Turn off the scanner.
+3. Disconnect USB and power cables.
+4. Gently remove side cover by pulling on it. It should snap off.
+5. Gently remove back cover by pulling on it. It too, should snap off.
+Be Careful not to touch anything other than the fan and filter assembly. Many
+pieces on the back of the scanner will be hot to the touch, and are to be avoided.
+6. Locate the Fan filter (123816). It is located on the back of the scanner, just
+under the plastic fan cover.
+
+
+
+
+7. Pull straight back on the plastic fan cover until it comes free from the scanner
+housing.
+
+
+
+
+                                                                                 139
+PSI
+
+
+
+
+8. Remove the filter from inside the cover, and replace.
+
+
+
+
+9. Re-attach the fan cover by applying moderate pressure to each of the four
+sides, until it snaps back in to place.
+
+
+
+
+140
+                                                              Required Maintenance
+
+
+
+
+Dust Cleaning of Film Track
+
+It is recommended to clean the film track every two weeks, along with the
+illumination cleaning. Keeping the film track clean will ensure that DX code
+reading remains reliable. It will also maintain the proper motor speed for each
+resolution.
+
+1.) Remove the film path cover.
+2.) Position the tip of the compressed air hose on both sides of the film track
+entrance, and blow.
+
+
+
+
+3.) Position the tip of the compressed air hose on both sides of the film track
+exit, and blow.
+
+
+
+
+4.) After cleaning the film track, run the 'Film Track Test' in PSI.
+
+
+
+                                                                                  141
+PSI
+
+
+5.) Scan a roll of film to verify that DX codes are being read properly.
+
+Dust Cleaning of Illumination
+
+The F-235 is a precision optical device. A relatively smoke and dust free
+environment is necessary. The scanner must be cleaned periodically to remove
+large collections of dust or debris inside the scanner, on the illumination.
+Software is designed to compensate for smaller collections of dust or debris, but
+cleaning may be required.
+If cleaning is required, follow each step by a verification process to determine if
+the cleaning was effective. If the verification determines that level of cleaning was
+ineffective, the next level is required.
+
+1. Simple cleaning with compressed air and or lens brushes.
+2. Cleaning with rubbing alcohol and a cotton swab.
+3. Service.
+
+
+Cleaning the Illumination with Compressed Air
+1. Turn off the scanner.
+2. Disconnect the USB and power cables.
+3. Gently remove the side panel of scanner, by pulling back on it. It should snap
+out of place.
+
+
+
+
+142
+                                                            Required Maintenance
+
+
+Do not touch anything inside the scanner while the power is on. The cover
+     is only off to allow dust and debris to be blown out of the scanner.
+
+
+Connect power to the scanner.
+5. Turn the scanner on.
+6. Remove the small film entrance cover.
+
+
+
+
+7. Aim the hose of a can of compressed air into the film path--aiming for the clear
+piece of glass in the middle.
+
+
+
+
+                                                                               143
+PSI
+
+
+
+
+8. It may be beneficial to insert a strip of film into the scanner before blowing it
+out. This will focus all the air onto the light transfer bar, and should dislodge any
+dust or debris.
+9. When finished, put the film path cover back in place.
+Turn off the scanner immediately when finished cleaning the scanner!
+10. Turn off the scanner and unplug the power cable.
+11. Replace the side cover by snapping into place.
+12. Plug in the USB and power cables.
+
+
+Cleaning Illumination with Cotton Swab
+CAUTION--Be Careful not to scratch or damage the top of the glass light bar!
+1. Turn off the scanner.
+2. Disconnect the USB and power cables.
+3. Gently remove the side cover.
+4. Using a long cotton swab, dabbed in isopropyl alcohol, clean the illumination
+bar inside the film track assembly.
+5. The illumination bar is a small piece of glass, sitting upright.
+
+
+
+
+144
+                                                                  Required Maintenance
+
+
+
+
+6. After cleaning the illumation bar, replace side cover and turn on.
+
+
+
+
+Light Bulb Replacement (F-235 Only)
+
+The light bulb will have a nominal life of 100 working days or longer, depending
+on certain variables. This number is based on the following assumptions:
+
+• 6 working days per week
+• 10hours per day
+
+Changing the light bulb does not require any special tools.
+
+Replacing the Scanner Light Bulb
+
+CAUTION: The lamp may be hot. Allow the bulb to cool before attempting to
+                               replace it.
+Use gloves when replacing the scanner light bulb. Fingerprints can damage
+                             the light bulb.
+
+1. Close all scanning software.
+2. Turn off the scanner.
+3. Disconnect the USB and power cables.
+
+
+
+                                                                                  145
+PSI
+
+
+4. Gently remove the side cover by pulling on it. It should snap out of place.
+
+
+
+
+5. Gently pull off the back cover. It should snap off much like the side cover.
+
+
+
+
+6. Locate the small lever, just to the back of the bulb.
+
+
+
+
+146
+                                                              Required Maintenance
+
+
+
+
+ Gloves must be worn to ensure the bulb is not damaged by dirt or skin oils.
+7. With one hand, gently pull the lever towards the back of the scanner.
+8. As the lever is pulled, the bulb will be pushed up, and partially out of its wire
+harness.
+9. Once the bulb has been pushed up far enough, use your other hand to gently
+remove the bulb from the harness and lower the lever back into position.
+10. Orient the new light bulb so that the largest, or widest part of the bell shape is
+facing the front of the scanner. And place the smaller end with the prongs, facing
+the back.
+11. Rest the wide end of the bulb on the top edge of the wire harness, do not
+push or force it downward.
+12. Spin or rotate the bulb so that the two prongs line up with the grooves in the
+lamp ballast.
+
+
+
+
+                                                                                  147
+PSI
+
+
+13. Gently apply downward pressure equally to both the front and the back of the
+bulb.
+14. Slide the bulb into place, until it fits securely.
+15. Replace the back cover by snapping it into place.
+16. Replace the side cover by snapping it back into place.
+17. Plug in USB and power cables.
+18. Turn scanner on, and allow to warm up before using again.
+
+
+
+
+148
+Troubleshooting
+Troubleshooting
+Lines in Scans
+Error Code 3013
+Scanner stops prematurely
+Motor doesn't stop after scanning
+DX Codes not being read
+Hardware Fault Errors
+Stretched Images
+Error Log Files
+Images out of Focus
+Picture Essentials Viewer
+Load Disc Command Failed
+Motor Speed Warnings
+Lamp Warm-up time
+Contacting Support
+
+Lines in Scans
+Lines in scans can be caused two ways. The first is that the scanner needs to be
+calibrated. The temperature of the lamp can vary and re-calibrating the scanner
+ensures the highest image reproduction. Run the "Gain Test" to calibrate the
+scanner.
+
+The scanner illumination could also be dirty and require cleaning.
+
+Error Code 3013
+The N:\ hard drive is bad. Replace the second hard drive that is used for the
+scanner buffer drive.
+
+Scanner Stops Prematurely
+Run the "Gain Test" in the Calibration Wizard.
+
+Motor doesn't stop after scanning
+If the scanner motor does not stop after a roll of film has finished scanning,
+manually hit the "Stop" button. To fix the problem, run the Gain Test.
+
+
+
+                                                                                 149
+PSI
+
+
+DX Codes Not Being Read
+Run the "Track Test" in the Calibration Wizard.
+
+A dirty film track will also cause DX codes to not be read properly. Clean it
+regularly to ensure proper DX code reporting.
+
+Hardware Fault Codes
+Hardware fault codes are usually one of two varieties. Hardware fault codes will
+be reported if the film was inserted improperly. They will also be reported for
+hardware failures.
+
+Cleaning the fan filter regularly will ensure that the scanner does not overheat
+and turn off the lamp to avoid damaging the scanner.
+
+Cleaning the illumination bar regularly will also ensure that fault codes related to
+a dirty illumination bar not be reported.
+
+
+Stretched Images
+A dirty film track will cause the film inside the scanner to not travel through the
+film path at the proper speed and will caused images to appear stretched.
+
+Clean the film track regularly to avoid this problem.
+
+Error Log Files
+There are error log files located on the computer that will be helpful when
+determining any problems with an F-235 scanner. These files are located in
+C:\Program Files\Pakon\TLA Com Server. The files are named
+"PakonErrorLog." Please include these files with any email correspondence with
+your technical support representative.
+
+Images Out of Focus
+Run the "Focus Test" in the Calibration Wizard to improve the focus of the F-235
+Scanner.
+
+Picture Essentials Viewer
+
+
+
+150
+                                                                        Troubleshooting
+
+
+The Picture Essentials viewing software has a free trial period, but once it
+expires, the software must be purchased to include on Pakon CD's. Please
+contact your sales representative for information on purchasing this program.
+
+Please be aware that multi-session is not available for CD's which include this
+viewing software.
+
+If PSI no longer includes this program on CD's, please ensure the box is checked
+in the "Pakon CD-R" setup option. If the option is grayed out, this means that the
+software has either expired, or has lost its registration key.
+
+If the registration key information is lost, please do the following:
+
+   1. Close PSI and IQueue II.
+   2. Turn the F-235 scanner off.
+   3. Disconnect the USB 2.0 cable in the back of the scanner.
+   4. Reboot the PC.
+   5. Connect the USB 2.0 cable in the back of the scanner once Windows is
+      finished loading.
+   6. Turn the F-235 scanner on.
+   7. Click on the Picture Essentials Icon on the desktop.
+   8. Re-register Picture Essentials with your registration key.
+
+
+
+
+Load Disc Command Failed
+If IQueue II prompts this error message when making a CD, try the following:
+
+   1. Insert a new CD.
+   2. Insert the CD only when prompted to by IQueue II.
+   3. Try a CD from a new spindle to ensure the media is not defective.
+
+Lamp Warm-Up Time (F-235 Only)
+The lamp warm-up time cannot be reduced the first time the scanner is turned
+on. The lamp warms up to ensure that image quality is satisfactory. However,
+there is a lamp-saver function that will turn off the lamp bulb after a setup period
+of inactivity. This can be disabled.
+
+Under "Setup" -> "General" either disable the lamp saver, or increase the time
+allowed before the lamp turns off to 9999 to ensure it does not turn off.
+
+
+
+
+                                                                                   151
+PSI
+
+
+
+
+Contacting Support
+When contacting support by phone, please follow these guidelines to ensure
+timely assistance:
+
+Have the computer and scanner on.
+Have PSI F-235 loaded, if possible.
+Have any reported error codes written down for quick reference.
+Know the version of PSI being used. Click here for more information on this.
+Know the serial number of your scanner.
+
+If you prefer to email support, please include the following information in your
+email request:
+
+Any applicable error log files.
+Version number of PSI.
+Serial number of your F-235 scanner.
+
+
+152
+                                                               Troubleshooting
+
+
+A sample image if helpful.
+Your company name and location.
+Details on the problem and what has been attempted so far to resolve the
+problem.
+
+
+
+
+                                                                           153
+Noritsu 2611 Integration
+Noritsu 2611
+The Noritsu 2611 mini-lab can be used as a printer using PSI F-235. For this to
+work, there must be a SCSI cable from the Noritsu 2611 connected to a SCSI
+card on the F-235 host PC. The 2611 should be turned on before the F-235 host
+PC is turned on.
+
+If the 2611 is detected by IQueue upon start-up, there will be a green status light
+if the PC and 2611 are communicating.
+
+
+
+
+A yellow light indicates a warning for the 2611.
+
+A red light indicates that there is an error on the 2611.
+
+If there is a flashing yellow or red light, the warning or error has not been
+acknowledged by the operator. The operator can acknowledge this error by
+pressing the yellow or red button. A previously acknowledge warning or error
+can also be viewed by pressing the yellow or red button.
+
+
+                                                                                155
+PSI
+
+
+
+
+If the 2611 is connected but the green light does not appear, the PC may have
+been powered on before the lab or the SCSI cable may not be fully connected.
+ Power down the Pakon system, check the connection, restart the PC, and then
+restart PSI and IQueue.
+
+
+
+
+Printing to the 2611
+Printing to the Noritsu 2611 requires that the printer be set to "AUX2" mode and
+IQueue II be set to print to the mini lab.
+
+AUX2 Mode
+
+If the AUX2 channel is configured on the 2611 already, it is probably channel 13.
+
+
+To create this AUX2 mode:
+
+   1. Press "Form" on the 2611.
+   2. Go to "13" or a blank channel.
+   3. Press "Shift" and "Yes."
+   4. Select "Print Form" and hit the "Yes" key.
+   5. Set "Print Specification" to "AUX2."
+   6. Set "Operation Specification" to "CROP."
+   7. Set "Display Specification" to "1 FRAME."
+   8. Set "Destination of Image Data" to "VFP."
+
+Print to the Mini Lab
+
+
+
+156
+                                                             Noritsu 2611 Integration
+
+
+To enable 4x6 printing to the Noritsu Mini Lab, go to the "Print Setup" for "Type
+1" prints in the IQueue setup menu. Check the box labeled "Use Mini Lab for this
+print type." Now all "Type 1" prints will print to the mini lab rather than the default
+local printer.
+
+
+
+
+Processing and Holding Digital Orders
+
+It is recommended that the Minilab Orders be "Held" until the printer is available
+for digital prints, as the printer will not print from film in the AUX2 mode. IQueue
+II will hold the digital orders until the operator selects "Process Minilab orders"
+and the printer is in AUX2 mode.
+
+
+
+
+                                                                                   157
+PSI
+
+
+
+
+WARNING:
+
+Do not switch the 2611 out of AUX2 mode while orders are being processed
+in the "Running Jobs -- Single Grid."
+
+Pakon recommends to "Hold" minilab orders after the first order has begun
+processing in the "Running Jobs"
+
+Once the digital orders are completed in IQueue II, the printer can be switched
+out of AUX2 mode.
+
+
+
+
+158
+Adding Extras
+Axiom Viewing Software
+PSI has the ability to add software to each CD created.
+
+Pakon sells Axiom Viewing Software. Follow these instructions to install the
+program if it is not already installed:
+
+1. Insert the installation CD into the CD drive.
+2. If the installation does not begin once the CD is inserted, run setup.exe from
+the CD drive.
+3. Click on "Next."
+4. Click on "Install."
+5. Click on "Finish."
+
+If you own a Pakon F-135 or F-335:
+
+6. In PSI, go to "Setup"
+7. Select "Pakon CD Setup"
+
+
+
+
+8. Check the box that says "Viewer" to add the Axiom viewing software onto each
+Pakon CD created.
+
+If you own a Pakon F-235:
+
+
+                                                                                159
+PSI
+
+
+
+6. In PSI, go to "Setup"
+7. Select "Pakon CD Setup"
+
+
+
+
+8. Check the box that says "User Files" to add the Axiom viewing software onto
+each Pakon CD created.
+
+Note: Pakon no longer offers "CD Picture Essentials." However, this
+program is still available in PSI to those who own a license.
+
+
+
+
+User Folder Option
+The "User" folder can be used to add software to Pakon CD's created in PSI.
+
+If you own a Pakon F-135:
+
+Create a "user" folder in C:\Program Files\Pakon\Extras
+Copy files to C:\Program Files\Pakon\Extras\User
+In PSI, go to "Setup"
+Select "Pakon CD Setup"
+Check the box that says "User"
+
+
+
+
+160
+                                                                Adding Extras
+
+
+
+
+If you own a Pakon F-235:
+
+Create a "user" folder in C:\Program Files\Pakon\F-135\Extras
+Copy files to C:\Program Files\Pakon\F-135\Extras\User
+In PSI, go to "Setup"
+Select "Pakon CD Setup"
+Check the box that says "User"
+
+
+
+
+                                                                         161
+PSI
+
+
+If you own a Pakon F-335:
+
+Create a "user" folder in C:\Program Files\Pakon\F-335\Extras
+Copy files to C:\Program Files\Pakon\F-335\Extras\User
+In PSI, go to "Setup"
+Select "Pakon CD Setup"
+Check the box that says "User"
+
+
+
+
+162
+Primera Bravo CD-R
+Bravo CD-R
+Contact your sales representative for information on purchasing a Primera Bravo
+CD-R system. A firewire (IEEE 1394) card must be installed to use the drive.
+Select the Bravo drive in the IQueue setup menu. Select the Bravo printer in the
+CD Label setup box.
+
+
+
+
+                                                                            163
+Roll Film Feeder Accessory
+F-235Plus Roll Film Feeder
+The Roll Film Feeder accessory (Pakon part #125094) is available from Pakon
+and can be used to scan long rolls of film on a spindle as well as spliced film.
+
+Note: Spliced mode is only available when used on an F-235 Plus scanner
+designed for spliced film.
+
+
+
+
+To properly use the Roll Film Feeder accessory the operator will have to follow
+these steps:
+
+1. Change the scan mode in the "Setup" -> "Scanner" -> "Scan Mode" option.
+
+
+
+
+                                                                               165
+PSI
+
+
+
+
+This mode will reverse the film after the scan buffer is full, to begin scanning the
+next frame. Re-start the software if asked to.
+
+2. The gain correction, or calibration, must be done before loading the film into
+the scanner.
+
+To do this, follow these steps:
+
+a.) Select the desired film type and resolution in the "Scan" box and click "OK."
+
+
+
+
+166
+                                                        Roll Film Feeder Accessory
+
+
+
+
+b.) Once the motor begins, click on "Stop."
+c.) Now load the film into the scanner and Roll Film Feeder unit.
+d.) Advance the film into position with the first frame inside the scanner.
+e.) Begin scanning the film.
+
+Threading Film through the Roll Film Feeder and the F-235 Film
+Scanner
+1.) Load film onto the spindle and attach it on the right side of the Roll Film
+Feeder with the film coming from the top of the roll, not the bottom, as shown
+below.
+
+
+
+
+                                                                                  167
+PSI
+
+
+
+
+2.) Thread the film from the exit as shown below.
+
+
+
+
+3.) The film should go over the first roller, underneath the middle and bottom
+roller, and then over the left most roller. There are red directional arrows on the
+Roll Film Feeder unit as well.
+
+4.) Turn on the Roll Film Feeder unit.
+
+
+
+168
+                                                    Roll Film Feeder Accessory
+
+
+5.) The scan mode cannot be changed once film is in the scanner and attached
+on the Roll Film Feeder. It is recommended to use "Control Shift S" to begin a
+new scan rather than the scan dialog.
+
+Additional spindles can be ordered with Pakon part #125103.
+
+
+
+
+                                                                            169
+Index
+1                                                        Creating.........................................94
+16Base.......................................... 34      Creating.........................................96
+4                                                        Custom Framing............................57
+4Base............................................ 34     D
+4x6 ................................ 92, 109, 119        Diskette .......................................109
+4x6 Print........................................ 92     Dust...............................................34
+5                                                        Dust Cleaning
+5x7 ........................................ 94, 119         Film Track................................143
+5x7 Print........................................ 94         Illumination ..............................144
+8                                                        Dust Cleaning..............................143
+8Base............................................ 34     Dust Cleaning..............................144
+8x10 .............................. 98, 109, 119         DX ...............................................143
+8x10 Print...................................... 96      E
+A                                                        Enable Lamp Save ........................67
+About Pakon ............................... 107          F
+Across - Four .............................. 124         Fan
+Across - Six................................. 124            Locate......................................141
+Add Roll From Scanner................. 34                Fan ..............................................141
+Add Roll From TWAIN Device ...... 33                     Fan Filter Maintenance................141
+Advance Film ................................ 85         Film Track
+Advanced...................................... 57            Dust Cleaning ..........................143
+Aggressive Framing ...................... 34             Film Track ...................................143
+Auto-Start IQueue ......................... 73           Fix
+Available Products ........................ 67               mis-framed.................................48
+B                                                        Frame Placement ..........................48
+Button                                                   G
+  toolbar ....................................... 57     General .........................................67
+C                                                        H
+Calibration Wizard......................... 59           Hi-Res ...........................................73
+CD-R................................... 109, 124         Horizontal Frame Adjust................48
+Change ......................................... 53      I
+Color ............................................. 51   Illumation bar
+Contact ....................................... 100          cleaning ...................................144
+Contact Print ............................... 100        Illumation bar...............................144
+Create Products ............................ 43          Illumination
+Create Products Menu .................. 33                   Cleaning ..................................144
+Creating                                                     Dust Cleaning ..........................144
+  Contact Print............................ 100          Illumination ..................................144
+  Index ......................................... 98     Index ......................... 15, 33, 44, 109
+  Index Print ................................. 98       Index Numbers............ 119, 128, 130
+  Sleeve ....................................... 91      Index Print .....................................15
+Creating ........................................ 87     Internet ........................................109
+
+
+
+                                                                                                        171
+PSI
+
+
+Internet Products........................... 67         Order Products Menu .....15, 40, 100,
+IQueue .................................. 57, 109         101
+IQueue Program ......................... 109            Other CDR Options .........................9
+J                                                       P
+Jobs                                                    Page Setup .........................128, 130
+   Pending ................................... 109      Pakon CD............................9, 64, 88
+   Running................................... 109       Pakon CD Setup ...........................64
+Jobs ............................................ 109   Pakon CD's .........................9, 57, 88
+JPEG ............................................ 73    Pakon Diskette Labels.................113
+K                                                       Pakon Diskette's............................57
+Kodak Picture CD                                        Paper Prompt ..............................130
+   making....................................... 65     Pending Jobs ..............................109
+Kodak Picture CD ......................... 10           PhotoParade .......................9, 64, 88
+Kodak Picture CD ......................... 65           Popular Packages .........................57
+Kodak Picture CD ......................... 87           Print
+Kodak Picture CD Setup ............... 65                 Sleeve........................................11
+Kodak Picture CD's ....................... 57             Sleeve Text Set .......................124
+L                                                       Print...............................................11
+Lamp Saver .................................. 67        Print...............................................91
+Light Bulb Replacement.............. 147                Print...............................................94
+Lines ........................................... 151   Print...............................................96
+Locate                                                  Print 4x6 ........................................92
+   Fan .......................................... 141   Print 5x7 ........................................94
+Locate ......................................... 141    Print 8x10 ................................96, 98
+M                                                       Print Setup ..................................113
+Making .......................................... 73    Products ........................................67
+Maximum Image Storage.............. 73                  PSI ..........................................57, 67
+Memory Card ................................ 33         Q
+Mis-framed.................................... 48       Queue .........................................109
+Multi-Session ................................ 64       R
+N                                                       Roll End.......................................124
+Naming Options ............................ 64          Roll ID ................. 3, 9, 47, 64, 67, 88
+Noritsu 2611 ............................... 157        Rotate............................................49
+Notes ............................................ 44   Running Jobs ..............................109
+Notes/Label................................... 44       S
+O                                                       Save As.................................40, 101
+Open                                                    Scale Up........................................73
+   IQueue Settings window.......... 113                 Scan button ...................................67
+   Order Products Button............. 100               Scan Settings ................................34
+Open ............... 11, 13, 40, 57, 91, 94             Scanner Light Bulb ......................147
+Open ........................................... 101    Scratch Removal .......................3, 34
+Open From File ............................. 38         Script Settings ...............................33
+Operator Service......................... 140           Scripts ...........................................57
+Order............................................. 43   SCSI............................................157
+Order Menu................................... 33        Select All .......................................47
+Order Products Button .......... 13, 100                Set
+
+
+
+172
+                                                                                                       Index
+
+
+  Roll ID ....................................... 67     To Make Single Prints ...................13
+Set .............................................. 132   Tools .............................................85
+Setup ...................................... 57, 88      TWAIN...........................................33
+Single.................................. 109, 119        Twin Check ...............................3, 34
+Sleeve                                                   Twin Check Number......................53
+  Print........................................... 11    U
+Sleeve........................................... 11     Undo Delete ..................................47
+Sleeve......................................... 109      Undo Skip......................................47
+Stop Advance Film........................ 85             USB.....................................144, 147
+Stopped - IQueue........................ 109             Use Scanned Resolution...............73
+T                                                        User Files ............................9, 64, 88
+Terminate...................................... 33       Z
+Test Mode........................... 9, 64, 88           ZIP.................................................33
+
+
+
+
+                                                                                                         173
+

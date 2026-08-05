@@ -1,0 +1,617 @@
+F-335 Series
+
+User Manual
+
+Scanner Specifications
+Minimum Host Computer Specifications
+•
+•
+•
+
+•
+•
+•
+•
+•
+•
+
+•
+
+Pentium IV CPU 1.7GHZ or higher
+1 40GB hard drive to be used for the operating system, application programs, and storage. If
+IDE, it must be configured as Primary Master.
+1 40GB hard drive capable of a sustained transfer rate of 30MB/sec. This is to be a dedicated
+drive for the scan data buffer. If IDE, it must either be a Secondary Master drive or connected using a serial ATA connection. Drive letter must be N:\ and it must NOT be formatted. This should be a 7200rpm drive. See the “Disk Management” chapter for more
+information on configuring this drive.
+Windows 2000, Service Pack 2
+512MB of RAM
+A motherboard with an integrated USB 2.0 controller as part of the motherboard chipset. A
+dedicated port is recommended. USB 2.0 hubs have not been fully tested for reliability.
+Separate AGP Graphics card. Using a motherboard with a built-in graphics card will be problematic.
+Microsoft USB 2.0 drivers.
+SCSI CD-RW drive if both hard drives are IDE. (Plextor 12/10/32S or 40/10/40S recommended, and required for Kodak Picture CD support.) If using a serial ATA hard drive, the
+CD-R can be an IDE drive. (Plextor CD-R PX-W48, 52/24/52A, or PlexWriter Premium recommended, and required for Kodak Picture CD support)
+1.5GB Pagefile.(Virtual Memory)
+
+Power
+•
+•
+•
+•
+•
+
+External power supply
+15V, 4.6 amps,
+50-60 Hz Input voltage frequency
+Plug polarity is plus center, minus outside
+5.5mm outer diameter, 2.1 mm inner diameter
+
+Contents of Box
+•
+•
+•
+•
+
+F-335 Film Scanner
+6ft. USB 2.0 Cable
+Software and User Manual CD
+Power suppy and power cord
+
+Size
+•
+
+17.3”W x 13.6”H x 12.6”D with cover on
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+1
+
+Resolutions
+There are three supported resolutions.
+4Base
+
+1000 x 1500
+
+8Base
+
+1400 x 2100
+
+16Base
+
+2000 x 3000
+
+Light Source
+The F-335 uses an LED light source. The LED consists of blue, green, orange, and red
+LED’s. The light source is expected to last for the life of the scanner and should not require maintenance.
+
+Film Types and Variations
+•
+•
+•
+•
+•
+
+The F-335 is designed to scan film in 35mm and 24mm (APS) formats. Color negative, color
+reversal (positive or slide) film, black and white, C-41 processed black and white films are all
+supported.
+APS film can only be scanned once removed from the canister for the F-335, but cannot be cut
+into strips. All APS formats (C, H, and P) will scan only in full frame (H) format.
+The F-335C can scan APS film while still in the APS canister.
+35mm cut strips are supported in sizes from 2 frames to 40 frames. However, to ensure DX
+code reading, the strips must be a minimum of 3 frames.
+Mounted slides are not supported.
+
+DX Code Reading
+•
+•
+
+35mm DX codes are read using the ISO 1007 specifications and are used by the host manager.
+APS encoding will only be read by a full roll of film, and will not be read from an APS strip.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+2
+
+Installing the F-335
+The F-335 is a peripheral device. It must be connected to a computer that meets the required specifications listed on page 1 of this manual.
+1. Clear a space near your computer system to place the F-335 scanner. The USB 2.0 cable must
+be able to reach the PC, so it cannot be more than 6 feet (2m) from the computer. There must
+also be 4 inches (10cm) clearance above and behind the scanner’s ventilation duct.
+2. Connect the power cord to the power supply plug on the back of the scanner.
+
+3. Connect the USB 2.0 cable to the back of the scanner.
+
+4. Connect the USB 2.0 cable to the back of the computer, in a USB 2.0 port. Do not plug in to
+a USB 1.0 connector!
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+3
+
+5. While the computer is on and Windows 2000 is loaded, turn the scanner power switch into the
+‘on’ position.
+
+6. The install will ask for authorization to install the driver despite it not having been “digitally
+signed.” Yes must be selected for the driver to install.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+4
+
+7. After the driver is finished installing, verify that the scanner driver is properly installed, by
+viewing the scanner properties in the Device Manager under the heading, “Imaging Devices.”
+8. As a final step, it is recommended that the installer clean the F-335 from any dust that may be
+inside the scanner. Please refer to these procedures in the “Operator Maintenance” chapter.
+
+BIOS Configuration
+The following BIOS options are used on systems configured by Pakon, and are recommended to
+be configured as outlined below.
+
+Option
+
+Pakon Part#125384-A
+
+Setting
+
+Plug and Play O/S
+
+Disable
+
+AGP Aperture Size
+
+32MB
+
+PCI Latency Timer
+
+248
+
+ACPI Suspend State
+
+S1 State
+
+USB Boot
+
+Disable
+
+PXE Boot to Lan
+
+Disable
+
+PCI to DRAM Prefetch
+
+Disable
+
+February 9, 2005
+
+5
+
+Hard Disk Configuration
+The F-335 software requires that there be a hard drive partition set up specifically for the
+software to use. This drive needs to be the secondary master drive, configured as the N: drive, and
+must NOT be formatted.
+Configure the drive as instructed below:
+1. Right-click on “My Computer” and select “Manage.”
+2. Click on “Disk Management” to begin configuring the drives.
+3. Right-click on the un-allocated space on disk 1, which should be the secondary master drive.
+
+4. The “Create Partition Wizard” will open. Click “Next” to begin.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+6
+
+5. Select “Primary Partition” and click “Next.”
+
+6. Use the full size of the drive, unless making a Disaster Recovery partition.
+A “Disaster Recovery” partition is used by Pakon, to back-up the C:\ to make a system recovery
+option available. If no system back-up drive will be used, use the full size of the secondary drive
+for the scanne buffer drive.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+7
+
+7. Assign this drive to be N:. Select N: and click “Next.”
+
+8. It is imperative to NOT format this partition. Select “Do not format this partition.”
+
+9. Review the settings on the new drive, to finish click “Next.”
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+8
+
+10. Verify that the Disk Management screen looks correct before closing the program.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+9
+
+Operational Information
+Powering On
+Power on the host PC, and allow it to finish loading Windows before turning the F-335
+scanner on. This will ensure that the scanner can properly communicate with the host computer.
+
+Operation and Film Insertion
+When scanning film, ensure the appropriate film type is selected in the scanner interface
+software program supplied. Do not attempt to scan 35mm film when APS is selected, and likewise do not scan APS film when 35mm film has been selected.
+Inserting the film properly will ensure that the DX codes are read and that the framing will be done correctly. Insert the film with the emulsion up, DX Code to the back of the
+scanner, and starting with the lowest number first, as shown below:
+
+Do not attempt to remove film from the scanner while the scanner motor is moving! This
+will cause damage to both the film and the scanner.
+APS Cartridge Handling
+The F-335C scanner has the ability to scan film from an APS cartridge without having to
+manually remove the film from the cartridge.
+1. Open the MOF door by pressing down on the button to the right of the door itself.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+10
+
+2. Insert the cartridge with the film door facing the film track entrance.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+11
+
+3. Close the door by pushing the drawer forward until it it clicks shut.
+
+In the software interface program, select “APS”.
+Calibration
+There are two types of calibration for the F-335.
+Color calibration is set during the manufacturing process, as well as any service that
+involves the CCD or any optical filter. This is to be performed by trained and authorized service
+personnel only.
+Scanner corrections are performed automatically. They consist of a series of steps performed when the scanner is first turned on, as shown below:
+• Start-up corrections
+• Initial bulb warm-up
+• Gain and exposure Control Corrections
+• Run Time Corrections
+Format Change
+The scanner will automatically change the film guide, lens position, CCD position, or
+color filter position whenever one of the following steps take place:
+• Film Format change between 35mm and APS
+• Film type change between color negative, color reversal, and black and white
+• Magnification Change (Change of scanning resolution)
+Film Gate Change
+The film gate opens and closes depending on the size of the film being scanned. It will
+open for 35mm film and close for APS film. This gate will open or close automatically when a
+different film size is selected.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+12
+
+LED Indicator Lights
+
+Power LED
+
+Function
+
+Solid Green
+
++5V is functioning
+
+Off
+
++5V is not functioning
+
+Status LED
+
+Function
+
+Solid Green
+
+Scanner Ready
+
+Blinking Green
+
+Scanner is Scanning
+
+Blinking Yellow
+
+Scanner is Calibrating
+
+Blinking Red
+
+Scanner Error
+
+Off
+
+Scanner not Functioning
+
+APS LED
+
+Function
+
+Solid Green
+
+Scanner in APS mode
+
+Blinking Green
+
+Scanner is Scanning
+
+Blinking Red
+
+APS mode Error
+
+Off
+
+Scanner in 35MM mode
+
+Digital ICE
+Digital ICE is designed to assist in removing scratches, dust, and debris artifacts from
+scanned film. It should be used as a complement to a photo lab’s normal cleaning procedures.
+Customers are still advised to clean the floors and work surfaces regularly to keep the lab environment as dust-free as possible.
+It is also recommended to clean all film with a lint-free cloth before attempting to make
+prints 8”x10” or higher.
+If a lab is having persistent dust problems, it is recommended to perform the following
+regularly:
+•Clean all customer film with a lint-free cloth before scanning it.
+•When the scanner is turned off, cover it with a plastic, or lint-free cover.
+•Use a lint-free cloth daily to clean the cover of the scanner and the surface of the table it
+is positioned on.
+•Clean or replace the air filter on the back of the scanner once per week.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+13
+
+Operator Maintenance
+Warning: These procedures require the operator to remove up to two of the three covers on
+the scanner. Do not attempt to operate the scanner without these covers properly in place!
+WARNUNG: Bei diesen Verfahren muss der Bediener bis zu zwei der drei Abdeckungen am Scanner
+entfernen. Der Scanner darf nicht betrieben werden, wenn diese Abdeckungen nicht ordnungsgemäß
+angebracht sind!
+
+ATTENTION : au cours de ces procédures, vous devez ôter deux des trois couvercles du
+scanner. N'essayez pas de faire fonctionner le scanner sans que ces couvercles de
+protection soient correctement à leur place !
+
+Dust cleaning of illumination
+The F-335 is a precision optical device. A relatively smoke and dust free environment is
+necessary. The scanner must be cleaned periodically to remove large collections of dust or debris
+inside the scanner, on the illumination. This procedure is recommended to be performed every
+two weeks. Software is designed to compensate for smaller collections of dust or debris, but
+cleaning may be required. Digital ICE is only designed to complement the lab’s normal cleaning
+procedures--which should include cleaning the floor and work surfaces regularly.
+Follow each step by a verification process to determine if the cleaning was effective. If the
+verification determines that level of cleaning was ineffective, the next level is required.
+1. Simple cleaning with compressed air and or lens brushes.
+2. Cleaning with rubbing alcohol and a cotton swab.
+3. Service call.
+
+Cleaning the Illumination with Compressed Air
+1. Turn off the scanner.
+2. Disconnect the USB and power cables.
+3. Gently remove the side panel of scanner, by pulling back on it. It should snap out of place.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+14
+
+Do not touch anything inside the scanner while the power is on. The cover is only off to
+allow dust and debris to be blown out of the scanner.
+WARNUNG: Berühren Sie keine Bauteile innerhalb des Scanners, während das Gerät eingeschaltet ist. Die
+Abdeckung wird nur deshalb abgenommen, damit Staub und Verschmutzungen aus dem Inneren des
+Scanners heraus geblasen werden können.
+
+ATTENTION : ne touchez aucun élément interne du scanner lorsque ce dernier est sous
+tension. Le couvercle est ouvert pour permettre d'éliminer poussière et débris du scanner.
+
+4. Connect power to the scanner.
+5. Turn the scanner on.
+6. Remove the small film path cover.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+15
+
+7. Aim the hose of a can of compressed air into the film path--aiming for the clear piece of glass
+in the middle.
+
+8. It may be beneficial to insert a strip of film into the scanner before blowing it out. This will
+focus all the air onto the light transfer bar, and should dislodge any dust or debris.
+9. When finished, put the film path cover back in place.
+Turn off the scanner immediately when finished cleaning the scanner!
+10. Turn off the scanner and unplug the power cable.
+11. Replace the side cover by snapping into place.
+12. Plug in the USB and power cables.
+
+Cleaning Illumination with Cotton Swab
+1.
+1.
+2.
+3.
+4.
+
+CAUTION--Be Careful not to scratch or damage the top of the glass light bar!
+Turn off the scanner.
+Disconnect the USB and power cables.
+Gently remove the side cover.
+Using a long cotton swab, dabbed in isopropyl alcohol, clean the illumination bar inside the
+film track assembly.
+The illumination bar is a small piece of glass, sitting upright.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+16
+
+5. After cleaning the illumation bar, replace side cover and turn on.
+
+Cleaning the Fan Filter
+Click to Watch Video
+The fan filter keeps dust from inside the scanner. This filter needs to be cleaned every two
+weeks, or more depending on the conditions of the lab environment.
+1. Close scanner software.
+2. Turn off the scanner.
+3. Disconnect USB and power cables.
+4. Gently remove side cover by pulling on it. It should snap off.
+5. Gently remove back cover by pulling on it. It too, should snap off.
+Be Careful not to touch anything other than the fan and filter assembly. Many pieces on the
+back of the scanner will be hot to the touch, and are to be avoided.
+VORSICHT: Berühren Sie keine Bauteile, mit Ausnahme des Ventilators und der Filter. Zahlreiche
+Bauteile an der Rückseite des Scanners sind heiß und dürfen daher nicht berührt werden.
+
+ATTENTION : ne touchez rien d'autre que le module ventilateur et filtre. De nombreux
+éléments situés à l'arrière du scanner sont chauds, évitez de les toucher.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+17
+
+6. Locate the Fan filter (123816). It is located on the back of the scanner, just under the plastic
+fan cover.
+
+7. Pull straight back on the plastic fan cover until it comes free from the scanner housing.
+
+8. Remove the filter from inside the cover, and rinse with tap water; replace if necessary.
+Replace the filter only after it has dried completely.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+18
+
+9. Re-attach the fan cover by applying moderate pressure to each of the four sides, until it snaps
+back in to place.
+
+Cleaning the Film Track
+It is recommended to clean the film track every two weeks, along with the illumination
+cleaning. Keeping the film track clean will ensure that DX code reading remains reliable. It will
+also maintain the proper motor speed for each resolution.
+1. Remove the film path cover.
+2. Position the tip of the compressed air hose on both sides of the film track entrance, and blow.
+
+3. Position the tip of the compressed air hose on both sides of the film track exit, and blow.
+
+4. After cleaning the film track, run the ‘Film Track Test’ in the client interface program.
+5. Verify the scanner is properly reading DX codes by scanning a roll of film.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+19
+
+MOF Head Cleaning
+The MOF heads on F-335C models require monthly cleaning. These heads read the magnetic data from APS films.
+1. Remove the film guide assembly piece shown below:
+
+2. Pinching the tab on both sides of the film guide assembly.
+
+3. This will expose the MOF heads on the scanner.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+20
+
+4. Use a cotton swab with isopropyl (rubbing) alcohol to gently clean the MOF heads.
+
+5. Clean the film path guide with compressed air.
+
+Exterior Surface Cleaning
+Clean surfaces with lint-free cloths or mild, non-abrasive spray type cleaners, where the
+cleaner is sprayed onto the cleaning cloth and not directly onto the equipment. Perform this type
+of cleaning only with the equipment disconnected and powered down.
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+21
+
+Regulatory Information
+
+Warning:
+This is a class A product. In a domestic environment this product may cause radio interference in which case the user may be required to take adequate measures.
+Note:
+This equipment has been tested and found to comply with the limits for a Class A digital
+device, pursuant to part 15 of the FCC rules. These limits are designed to provide reasonable protection against harmful interference when the equipment is operated in a commercial environment. This equipment generates, uses and can radiate radio frequency energy and, if not installed
+and used in accordance with the instruction manual, may cause harmful interference to radio communications. Operation of this equipment in a residential area is likely to cause harmful interference in which case the user will be required to correct the interference at his own expense.
+Note:
+Taiwan:
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+22
+
+Site Conditions
+
+Temperature
+
+59-89.6 degrees Fahrenheit
+15-32 degrees Celsius
+
+Humidity
+
+30-75% (non-condensing)
+
+Vibration
+
+Not to Exceed 0.05G RMS
+5-200Hz
+
+Ventilation
+
+A 4” clearance above and
+behind the scanners ventilation duct is necessary
+
+Lighting
+
+<1000 LUX ambient light
+
+Noise
+
+< 70db(A)
+
+Shipping and Storage Conditions
+Temperature: -13 to 140 degrees Fahrenheit
+Humidity: 30%-90% (non-condensing)
+
+Pakon Part#125384-A
+
+February 9, 2005
+
+23
+
+

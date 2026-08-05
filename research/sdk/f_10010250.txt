@@ -1,0 +1,18 @@
+┌ 40: fcn.10010250 ();
+│ afv: vars(1:sp[0x4..0x4])
+│           0x10010250      51             push ecx
+│           0x10010251      56             push esi
+│           0x10010252      8d442404       lea eax, [var_4h]
+│           0x10010256      50             push eax
+│           0x10010257      8bf1           mov esi, ecx
+│           0x10010259      e812830300     call fcn.10048570
+│           0x1001025e      8b4630         mov eax, dword [esi + 0x30]
+│           0x10010261      8b4c2408       mov ecx, dword [var_4h]
+│           0x10010265      2bc8           sub ecx, eax
+│           0x10010267      83c404         add esp, 4
+│           0x1001026a      33c0           xor eax, eax
+│           0x1001026c      81f940190100   cmp ecx, 0x11940
+│           0x10010272      0f9fc0         setg al
+│           0x10010275      5e             pop esi
+│           0x10010276      59             pop ecx
+└           0x10010277      c3             ret

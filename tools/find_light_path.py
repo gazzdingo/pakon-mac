@@ -26,12 +26,16 @@ commands are skipped by default so film transport is not driven unnecessarily.
 from __future__ import annotations
 
 import argparse
+import os
 import struct
 import sys
 import time
 
 import usb.core
 import usb.util
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from write_guard import require_writes_unlocked   # noqa: E402
 
 EP_OUT, EP_IN, EP_DATA = 0x01, 0x81, 0x86
 HOST, LIGHT, MOTOR = 0x10, 0x40, 0x44
@@ -114,6 +118,12 @@ def main() -> int:
                     help="level multiple counting as 'path opened'")
     args = ap.parse_args()
     board = int(args.board, 0)
+
+    # Interlock. Walking blind Type 4 commands across a live board is exactly
+    # what switched the PICM into its bootloader in July (see
+    # picm_run_app.py's header). This tool must never run by accident again.
+    require_writes_unlocked("find_light_path.py",
+                            "sends blind command sweeps to a live board")
 
     d = open_dev()
     try:

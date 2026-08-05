@@ -34,11 +34,15 @@ cycle. Only send types this tool knows about.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 
 import usb.core
 import usb.util
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from write_guard import require_writes_unlocked   # noqa: E402
 
 EP_CMD_OUT, EP_CMD_IN, EP_DATA_IN = 0x01, 0x81, 0x86
 RESPONSE_TYPE = 7
@@ -136,6 +140,12 @@ def main() -> int:
         print("refusing: only types 1-4 are known to be valid. Sending an "
               "unknown type wedges the firmware.", file=sys.stderr)
         return 2
+
+    # Interlock: this tool sends arbitrary packets, which includes register
+    # writes and the EEPROM-touching register 0x0A sequences. While the
+    # read-everything-first lock is engaged it must not run at all.
+    require_writes_unlocked("pakon_cmd.py",
+                            "can send arbitrary packets, including writes")
 
     dev = open_scanner()
     if dev is None:

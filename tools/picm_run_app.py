@@ -55,11 +55,15 @@ so this is most likely still only a mode problem.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 
 import usb.core
 import usb.util
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from write_guard import require_writes_unlocked, confirm_write   # noqa: E402
 
 EP_OUT, EP_IN = 0x01, 0x81
 HOST = 0x10
@@ -147,6 +151,22 @@ def main() -> int:
     ap.add_argument("--board", default=hex(PICM_BOOT))
     args = ap.parse_args()
     board = int(args.board, 0)
+
+    # Interlock. The register-0x0A packets are NOT volatile: per the decoded
+    # boot path (docs/30 section 4.5), {00,0xAA} to register 0x0A writes
+    # internal EEPROM index 0 -- the bootloader's app-valid gate -- and the
+    # {00,0x55} counterpart clears it. Both --run and --enter therefore write
+    # one of the EEPROMs this project is sworn to read first. Report-only
+    # mode (no flags) sends nothing but the vendor presence probe and stays
+    # available.
+    if args.run or args.enter:
+        require_writes_unlocked(
+            "picm_run_app.py --run/--enter",
+            "mode-switches U11 and writes its internal EEPROM index 0")
+        confirm_write(
+            "picm_run_app.py",
+            "write U11 internal EEPROM index 0 (the app-valid gate) via "
+            "register 0x0A")
 
     d = open_dev()
     try:

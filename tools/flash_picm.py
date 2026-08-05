@@ -88,6 +88,9 @@ import time
 import usb.core
 import usb.util
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from write_guard import require_writes_unlocked, confirm_write   # noqa: E402
+
 EP_OUT, EP_IN = 0x01, 0x81
 HOST = 0x10
 PICM_APP, PICM_BOOT = 0x44, 0x46
@@ -263,6 +266,12 @@ def main() -> int:
     args = ap.parse_args()
     board = int(args.board, 0)
 
+    # Interlock: this tool exists to ERASE and WRITE U11's flash. While the
+    # read-everything-first lock is engaged it must not run at all -- not
+    # even its dry run, which still puts packets on the wire.
+    require_writes_unlocked("flash_picm.py",
+                            "erases and writes U11 application flash")
+
     if not os.path.exists(args.hex):
         sys.exit(f"firmware not found: {args.hex}")
     mem = load_ihex(args.hex)
@@ -312,6 +321,12 @@ def main() -> int:
 
         todo = chunks[:args.limit] if args.limit else chunks
         rows = erase_rows(todo)
+
+        # Second layer: a human must type the phrase at a TTY. A wrong flag
+        # or a scripted invocation can never reach the erase pass.
+        confirm_write("flash_picm.py",
+                      f"ERASE {len(rows)} flash row(s) and WRITE "
+                      f"{len(todo)} chunk(s) on U11 via the I2C bootloader")
 
         # ---- pass 1: erase, exactly as FN_bLoadPicLarge does first --------
         print(f"\npass 1 -- erasing {len(rows)} row(s) of {ROW} bytes")

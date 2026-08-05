@@ -22,12 +22,16 @@ than actuators, and restores the default gain of 13 on exit.
 """
 from __future__ import annotations
 
+import os
 import statistics
 import struct
 import sys
 
 import usb.core
 import usb.util
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from write_guard import require_writes_unlocked   # noqa: E402
 
 EP_OUT, EP_IN, EP_DATA = 0x01, 0x81, 0x86
 HOST, MOTOR = 0x10, 0x44
@@ -88,6 +92,11 @@ def sample(d):
 
 
 def main() -> int:
+    # Interlock. This tool writes A/D gain/offset registers, and its
+    # "restore default gain 13" write is the prime suspect for the stray
+    # 0x0D expected at U11 internal EEPROM index 4.
+    require_writes_unlocked("probe_sensor_path.py",
+                            "writes CCD A/D gain and offset registers")
     d = open_dev()
     try:
         for _ in range(6):

@@ -47,12 +47,16 @@ no EEPROM, no blind sweeping. Every value here is the vendor's own. Use
 from __future__ import annotations
 
 import argparse
+import os
 import statistics
 import struct
 import sys
 
 import usb.core
 import usb.util
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from write_guard import require_writes_unlocked   # noqa: E402
 
 EP_OUT, EP_IN, EP_DATA = 0x01, 0x81, 0x86
 HOST, LIGHT, MOTOR = 0x10, 0x40, 0x44
@@ -222,6 +226,10 @@ def main() -> int:
     ap.add_argument("--integration", type=int, default=INTEGRATION)
     args = ap.parse_args()
     control = int(args.control, 0) & 0x3FF
+
+    # Interlock: writes FPGA and A/D registers through board 0x44.
+    require_writes_unlocked("init_ccd.py",
+                            "writes FPGA and A/D registers")
 
     d = open_dev()
     try:

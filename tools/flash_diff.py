@@ -45,6 +45,13 @@ ROW = 64
 
 # Words whose corruption would produce exactly the fault we are chasing.
 CRITICAL = {
+    0x000400: (0xEFE1, "GOTO 0x002BC2 -- the application reset vector. This is "
+                       "the ONLY byte in 0x400-0x47F that differs between "
+                       "firmware revisions (nm0406/nm0306 hold 0xDF -> "
+                       "0x002BBE). One wrong byte sends the chip four bytes "
+                       "early, skipping a setup instruction while still "
+                       "looking alive enough to blink. WE WROTE THIS REGION."),
+    0x000402: (0xF015, "second word of the reset GOTO."),
     0x002C62: (0x0E44, "MOVLW 0x44 -- the I2C slave address literal. This is "
                        "the value that reaches SSPADD. Corrupt it and U11 "
                        "answers at the wrong address, or nowhere."),

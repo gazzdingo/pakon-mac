@@ -35,6 +35,7 @@ import usb.core
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pakon_load import Fx2, HexImage, find_unloaded, find_loaded   # noqa: E402
+from write_guard import require_writes_unlocked, confirm_write     # noqa: E402
 
 VENDOR_IN, VENDOR_OUT = 0xC0, 0x40
 READ, WRITE = 0xA9, 0xA2
@@ -62,9 +63,19 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--stage1", default=None)
+    ap.add_argument("--write", action="store_true",
+                    help="actually write; WITHOUT THIS IT IS A DRY RUN")
     ap.add_argument("--dry-run", action="store_true",
-                    help="read and report, write nothing")
+                    help="(kept for compatibility -- dry run is now the "
+                         "default; --write is required to write)")
     args = ap.parse_args()
+
+    # Interlock: this tool writes the FX2 boot EEPROM. An earlier version of
+    # it defaulted to WRITING unless --dry-run was remembered; that default
+    # was backwards and has been inverted -- nothing is written without an
+    # explicit --write, the absence of the lock file, AND a typed phrase.
+    require_writes_unlocked("eeprom_repair.py",
+                            "writes the FX2 boot EEPROM (I2C 0x51)")
 
     if find_loaded() is not None:
         sys.exit("scanner is loaded; power-cycle it and run this before "
@@ -110,9 +121,13 @@ def main() -> int:
         print("\n  already correct; nothing to do.")
         return 0
 
-    if args.dry_run:
-        print("\n  dry run -- nothing written.")
+    if not args.write or args.dry_run:
+        print("\n  dry run (the default) -- nothing written.")
+        print("  Re-run with --write to repair, once the lock file is gone.")
         return 0
+
+    confirm_write("eeprom_repair.py",
+                  f"write {len(payload)} byte(s) to the FX2 boot EEPROM")
 
     print("\n  writing...")
     try:

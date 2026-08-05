@@ -20,12 +20,16 @@ Host board Type 4 commands already known: 0x85 = host clear/ack.
 from __future__ import annotations
 
 import argparse
+import os
 import statistics
 import struct
 import sys
 
 import usb.core
 import usb.util
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from write_guard import require_writes_unlocked   # noqa: E402
 
 EP_OUT, EP_IN, EP_DATA = 0x01, 0x81, 0x86
 HOST, LIGHT, MOTOR = 0x10, 0x40, 0x44
@@ -92,6 +96,12 @@ def main() -> int:
     ap.add_argument("--board", default="0x10")
     args = ap.parse_args()
     board = int(args.board, 0)
+
+    # Interlock. This walks 256 blind Type 4 commands across a board --
+    # the same class of sweep that mode-switched the PICM into its
+    # bootloader. It must never run by accident.
+    require_writes_unlocked("find_acquire.py",
+                            "sends blind command sweeps to a live board")
 
     d = open_dev()
     try:

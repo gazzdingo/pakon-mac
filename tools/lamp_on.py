@@ -23,12 +23,16 @@ in flux while the lamp is enabled.
 from __future__ import annotations
 
 import argparse
+import os
 import struct
 import sys
 import time
 
 import usb.core
 import usb.util
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from write_guard import require_writes_unlocked   # noqa: E402
 
 EP_CMD_OUT, EP_CMD_IN, EP_DATA = 0x01, 0x81, 0x86
 LIGHT_BOARD = 0x40
@@ -115,6 +119,10 @@ def main() -> int:
     ap.add_argument("--hold", type=float, default=45.0,
                     help="seconds to hold the lamp on")
     args = ap.parse_args()
+
+    # Interlock: writes light-board LED level and PWM registers.
+    require_writes_unlocked("lamp_on.py",
+                            "writes light-board LED level/PWM registers")
 
     d = open_dev()
     try:

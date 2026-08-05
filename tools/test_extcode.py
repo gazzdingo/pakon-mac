@@ -29,12 +29,15 @@ Everything here is volatile; a power cycle restores the scanner.
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 
 import usb.core
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pakon_hex import HexImage
+from write_guard import require_writes_unlocked   # noqa: E402
 
 VO, VI = 0x40, 0xC0
 HALT, RUN = 0x03, 0x02          # preserve CLKOE (bit 1); bit 0 = 8051RES
@@ -48,6 +51,11 @@ def marker_program(value: int) -> bytes:
 
 
 def main() -> int:
+    # Interlock: loads and executes test code on the FX2 -- the I2C bus
+    # master. RAM-only, but nothing executes on the bus master by accident
+    # while the read-everything-first lock is engaged.
+    require_writes_unlocked("test_extcode.py",
+                            "loads and runs test code on the FX2 bus master")
     d = usb.core.find(idVendor=0x0F05, idProduct=0xF235)
     if d is None:
         print("no unloaded Pakon scanner on the bus", file=sys.stderr)

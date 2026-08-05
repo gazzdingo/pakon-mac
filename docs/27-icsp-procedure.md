@@ -1,12 +1,51 @@
 # ICSP procedure — PICkit 3 on U11
 
 Written 2026-08-04, the day before the programmer arrives. Follow in order.
+Revised 2026-08-05 (safety review): five reads instead of three, automated
+per-region verification, and the write interlock below.
 
 **The governing rule: read everything before writing anything.** No copy of the
 PICM bootloader (`0x0000`–`0x03FF`) exists anywhere. 348 HEX files across every
 vendor install tree were parsed; every PICM image starts at `0x400`. If a write
 clobbers it, it is gone permanently and this scanner is unrecoverable in a way
 it currently is not.
+
+## 0a. The write interlock — engaged
+
+`tools/WRITES_LOCKED` exists. While it does, every tool with a write, erase,
+program, mode-switch, or blind-sweep path refuses to start (`flash_picm.py`,
+`eeprom_repair.py`, `picm_run_app.py --run/--enter`, `pakon_cmd.py`,
+`find_light_path.py`, `find_acquire.py`, `probe_sensor_path.py`,
+`init_ccd.py`, `start_acquire.py`, `lamp_on.py`, `test_extcode.py`). The
+compiled raw-I2C writer was quarantined
+(`tools/i2c_eeprom.hex.DANGEROUS-WRITES`). Do not delete the lock file until
+its checklist is satisfied. Even after that, the flash/EEPROM writers demand a
+typed phrase at a TTY before touching non-volatile state — a wrong flag or a
+script can never reach a write on its own.
+
+Note also: `ipecmd` run **by hand** is outside these guards. During the read
+session, only ever run it through `icsp_read_all.py`, which refuses the
+`-E`/`-F`/`-M`/`-U`/`-S`/`-Z` programming flags outright.
+
+## 0b. Before ICSP: read the EXTERNAL EEPROMs five times
+
+The I²C serial EEPROMs (7-bit `0x50`–`0x57`) do not need the programmer at
+all, and one of them — the **PCS/calibration EEPROM, believed to be the device
+at 0x52** — holds per-unit magnification / optical-alignment / motor-speed
+data that is exactly as irreplaceable as the bootloader (see the inventory in
+§8). Before the PICkit is even unboxed:
+
+```
+for i in 1 2 3 4 5; do
+  ./eeprom_backup.py --out ~/pakon-eeprom-backup-run$i --length 512
+done
+```
+
+then compare the five runs per device (`md5 ~/pakon-eeprom-backup-run*/ *.bin`).
+`--length 512` matters: the decoded calibration payload is 398 + 36 bytes,
+which does not fit in the old 256-byte default. `eeprom_backup.py` is
+read-only (vendor request `0xA9` with the vendor's own parameters) and warns
+if every address returns identical bytes (i.e. the read is not addressing).
 
 ---
 
@@ -102,13 +141,29 @@ on it:
 Nothing is code-protected, so reads are unrestricted. If these match, believe
 subsequent reads. If they don't, believe nothing and debug.
 
-## 4. Read and save, in this order
+## 4. Read and save — FIVE full-device reads, verified
 
-| # | Region | Size | Why |
-|---|---|---|---|
-| 1 | `0x0000`–`0x03FF` bootloader | 1 KB | **Irreplaceable — no copy exists** |
-| 2 | Full flash `0x0000`–`0x7FFF` | 32 KB | Complete picture |
-| 3 | Internal EEPROM | 256 B | See index map below |
+Run `./icsp_read_all.py --execute`. It performs, in order: device ID, config
+words to screen, bootloader to screen, then **five** independent full-device
+reads (`-GF`), each containing every region:
+
+| Region | Size | Why |
+|---|---|---|
+| `0x0000`–`0x03FF` bootloader | 1 KB | **Irreplaceable — no copy exists** |
+| Full flash `0x0000`–`0x7FFF` | 32 KB | Complete picture |
+| Config words `0x300000`–`0x30000D` | 14 B | Trust gate + WDT/BOR truth |
+| Internal EEPROM | 256 B | See index map below |
+| User IDs `0x200000`–`0x200007` | 8 B | For completeness (optional) |
+
+It then parses all five files and compares them **per region, by SHA-256**
+(whole-file MD5/SHA-256 are also printed for the record), checks the config
+words against the values known from `nm0506.HEX`, checks the bootloader is
+not a single repeated byte (five identical reads of a stuck line still
+match each other), and **exits non-zero with an explicit DO-NOT-WRITE message
+on any disagreement**, naming which read and which region differ. The
+comparison logic itself is provable without hardware:
+`./icsp_read_all.py --self-test` (7 cases, all must PASS), and saved reads can
+be re-verified any time with `./icsp_read_all.py --verify <dir>`.
 
 **Internal EEPROM index map** (recovered from the boot path — read these, they
 are diagnostic):
@@ -121,9 +176,9 @@ are diagnostic):
 | **5** | **The persisted fault code** (`0x0019EC` → RAM `0x02A`). **Should match the nibble read off the LED.** |
 | 6 | → RAM `0x027` (`0x0019FA`) |
 
-Save all three to `~/pakon-icsp-backup-<date>/`, take checksums, and **verify the
-files are non-empty and plausible before proceeding.** Copy them somewhere off
-this machine.
+All five land in `~/pakon-icsp-backup-<date>/` with their checksums printed.
+**Do not proceed unless the tool says all five reads agree** — then copy the
+directory somewhere off this machine, twice.
 
 ---
 
@@ -264,12 +319,54 @@ Build line: `gpasm -p p18f452 -o out.hex in.asm`
 The merged-image rule means everything depends on the step-4 backup being
 genuine. Before any write is even contemplated:
 
-* **Read the flash twice and compare hashes.** Read stability is the only
-  self-contained proof the backup is real.
+* **Read the full device FIVE times and compare per-region hashes.** Read
+  stability is the only self-contained proof the backup is real.
+  `icsp_read_all.py` does all of this itself and refuses to bless a
+  mismatched set — do not hand-wave past its exit code.
 * Confirm the bootloader region is not a single repeated byte value. A stuck
-  PGD line yields 1 KB of `0x00`, which looks like data and is not.
+  PGD line yields 1 KB of `0x00`, which looks like data and is not. (Also
+  automated — five identical reads of garbage are still garbage, so hash
+  equality alone is never accepted.)
 * Verify the config words read back match the expected values below. If they do
-  not, believe nothing else in the read.
+  not, believe nothing else in the read. (Also automated.)
+* `flash_diff.py` must issue a verdict, not WITHHELD. Its trust gates now also
+  withhold when the bootloader region or the internal EEPROM is absent from
+  the read, or when the HEX transfer contains malformed records —
+  `./flash_diff.py --self-test` proves all seven gate/verdict cases.
+
+---
+
+## 8. Non-volatile store inventory — "all of the EEPROMs, all 6"
+
+PTS displays six board firmware versions (APS / CCD / Lamp / DX / Motor /
+USB) because it serves the whole FX35 family. On **this physical F-135
+Plus**, the stores that actually exist in evidence, and their read coverage:
+
+| # | Store | Where it lives | Read with | Covered? | Risk |
+|---|---|---|---|---|---|
+| 1 | U11 flash 32 KB **incl. bootloader `0x0000`–`0x03FF`** | inside U11 (PIC18F452) | `icsp_read_all.py --execute` (5×, verified) | **tomorrow** | Bootloader exists nowhere else. Bulk-erase on any programming pass |
+| 2 | U11 config words `0x300000`–`0x30000D` | inside U11 | same (in `-GF` + `-GC`) | **tomorrow** | erased by any programming pass; values known from `nm0506.HEX` |
+| 3 | U11 internal EEPROM 256 B (idx 0 app-valid `0xAA`; idx 5 **persisted fault code**; idx 4 suspected `0x0D`) | inside U11 | same — the tool prints idx 0/2/4/5/6 by name and **fails if the EEPROM region is absent** from the read | **tomorrow** | per-unit state; erased by any programming pass |
+| 4 | FX2 boot EEPROM (personality, 9 B) | I²C `0x51` (8-bit `0xA2`) | `eeprom_backup.py` (0xA9, vendor params); `fx2/eeprom_read.c` | yes — content also known (`c0 05 0f 35 f2 07 aa 04 02`) | replaceable from `USB F135.bin`; write path locked (`eeprom_repair.py`) |
+| 5 | **PCS / calibration EEPROM** — per-unit magnification, optical alignment, hardware version, per-format motor speeds (2 CRC32 sections, 398 B + 36 B) | **believed: the I²C EEPROM at `0x52`** (8-bit `0xA4`). Evidence: `FN_bReadEEPromToRegistry` reads it via `fcn.100160a0`, whose wrapper pushes `wValue 0xA4` = device n=2 → I²C `0x52` (docs/13 §, docs/15 §1e); `0x52` ACKs on this unit | `eeprom_backup.py --length 512`, five runs, compare (§0b) | **NO — never read. HIGHEST-PRIORITY GAP.** | **irreplaceable per-unit data, like the bootloader.** Read it BEFORE the ICSP session. If it truly reads all-`0xFF`, escalate: that would mean the calibration is already gone |
+| 6 | Light-board PIC (PICL_PLUS, I²C `0x20` 7-bit): own flash, internal EEPROM, config | inside the light-board PIC | ICSP on that board's PIC only | no | working — **do not ICSP a working board tomorrow**. Vendor `lp*` images are PIC16 **and include `0x0000`–`0x03FF`**, so its firmware (unlike U11's) is restorable from files; unknown whether its internal EEPROM holds per-unit data |
+| 7 | FX2 firmware (the "USB" version in PTS) | not persistent — RAM-loaded from host (`Pakon7.hex`) each power-on | on disk already | yes | none |
+| 8 | Other I²C serial EEPROMs, if any, in `0x50`–`0x57` | main board | `eeprom_backup.py` sweeps all eight addresses | §0b covers | unknown devices get backed up for free |
+
+Not in evidence on the F-135 Plus: an APS board (35 mm-only model), a DX-board
+MCU (DX sensors are read by the light board), a CCD-board MCU (the F-135 CCD
+board carries the 14-bit A/D; only the F-235/335 CCD board is known to have
+its own PIC and an AT17LV512A FPGA-config PROM). The Spartan FPGA on this main
+board is programmed by the PICM at runtime; no FPGA config PROM has been
+identified on this board — if one is ever found near JM10, it joins this
+table.
+
+**Discrepancy to resolve on hardware (§0b does it):** the boot EEPROM at
+`0x51` was repaired and read back correct on 2026-08-02 (docs/17), but a later
+report says the `0xA2`/`0xA4` devices read all-`0xFF`. All-identical bytes
+from `eeprom_backup.py` across addresses means the read is NOT addressing
+(its own warning says so) — do not conclude "erased" from a read that fails
+that check.
 
 ---
 

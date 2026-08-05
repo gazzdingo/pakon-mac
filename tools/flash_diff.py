@@ -39,9 +39,17 @@ VENDOR_HEX = ("/Users/guy/Downloads/Pakon Update 2/fx35install/program files/"
               "Pakon/F-X35 COM SERVER/Config/Firmware/nm0506.HEX")
 
 CONFIG_LO, CONFIG_HI = 0x300000, 0x30000E
+EEPROM_LO, EEPROM_HI = 0xF00000, 0xF00100
 BOOTLOADER_END = 0x000400
 FLASH_END = 0x008000
 ROW = 64
+
+# U11 internal EEPROM indices worth naming (docs/27 section 4).
+EEPROM_MAP = {0: 'app-valid gate (expect 0xAA)',
+              2: 'gates fault-code clear',
+              4: 'suspected stray 0x0D',
+              5: 'THE PERSISTED FAULT CODE',
+              6: '-> RAM 0x027'}
 
 # Words whose corruption would produce exactly the fault we are chasing.
 CRITICAL = {
@@ -78,7 +86,11 @@ def load_hex(path):
 
     The first version silently skipped malformed lines, so a truncated or
     corrupted transfer degraded quietly into "partial data" and then into a
-    confident verdict. Now bad records are counted and surfaced.
+    confident verdict. Now bad records are counted, surfaced, AND (since the
+    2026-08-05 review) fed into the trust gates: a read containing malformed
+    records gets its verdict WITHHELD rather than merely warned about.
+
+    Returns (mem, bad_record_count).
     """
     mem, ext, bad = {}, 0, 0
     with open(path) as fh:
@@ -98,6 +110,8 @@ def load_hex(path):
             if t == 0:
                 for i, v in enumerate(b[4:4 + n]):
                     mem[ext + a + i] = v
+            elif t == 2:
+                ext = ((b[4] << 8) | b[5]) << 4
             elif t == 4:
                 ext = ((b[4] << 8) | b[5]) << 16
             elif t == 1:
@@ -105,7 +119,7 @@ def load_hex(path):
     if bad:
         print(f"  *** WARNING: {bad} malformed/bad-checksum record(s) in "
               f"{path}. The read may be truncated or corrupted. ***")
-    return mem
+    return mem, bad
 
 
 def word(mem, a):
@@ -130,7 +144,8 @@ def erased_rows(chip, lo, hi):
     return merged
 
 
-def analyse(chip, vendor):
+def analyse(chip, vendor, bad_records=0):
+    """Returns 0 = matches, 1 = does not match, 2 = verdict WITHHELD."""
     print(f"read image : {len(chip)} bytes, "
           f"{min(chip):#08x}-{max(chip):#08x}" if chip else "read image : EMPTY")
     print(f"vendor     : {len(vendor)} bytes, "
@@ -260,6 +275,36 @@ def analyse(chip, vendor):
     else:
         print("   completeness : every region and critical word was read")
 
+    # (d) The bootloader itself. "Read everything first" means a read with
+    #     no bootloader at all gets no verdict -- a verdict here could invite
+    #     a reflash while the one irreplaceable region was never captured.
+    if not boot:
+        print("   bootloader   : *** ABSENT FROM THIS READ -- the one "
+              "region that can never be re-created was not captured ***")
+        trust_ok = False
+
+    # (e) The internal EEPROM. Same rule -- "all of the EEPROMs" -- and it
+    #     carries the app-valid gate and the persisted fault code. A full
+    #     device read (-GF) contains it; a read without it is not the backup
+    #     this procedure requires.
+    eeprom = {a - EEPROM_LO: v for a, v in chip.items()
+              if EEPROM_LO <= a < EEPROM_HI}
+    if not eeprom:
+        print("   int. EEPROM  : *** ABSENT FROM THIS READ -- use the full-"
+              "device read (-GF), or capture the EEPROM region explicitly ***")
+        trust_ok = False
+    else:
+        named = "  ".join(f"[{i}]={eeprom.get(i, 0xFF):#04x}"
+                          for i in sorted(EEPROM_MAP))
+        print(f"   int. EEPROM  : {len(eeprom)} bytes read   {named}")
+        print(f"                  ([5] is the persisted fault code)")
+
+    # (f) Malformed HEX records in the transfer.
+    if bad_records:
+        print(f"   hex records  : *** {bad_records} malformed/bad-checksum "
+              f"record(s) -- transfer not trustworthy ***")
+        trust_ok = False
+
     print("\n" + "=" * 70)
     # tuple(r): rows holds LISTS, expected_blank holds TUPLES, and
     # [lo,hi] == (lo,hi) is always False in Python. That mismatch made every
@@ -280,63 +325,108 @@ def analyse(chip, vendor):
         print("  Firmware is exonerated. The fault is electrical -- the pin")
         print("  stub, the I/O drivers, or the MSSP peripheral. Proceed to")
         print("  Test A (docs/27), and budget for a chip swap.")
-    else:
-        print("VERDICT: the flash does NOT match.")
-        if bad_critical:
-            print(f"  {bad_critical} CRITICAL word(s) wrong -- this alone can")
-            print("  explain a chip that never answers on I2C.")
-        if real_erased:
-            print(f"  {len(real_erased)} erased region(s) that should hold code.")
-        print(f"  {total_diff} differing byte(s) overall.")
-        print("\n  This is the good outcome: reflash and retest.")
-        print("\n  *** BUT SEE THE MERGED-IMAGE RULE, docs/27 SECTION 7 ***")
-        print("  Programming BULK-ERASES the whole chip, including the")
-        print("  bootloader, which exists in no vendor file anywhere. Program a")
-        print("  single merged image: bootloader backup + application + config")
-        print("  + EEPROM. NEVER program nm0506.HEX on its own -- it starts at")
-        print("  0x400 and would leave the bootloader erased and unrecoverable.")
-    return 0
+        return 0
+    print("VERDICT: the flash does NOT match.")
+    if bad_critical:
+        print(f"  {bad_critical} CRITICAL word(s) wrong -- this alone can")
+        print("  explain a chip that never answers on I2C.")
+    if real_erased:
+        print(f"  {len(real_erased)} erased region(s) that should hold code.")
+    print(f"  {total_diff} differing byte(s) overall.")
+    print("\n  This is the good outcome: reflash and retest.")
+    print("\n  *** BUT SEE THE MERGED-IMAGE RULE, docs/27 SECTION 7 ***")
+    print("  Programming BULK-ERASES the whole chip, including the")
+    print("  bootloader, which exists in no vendor file anywhere. Program a")
+    print("  single merged image: bootloader backup + application + config")
+    print("  + EEPROM. NEVER program nm0506.HEX on its own -- it starts at")
+    print("  0x400 and would leave the bootloader erased and unrecoverable.")
+    return 1
 
 
 def self_test():
-    """Prove the tool works, using synthetic damage. No hardware needed."""
+    """Prove the tool works, using synthetic damage. No hardware needed.
+
+    Each case ASSERTS its verdict (0 matches / 1 does not match /
+    2 withheld). A self-test that only prints can rot silently; this one
+    fails loudly if any gate stops firing.
+    """
     print("SELF-TEST -- synthetic data, no hardware\n")
-    vendor = load_hex(VENDOR_HEX)
-    if not vendor:
-        sys.exit(f"cannot read vendor image: {VENDOR_HEX}")
+    vendor, vbad = load_hex(VENDOR_HEX)
+    if not vendor or vbad:
+        sys.exit(f"cannot trust vendor image: {VENDOR_HEX} "
+                 f"({vbad} bad records)")
     print(f"vendor image loaded: {len(vendor)} bytes\n")
 
     def realistic(mutate=None):
-        """The shape tomorrow's read actually has: full 0x0-0x8000 + config."""
+        """The shape tomorrow's read actually has: bootloader + full flash
+        + config + internal EEPROM (a -GF full-device read)."""
         img = {a: vendor.get(a, 0xFF) for a in range(0x400, 0x8000)}
         img.update({a: vendor[a] for a in vendor if a >= 0x300000})
         for a in range(0, 0x400):
             img[a] = (a * 7 + 3) & 0xFF
+        for i in range(256):
+            img[EEPROM_LO + i] = 0xFF
+        img[EEPROM_LO + 0] = 0xAA
+        img[EEPROM_LO + 4] = 0x0D
+        img[EEPROM_LO + 5] = 0x0B
         if mutate:
             mutate(img)
         return img
 
-    print("--- case 1: healthy chip (must report MATCHES) ---")
-    analyse(realistic(), vendor)
+    results = []
 
-    print("\n\n--- case 2: the address literal corrupted (the hypothesis "
-          "we most want to catch) ---")
+    def case(n, title, chip, expect):
+        print(f"\n\n--- case {n}: {title} ---")
+        got = analyse(chip, vendor)
+        verdict = {0: "MATCHES", 1: "DOES NOT MATCH", 2: "WITHHELD"}
+        ok = got == expect
+        results.append((n, title, ok, got, expect))
+        print(f"\n[self-test] case {n}: expected {verdict[expect]}, "
+              f"got {verdict[got]}  ->  {'PASS' if ok else '*** FAIL ***'}")
+
+    case(1, "healthy chip (must report MATCHES)", realistic(), 0)
+
     def corrupt_literal(m):
         m[0x002C62] = 0x10        # MOVLW 0x44 -> MOVLW 0x10
-    analyse(realistic(corrupt_literal), vendor)
+    case(2, "the address literal corrupted (the hypothesis we most want "
+            "to catch)", realistic(corrupt_literal), 1)
 
-    print("\n\n--- case 3: a 64-byte row erased (our flasher's bug "
-          "signature) ---")
     def erase_row(m):
         for a in range(0x001800, 0x001840):
             m[a] = 0xFF
-    analyse(realistic(erase_row), vendor)
+    case(3, "a 64-byte row erased (our flasher's bug signature)",
+         realistic(erase_row), 1)
 
-    print("\n\n--- case 4: DEAD READ CHAIN, all 0x00 (must WITHHOLD) ---")
-    analyse({a: 0x00 for a in range(0, 0x8000)}, vendor)
+    case(4, "DEAD READ CHAIN, all 0x00 (must WITHHOLD)",
+         {a: 0x00 for a in range(0, 0x8000)}, 2)
 
-    print("\n\n--- case 5: TRUNCATED read, 128 bytes only (must WITHHOLD) ---")
-    analyse({a: vendor.get(a, 0xFF) for a in range(0x400, 0x480)}, vendor)
+    case(5, "TRUNCATED read, 128 bytes only (must WITHHOLD)",
+         {a: vendor.get(a, 0xFF) for a in range(0x400, 0x480)}, 2)
+
+    def drop_eeprom(m):
+        for a in range(EEPROM_LO, EEPROM_HI):
+            m.pop(a, None)
+    case(6, "internal EEPROM missing from an otherwise perfect read "
+            "(must WITHHOLD -- all of the EEPROMs get read, no exceptions)",
+         realistic(drop_eeprom), 2)
+
+    def drop_boot(m):
+        for a in range(0, 0x400):
+            m.pop(a, None)
+    case(7, "bootloader missing from an otherwise perfect read "
+            "(must WITHHOLD -- read everything first)",
+         realistic(drop_boot), 2)
+
+    bad = [r for r in results if not r[2]]
+    print("\n" + "=" * 70)
+    for n, title, ok, got, expect in results:
+        print(f"  case {n}: {'PASS' if ok else '*** FAIL ***'}")
+    if bad:
+        print("\nSELF-TEST FAILED -- a trust gate is not firing. Do not use")
+        print("this tool's verdicts until it passes.")
+        return 1
+    print("\nSELF-TEST PASSED -- every verdict and every withhold-gate fired")
+    print("exactly as designed.")
     return 0
 
 
@@ -354,13 +444,16 @@ def main() -> int:
     if not args.read:
         ap.error("give a HEX file to diff, or --self-test")
 
-    chip = load_hex(args.read)
+    chip, bad = load_hex(args.read)
     if not chip:
         sys.exit(f"no data parsed from {args.read} -- is it Intel HEX?")
-    vendor = load_hex(args.vendor)
+    vendor, vbad = load_hex(args.vendor)
     if not vendor:
         sys.exit(f"cannot read vendor image: {args.vendor}")
-    return analyse(chip, vendor)
+    if vbad:
+        sys.exit(f"vendor image has {vbad} malformed record(s): "
+                 f"{args.vendor} -- fix that before diffing anything")
+    return analyse(chip, vendor, bad_records=bad)
 
 
 if __name__ == "__main__":

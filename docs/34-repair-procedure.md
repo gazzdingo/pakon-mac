@@ -342,3 +342,51 @@ the application has not run yet. The board is halted, no motor has moved.
 
 **Next: power-cycle the scanner.** The cold boot runs the BIST — the code path
 that has hung on every cold boot until now. If it clears, `0x44` answers on I²C.
+
+### Functional confirmation — 2026-08-06
+
+Scanner brought up end to end on macOS, no Windows involved:
+
+```
+04b4:8613  bare FX2, no firmware        (boot EEPROM 0x51 is erased, so it
+                                         enumerates with Cypress defaults)
+  stage-1 loader downloaded, 4476 B via 0xA0
+  personality: id=0x5c vid=0f05 pid=f235 rev=aa07 -> key F235_AA07
+  stage-2 vendor/FX35/FX35Package/F135/Pakon7.hex, 10326 B
+0f05:f135  'Pakon F135-USB Film Scanner'   <- re-enumerated, firmware running
+```
+
+Presence probe (`tools/probe_picm_alive.py`), vendor criterion
+`04 03 <board> 00 00` after a fault-clear:
+
+```
+0x40  PICL / light board (U11, control)    07 02 40 00   ANSWERING
+0x44  PICM / motor board (U34, REPAIRED)   07 02 44 00   ANSWERING
+```
+
+Motor drive path (`tools/spin_motor.py`), the sequence from section 5(b):
+
+```
+02 05 44 02 a5 e8 03   set speed 1000    -> 07 02 44 00  ok
+04 03 44 00 a0         FORWARD           -> 07 02 44 00  ok
+04 03 44 00 a2         STOP              -> 07 02 44 00  ok
+```
+
+**U34 accepts register writes and motor commands.** The chip that hung in an
+infinite loop on every cold boot now boots, answers on I²C, and drives the
+transport. All panel lights green.
+
+Two mistakes worth recording, both caught only because the probe ran a
+known-good control alongside the repaired chip rather than the repaired chip
+alone:
+
+* a bare type-3 packet is not a presence test — it returns status 9 (bus error)
+  from a perfectly healthy board;
+* `0x40` is the PICL **application** and `0x42` is its bootloader, not the
+  reverse. Probing a bootloader address and reading its silence as a fault
+  would have been a false alarm.
+
+The write interlock was deliberately NOT lifted. `tools/spin_motor.py` and
+`tools/probe_picm_alive.py` are purpose-built, send only their documented
+packet shapes, refuse the bootloader addresses, and touch nothing
+non-volatile — so the eleven genuine write tools stay locked.

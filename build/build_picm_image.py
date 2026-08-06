@@ -16,11 +16,14 @@ PATCHES (docs/31-bootloader-recovered.md section 7)
 Every 'from' value is verified before patching. Any mismatch aborts.
 
 OUTPUT
-  picm-staged.hex  bootloader + app + config, NO EEPROM.
-                   A fresh chip reads 0xFF at EEPROM[0], which != 0xAA, so it
-                   STAYS IN THE BOOTLOADER and answers at I2C 0x46. Nothing
-                   moves. Verify over I2C before letting the app run.
-  picm-run.hex     same + EEPROM[0] = 0xAA, so the application starts.
+  picm-staged.hex  bootloader + app + config + EEPROM[0]=0x00, EEPROM[5]=0x00.
+                   EEPROM[0] != 0xAA, so the chip STAYS IN THE BOOTLOADER and
+                   answers at I2C 0x46 -- explicitly programmed rather than
+                   relying on the chip being erased (docs/31 section 7 item 1).
+                   EEPROM[5]=0x00 clears the persisted fault code so the app,
+                   when it eventually runs, does not show fault 0xF on the LED.
+                   Nothing moves. Verify over I2C before letting the app run.
+  picm-run.hex     same but EEPROM[0] = 0xAA, so the application starts.
 """
 import sys, os
 
@@ -70,21 +73,34 @@ def load(path):
 
 
 def emit(mem, path):
-    """Write Intel HEX, 16 bytes per record, with extended-address records."""
+    """Write Intel HEX, <=16 bytes per record, with extended-address records.
+
+    Emits ONLY the bytes present in mem -- records are split at gaps rather
+    than padded with 0xFF. Padding would invent bytes the sources never
+    contained (e.g. 0x30000E-0x30000F, which do not exist on a PIC18F452 and
+    can make a programmer's config write/verify complain or fail)."""
     out, ext = [], None
-    for base in range(0, max(mem) + 1, 16):
-        chunk = [(base + i, mem[base + i]) for i in range(16) if base + i in mem]
-        if not chunk:
-            continue
-        hi = base >> 16
-        if hi != ext:
-            ext = hi
-            rec = bytes([2, 0, 0, 4, (hi >> 8) & 0xFF, hi & 0xFF])
+    addrs = sorted(mem)
+    runs, start = [], addrs[0]
+    for prev, a in zip(addrs, addrs[1:]):
+        if a != prev + 1:
+            runs.append((start, prev))
+            start = a
+    runs.append((start, addrs[-1]))
+    for lo_a, hi_a in runs:
+        a = lo_a
+        while a <= hi_a:
+            n = min(16 - (a & 0xF), hi_a - a + 1)   # keep records 16-aligned
+            hi = a >> 16
+            if hi != ext:
+                ext = hi
+                rec = bytes([2, 0, 0, 4, (hi >> 8) & 0xFF, hi & 0xFF])
+                out.append(":" + (rec + bytes([(-sum(rec)) & 0xFF])).hex().upper())
+            data = bytes(mem[a + i] for i in range(n))
+            lo = a & 0xFFFF
+            rec = bytes([n, (lo >> 8) & 0xFF, lo & 0xFF, 0]) + data
             out.append(":" + (rec + bytes([(-sum(rec)) & 0xFF])).hex().upper())
-        data = bytes(mem.get(base + i, 0xFF) for i in range(16))
-        lo = base & 0xFFFF
-        rec = bytes([16, (lo >> 8) & 0xFF, lo & 0xFF, 0]) + data
-        out.append(":" + (rec + bytes([(-sum(rec)) & 0xFF])).hex().upper())
+            a += n
     out.append(":00000001FF")
     open(path, "w").write("\n".join(out) + "\n")
 
@@ -110,9 +126,15 @@ def main():
         print(f"  {addr:#06x}  {frm.hex(' '):<12} -> {to.hex(' '):<12}  {why}")
 
     app = {a: v for a, v in app_src.items() if APP_BASE <= a < 0x8000}
-    cfg = {a: v for a, v in app_src.items() if a >= 0x300000}
+    cfg = {a: v for a, v in app_src.items() if 0x300000 <= a <= 0x30000D}
     if not app or not cfg:
         sys.exit("ABORT: application or config missing from nm0506")
+    # nothing from the app source may be silently dropped
+    stray = {a for a in app_src} - set(app) - set(cfg)
+    if stray:
+        sys.exit(f"ABORT: app source has {len(stray)} bytes outside "
+                 f"0x{APP_BASE:04x}-0x7fff / config "
+                 f"(first at {min(stray):#08x}) -- refusing to drop them")
     print(f"\napplication 0x0400-{max(app):#06x}: {len(app)} bytes")
     print(f"config {min(cfg):#08x}-{max(cfg):#08x}: "
           + " ".join(f"{cfg[a]:02x}" for a in sorted(cfg)))
@@ -124,29 +146,45 @@ def main():
     base = {**boot, **app, **cfg}
     outdir = os.path.dirname(os.path.abspath(__file__))
 
+    # EEPROM (docs/31 section 7): [0] is the app-valid flag the bootloader
+    # tests against 0xAA at reset; [5] is the persisted fault code (0xFF would
+    # display as fault 0xF). Program [0] explicitly rather than trusting the
+    # chip to be erased.
+    EEP = 0xF00000
+    staged_img = {**base, EEP + 0: 0x00, EEP + 5: 0x00}
+    run_img    = {**base, EEP + 0: 0xAA, EEP + 5: 0x00}
+
     staged = os.path.join(outdir, "picm-staged.hex")
-    emit(dict(base), staged)
+    emit(staged_img, staged)
     run = os.path.join(outdir, "picm-run.hex")
-    emit({**base, 0xF00000: 0xAA}, run)
+    emit(run_img, run)
 
     print(f"\n  {staged}")
-    print(f"     no EEPROM -> fresh chip reads 0xFF at index 0, stays in the")
-    print(f"     bootloader, answers I2C 0x46. NOTHING MOVES. Program this first.")
+    print(f"     EEPROM[0]=0x00 != 0xAA -> stays in the bootloader, answers")
+    print(f"     I2C 0x46. NOTHING MOVES. Program this first.")
     print(f"  {run}")
     print(f"     EEPROM[0]=0xAA -> application runs, answers I2C 0x44.")
 
-    # read back and verify
+    # read back and verify BOTH directions: every intended byte present and
+    # correct, and not one byte in the file that we did not intend.
     print("\nverifying written files:")
-    for f in (staged, run):
+    ok = True
+    for f, img in ((staged, staged_img), (run, run_img)):
         m = load(f)
-        bad = [a for a in base if m.get(a) != base[a]]
-        print(f"  {os.path.basename(f)}: {len(m)} bytes, "
-              f"{'round-trips exactly' if not bad else f'*** {len(bad)} MISMATCH ***'}")
+        bad = [a for a in img if m.get(a) != img[a]]
+        extra = [a for a in m if a not in img]
+        verdict = ("round-trips exactly" if not bad and not extra
+                   else f"*** {len(bad)} MISMATCH / {len(extra)} EXTRA ***")
+        ok = ok and not bad and not extra
+        print(f"  {os.path.basename(f)}: {len(m)} bytes, {verdict}")
         for addr in sorted(PATCHES):
             to = PATCHES[addr][1]
             got = bytes(m.get(addr + i, 0xFF) for i in range(len(to)))
             if got != to:
+                ok = False
                 print(f"    *** patch {addr:#06x} not present: {got.hex(' ')}")
+    if not ok:
+        return 1
     return 0
 
 

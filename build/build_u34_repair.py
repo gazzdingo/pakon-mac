@@ -22,6 +22,27 @@ SOURCES -- everything comes off THIS chip except the application
 
 Aborts if the chip's application differs from the vendor image anywhere OTHER
 than the known erased row -- that would mean a second fault we have not seen.
+
+OUTPUTS (adversarial review 2026-08-06)
+  u34-repair.hex         exact restore + the row filled. EEPROM[0]=0xAA, so the
+                         application runs at the first cold boot after
+                         programming. Use only as the FALLBACK full-ICSP image,
+                         and prefer the staged variant even then.
+  u34-repair-staged.hex  identical except EEPROM[0]=0x00: the chip parks in its
+                         own bootloader (pins held safe, I2C at 0x46) until the
+                         host verifies the flash over I2C and starts the app
+                         with command 8; the app then sets 0xAA itself via
+                         `02 05 44 02 0a 00 aa`, the vendor update flow.
+  u34-stage-eeprom.hex   EEPROM region ONLY -- all 256 bytes are the chip's own
+                         values with index 0 = 0x00. For the recommended
+                         minimal-ICSP path: program EEPROM only (ipecmd -ME
+                         with -OH so nothing is bulk-erased), then do the whole
+                         flash repair through the chip's own bootloader over
+                         I2C, never erasing anything. Contains ALL 256 bytes
+                         deliberately, so a tool that pads the region cannot
+                         invent 0xFF over indices 1..255 (index 5 = 0x00 is the
+                         persisted-fault code; 0xFF there would read as fault
+                         0xF).
 """
 import sys, os
 
@@ -125,25 +146,44 @@ def main():
     if set(boot) & set(vend_app):
         sys.exit("ABORT: bootloader and application overlap")
 
-    img = {**boot, **vend_app, **cfg, **ee}
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "u34-repair.hex")
-    emit(img, out)
+    here = os.path.dirname(os.path.abspath(__file__))
+    if ee.get(EE_LO) != 0xAA:
+        sys.exit("ABORT: chip EEPROM[0] is not 0xAA -- staging logic assumes it")
 
-    # --- verify bidirectionally ---
-    back = load(out)
-    missing = [a for a in img if back.get(a) != img[a]]
-    extra   = [a for a in back if a not in img]
-    print(f"\n  {out}")
-    print(f"  round-trip: {len(missing)} missing/wrong, {len(extra)} invented")
-    if missing or extra:
-        sys.exit("ABORT: round-trip failed")
-    fixed = all(back.get(a) == vend_app[a] for a in range(*ERASED))
-    print(f"  the erased row is filled from the vendor image: {fixed}")
-    print(f"  total {len(img)} bytes")
-    if not fixed:
-        sys.exit("ABORT: the repair row is not present in the output")
-    print("\n  OK -- this restores the chip to exactly its previous state,")
-    print("  with the erased row at 0x0D00 filled in.")
+    ee_staged = dict(ee)
+    ee_staged[EE_LO] = 0x00            # != 0xAA -> park in the bootloader
+
+    images = [
+        ("u34-repair.hex",        {**boot, **vend_app, **cfg, **ee}),
+        ("u34-repair-staged.hex", {**boot, **vend_app, **cfg, **ee_staged}),
+        ("u34-stage-eeprom.hex",  dict(ee_staged)),
+    ]
+
+    for name, img in images:
+        out = os.path.join(here, name)
+        emit(img, out)
+
+        # --- verify bidirectionally ---
+        back = load(out)
+        missing = [a for a in img if back.get(a) != img[a]]
+        extra   = [a for a in back if a not in img]
+        print(f"\n  {out}")
+        print(f"  round-trip: {len(missing)} missing/wrong, {len(extra)} invented")
+        if missing or extra:
+            sys.exit("ABORT: round-trip failed")
+        if len(img) > 256:
+            fixed = all(back.get(a) == vend_app[a] for a in range(*ERASED))
+            print(f"  the erased row is filled from the vendor image: {fixed}")
+            if not fixed:
+                sys.exit("ABORT: the repair row is not present in the output")
+        print(f"  EEPROM[0] = {back.get(EE_LO):#04x}"
+              + ("  (staged: boots into the bootloader)"
+                 if back.get(EE_LO) != 0xAA else "  (app runs at power-up)"))
+        print(f"  total {len(img)} bytes")
+
+    print("\n  OK -- u34-repair.hex restores the chip to exactly its previous")
+    print("  state with the erased row at 0x0D00 filled in. The staged")
+    print("  variants differ from it in exactly one byte, EEPROM[0].")
     return 0
 
 

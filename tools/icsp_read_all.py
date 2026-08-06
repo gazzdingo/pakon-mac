@@ -627,7 +627,11 @@ def main() -> int:
 
     # No -W: omitting it means the target is externally powered (verified
     # against the installed ipecmd help). The board runs from its own supply.
-    dev = ["-P" + DEVICE, "-TP" + TOOL]
+    # -OD = "VDD First" (default is VPP First). Establishes and senses the
+    # target supply BEFORE energising the ~12V VPP, which is the safer ordering
+    # on a header whose pinout we have not fully verified. Found in the
+    # installed ipecmd's own help, 2026-08-05.
+    dev = ["-P" + DEVICE, "-TP" + TOOL, "-OD"]
     # NOTE: -GF<file> reads the ENTIRE device to file; it does not select a
     # region (regions are -GP/-GE/-GI/-GC). So these are FIVE independent
     # full-device reads. Five is the owner's requirement: comparing their

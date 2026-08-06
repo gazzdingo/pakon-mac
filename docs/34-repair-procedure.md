@@ -393,3 +393,45 @@ non-volatile — so the eleven genuine write tools stay locked.
 
 **Confirmed by the owner: the motor physically turned.** The repair is complete
 and the machine is working.
+
+## 8. After the repair: light board and sensor — 2026-08-06
+
+**Sensor (EP 0x86) is live and has CHANGED.** Read-only, no acquisition started:
+
+```
+sample means  2598 / 2562 / 2434     min ~1092   max ~3486
+```
+
+`docs/06-roadmap.md:161` records this stream as pinned near a dark baseline of
+~1242 and unresponsive. It now sits ~2531 with a real distribution. PICM drives
+CCD timing, so the repair is a plausible cause — **flagged as a difference to
+investigate, not a conclusion.**
+
+**Light board register reads work** (`tools/lamp_status.py`, type-1
+`01 03 40 <len> <reg>`). Verified the register field is genuinely honoured
+rather than assumed: different registers return different payloads, and an
+invalid register `0xff` returns status `0xa8` with the `0x20` fault bit set,
+where valid ones return `0x88`.
+
+But the values are **live state, not calibration**: `0x83` read `0x10` on one
+pass and `0xa0` on the next, and `0x80` read `0x40` then `0x80`. They change
+between reads.
+
+### So the lamp stays off, deliberately
+
+Lighting it needs `0x81` (5 B levels) and `0x82` (12 B duty cycles) plus
+setpoints `0x8B`–`0x8F`, and `docs/14` is explicit that these are per-unit
+calibration and that guessing risks unrecoverable damage to the LED array or
+its TEC. Register reads that vary between passes are not that data.
+
+**The light test becomes possible once the calibrated values come from a source
+that can be trusted**, in preference order:
+
+1. **The 0x52 calibration EEPROM, already backed up** —
+   `backups/eeprom-i2c/eeprom_52.bin`, 254/256 bytes, sha256 `675cf1cff78a2e0f…`.
+   Per-unit data already in hand. Offline analysis, zero hardware risk. Start here.
+2. The vendor `CalibrationGetLightLED` / `FN_GetCalibrateInfoLight` path,
+   decoded from TLB.dll.
+3. A lamp log (`PakonLampLog.txt`) from a working scanner, per `docs/14:255`.
+
+None of that needs the machine powered, and none of it can hurt the illuminant.

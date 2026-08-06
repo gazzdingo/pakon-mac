@@ -51,7 +51,17 @@ HOST = 0x10
 
 REGS = [(0x80, 1, "enable bitmask (1=visible 2=IR 3=both)"),
         (0x83, 1, "lamp status"),
-        (0x84, 2, "lamp temperature")]
+        (0x84, 2, "lamp temperature"),
+        # The values needed to light the lamp safely. If the board already
+        # holds its calibrated values, reading them means nothing has to be
+        # invented -- which is the whole blocker. Reads cannot harm anything.
+        (0x81, 5, "LED LEVELS      <- per-unit calibration"),
+        (0x82, 12, "LED DUTY CYCLES <- per-unit calibration"),
+        (0x8B, 2, "temp setpoint 0x8B"),
+        (0x8C, 2, "temp setpoint 0x8C"),
+        (0x8D, 2, "temp setpoint 0x8D"),
+        (0x8E, 2, "temp setpoint 0x8E"),
+        (0x8F, 2, "temp setpoint 0x8F")]
 
 
 def open_scanner():

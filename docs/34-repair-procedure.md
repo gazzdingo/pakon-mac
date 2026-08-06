@@ -1,6 +1,7 @@
 # U34 repair — diagnosis, artifacts, procedure
 
-Status: **image built and verified; nothing programmed yet.**
+Status: **PROGRAMMED AND VERIFIED 2026-08-06 16:08. Chip restored, row repaired,
+currently STAGED (parks in bootloader). Un-stage pending.**
 Date: 2026-08-06. Supersedes the chip-replacement plan in `docs/31`.
 
 ---
@@ -272,3 +273,49 @@ than driving motors unsupervised. Then read back and diff against the image.
 
 **Current state is safe to leave**: blank flash simply does not run. No motor
 can move. The board may sit like this indefinitely.
+
+
+---
+
+## 7. OUTCOME — repair programmed and verified, 2026-08-06 16:08
+
+The PICkit 3 link wedged after the EEPROM write (`Connection Failed` before
+reaching the target, with the chip fine). **A physical unplug/replug of the
+PICkit 3 fixed it** — note this for next time; it is not a chip fault and no
+amount of software poking recovers it.
+
+`u34-repair-staged.hex` programmed with `-M -OD -OV`. Independent read-back
+(`u34-full-I-postrepair.hex`), not IPE's own verify:
+
+```
+chip vs intended image        : 0 differences
+chip vs original backup       : 65 changed, and ONLY these:
+    repaired row 0x0D00-0x0D3F : 64/64
+    EEPROM[0] aa -> 00         : 1  (the staging byte)
+    anything else              : 0
+bootloader 0x0000-0x03FF      : 705 non-0xFF  (exact match, intact)
+0x0400 = EFE1  reset vector   OK
+0x1A8C = 0E36  SSPEN          OK
+0x2C62 = 0E44  I2C address    OK
+0x0D1E = 3F51  MOVF 0x3F,W    <- the loop exit test, restored
+0x0D22 = 1FE3  BNC 0x0D62     <- the way out of the hang, restored
+```
+
+**The infinite loop is gone.** The row that trapped every cold boot now holds
+its original code, and nothing else on the device changed.
+
+### Remaining step: un-stage
+
+`EEPROM[0] = 0x00`, so the chip parks in its bootloader and does not run the
+application. Two ways to finish:
+
+* **ICSP** — program `build/u34-repair.hex` (identical but `EEPROM[0]=0xAA`).
+  Works now; costs one more full erase+program cycle, which is fine because the
+  image is complete and verified.
+* **I²C** — the vendor path (`04 03 46 00 08`, then `02 05 44 02 0a 00 aa`).
+  Needs the scanner connected to USB; it is not currently enumerated.
+
+Note the staging's original purpose — verifying over I²C before running — is
+already satisfied, and more strongly: the full-device ICSP read-back above
+compares every byte against the intended image, which the I²C read-back could
+not have bettered.

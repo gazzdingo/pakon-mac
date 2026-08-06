@@ -23,6 +23,20 @@ You only need **MPLAB IPE**, not the full IDE. No compilers needed.
 The header is **JM11**, the 5-pin one beside the 44-pin chip marked
 `125507A 2208`. The board is silkscreened: **pin 1 left, pin 5 right**.
 
+**VERIFIED WITH A METER, 2026-08-05 — this is no longer an assumption:**
+
+| JM11 | -> U11 pin | Measured | Signal |
+|---|---|---|---|
+| 1 | 18 | 780 ohm | **MCLR/VPP** |
+| 2 | 28 | connected | VDD |
+| 3 | chassis ground | connected | VSS |
+| 4 | 17 | 100 ohm | PGD (data) |
+| 5 | 16 | 100 ohm | PGC (clock) |
+
+Standard ICSP order, straight through. The series resistors on 1/4/5 are normal
+and are why a continuity beep test shows nothing on those pins -- use resistance
+mode, not continuity, if you re-check.
+
 | PICkit 3 pin | JM11 pin |
 |---|---|
 | **1** (the ▲ arrow on the case) | 1 (left) |

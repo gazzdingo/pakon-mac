@@ -223,3 +223,52 @@ EEPROM-only write restores `0xAA`. The un-stage path is the vendor's own.
 5. **A sparse EEPROM file** would risk a padding tool wiping index 5 (`0x00` = no
    fault) to `0xFF` (= fault `0xF` on the LED). All three artifacts deliberately
    carry the full 256 bytes.
+
+---
+
+## 6. LIVE STATUS — 2026-08-06, mid-procedure. READ THIS FIRST.
+
+**U34's flash is currently BLANK.** Fully recoverable; the image is on disk.
+
+### What happened
+
+1. Device ID read: `PIC18F452 found, Revision ID 7`, target voltage detected.
+2. Full `-GF` read → **bit-identical to `u34-full-A.hex`** (sha256 `c786015b…`,
+   11160 non-`0xFF` bytes). Saved as `backups/u34-picm/u34-full-G-preflash.hex`.
+   That is a 7th agreeing read.
+3. Ran Phase 1 exactly as written:
+   `ipecmd -P18F452 -TPPK3 -Fbuild/u34-stage-eeprom.hex -ME -OH -OD -OV`
+4. The tool printed **`Device Erased...`** and then programmed EEPROM.
+5. Read-back: flash **blank** — 20 non-`0xFF` bytes left, `EEPROM[0]=0x00`
+   (the staging byte did take). Saved as `u34-full-H-postbulkerase.hex`.
+
+### The finding — correct this in the procedure
+
+> **`-OH` does NOT suppress erase-all on ipecmd v5.50 with `-ME`.**
+> The help text's three-column reading was right about the flag's *meaning*;
+> the tool simply does not honour it in this combination. A region-scoped
+> `-M<region>` program still bulk-erases the device first.
+
+**Consequence: there is no "EEPROM-only write" on this toolchain.** The staged
+I²C procedure in §4 loses its safety advantage over ICSP, because reaching the
+staged state itself costs a full erase. Any ICSP write here is a full-device
+write, so the only safe form is: program the complete verified image, always.
+
+Fable flagged uncertainty about `-OH` and was right to. My verification
+established what the flag means, not that it is obeyed — those are different
+claims and only the second one mattered.
+
+### Recovery — the pending action
+
+Program the full verified image. Nothing is lost; `u34-repair-staged.hex`
+contains bootloader + application (with the row repaired) + config + EEPROM.
+
+```
+ipecmd -P18F452 -TPPK3 -Fbuild/u34-repair-staged.hex -M -OD -OV
+```
+
+Staged (`EEPROM[0]=0x00`) so the board returns parked in its bootloader rather
+than driving motors unsupervised. Then read back and diff against the image.
+
+**Current state is safe to leave**: blank flash simply does not run. No motor
+can move. The board may sit like this indefinitely.

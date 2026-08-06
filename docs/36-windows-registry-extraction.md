@@ -2,9 +2,71 @@
 
 **Goal: recover this scanner's lamp calibration from the Windows registry.**
 
+## The repo
+
+```
+https://github.com/gazzdingo/pakon-mac.git      branch: main
+```
+
+If the repo is already on this machine, find it and make sure it is current:
+
+```cmd
+dir /s /b C:\pakon-mac\.git 2>nul
+dir /s /b %USERPROFILE%\pakon-mac\.git 2>nul
+cd /d <the directory containing .git>
+git checkout main
+git pull
+```
+
+If it is not on this machine, clone it:
+
+```cmd
+cd /d %USERPROFILE%
+git clone https://github.com/gazzdingo/pakon-mac.git
+cd pakon-mac
+```
+
+You are reading this file at `docs/36-windows-registry-extraction.md`. Work in
+the repo root; every path below is relative to it. Push to `main` on `origin`
+when done — that is the same remote the Mac side pulls from, so pushing is how
+the results get back.
+
+If `git push` asks for credentials and you have none, **do not stop there** —
+commit locally anyway, then say so, and report the exported values inline in
+your final message so nothing is lost.
+
+---
+
 Everything here is **read-only** on the Windows side — registry *exports* and
 file copies. Nothing is written to the registry, nothing is installed, and the
 scanner does not need to be connected or powered.
+
+## The environment you are in — read this before interpreting results
+
+**This is a Parallels VM on an Apple Silicon Mac, not a physical PC.** The
+scanner has never successfully attached to it — USB passthrough for this device
+never worked on Apple Silicon.
+
+That matters for how you read a negative result:
+
+* **The scanner being absent is expected and is not a problem.** Nothing here
+  needs it connected. Do not try to attach it or troubleshoot USB.
+* **What we are hoping for is inherited data.** If this VM was migrated,
+  restored, or imaged from the older Windows machine that actually ran the
+  scanner, the calibration will have come across in the registry even though
+  the scanner was never attached *to the VM*. That is the whole bet.
+* **If the VM is a clean Windows install** that only ever had the Pakon software
+  copied onto it, the keys will be absent or will hold defaults. Say so
+  clearly — that is a decisive answer and it redirects us to the original
+  physical machine instead.
+
+So when you report, be explicit about **which of those two the VM is**, as far
+as you can tell. Evidence worth checking: Windows install date, whether a Pakon
+uninstall entry exists, whether there is a user profile older than the VM
+itself, and whether any Pakon log files predate the VM's creation.
+
+Distinguishing "the values are not here" from "the values are here but are
+factory defaults" is the single most useful thing you can determine.
 
 ## Why this is needed
 

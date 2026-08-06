@@ -319,3 +319,26 @@ Note the staging's original purpose — verifying over I²C before running — i
 already satisfied, and more strongly: the full-device ICSP read-back above
 compares every byte against the intended image, which the I²C read-back could
 not have bettered.
+
+### Un-staged and final — 2026-08-06 16:11
+
+`build/u34-repair.hex` programmed. Final independent read-back
+(`backups/u34-picm/u34-full-J-final.hex`):
+
+```
+chip vs intended image  : 0 differences
+chip vs ORIGINAL backup : 64 changed -- the repaired row, and NOTHING else
+    EEPROM                 : 0 changed, EEPROM[0] = 0xAA (runs the app)
+    anything else          : 0
+bootloader                 : 705 non-0xFF, intact
+0x0400 EFE1 / 0x1A8C 0E36 / 0x2C62 0E44   all correct
+```
+
+**The chip is now byte-identical to its original state except the 64 bytes that
+were erased, which hold their correct vendor code.** That is the whole repair.
+
+ipecmd's default is *hold in reset* (`-OL` releases it, and was not passed), so
+the application has not run yet. The board is halted, no motor has moved.
+
+**Next: power-cycle the scanner.** The cold boot runs the BIST — the code path
+that has hung on every cold boot until now. If it clears, `0x44` answers on I²C.

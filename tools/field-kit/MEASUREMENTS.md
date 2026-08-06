@@ -13,7 +13,7 @@ Measured in **resistance mode** (20 kΩ range):
 
 | JM11 pin | Connects to | Measured | Signal |
 |---|---|---|---|
-| **1** | U11 pin 18 | **0.78 kΩ (780 Ω)** | MCLR / VPP |
+| **1** | U11 pin 18 | **0.47 kΩ (470 Ω)** | MCLR / VPP |
 | **2** | U11 pin 28 | connected | VDD |
 | **3** | chassis ground | connected | VSS |
 | **4** | U11 pin 17 | **0.10 kΩ (100 Ω)** | PGD (data) |

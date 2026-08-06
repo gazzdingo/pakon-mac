@@ -27,7 +27,7 @@ The header is **JM11**, the 5-pin one beside the 44-pin chip marked
 
 | JM11 | -> U11 pin | Measured | Signal |
 |---|---|---|---|
-| 1 | 18 | 780 ohm | **MCLR/VPP** |
+| 1 | 18 | 470 ohm | **MCLR/VPP** |
 | 2 | 28 | connected | VDD |
 | 3 | chassis ground | connected | VSS |
 | 4 | 17 | 100 ohm | PGD (data) |

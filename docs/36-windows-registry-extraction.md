@@ -1,5 +1,22 @@
 # Brief for the agent on the Windows machine
 
+> **STATUS 2026-08-06 — SUPERSEDED FOR THE LAMP QUESTION. DO NOT RUN THIS.**
+>
+> The calibration was recovered on the Mac instead, by carving the SOFTWARE hive
+> straight out of the VM's virtual disk. The VM was never booted (its Parallels
+> licence has expired anyway). Results, and the important caveat about *whose*
+> scanner they belong to, are in **`vendor/windows-registry/NOTES.md`**.
+>
+> Headline: the values exist and are real, but the VM is a prebuilt Pakon XP
+> image from the Facebook community, registered to `Pakon F135`, installed
+> 2016-06-23 — not an image of our original machine. The calibration in it is
+> for **scanner serial 16275**, which must be checked against the physical unit
+> before any of it is used to drive the LEDs.
+>
+> The rest of this brief is kept for the parts not yet answered — the lamp log,
+> the Pakon install directory files, and anything on the *original physical
+> machine*, which is now the place worth looking.
+
 **Goal: recover this scanner's lamp calibration from the Windows registry.**
 
 ## The repo

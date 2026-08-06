@@ -9,3 +9,8 @@ vendor/
 
 # Large research binaries - kept on disk, not in git history
 research/sdk/*.iso
+
+# MPLAB drops logs wherever it is run from
+MPLABXLog.xml
+tools/MPLABXLog.xml
+log.*

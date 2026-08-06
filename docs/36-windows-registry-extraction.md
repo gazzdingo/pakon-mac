@@ -135,8 +135,9 @@ reg query HKLM\SOFTWARE\WOW6432Node\Kodak /s >> %USERPROFILE%\Desktop\kodak_tree
 ```
 
 **Report what you found even if it is nothing.** A confirmed absence is a real
-result — it tells us the software was never run on this machine, and we stop
-looking here.
+result — it means nothing was inherited from the original machine, and it sends
+us to that physical machine instead of leaving us guessing here. Step 4 is what
+makes that reading safe, so do it whether or not the search hits.
 
 ### 2. Export the whole containing tree
 
@@ -168,7 +169,69 @@ dir /s /b "C:\Program Files (x86)\Pakon" 2>nul >> %USERPROFILE%\Desktop\pakon_fi
 Copy any `*.ini`, `*.cal`, `*LampLog*`, or `Config\` contents you find under the
 Pakon install directory.
 
-### 4. Commit and push
+### 4. Establish where this machine came from — do this even if step 1 found nothing
+
+This is the step that decides what any result means, so treat it as equal in
+weight to the search itself. All read-only.
+
+**Windows install date** — if it predates the VM, this image was carried over
+from the physical machine:
+
+```cmd
+systeminfo | findstr /i "Original Install Date"
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v InstallDate
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v InstallTime
+```
+
+**Pakon uninstall entry** — a real install leaves one; software merely copied in
+does not:
+
+```cmd
+reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall /s /f Pakon > %USERPROFILE%\Desktop\uninstall.txt 2>&1
+reg query HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall /s /f Pakon >> %USERPROFILE%\Desktop\uninstall.txt 2>&1
+reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall /s /f Kodak >> %USERPROFILE%\Desktop\uninstall.txt 2>&1
+```
+
+**Profile ages** — a user profile older than the VM is inherited, full stop:
+
+```cmd
+dir /ad /tc C:\Users
+reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList" /s > %USERPROFILE%\Desktop\profiles.txt 2>&1
+```
+
+**Whether the scanner was ever attached to whatever machine this image came
+from.** The scanner has never attached to *this VM* — but if the image is
+inherited, the original machine's device history came with it, and that is
+strong evidence the calibration did too:
+
+```cmd
+reg query HKLM\SYSTEM\CurrentControlSet\Enum\USB /s /f Pakon > %USERPROFILE%\Desktop\usbhist.txt 2>&1
+reg query HKLM\SYSTEM\CurrentControlSet\Enum\USB /s /f F-135 >> %USERPROFILE%\Desktop\usbhist.txt 2>&1
+findstr /i /c:"pakon" C:\Windows\INF\setupapi.dev.log > %USERPROFILE%\Desktop\setupapi_hits.txt 2>&1
+```
+
+**Dates on any Pakon files and logs** — `/tc` is creation, `/tw` last write.
+Anything predating the VM is inherited:
+
+```cmd
+dir /s /tc "C:\Program Files (x86)\Pakon" > %USERPROFILE%\Desktop\pakon_dates.txt 2>&1
+dir /s /tc C:\PakonLampLog.txt >> %USERPROFILE%\Desktop\pakon_dates.txt 2>&1
+```
+
+Report the raw dates rather than judging them — you may not know when this VM
+was created, and we do. Copy those five output files into the repo alongside the
+registry exports.
+
+**If step 1 did find values, this step is what tells us whether to trust them.**
+Values that are present *and* inherited are what we are after. Values that are
+present on a clean install are factory defaults, and defaults are worse than
+nothing: driving this unit's LEDs from another unit's numbers risks destroying
+the illuminant. So also note anything that smells like a default — all four
+channels identical, suspiciously round figures, every value at zero — and quote
+them verbatim rather than summarising, so we can compare against the defaults in
+the binary ourselves.
+
+### 5. Commit and push
 
 Put everything under `vendor/windows-registry/` in the repo on that machine:
 
@@ -178,16 +241,37 @@ vendor/windows-registry/
     find_hklm.txt           the search output, even if empty
     pakon_files.txt
     PakonLampLog.txt        if it exists
+    uninstall.txt           \
+    profiles.txt             |
+    usbhist.txt              |  step 4 — provenance evidence
+    setupapi_hits.txt        |
+    pakon_dates.txt         /
     NOTES.md                see below
 ```
 
-Write a short `NOTES.md` recording, plainly:
+Write a short `NOTES.md`. Lead with the verdict, in one of these three forms,
+because it is the thing we actually need:
+
+* **absent** — the values are not on this machine;
+* **present and inherited** — the values are here and the evidence says this
+  image came from the machine that ran the scanner;
+* **present but probably default** — the values are here but this looks like a
+  clean install, so they are not this unit's.
+
+Say which one and what evidence took you there. If the evidence is mixed or
+thin, say *that* rather than picking a side — an honest "cannot tell, here is
+what I saw" is worth more to us than a confident guess, because we act on this.
+
+Then record, plainly:
 
 * which registry paths existed and which did not;
 * whether `Current_R` was found, and under exactly which key;
+* the install date, uninstall entries, profile ages, and file dates from step 4,
+  as raw values;
 * whether the Pakon software is actually installed on this machine, and its
   version if visible;
-* whether this machine was ever connected to the scanner, if you can tell.
+* whether any evidence suggests the *original* machine was connected to the
+  scanner — remembering that this VM never was, and never needed to be.
 
 Then commit and push:
 

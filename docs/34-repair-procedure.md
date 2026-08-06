@@ -390,3 +390,6 @@ The write interlock was deliberately NOT lifted. `tools/spin_motor.py` and
 `tools/probe_picm_alive.py` are purpose-built, send only their documented
 packet shapes, refuse the bootloader addresses, and touch nothing
 non-volatile — so the eleven genuine write tools stay locked.
+
+**Confirmed by the owner: the motor physically turned.** The repair is complete
+and the machine is working.

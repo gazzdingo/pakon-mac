@@ -109,15 +109,15 @@ Curve helpers — status
 * ``0x10292c50`` / ``0x10292cb0``: **ported + Unicorn-golden** (see
   ``curve_log_ratio_c50`` / ``curve_log_ratio_cb0``). Consts ``0.999`` @
   ``0x105a3c08``, clamps ``±2000`` @ ``0x105a77b0`` / ``0x105a77a8``.
-* ``0x10292d30`` / ``0x10292d80``: equations **cited** (Unicorn hooks;
-  host funcs + golden harness **not** landed). ``d30(a,b,c) =
+* ``0x10292d30`` / ``0x10292d80``: **ported + Unicorn-golden**
+  (``curve_exp_d30`` / ``curve_exp_d80``). ``d30(a,b,c) =
   c·exp(b/c)·(1−exp(−a/c))``; ``d80`` branches on ``b`` vs ``c``
   (sign of ``c`` flips the inequality) to ``d30(a,c,d)`` or
   ``d·(1−exp(−a/d))``. Const ``−1.0`` @ ``0x10574f58``.
 * ``0x10293330`` / ``0x10293410`` / dispatcher ``0x10293510``:
-  call graph + consts **cited** (seed ``1.1`` @ ``0x10579a80``,
-  tol ``0.1`` @ ``0x105a77a0``, ``edx=100``); host Newton ports +
-  golden harness **not** landed.
+  **ported + Unicorn-golden** (``curve_newton_330`` / ``410`` /
+  ``curve_dispatch_93510``). Seed ``1.1`` @ ``0x10579a80``,
+  tol ``0.1`` @ ``0x105a77a0``, ``edx=100``.
 * ``0x10293960`` (~994 B): setup **mapped** (Unicorn hooks) — not a
   complete host fill:
 
@@ -171,8 +171,8 @@ UNKNOWN / blockers (honest)
   uses linked-percentile **STAND-IN** (``working-images-v1``); do **not**
   claim that stand-in is Shasta.
 
-Log-ratio leaves are Unicorn-golden; exp/Newton/fill remain open — **not**
-a toneLut by themselves.
+Log-ratio + exp + Newton/dispatch leaves are Unicorn-golden but **not** a
+toneLut by themselves (fill + aims still open).
 """
 from __future__ import annotations
 
@@ -191,8 +191,9 @@ SHASTA_APPLY_PORTED = False
 SHASTA_TONE_LUT_FRAGMENTS = True
 # Unicorn-golden closed forms for 0x10292c50 / 0x10292cb0 (not full curve).
 SHASTA_CURVE_LOG_RATIO_PORTED = True
-# Exp / Newton / dispatcher: equations cited; host port + golden = False.
+# Unicorn-golden 0x10292d30 / 0x10292d80.
 SHASTA_CURVE_EXP_PORTED = True
+# Unicorn-golden 0x10293510 + 0x10293330 / 0x10293410 (fill still open).
 SHASTA_CURVE_DISPATCH_PORTED = True
 
 # CapabilityImpl getToneLut / setToneLut (int32 toneLut)

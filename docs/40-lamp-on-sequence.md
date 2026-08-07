@@ -149,7 +149,7 @@ That is independent of the timestamp argument and of the owner's confirmation.
 Fable's report says the flag=0 path is "proven empirically, twice", one of which
 is *"this project's own operator-confirmed lamp-on"*. **Discount that one.** It
 traces to `docs/06`'s stage-4 row ("lamp visually confirmed"), which
-`docs/14` supersedes and which `docs/38` corrected today — the lamp has never
+`docs/14` supersedes and which `docs/42` corrected today — the lamp has never
 lit in this project.
 
 The conclusion does not depend on it. The remaining evidence is strong:
@@ -224,7 +224,7 @@ the vendor does:
   `ColNegIr`, the recovered calibration is confirmed against the physical unit,
   and the serial question answers itself for free.
 
-It does require working CCD acquisition (`docs/38` §B/C), so it is gated behind
+It does require working CCD acquisition (`docs/42` §B/C), so it is gated behind
 that. Until acquisition works, the recovered values plus the §5 sequence remain
 the route — but if acquisition lands first, prefer the search.
 

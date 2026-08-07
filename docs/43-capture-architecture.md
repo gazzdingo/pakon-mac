@@ -109,7 +109,7 @@ Steps 1, 2, 7, 9 and 11 already work. The gating unknowns are 4 (lamp), 6/8
 ## 4. Order of attack
 
 1. **Characterise EP 0x86** — free, read-only, and it may show the stream is
-   already structured (see `docs/38` §B).
+   already structured (see `docs/42` §B).
 2. **Async capture benchmark** — 60 s sustained, count drops. Settles the
    language question with data instead of opinion.
 3. **Lamp**, once the encoding is confirmed safe.

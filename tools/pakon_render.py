@@ -93,24 +93,40 @@ import pakon_ansel as ansel     # noqa: E402
 # parameter model
 # --------------------------------------------------------------------------
 
-# RPD is density x LUT_SCALE / 8  (pakon_color: LUT[i] = -3500*log10(i/16383),
-# kernel divides the 3x4 accumulate by COEFF_FIXED*8). So one density unit is
-# 3500/8 = 437.5 RPD counts, and the UI's "balance unit" is 0.01 D.
-DENSITY_TO_RPD = pc.LUT_SCALE / 8.0        # 437.5 counts per 1.00 D
-BALANCE_UNIT_RPD = DENSITY_TO_RPD / 100.0  # 4.375 counts per balance unit
+# Where user corrections enter, and in what unit.
+#
+# They are applied to the *toned* RPD, after AnselEngine.render_scene and
+# before to_srgb. That is forced by the pipeline, not a preference:
+# render_scene ends in aim_medians(), which rescales each channel's median to
+# the SBA neutralBalancePoint (1550). Anything added upstream of that — for
+# instance in the 3x4 matrix offset column — is normalised straight back out,
+# and a density slider placed there measurably does nothing.
+#
+# The unit is the vendor's own: codeValuesPerButton from the shipped Shasta
+# DPI file (75.0 for this stock; pakon_shasta.py:236 uses it as
+# `a = fist(stops * aggr * codeValuesPerButton + 0.5)`). One UI step is one
+# button, exactly as PSI's per-frame density/colour keys worked.
+#
+# Deliberately NOT expressed in D-units, which is what design/frame.html
+# labels them: after the Shasta and FUGC tone LUTs the code values are no
+# longer linear in density, so a D conversion here would be invented.
+#
+# With every offset at zero nothing is added at all, so the default render
+# stays byte-for-byte the pipeline's own output.
+RPD_PER_DENSITY = pc.LUT_SCALE / 8.0       # 437.5 counts per 1.00 D, pre-Ansel
 
 #: render steps — decimation of both axes before the expensive colour stages.
 SCALES = {"thumb": 8, "preview": 4, "display": 2, "full": 1}
 
 DEFAULT_PARAMS: dict = {
-    # --- colour: the vendor's own per-frame control, the 3x4 matrix offset
-    # column. PSI exposed exactly this (density + three colour offsets) and
-    # docs/11 §5 keeps it as offsets on top of the roll balance, never a
+    # --- colour: the vendor's per-frame control, in vendor button-steps.
+    # PSI exposed exactly this shape (density + three colour offsets) and
+    # docs/11 §5 keeps them as offsets on top of the roll balance, never a
     # replacement for it. Nothing else touches pixel values.
-    "density": 0.0,       # D-units, + is brighter
-    "red": 0.0,           # balance units (0.01 D), + red / - cyan
-    "green": 0.0,         # + green / - magenta
-    "blue": 0.0,          # + blue / - yellow
+    "density": 0.0,       # steps, + is brighter (all three channels)
+    "red": 0.0,           # steps, + red / - cyan
+    "green": 0.0,         # steps, + green / - magenta
+    "blue": 0.0,          # steps, + blue / - yellow
     # --- geometry: selects pixels, never alters them
     "rotate": 0,          # 0 / 90 / 180 / 270, clockwise
     "flip_h": False,
@@ -349,8 +365,15 @@ class Roll:
     def cache_path(self) -> Path:
         return Path(self.workspace) / "rgb14.npy"
 
+    #: serialised fields, listed rather than derived — ``asdict`` would try to
+    #: deep-copy the memmap and the lock.
+    JSON_FIELDS = ("id", "name", "capture", "workspace", "lines", "stock",
+                   "dx", "film_path", "sba_key", "sba_default", "sync",
+                   "auto_offsets", "roll_scale", "trace", "created",
+                   "data_dir", "ansel_root", "transport_scale")
+
     def to_json(self) -> dict:
-        d = {k: v for k, v in asdict(self).items() if not k.startswith("_")}
+        d = {k: getattr(self, k) for k in self.JSON_FIELDS}
         d["frames"] = [asdict(f) for f in self.frames]
         return d
 
@@ -605,14 +628,25 @@ def _apply_geometry(img: np.ndarray, p: dict) -> np.ndarray:
     return np.ascontiguousarray(img)
 
 
-def offset_column(roll: "Roll", p: dict) -> np.ndarray:
-    """Roll auto offsets + this frame's user offsets — the 3x4 matrix offset
-    column, which is the only place a user control enters the colour path."""
-    return (np.asarray(roll.auto_offsets, dtype=np.float64)
-            + np.array([p["red"] * BALANCE_UNIT_RPD,
-                        p["green"] * BALANCE_UNIT_RPD,
-                        p["blue"] * BALANCE_UNIT_RPD])
-            + p["density"] * DENSITY_TO_RPD)
+def correction_steps(p: dict) -> np.ndarray:
+    """This frame's user correction, in vendor button-steps, per channel."""
+    d = float(p.get("density") or 0.0)
+    return np.array([float(p.get("red") or 0.0) + d,
+                     float(p.get("green") or 0.0) + d,
+                     float(p.get("blue") or 0.0) + d], dtype=np.float64)
+
+
+def apply_correction(toned: np.ndarray, p: dict, eng) -> np.ndarray:
+    """User steps on the toned RPD — after the auto chain, before the ICC hop.
+
+    Returns ``toned`` untouched when every step is zero, which is what keeps
+    the default render byte-identical to the pipeline.
+    """
+    steps = correction_steps(p)
+    if not steps.any():
+        return toned
+    cv = float(getattr(eng.shasta, "code_values_per_button", 75.0))
+    return np.clip(toned + (steps * cv).reshape(1, 1, 3), 0, ansel.SHASTA_MAX)
 
 
 def render_frame(roll: Roll, index: int, params: dict | None = None,
@@ -630,13 +664,15 @@ def render_frame(roll: Roll, index: int, params: dict | None = None,
     step = SCALES.get(scale, 4)
 
     seg = roll.slice14(f.a, f.b, step)
-    rpd16 = _rpd16(seg, roll.data_dir, offset_column(roll, p))
+    rpd16 = _rpd16(seg, roll.data_dir,
+                   np.asarray(roll.auto_offsets, dtype=np.float64))
     rpd12 = ansel.rpd16_to_rpd12(rpd16)
 
     eng = roll.engine()
     scale_v = (np.asarray(roll.roll_scale, dtype=np.float64)
                if roll.roll_scale else None)
     toned = _quiet(eng.render_scene, rpd12, scale_v)
+    toned = apply_correction(toned, p, eng)
     srgb = _quiet(eng.to_srgb, toned)
 
     img = dec.to_frame_image(srgb, roll.transport_scale)
@@ -736,9 +772,14 @@ def export_frame(roll: Roll, index: int, dest: Path, fmt: str = "tiff",
     out = dest / render_name(template, roll, index, ext)
 
     if colour == "linear":
-        # the vendor's "Save As Raw": 16-bit RPD, no ICC hop. Genuinely 16-bit.
+        # The vendor's "Save As Raw": 16-bit RPD, no Ansel, no ICC hop.
+        # Per-frame steps are NOT baked in — they are a correction to the
+        # rendered result, and this file is deliberately the data before that.
+        # A "one step" equivalent in the RPD domain would be a made-up
+        # conversion across the Shasta/FUGC LUTs, so it is not attempted.
         seg = roll.slice14(f.a, f.b, 1)
-        rpd16 = _rpd16(seg, roll.data_dir, offset_column(roll, p))
+        rpd16 = _rpd16(seg, roll.data_dir,
+                       np.asarray(roll.auto_offsets, dtype=np.float64))
         img16 = _apply_geometry(
             dec.to_frame_image(rpd16, roll.transport_scale), p)
         out = out.with_suffix(".tif")

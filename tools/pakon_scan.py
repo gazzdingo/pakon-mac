@@ -905,17 +905,25 @@ def watch_parent(cancel: Cancel) -> None:
     does not have to send anything, and it does not have to exit cleanly: a
     SIGKILLed parent still has its file descriptors closed by the kernel, and
     that is what reaches us here.
+
+    ``os.read`` on the raw descriptor, not ``sys.stdin.buffer.read``. This is a
+    daemon thread that is normally still blocked here when the scan ends, and
+    a daemon thread holding a BufferedReader's lock at interpreter shutdown
+    makes CPython abort with SIGABRT ("could not acquire lock ... at
+    interpreter shutdown"). It did, on the first end-to-end run: the stop had
+    already gone out, but the process died on signal 6 instead of reporting
+    its result. The raw descriptor takes no such lock.
     """
     try:
         while True:
-            b = sys.stdin.buffer.read(1)
+            b = os.read(0, 1)
             if not b:
                 cancel.set("the application that started this scan has gone")
                 return
             if b in (b"q", b"c"):
                 cancel.set("cancelled")
                 return
-    except Exception:                                       # noqa: BLE001
+    except (OSError, ValueError):
         cancel.set("control channel lost")
 
 

@@ -25,10 +25,13 @@ only our own routes rather than failing to start.
 from __future__ import annotations
 
 import argparse
+import atexit
 import hashlib
 import json
 import os
 import shutil
+import signal
+import subprocess
 import sys
 import threading
 import time
@@ -47,6 +50,8 @@ sys.path.insert(0, str(_TOOLS / "ansel"))
 import numpy as np                      # noqa: E402
 import pakon_render as pr               # noqa: E402
 import pakon_decode as dec              # noqa: E402
+import pakon_scan as scan               # noqa: E402
+import pakon_gate as pgate              # noqa: E402
 
 # The colour task's backend. Optional on purpose — it is being edited live.
 try:
@@ -454,6 +459,277 @@ def job_export(jid: str, body: dict) -> None:
 
 
 # --------------------------------------------------------------------------
+# scanning — supervising a process that can move the owner's film
+# --------------------------------------------------------------------------
+#
+# The backend deliberately never opens the scanner to run a scan. It starts
+# `pakon_scan.py run` as a child and talks to it over pipes, for one reason:
+# if a process holding the USB interface is killed, nothing it intended to do
+# in a `finally` happens, and the transport keeps running. Keeping the handle
+# in a separate, disposable process means the interface is free the moment
+# that process dies, and this one can then stop the machine itself.
+#
+# Cancel is the closing of the child's stdin, not a signal. A closed pipe
+# reaches the child even if this process is SIGKILLed, so the same mechanism
+# covers "the user pressed Cancel" and "the app was force-quit".
+
+class ScanSupervisor:
+    """At most one scan, at any time, with a stop on every way out."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.proc: subprocess.Popen | None = None
+        self.job: str | None = None
+        self.cancelled = False
+
+    # ---- state ----
+    def running(self) -> bool:
+        with self.lock:
+            return self.proc is not None and self.proc.poll() is None
+
+    def current(self) -> str | None:
+        with self.lock:
+            return self.job if (self.proc and self.proc.poll() is None) else None
+
+    # ---- start ----
+    def start(self, jid: str, body: dict) -> dict:
+        if self.running():
+            raise RuntimeError("a scan is already running")
+
+        base = int(body.get("base") or 16)
+        seconds = scan.clamp_seconds(
+            float(body.get("max_seconds") or scan.DEFAULT_MAX_SECONDS))
+        speed = body.get("speed")
+        name = (body.get("name") or "").strip()
+        stem = "".join(c for c in name if c.isalnum() or c in "-_ ").strip()
+        stem = stem.replace(" ", "-") or time.strftime("scan-%Y%m%d-%H%M%S")
+        out = CAPTURES / f"{stem}.bin"
+        n = 1
+        while out.exists():
+            n += 1
+            out = CAPTURES / f"{stem}-{n}.bin"
+
+        cmd = [sys.executable, str(_TOOLS / "pakon_scan.py"), "run", str(out),
+               "--json", "--watch-parent", "--base", str(base),
+               "--max-seconds", str(seconds)]
+        if speed:
+            cmd += ["--speed", str(int(speed))]
+        if body.get("force"):
+            cmd += ["--force"]
+
+        S.job_set(jid, kind="scan", status="running", phase="starting",
+                  progress=0.0, message="starting the scan process",
+                  path=str(out), base=base, max_seconds=seconds,
+                  started=time.time(), lamp={}, window={}, run={},
+                  bytes=0, lines=0, windows=0, sync_breaks=0,
+                  stopped={}, cancellable=True)
+        proc = subprocess.Popen(
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, bufsize=1, text=True)
+        with self.lock:
+            self.proc, self.job, self.cancelled = proc, jid, False
+        threading.Thread(target=self._pump, args=(jid, proc, out),
+                         daemon=True).start()
+        return {"id": jid, "path": str(out), "max_seconds": seconds}
+
+    # ---- the child's progress stream ----
+    def _pump(self, jid: str, proc: subprocess.Popen, out: Path) -> None:
+        done: dict = {}
+        try:
+            for line in proc.stdout:
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(ev, dict):
+                    continue
+                kind = ev.get("t")
+                if kind == "phase":
+                    S.job_set(jid, phase=ev.get("phase") or "",
+                              message=ev.get("message") or "")
+                elif kind == "lamp":
+                    S.job_set(jid, lamp=ev, phase="scanning")
+                elif kind == "window":
+                    w, r = ev.get("window") or {}, ev.get("run") or {}
+                    S.job_set(
+                        jid, phase="scanning", window=w, run=r,
+                        bytes=ev.get("bytes", 0), elapsed=ev.get("elapsed", 0),
+                        lines=r.get("lines", 0),
+                        state=w.get("state"),
+                        message=f"{r.get('lines', 0):,} lines · "
+                                f"{w.get('state', '')}")
+                elif kind == "warn":
+                    S.job_set(jid, warning=ev.get("message"))
+                elif kind == "error":
+                    S.job_set(jid, error=ev.get("message"))
+                elif kind == "done":
+                    done = ev
+                elif kind == "stop":
+                    S.job_set(jid, stopped=ev)
+        except Exception as e:                              # noqa: BLE001
+            S.job_set(jid, error=f"progress stream lost: {e}")
+        finally:
+            try:
+                err = (proc.stderr.read() or "")[-2000:]
+            except Exception:                               # noqa: BLE001
+                err = ""
+            code = proc.wait()
+            self._finish(jid, code, done, out, err)
+            with self.lock:
+                if self.proc is proc:
+                    self.proc, self.job = None, None
+
+    def _finish(self, jid: str, code: int, done: dict, out: Path,
+                err: str) -> None:
+        """Decide what happened, and make sure the machine is stopped.
+
+        The one outcome that must never be reported as fine is "the scan
+        process is gone and nobody confirmed the transport stopped". If the
+        child did not say it stopped the motor, this process opens the device
+        and stops it — which it can, because the child is dead and the kernel
+        has released the interface.
+        """
+        stopped = done.get("stopped") or {}
+        recovered = None
+        if not stopped.get("motor"):
+            recovered = scan.emergency_stop()
+            scan.marker_clear()
+
+        size = out.stat().st_size if out.is_file() else 0
+        reason = done.get("reason") or ("killed" if code < 0 else "unknown")
+        ok = bool(done.get("ok")) and size > 0
+        # A scan that stopped on DARK is not a failure of this software — it is
+        # the software working — but it is not a usable roll either.
+        friendly = {
+            "roll_end": "Roll end — the gate has been clear since the film ran out.",
+            "dark": "Stopped: the sensor went dark. The lamp has failed or the "
+                    "path is blocked.",
+            "lamp_fault": "Stopped: the light board reported a fault.",
+            "time_limit": "Stopped at the time limit.",
+            "cancelled": "Cancelled.",
+            "stalled": "Stopped: the sensor stopped delivering data.",
+            "size_limit": "Stopped at the size limit.",
+            "killed": "The scan process was killed.",
+        }.get(reason, reason)
+
+        S.job_set(
+            jid,
+            status="done" if (ok or reason in ("cancelled", "dark", "lamp_fault",
+                                               "time_limit", "stalled"))
+                   else "error",
+            progress=1.0, phase="done", reason=reason, ok=ok,
+            message=friendly, detail=done.get("detail") or err.strip(),
+            bytes=size, lines=done.get("lines", 0),
+            windows=done.get("windows", 0),
+            sync_breaks=done.get("sync_breaks", 0),
+            seconds=done.get("seconds", 0), mib_s=done.get("mib_s", 0),
+            lamp=done.get("lamp") or {}, run=done.get("run") or {},
+            stopped=stopped or {}, recovered=recovered,
+            transport_stopped=bool(stopped.get("motor")
+                                   or (recovered or {}).get("motor")
+                                   or (recovered or {}).get("absent")),
+            exit_code=code, cancellable=False,
+            path=str(out) if size else None,
+            error=(None if (ok or reason in ("cancelled", "dark", "lamp_fault",
+                                             "time_limit", "stalled"))
+                   else (done.get("detail") or err.strip() or friendly)),
+        )
+
+    # ---- stop ----
+    def cancel(self, jid: str | None = None) -> dict:
+        """Close the pipe, then escalate. Must land inside a second."""
+        with self.lock:
+            proc, cur = self.proc, self.job
+            self.cancelled = True
+        if proc is None or proc.poll() is not None:
+            return {"cancelled": False, "reason": "no scan is running"}
+        if jid and cur and jid != cur:
+            return {"cancelled": False, "reason": "that scan is not running"}
+        S.job_set(cur, phase="cancelling", message="stopping the transport")
+        try:
+            if proc.stdin and not proc.stdin.closed:
+                proc.stdin.close()          # the child's watchdog sees EOF
+        except (OSError, ValueError):
+            pass
+        try:
+            proc.send_signal(signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            pass
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            # It is not shutting down and it is holding the USB handle, so take
+            # the handle away from it and stop the machine ourselves.
+            try:
+                proc.kill()
+            except (OSError, ProcessLookupError):
+                pass
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            return {"cancelled": True, "escalated": "killed",
+                    "stopped": scan.emergency_stop()}
+        return {"cancelled": True}
+
+    def shutdown(self) -> None:
+        """Called on quit. Closing our end of the pipe is what the child is
+        waiting on, so this works even from an interpreter that is dying."""
+        if self.running():
+            self.cancel()
+
+
+SCAN = ScanSupervisor()
+
+
+_HW_CACHE: dict = {"at": 0.0, "value": None}
+_HW_TTL = 3.0
+
+
+def hardware_state() -> dict:
+    """One place the UI can ask what the machine is, without writing to it.
+
+    Two guards. While a scan is running the child process owns the USB
+    interface, so this must not try to claim it — it reports the last known
+    state instead. And the probe is cached briefly, because several screens ask
+    for it and each live probe is a USB round trip.
+    """
+    running = SCAN.running()
+    now = time.time()
+    if running or (_HW_CACHE["value"] and now - _HW_CACHE["at"] < _HW_TTL):
+        p = dict(_HW_CACHE["value"] or {"present": False, "state": "unknown",
+                                        "hint": "not probed yet"})
+        p["cached"] = True
+    else:
+        try:
+            p = scan.probe()
+        except Exception as e:                              # noqa: BLE001
+            p = {"present": False, "state": "error", "hint": str(e)}
+        p["cached"] = False
+        _HW_CACHE.update(at=now, value=dict(p))
+    p["scan_running"] = running
+    p["scan_job"] = SCAN.current()
+    p["limits"] = {
+        "default_seconds": scan.DEFAULT_MAX_SECONDS,
+        "hard_seconds": scan.HARD_MAX_SECONDS,
+        "min_seconds": scan.MIN_MAX_SECONDS,
+        "speeds": scan.MOTOR_SPEED,
+        "speed_min": scan.pc.MOTOR_SPEED_MIN_PLUS,
+        "speed_max": scan.pc.MOTOR_SPEED_MAX_PLUS,
+        "decodable_bases": list(scan.DECODABLE_BASES),
+    }
+    return p
+
+
+def scan_startup_check() -> dict:
+    """A scan orphaned by a crash is still driving film. Look, at every start."""
+    try:
+        return scan.check_stale()
+    except Exception as e:                                  # noqa: BLE001
+        return {"stale": False, "error": str(e)}
+
+
+# --------------------------------------------------------------------------
 # HTTP
 # --------------------------------------------------------------------------
 
@@ -565,7 +841,11 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
                     "ansel_root_ok": Path(pr.dec.DEFAULT_ANSEL_ROOT).is_dir(),
                 },
                 "film_paths": ["ColNeg", "BnW", "POSITIVE", "IMPORTED"],
+                "hardware": hardware_state(),
             })
+
+        if route == "hardware":
+            return _json(self, hardware_state())
 
         if route == "captures":
             return _json(self, list_captures())
@@ -657,6 +937,24 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
 
         if route == "workspace/purge":
             return _json(self, purge(body))
+
+        # ---- scanning ----
+        if route == "scan":
+            jid = S.job_new("scan")
+            try:
+                return _json(self, SCAN.start(jid, body))
+            except Exception as e:                          # noqa: BLE001
+                S.job_set(jid, status="error", error=str(e))
+                return _json(self, {"error": str(e), "id": jid}, 409)
+
+        if route == "scan/cancel":
+            return _json(self, SCAN.cancel(body.get("id")))
+
+        if route == "scan/stop":
+            # The panic button. Always allowed, never queued, and it does not
+            # care whether this process thinks a scan is running.
+            SCAN.cancel()
+            return _json(self, scan.emergency_stop())
 
         parts = route.split("/")
         if parts[0] == "roll" and len(parts) >= 3:
@@ -797,9 +1095,15 @@ def diagnostics() -> dict:
             "roll_scale": [round(v, 4) for v in r.roll_scale],
             "ir": getattr(r, "ir", {}),
         })
+    try:
+        gate_desc = pgate.Gate.from_calibration().describe()
+    except Exception as e:                                  # noqa: BLE001
+        gate_desc = {"error": str(e)}
     return {
         "rolls": rolls,
         "calibration": calibration_info(),
+        "hardware": hardware_state(),
+        "gate": gate_desc,
         "pipeline": {
             "words_per_line": dec.WORDS_PER_LINE,
             "pixels_per_line": dec.PIXELS_PER_LINE,
@@ -814,6 +1118,12 @@ def diagnostics() -> dict:
             "pipeline_matches_kodak": "NOT verified. The Ansel stage is a "
                                       "stand-in (SETSHIFTS_12_PORTED=False); "
                                       "owned by the colour task.",
+            "gate_classifier": "tools/pakon_gate.py selftest — flags "
+                               "captures/roll.bin, a real lamp failure, as "
+                               "DARK 29.9 % in.",
+            "scan_stops": "tools/pakon_scan.py selftest — the transport stop "
+                          "reaches the machine on cancel, SIGTERM, SIGINT, "
+                          "parent death, SIGKILL and after a crash.",
         },
         "cache_bytes": S.cache_bytes,
         "python": sys.version.split()[0],
@@ -825,16 +1135,38 @@ def main() -> int:
     ap.add_argument("--port", type=int, default=8136)
     ap.add_argument("--host", default="127.0.0.1")
     a = ap.parse_args()
+
+    # Before anything else: if a previous run died mid-scan, the transport may
+    # still be turning. This costs nothing when no scanner is attached.
+    stale = scan_startup_check()
+    if stale.get("stale"):
+        print(f"  RECOVERED a scan orphaned by a crash: {stale}")
+
+    # Every way this process can end, the child gets its pipe closed and stops.
+    atexit.register(SCAN.shutdown)
+
+    def _bye(sig, _frm):
+        SCAN.shutdown()
+        raise SystemExit(0)
+    for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(s, _bye)
+        except (ValueError, OSError):
+            pass
+
     srv = ThreadingHTTPServer((a.host, a.port), H)
     print(f"pakon-app  http://{a.host}:{a.port}")
     print(f"  workspace {WORKSPACE}")
     print(f"  sidecars  {SIDECARS}")
     print(f"  pakon_ui  {'mounted' if _HAVE_UI else 'unavailable'}")
+    print(f"  scanner   {hardware_state().get('state')}")
     sys.stdout.flush()
     try:
         srv.serve_forever()
-    except KeyboardInterrupt:
-        return 0
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        SCAN.shutdown()
     return 0
 
 

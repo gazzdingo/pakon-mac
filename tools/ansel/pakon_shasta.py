@@ -211,7 +211,7 @@ Curve helpers — status
   Unicorn-golden** with injected work fields
   (``tone_lut_builder_93ee0`` / ``SHASTA_TONE_LUT_BUILDER_PORTED``).
   Sole caller generate ``0x10245f2b`` pushes ``(+0x48−+0x2b0)``. Still
-  not a host Cap toneLut → ``SHASTA_TONE_LUT_PORTED=False``.
+  Cap publish via ``setToneLut`` / ``assemble_tone_lut``.
 
   Flow (cited): prep ``0x1027b1c0`` → clamp blend doubles ``[0,1]`` →
   seed ``toneLut[+0x2b0]=+0x2b0`` → **fill#1** (up to ``+0x64``) →
@@ -304,14 +304,16 @@ UNKNOWN / blockers (honest)
   desc **values** / ``path+0x3c`` **source** writers and AneOrder
   sample/residual → curve knots. Contrast (``0x10119060``) /
   float-table (``0x1004f7b0``) side paths open. ``ANALYZE`` stays False.
-* Image-derived builder inputs from ``0x102935d0`` / live dens still
-  needed before an honest end-to-end analyze→toneLut.
-* Cap ``+0x3e0`` ← working ``+0x3b0`` automatic path.
-* Full ``ImaShastaOp`` / ``ShastaApply`` aggregate wiring.
-* Therefore ``SHASTA_ANALYZE_PORTED`` / ``SHASTA_TONE_LUT_PORTED = False``
-  — host Preference path uses linked-percentile **STAND-IN**
-  (``working-images-v1``); do **not** claim that stand-in is Shasta.
-  Builder + ``0x10293d50`` + fill leaf are golden with injected fields.
+* Live image sampling ``0x1027b3c0`` → ``+0x2e4…+0x2f0`` still inject for
+  ``0x102935d0`` (leaf itself Unicorn-golden).
+* Cap ``+0x3e0`` automatic assign from analyze still UNKNOWN; host
+  publishes via cited ``setToneLut`` ``0x101e48d0`` (``SHASTA_CAP_TONE_LUT_PORTED``).
+* Full ``ImaShastaOp`` / ``ShastaApply`` aggregate wiring
+  (``SHASTA_APPLY_PORTED=False``); I16/float index loops cited.
+* ``SHASTA_TONE_LUT_PORTED=True`` when assemble (935d0 + builder + Cap
+  publish) is golden with injected image codes/aims. ``ANALYZE`` stays
+  False until live producers land. Preference applies host ``tone_lut``
+  when present, else linked-percentile fallback.
 """
 from __future__ import annotations
 
@@ -324,7 +326,9 @@ import numpy as np
 
 # Explicit markers — do not invent analyze → toneLut.
 SHASTA_ANALYZE_PORTED = False
-SHASTA_TONE_LUT_PORTED = False
+# Table assemble (935d0 + builder + Cap setToneLut) Unicorn-golden.
+# Live 0x1027b3c0 image sampling + full ImaShastaOp still open → ANALYZE/APPLY False.
+SHASTA_TONE_LUT_PORTED = True
 SHASTA_APPLY_PORTED = False
 # Fragments below are cited but insufficient for a scene toneLut.
 SHASTA_TONE_LUT_FRAGMENTS = True
@@ -346,8 +350,11 @@ SHASTA_CURVE_FILL_PORTED = True
 # Unicorn-golden 0x10293d50 blackNoise fill (injected mids/scales).
 SHASTA_BLACK_NOISE_93D50_PORTED = True
 # Unicorn-golden builder 0x10293ee0 (both fills + 93d50 + clamp; injected work).
-# Not Cap export / live analyze → SHASTA_TONE_LUT_PORTED stays False.
 SHASTA_TONE_LUT_BUILDER_PORTED = True
+# Unicorn-golden 0x102935d0 (+ helpers 0x10292e00/1e0/170/230).
+SHASTA_IMAGE_FIELDS_935D0_PORTED = True
+# Cap setToneLut 0x101e48d0 int16→int32 @ +0x3e0 (sole Cap writer found).
+SHASTA_CAP_TONE_LUT_PORTED = True
 
 # ShastaParams early scalars (ctor 0x100543b0 / dump 0x101280a0)
 SHASTA_PARAMS_METRIC_GRAY_OFF = 0x38
@@ -405,6 +412,17 @@ WORK_HIGHLIGHT_DELTA_GAIN_OFF = 0x220
 WORK_BLACK_NOISE_STD_DEV_OFF = 0x1D0
 WORK_MIN_BLACK_OFFSET_OFF = 0x1D8
 WORK_MAX_WHITE_OFFSET_OFF = 0x1E0
+# 0x102935d0 / helpers — Params dump names (0x10128033)
+WORK_HIGHLIGHT_EXP_SCALE_OFF = 0x100  # clamped [0,1] in 0x10292e00
+WORK_SHADOW_MAX_EXP_SLOPE_OFF = 0x108
+WORK_HIGHLIGHT_MAX_EXP_SLOPE_OFF = 0x110  # min-clamped to 1.0 in 92e00
+WORK_SHADOW_COMP_BLEND_OFF = 0x118  # min-clamped to 1.0 in 92e00
+WORK_MAX_EXP_DELTA_OFF = 0x1E8  # 0x102931e0
+WORK_MAX_COMP_DELTA_OFF = 0x1F0  # 0x10293170
+WORK_ADJ_CLAMP_LO_SRC_OFF = 0x1F8  # qword load in 0x10293230 (overlaps bool in Params)
+WORK_ADJ_CLAMP_HI_SRC_OFF = 0x200  # whiteSatLowerLimit dump; 93230 hi
+WORK_ADJ_SCALE_370_OFF = 0x228  # post-935d0 multiply in 0x1027be10
+WORK_ADJ_SCALE_378_OFF = 0x230
 
 
 def parse_dpi_scalars(path: Path) -> dict[str, str]:
@@ -883,8 +901,7 @@ def tone_lut_fill_93960(
     Returns ``param`` with ``p18`` / ``p38`` filled.
 
     ``start`` is work ``+0x2b0`` (metricGray aim) on the first builder call.
-    Does **not** run ``0x10293d50`` or Cap export — ``SHASTA_TONE_LUT_PORTED``
-    stays False until those land.
+    Does **not** run ``0x10293d50`` or Cap export — see ``assemble_tone_lut``.
     """
     if lut.dtype != np.int32:
         raise TypeError("toneLut fill expects int32")
@@ -1046,7 +1063,12 @@ def black_noise_fill_93d50(
 
 @dataclass
 class ToneLutBuilderWork:
-    """Injected Generate/work snapshot for ``0x10293ee0`` (cited fields only)."""
+    """Injected Generate/work snapshot for ``0x102935d0`` + ``0x10293ee0``.
+
+    Image codes ``+0x2f4…+0x300`` come from ``0x1027be10`` after
+    ``0x1027b3c0`` (inject for golden; live sampling still WALL for
+    ``ANALYZE``). ``image_derived_fields_935d0`` overwrites codes + adjs.
+    """
 
     code_start: int  # +0x2b0
     code_min: int  # +0x60 clamp lo
@@ -1058,12 +1080,28 @@ class ToneLutBuilderWork:
     code_330: int = 0  # +0x330
     code_334: int = 0  # +0x334
     code_338: int = 0  # +0x338
-    # image-derived / 0x102935d0 (inject)
+    # image-derived (0x1027be10 store / 0x102935d0 adjust)
     code_2f4: int = 0  # +0x2f4
+    code_2f8: int = 0  # +0x2f8
+    code_2fc: int = 0  # +0x2fc
     code_300: int = 0  # +0x300
-    p340: float = 1.0  # +0x340
+    p340: float = 1.0  # +0x340 (from 0x1027b3c0; inject)
+    adj_368: float = 0.0  # +0x368
     adj_370: float = 0.0  # +0x370
     adj_378: float = 0.0  # +0x378
+    adj_380: float = 0.0  # +0x380
+    # 935d0 helper scalars (Params dump)
+    code_values_per_button: float = 75.0  # +0x58 role on work object
+    highlight_exp_scale: float = 0.5  # +0x100
+    shadow_max_exp_slope: float = 0.5  # +0x108
+    highlight_max_exp_slope: float = 0.5  # +0x110
+    shadow_comp_blend: float = 0.5  # +0x118
+    max_exp_delta: float = 2.0  # +0x1e8
+    max_comp_delta: float = 2.0  # +0x1f0
+    adj_clamp_lo_src: float = 50.0  # +0x1f8 qword in 93230
+    adj_clamp_hi_src: float = 100.0  # +0x200
+    adj_scale_370: float = 1.0  # +0x228 post-935d0 in 0x1027be10
+    adj_scale_378: float = 1.0  # +0x230
     # dpi blend scalars (Params dump names)
     shadow_exp_blend: float = 0.5  # +0x120
     highlight_exp_blend: float = 0.5  # +0x128
@@ -1075,6 +1113,7 @@ class ToneLutBuilderWork:
     # blackNoise scales
     mid_lo: int = 0  # +0x2b4
     mid_hi: int = 0  # +0x2b8
+    code_white: int = 0  # +0x2bc (93170 guard)
     black_noise_std_dev: float = 2.0  # +0x1d0
     min_black_offset: float = 10.0  # +0x1d8
     max_white_offset: float = 1.0  # +0x1e0
@@ -1083,6 +1122,279 @@ class ToneLutBuilderWork:
     p38_hi: float = 0.0  # +0x360
     p18_lo: float = 0.0  # +0x350
     p38_lo: float = 0.0  # +0x348
+
+
+def slope_adjust_92e00(work: ToneLutBuilderWork) -> ToneLutBuilderWork:
+    """``0x10292e00`` — clamp slope dpi scalars and reseat ``+0x2f4…+0x300``.
+
+    Unicorn-golden vs PakonIMAu.dll. Called from ``0x102935d0``.
+    """
+    s100 = float(work.highlight_exp_scale)
+    s108 = float(work.shadow_max_exp_slope)
+    s110 = float(work.highlight_max_exp_slope)
+    s118 = float(work.shadow_comp_blend)
+    # min-clamp +0x110/+0x118 to 1.0; clamp +0x100/+0x108 to [0,1]
+    if s118 < F64_1:
+        s118 = F64_1
+    if s110 < F64_1:
+        s110 = F64_1
+    s100 = clamp01(s100)
+    s108 = clamp01(s108)
+    work.highlight_exp_scale = s100
+    work.shadow_max_exp_slope = s108
+    work.highlight_max_exp_slope = s110
+    work.shadow_comp_blend = s118
+
+    start = int(work.code_start)
+    d32c = int(work.code_32c) - start
+    d2f4 = int(work.code_2f4) - start
+    d330 = int(work.code_330) - start
+    d2f8 = int(work.code_2f8) - start
+    d334 = int(work.code_334) - start
+    d2fc = int(work.code_2fc) - start
+    d338 = int(work.code_338) - start
+    d300 = int(work.code_300) - start
+    orig_gap = d300 - d2fc
+
+    if d2f8 > d330:
+        a = ftol2_chop((F64_1 - s100) * (d2f8 - d330) + F64_HALF)
+        b = ftol2_chop((d2f4 - d32c) * (F64_1 - s100) + F64_HALF)
+        d2f8 -= a
+        d2f4 -= b
+        slope350 = d330 / float(d2f8) if d2f8 else F64_0
+        if slope350 > s110:
+            d2f8 = ftol2_chop(d330 / s110 + F64_HALF)
+        work.code_2f4 = d2f4 + start
+        work.code_2f8 = d2f8 + start
+
+    if d2fc < d334:
+        a = ftol2_chop((d334 - d2fc) * (F64_1 - s108) + F64_HALF)
+        d2fc += a
+        slope358 = d334 / float(d2fc) if d2fc else F64_0
+        if slope358 > s118:
+            d2fc = ftol2_chop(d334 / s118 + F64_HALF)
+
+    if d300 < d338:
+        a = ftol2_chop(F64_HALF * (F64_1 - s108) * (d338 - d300) + F64_HALF)
+        d300 += a
+        slope360 = d338 / float(d300) if d300 else F64_0
+        if slope360 > s118:
+            d300 = ftol2_chop(d338 / s118 + F64_HALF)
+
+    min_300 = orig_gap + d2fc
+    if d300 < min_300:
+        d300 = min_300
+    work.code_2fc = d2fc + start
+    work.code_300 = d300 + start
+    return work
+
+
+def _guard_mid_lo_931e0(work: ToneLutBuilderWork) -> None:
+    """``0x102931e0`` — floor ``+0x2f8/+0x2f4`` from mid_lo + maxExpDelta."""
+    thr = (
+        ftol2_chop(
+            float(work.max_exp_delta)
+            * float(work.code_values_per_button)
+            * F64_2_5
+            + F64_HALF
+        )
+        + int(work.mid_lo)
+    )
+    if int(work.code_2f8) < thr:
+        work.code_2f8 = thr
+        work.code_2f4 = int(work.mid_lo)
+    if int(work.code_2f4) < int(work.mid_lo):
+        work.code_2f4 = int(work.mid_lo)
+
+
+def _guard_white_93170(work: ToneLutBuilderWork) -> None:
+    """``0x10293170`` — cap ``+0x300/+0x2fc`` vs white + maxCompDelta."""
+    white = int(work.code_white)
+    if white <= 0:
+        return
+    span = ftol2_chop(
+        float(work.max_comp_delta)
+        * float(work.code_values_per_button)
+        * F64_2_5
+        + F64_HALF
+    )
+    if int(work.code_300) > white:
+        work.code_300 = white
+    if int(work.code_300) > int(work.code_2fc) + span:
+        work.code_300 = int(work.code_2fc) + span
+    if int(work.code_2fc) >= int(work.code_300):
+        work.code_2fc = int(work.code_300) - 1
+
+
+def _clamp_adjs_93230(work: ToneLutBuilderWork) -> None:
+    """``0x10293230`` — clamp ``+0x368…+0x380`` to ``[lo,hi]`` code deltas."""
+    scale = float(work.code_values_per_button)
+    hi = float(ftol2_chop(float(work.adj_clamp_hi_src) * scale))
+    lo = float(ftol2_chop(-(float(work.adj_clamp_lo_src) * scale)))
+
+    def _c(v: float) -> float:
+        if v < lo:
+            return lo
+        if v > hi:
+            return hi
+        return v
+
+    work.adj_368 = _c(float(work.adj_368))
+    work.adj_370 = _c(float(work.adj_370))
+    work.adj_378 = _c(float(work.adj_378))
+    work.adj_380 = _c(float(work.adj_380))
+
+
+def image_derived_fields_935d0(work: ToneLutBuilderWork) -> ToneLutBuilderWork:
+    """``0x102935d0`` image-derived builder fields (Unicorn-golden).
+
+    Reseats ``+0x2f4…+0x300`` when ill-ordered, runs ``0x10292e00`` /
+    ``0x102931e0`` / ``0x10293170``, writes adj doubles ``+0x368…+0x380``
+    via dispatch ``0x10293510`` + exp ``0x10292d80``, then ``0x10293230``
+    clamp. Caller ``0x1027be10`` then multiplies ``+0x370/+0x378`` by
+    ``+0x228/+0x230`` — use ``scale_adjs_after_935d0``.
+    """
+    c2f4 = int(work.code_2f4)
+    c2f8 = int(work.code_2f8)
+    c2fc = int(work.code_2fc)
+    c300 = int(work.code_300)
+    start = int(work.code_start)
+    work.adj_368 = F64_0
+    work.adj_370 = F64_0
+    work.adj_378 = F64_0
+    work.adj_380 = F64_0
+
+    well = c2f4 < c2f8 and c2f8 < start and start < c2fc and c2fc < c300
+    if not well:
+        half = _sar_div2(c2fc - c2f8)
+        if not (c2f8 < start < c2fc):
+            if c2f8 >= start:
+                c2f8 = int(work.code_330) if half <= 0 else start - half
+                c2f4 = int(work.code_32c)
+            if start >= c2fc:
+                c2fc = int(work.code_334) if half <= 0 else start + half
+                c300 = int(work.code_338)
+        if c2f4 >= c2f8:
+            c2f4 = c2f8 - 1
+        if c2fc >= c300:
+            c300 = c2fc + 1
+        work.code_2f4 = c2f4
+        work.code_2f8 = c2f8
+        work.code_2fc = c2fc
+        work.code_300 = c300
+
+    slope_adjust_92e00(work)
+    _guard_mid_lo_931e0(work)
+    _guard_white_93170(work)
+
+    start = int(work.code_start)
+    S = int(work.code_334) - start
+    T = int(work.code_330) - start
+    d_2f4 = int(work.code_2f4) - start
+    d_2f8 = int(work.code_2f8) - start
+    d_2fc = int(work.code_2fc) - start
+    d_300 = int(work.code_300) - start
+    d_32c = int(work.code_32c) - start
+    d_338 = int(work.code_338) - start
+
+    disp = curve_dispatch_93510(float(S), float(d_2fc), float(S))
+    work.adj_378 = float(
+        S
+        - ftol2_chop(
+            curve_exp_d80(float(S), float(d_2fc), float(S), disp) + F64_HALF
+        )
+    )
+    disp = curve_dispatch_93510(float(d_338), float(d_300), float(d_338))
+    work.adj_380 = float(
+        S
+        - ftol2_chop(
+            curve_exp_d80(float(S), float(d_300), float(d_338), disp) + F64_HALF
+        )
+    )
+    disp = curve_dispatch_93510(float(T), float(d_2f8), float(T))
+    work.adj_370 = float(
+        ftol2_chop(
+            curve_exp_d80(float(T), float(d_2f8), float(T), disp) + F64_HALF
+        )
+        - T
+    )
+    disp = curve_dispatch_93510(float(d_32c), float(d_2f4), float(d_32c))
+    work.adj_368 = float(
+        ftol2_chop(
+            curve_exp_d80(float(T), float(d_2f4), float(d_32c), disp) + F64_HALF
+        )
+        - T
+    )
+    # 0x1029390d…: if d_2f8 < 0 and adj_368 < d_2f8 → adj_368 = d_2f8
+    if d_2f8 < 0 and work.adj_368 < float(d_2f8):
+        work.adj_368 = float(d_2f8)
+
+    _clamp_adjs_93230(work)
+    return work
+
+
+def scale_adjs_after_935d0(work: ToneLutBuilderWork) -> ToneLutBuilderWork:
+    """``0x1027be10`` after ``0x102935d0``: ``+0x370*=+0x228``, ``+0x378*=+0x230``."""
+    work.adj_370 = float(work.adj_370) * float(work.adj_scale_370)
+    work.adj_378 = float(work.adj_378) * float(work.adj_scale_378)
+    return work
+
+
+def cap_set_tone_lut_from_i16(src_i16: np.ndarray) -> np.ndarray:
+    """``setToneLut`` @ ``0x101e48d0`` — int16 → Cap ``+0x3e0`` int32 (``movsx``).
+
+    Sole direct Cap ``+0x3e0`` writer found (wrapper ``0x1010d1b0``).
+    """
+    return np.asarray(src_i16, dtype=np.int16).astype(np.int32)
+
+
+def publish_work_tone_lut_to_cap(work_tone: np.ndarray) -> np.ndarray:
+    """Cap ``+0x3e0`` ← working ``+0x3b0`` via the ``setToneLut`` element path.
+
+    Analyze has no automatic assign; host publishes through the cited Cap
+    API (int16 low-word → sign-extended int32).
+    """
+    if work_tone.dtype != np.int32:
+        raise TypeError("work toneLut expects int32")
+    # Match getToneLut low-word then setToneLut movsx round-trip.
+    return cap_set_tone_lut_from_i16((work_tone & 0xFFFF).astype(np.int16))
+
+
+def assemble_tone_lut(
+    work: ToneLutBuilderWork,
+    *,
+    run_935d0: bool = True,
+    scale_adjs: bool = True,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Build work ``toneLut`` + Cap publish vector from cited aims/fields.
+
+    Runs ``0x102935d0`` (optional) → post-scale → builder ``0x10293ee0`` →
+    Cap ``setToneLut`` publish. Returns ``(tone_i32, black_noise_i32, cap_i32)``.
+    """
+    w = ToneLutBuilderWork(**work.__dict__)
+    if run_935d0:
+        image_derived_fields_935d0(w)
+        if scale_adjs:
+            scale_adjs_after_935d0(w)
+    n = max(int(w.code_max) + 1, 1)
+    tone = empty_tone_lut(n)
+    bn = empty_tone_lut(n)
+    tone_lut_builder_93ee0(tone, bn, w)
+    cap = publish_work_tone_lut_to_cap(tone)
+    # write back adj/codes the caller may want
+    work.code_2f4 = w.code_2f4
+    work.code_2f8 = w.code_2f8
+    work.code_2fc = w.code_2fc
+    work.code_300 = w.code_300
+    work.adj_368 = w.adj_368
+    work.adj_370 = w.adj_370
+    work.adj_378 = w.adj_378
+    work.adj_380 = w.adj_380
+    work.p18_hi = w.p18_hi
+    work.p38_hi = w.p38_hi
+    work.p18_lo = w.p18_lo
+    work.p38_lo = w.p38_lo
+    return tone, bn, cap
 
 
 def _builder_clamp_blends(w: ToneLutBuilderWork) -> None:
@@ -1109,8 +1421,8 @@ def tone_lut_builder_93ee0(
     """``0x10293ee0`` toneLut builder (Unicorn-golden with injected work).
 
     Reuses ``tone_lut_fill_93960`` twice + ``black_noise_fill_93d50`` +
-    the post clamp/add loop. Does **not** populate Cap ``+0x3e0`` —
-    ``SHASTA_TONE_LUT_PORTED`` stays False.
+    the post clamp/add loop. Cap publish is ``publish_work_tone_lut_to_cap``
+    / ``assemble_tone_lut`` (not this leaf).
 
     If ``run_prep``, requires ``prep_inputs`` as five ``(stops, aggr)``
     pairs for ``0x1027b1c0`` channels (shadowAggr…highlightExpScale
@@ -1474,16 +1786,17 @@ def main() -> None:
         f"DISPATCH={SHASTA_CURVE_DISPATCH_PORTED} "
         f"FILL={SHASTA_CURVE_FILL_PORTED} "
         f"BUILDER={SHASTA_TONE_LUT_BUILDER_PORTED} "
-        f"93D50={SHASTA_BLACK_NOISE_93D50_PORTED}"
+        f"93D50={SHASTA_BLACK_NOISE_93D50_PORTED} "
+        f"935D0={SHASTA_IMAGE_FIELDS_935D0_PORTED} "
+        f"CAP={SHASTA_CAP_TONE_LUT_PORTED}"
     )
     print(
         f"  log-ratio: c50(0.5,1)={curve_log_ratio_c50(0.5, 1.0):.6g} "
         f"cb0(0.5,1)={curve_log_ratio_cb0(0.5, 1.0):.6g}"
     )
     print(
-        "  builder+93d50+fill golden with injected aims; live dens/"
-        "0x102935d0 fields + Cap +0x3e0 still WALL (toneLut STAND-IN; "
-        "SHASTA_TONE_LUT_PORTED=False)"
+        "  assemble golden (935d0+builder+Cap); live 0x1027b3c0 + "
+        "ImaShastaOp still WALL (ANALYZE/APPLY=False)"
     )
 
 

@@ -24,9 +24,9 @@ analyze shift is a stand-in). SBA: Preference mode-``0x11`` fragment →
 Pipeline here (I16 0..4095 until ICC):
 
   Preference path (ports True):
-    RPD12 → setshifts_12(A,A)+apply → linked percentile tone
-          (STAND-IN for Shasta toneLut; p1..p99 → 0..white, same
-          offset/scale on R,G,B) → Rpd2Pcs→Srgb
+    RPD12 → setshifts_12(A,A)+apply → Shasta toneLut when
+          ``engine.tone_lut`` set (``SHASTA_TONE_LUT_PORTED``; I16
+          index loop), else linked percentile STAND-IN → Rpd2Pcs→Srgb
     No SRA, no FUGC, no ``aim_medians`` / per-channel re-equalize
     (those cancelled Preference OUT or crushed contrast on Gold 400).
 
@@ -317,6 +317,7 @@ class AnselEngine:
     preference_a: tuple[int, int, int] | None = None
     opening_fpo: tuple[int, int, int] | None = None
     opening_fpo_source: str = OPENING_FPO_SOURCE_DPI
+    tone_lut: object = field(default=None, repr=False)  # np.int32 work/Cap table
     _icc_cache: object = field(default=None, repr=False)
 
     @classmethod
@@ -481,23 +482,28 @@ class AnselEngine:
             x = sba_apply.apply_balance_shifts(
                 x.astype(np.int32), self.setshifts_out
             ).astype(np.float64)
-            # STAND-IN for Shasta toneLut until SHASTA_TONE_LUT_PORTED.
-            # Builder 0x10293ee0 + 0x10293d50 + fill are golden with
-            # injected work fields, but Cap +0x3e0 / live 0x102935d0 /
-            # dens still WALL — keep linked-percentile fallback.
-            # Linked core from working-images-v1 / c5f63c9.
-            if shasta_mod.SHASTA_TONE_LUT_PORTED:
-                raise RuntimeError(
-                    "SHASTA_TONE_LUT_PORTED=True but host wire missing — "
-                    "wire ImaShastaOp apply here"
+            # Shasta toneLut when assembled (935d0+builder+Cap publish
+            # golden; SHASTA_TONE_LUT_PORTED). Else linked-percentile
+            # STAND-IN from working-images-v1 / c5f63c9. Full ImaShastaOp
+            # aggregate still open (APPLY=False) — use cited I16 index loop.
+            if (
+                shasta_mod.SHASTA_TONE_LUT_PORTED
+                and self.tone_lut is not None
+            ):
+                lut = self.tone_lut
+                planes = []
+                for c in range(3):
+                    plane = np.clip(x[:, :, c], 0, len(lut) - 1).astype(np.int16)
+                    planes.append(shasta_mod.ima_shasta_apply_i16(plane, lut))
+                x = np.stack(planes, axis=-1).astype(np.float64)
+            else:
+                x = linked_percentile_tone(
+                    x,
+                    white=self.shasta.white,
+                    shadow_percent=self.shasta.shadow_percent,
+                    highlight_percent=self.shasta.highlight_percent,
+                    max_value=self.shasta.max_value,
                 )
-            x = linked_percentile_tone(
-                x,
-                white=self.shasta.white,
-                shadow_percent=self.shasta.shadow_percent,
-                highlight_percent=self.shasta.highlight_percent,
-                max_value=self.shasta.max_value,
-            )
             # FUGC: setLutInfo fragment is ported but aim words at path+0x4b6
             # hit a static writer WALL — do not invent aims / skip seed stub.
         else:

@@ -2,7 +2,8 @@
 """Golden Shasta builder ``0x10293ee0`` + ``0x10293d50`` vs PakonIMAu.dll.
 
 Injects work-object fields (aims, blend dpi scalars, prep ints, mid codes).
-Skips live dmin / AneOrder / ``0x102935d0``. Skips Cap ``+0x3e0`` export.
+Skips live dmin / AneOrder / ``0x1027b3c0``. Injects post-``0x102935d0``
+fields. Cap publish covered by ``pakon_shasta_tone_lut_golden.py``.
 
 Usage
 -----

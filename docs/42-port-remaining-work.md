@@ -319,3 +319,54 @@ the mechanism behind "these init writes are not optional".
 Which sub-stream is R, G or B is not named anywhere. Given the lamp registers
 run **B, Ir, R, –, G**, do not assume RGB. Cheap test once integrating: drive
 one LED channel at a time and see which sub-stream moves.
+
+---
+
+## THE SENSOR WORKS — 2026-08-06
+
+**The FIFO reset was the blocker.** Two packets never sent in this project:
+
+```
+02 04 10 01 84 02        FN_bDrvResetFifos, part a
+04 03 40 00 8a           part b
+```
+
+Result, immediately:
+
+```
+                          mean      max     sync words
+before (all session)     1236        -           0
+FIFO reset, lamp off      290      374         5-6      <- FIRST SYNC MARKERS
+FIFO reset, lamp lit    64924    65534         5        <- LIGHT RESPONSE
+```
+
+The FIFO had been stalled full of stale data, exactly as `docs/06:139` warned.
+**Every measurement this project ever took from EP 0x86 was that stale content** —
+which is why it never responded to anything: not the chip repair, not the lamp,
+not the AFE reprogramming. The "structured but unresponsive" stream was a frozen
+buffer.
+
+Note the ordering that matters: the lamp coming on did **not** change the
+reading. Only resetting the FIFO *again, with the lamp already lit*, showed the
+light. So reset the FIFO after every state change, before trusting a reading.
+
+### Line length confirmed at 2000 px
+
+5-6 sync markers per 32,768 samples ≈ 6,000 samples per line = **2000 px x 3
+channels**, matching the binary's DpiBase16 value. **Our autocorrelation figure
+of 2151 was wrong** — it was measuring the integration time (read back as
+`0x0866` = 2150), not the line length. Segment on bit 0, not on a measured
+period.
+
+### 64924 near full scale is expected
+
+Empty gate + lit lamp = saturation. The calibration search stops at 64000
+(`0x1001e8da`), so this is the right order of magnitude for an unattenuated
+path. Film in the gate should bring it down into range.
+
+### Where this leaves the port
+
+Stage 5 — "acquire raw scan lines", the blocker since the project began — is
+**solved**. Remaining: segment lines on bit 0, identify which sub-stream is R/G/B
+(not determined by the binary — drive one LED at a time), couple transport speed
+to line rate, and feed the existing colour pipeline.

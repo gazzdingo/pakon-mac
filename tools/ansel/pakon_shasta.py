@@ -133,8 +133,9 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
 
      Layout ported (``pakon_ane_order.NoiseTable``); dens **fill** from
      curve rows ported (``get_results_fill_dens`` /
-     ``ANE_GET_RESULTS_FILL_PORTED``). AneOrder **analyze** that builds
-     those rows still WALL.
+     ``ANE_GET_RESULTS_FILL_PORTED``). Analyze hist **bin-index** leaf
+     ported (``ANE_ANALYZE_BIN_INDEX_PORTED``); sample/residual → curve
+     knots still WALL.
   3. Master LUT = global ``AnsLut`` @ ``0x106b5f74`` built by CRT init
      ``0x1056a470`` → ctor ``0x100f42a0(0xc, 0, 0xfff)``. Data pointer
      ``[0x106b5f7c] = alloc+0x10000`` (signed-int16 index 0). Fill:
@@ -162,11 +163,12 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
 * Mid-aim **arithmetic** is host-ported (``cn_premium_mid_aim_rgb``;
   ``SHASTA_AIM_MID_RGB_PORTED``). Input **path** + ScpLut remap +
   ``getResults`` dens fill ported (``SHASTA_AIM_INPUT_PATH_PORTED`` /
-  ``SCPLUT_DMIN_REMAP_PORTED`` / ``ANE_GET_RESULTS_FILL_PORTED``).
-  **WALL for ``ANALYZE``:** AddScene desc / ``path+0x3c`` **producers**
-  and AneOrder **analyze** curve rows; contrast / float-LUT side paths.
-  Do **not** invent percentile tone from dpi ``shadowPercent`` /
-  ``highlightPercent``.
+  ``SCPLUT_DMIN_REMAP_PORTED`` / ``ANE_GET_RESULTS_FILL_PORTED`` /
+  ``BADDSCENE_DMIN_PACK_PORTED`` / ``ANE_ANALYZE_BIN_INDEX_PORTED``).
+  **WALL for ``ANALYZE``:** live AddScene desc **values** /
+  ``path+0x3c`` **source** writers and AneOrder sample/residual →
+  curve knots; contrast / float-LUT side paths. Do **not** invent
+  percentile tone from dpi ``shadowPercent`` / ``highlightPercent``.
 
 CapabilityImpl ``+0x3e0`` vs working ``+0x3b0`` (VERIFIED facts)
 ---------------------------------------------------------------
@@ -297,11 +299,11 @@ Relationship to SRA forward LUT
 
 UNKNOWN / blockers (honest)
 ---------------------------
-* Mid-aim **upstream producers**: ScpLut remap + ``getResults`` dens fill
-  closed (Unicorn-golden). Still need AddScene desc / ``path+0x3c``
-  **writers** and AneOrder **analyze** curve knots for live scenes.
-  Contrast (``0x10119060``) / float-table (``0x1004f7b0``) side paths
-  open. ``ANALYZE`` stays False.
+* Mid-aim **upstream producers**: ScpLut remap + dens fill + bAddScene
+  pack + Ane bin-index closed (Unicorn-golden). Still need live AddScene
+  desc **values** / ``path+0x3c`` **source** writers and AneOrder
+  sample/residual → curve knots. Contrast (``0x10119060``) /
+  float-table (``0x1004f7b0``) side paths open. ``ANALYZE`` stays False.
 * Image-derived builder inputs from ``0x102935d0`` / live dens still
   needed before an honest end-to-end analyze→toneLut.
 * Cap ``+0x3e0`` ← working ``+0x3b0`` automatic path.
@@ -329,7 +331,7 @@ SHASTA_TONE_LUT_FRAGMENTS = True
 # avg2largest 0x1004f690 + dpi metricGray/white → +0x2b0/+0x2bc mapped.
 SHASTA_AIM_AVG2_PORTED = True
 # CnPremium mid-aim arithmetic (dens+setShifts+master clip+avg2) ported;
-# dmin/AneOrder *values* still WALL → ANALYZE stays False.
+# live dmin/AneOrder knot *values* still WALL → ANALYZE stays False.
 SHASTA_AIM_MID_RGB_PORTED = True
 # find/insert/getNoiseTable provenance + bag/layout helpers ported.
 SHASTA_AIM_INPUT_PATH_PORTED = True

@@ -9,6 +9,8 @@
 * SceneContext dmin bag + ``NoiseTable`` layout; Unicorn
   ``0x10256102`` dens-alloc ``n*ch*4``
 * ScpLut dmin remap ``0x100fd984…``; AneOrder dens fill ``0x101ec10a…``
+* bAddScene dmin pack ``0x100022e6…``; AneOrder analyze bin-index
+  ``0x102a8555…``
 
 ShastaParams ctor defaults for ``metricGray``/``black``/``white`` /
 ``blackNoiseSigmaMult`` are sanity-checked against cited immediates —
@@ -27,6 +29,8 @@ from unicorn.x86_const import (
     UC_X86_REG_EBX,
     UC_X86_REG_EBP,
     UC_X86_REG_EDI,
+    UC_X86_REG_EDX,
+    UC_X86_REG_ESI,
     UC_X86_REG_ESP,
 )
 
@@ -46,6 +50,10 @@ VA_SCPLUT_REMAP = 0x100FD984
 VA_SCPLUT_REMAP_END = 0x100FD9B7
 VA_GET_RESULTS_FILL = 0x101EC10A
 VA_GET_RESULTS_FILL_END = 0x101EC1D6
+VA_BADDSCENE_PACK = 0x100022E6
+VA_BADDSCENE_PACK_END = 0x10002309
+VA_ANE_BIN_INDEX = 0x102A8555
+VA_ANE_BIN_INDEX_END = 0x102A857C
 TRIPLE_ADDR = STACK_ADDR + 0x80000
 
 
@@ -188,6 +196,74 @@ def run_get_results_fill(
 def _sx32(v: int) -> int:
     v &= 0xFFFFFFFF
     return v - 0x100000000 if v >= 0x80000000 else v
+
+
+def run_baddscene_pack(
+    dll: bytes, word_54: int, word_58: int, word_5c: int
+) -> tuple[int, int, int]:
+    """Unicorn bAddScene pack ``0x100022e6…0x10002309`` → ``ebp-0x38``."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_text(uc, dll)
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    desc = HEAP_ADDR + 0x1000
+    uc.mem_write(desc + 0x54, struct.pack("<h", int(word_54)))
+    uc.mem_write(desc + 0x58, struct.pack("<h", int(word_58)))
+    uc.mem_write(desc + 0x5C, struct.pack("<h", int(word_5c)))
+    ebp = STACK_ADDR + 0x8000
+    uc.reg_write(UC_X86_REG_EBP, ebp)
+    uc.reg_write(UC_X86_REG_EDI, desc)
+    uc.reg_write(UC_X86_REG_ESP, ebp - 0x100)
+    try:
+        uc.emu_start(
+            VA_BADDSCENE_PACK,
+            VA_BADDSCENE_PACK_END,
+            timeout=100_000,
+            count=40,
+        )
+    except UcError:
+        pass
+    return struct.unpack("<hhh", uc.mem_read(ebp - 0x38, 6))
+
+
+def run_ane_hist_slot(
+    dll: bytes,
+    pixel: int,
+    offset: int,
+    divisor: int,
+    max_bin: int,
+    plane_stride: int,
+    plane: int,
+) -> int:
+    """Unicorn Ane analyze bin/slot leaf ``0x102a8555…0x102a857c``."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_text(uc, dll)
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    obj = HEAP_ADDR + 0x1000
+    uc.mem_write(obj + ane.ANE_OBJ_PIXEL_OFFSET_OFF, struct.pack("<i", int(offset)))
+    uc.mem_write(obj + ane.ANE_OBJ_BIN_DIVISOR_OFF, struct.pack("<i", int(divisor)))
+    uc.mem_write(obj + ane.ANE_OBJ_PLANE_STRIDE_OFF, struct.pack("<i", int(plane_stride)))
+    uc.mem_write(obj + ane.ANE_OBJ_BIN_MAX_OFF, struct.pack("<i", int(max_bin)))
+    esp = STACK_ADDR + 0x8000
+    dummy = HEAP_ADDR + 0x2000
+    uc.mem_write(esp + 0x2C, struct.pack("<I", dummy))
+    uc.mem_write(dummy, struct.pack("<II", 0, 0))
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    uc.reg_write(UC_X86_REG_EDI, obj)
+    uc.reg_write(UC_X86_REG_EBP, int(plane) & 0xFFFFFFFF)
+    uc.reg_write(UC_X86_REG_EAX, int(pixel) & 0xFFFFFFFF)
+    uc.reg_write(UC_X86_REG_EDX, int(offset) & 0xFFFFFFFF)
+    try:
+        uc.emu_start(
+            VA_ANE_BIN_INDEX,
+            VA_ANE_BIN_INDEX_END,
+            timeout=100_000,
+            count=40,
+        )
+    except UcError:
+        pass
+    return int(uc.reg_read(UC_X86_REG_ESI)) & 0xFFFFFFFF
 
 
 def main() -> int:
@@ -397,6 +473,44 @@ def main() -> int:
     if not ok:
         fail += 1
 
+    # bAddScene dmin pack (0x100022e6) + case table
+    for case, expect_pack in [(0, False), (1, True), (2, True), (3, True), (4, False)]:
+        got = sc.baddscene_case_packs_dmin(case)
+        ok = got is expect_pack
+        print(f"  bAddScene case {case} packs_dmin={got} {'OK' if ok else 'FAIL'}")
+        if not ok:
+            fail += 1
+    for rgb in [(100, 200, 300), (-1, 0, 1), (0x7FFF, -0x8000, 42)]:
+        host = sc.unpack_dmin_rgb(sc.baddscene_pack_dmin_from_desc(*rgb))
+        ref = run_baddscene_pack(dll, *rgb)
+        ok = host == ref
+        print(
+            f"  bAddScene pack {rgb}: host={host} dll={ref} "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+
+    # AneOrder analyze bin-index / hist slot (0x102a8555)
+    bin_cases = [
+        (100, 0, 1, 255, 256, 0),
+        (100, 50, 2, 100, 128, 1),
+        (10, 50, 2, 100, 128, 2),
+        (1000, 0, 3, 50, 64, 0),
+        (-20, 0, 2, 10, 16, 0),
+        (7, 0, 3, 10, 16, 1),
+    ]
+    for c in bin_cases:
+        host = ane.ane_hist_slot(*c)
+        ref = run_ane_hist_slot(dll, *c)
+        ok = host == ref
+        print(
+            f"  ane_hist_slot {c}: host={host} dll={ref} "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+
     print(
         f"  SHASTA_AIM_AVG2_PORTED={shasta.SHASTA_AIM_AVG2_PORTED} "
         f"MID_RGB={shasta.SHASTA_AIM_MID_RGB_PORTED} "
@@ -405,8 +519,10 @@ def main() -> int:
         f"TONE_LUT={shasta.SHASTA_TONE_LUT_PORTED} "
         f"SCENE_DMIN={sc.SCENE_CONTEXT_DMIN_PORTED} "
         f"SCPLUT_REMAP={sc.SCPLUT_DMIN_REMAP_PORTED} "
+        f"BADDSCENE_PACK={sc.BADDSCENE_DMIN_PACK_PORTED} "
         f"NOISE_LAYOUT={ane.ANE_NOISE_TABLE_LAYOUT_PORTED} "
         f"GET_RESULTS_FILL={ane.ANE_GET_RESULTS_FILL_PORTED} "
+        f"ANE_BIN_INDEX={ane.ANE_ANALYZE_BIN_INDEX_PORTED} "
         f"ANE_ORDER={ane.ANE_ORDER_PORTED}"
     )
     return 1 if fail else 0

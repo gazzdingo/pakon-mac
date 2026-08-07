@@ -3,8 +3,8 @@
 
 PakonIMAu.dll base ``0x10000000``. Catalog + host layout for the float
 table CnPremium indexes at mid-aim. ``getResults`` dens **fill** from
-Impl curve rows is ported; AneOrder **analyze** (who builds those rows)
-remains WALL.
+Impl curve rows is ported; analyze **bin-index** leaf is ported;
+full AneOrder **analyze** (sample/residual → curve knots) remains WALL.
 
 VERIFIED call chain
 ===================
@@ -13,9 +13,30 @@ Order-wide analyze
 ------------------
 * Path ``ColorNegativePath::analyzeAneOrder`` @ ``0x100fad90``
 * Cap ``AnsAneOrderCapability::analyze`` @ ``0x10110540``
-* Impl analyze @ ``0x101ed3a0``
+* Impl analyze @ ``0x101ed3a0`` (string ``0x1059b428``):
+
+  1. Walk scenes; QI portfolio names ``AneSampledImage`` /
+     ``AneResidualImage`` (``0x1059b2e8`` / ``0x1059b2d4``).
+  2. Wrap each via ``0x101ed1b0``; push into vectors (``0x101ed330``).
+  3. On non-empty equal-length vectors: ``0x1027e9d0`` on
+     Impl ``+0xc0`` (``Ane.cpp`` — mismatch →
+     ``"Empty or mismatched sample/residual vectors."``).
+  4. ``0x1027e9d0`` drives hist accumulate leaves ``0x102a84d0`` /
+     ``0x102a8600`` / ``0x102a8950`` and finalize ``0x102a8770``.
+
 * Cap ``getResults`` @ ``0x10110830`` → Impl ``0x101ebe90``
   (string ``0x1059b3a4``)
+
+Analyze bin-index leaf @ ``0x102a8555…`` (PORTED)
+------------------------------------------------
+Shared by accumulate helpers (``edi``/``ebp``/``ebx`` = Ane object):
+
+* ``bin = (pixel − [obj+0x34]) / [obj+0x3c]`` — MSVC ``idiv`` (trunc
+  toward 0); clamp to ``[0, obj+0x44]``.
+* ``slot = [obj+0x40] * plane + bin`` (``imul`` + ``add``).
+
+``ANE_ANALYZE_BIN_INDEX_PORTED = True``. Histogram accumulate /
+percentile→knot maths still open → ``ANE_ORDER_PORTED = False``.
 
 ``NoiseMethods::getNoiseTable`` @ ``0x10112980``
 -----------------------------------------------
@@ -82,7 +103,8 @@ Flags
 * ``ANE_NOISE_TABLE_LAYOUT_PORTED = True`` — host ``NoiseTable`` layout +
   alloc size + plane view for ``ane_dens_contrib``.
 * ``ANE_GET_RESULTS_FILL_PORTED = True`` — dens fill from cited curve rows.
-* ``ANE_ORDER_PORTED = False`` — analyze / residual maths still open.
+* ``ANE_ANALYZE_BIN_INDEX_PORTED = True`` — hist bin/slot leaf (Unicorn).
+* ``ANE_ORDER_PORTED = False`` — sample/residual → curve knots still open.
 """
 from __future__ import annotations
 
@@ -94,6 +116,7 @@ import numpy as np
 ANE_ORDER_PORTED = False
 ANE_NOISE_TABLE_LAYOUT_PORTED = True
 ANE_GET_RESULTS_FILL_PORTED = True
+ANE_ANALYZE_BIN_INDEX_PORTED = True
 
 PATH_ANALYZE_ANE_ORDER = 0x100FAD90
 ANE_ORDER_CAP_ANALYZE = 0x10110540
@@ -101,7 +124,16 @@ ANE_ORDER_IMPL_ANALYZE = 0x101ED3A0
 ANE_ORDER_CAP_GET_RESULTS = 0x10110830
 ANE_ORDER_IMPL_GET_RESULTS = 0x101EBE90
 ANE_ORDER_GET_RESULTS_FILL = 0x101EC10A
+ANE_ANALYZE_BUILD_CURVES = 0x1027E9D0  # Ane.cpp from Impl+0xc0
+ANE_ANALYZE_BIN_INDEX = 0x102A8555  # leaf inside 0x102a84d0 accumulate
+ANE_ANALYZE_BIN_INDEX_END = 0x102A857C  # before call 0x101ed810
 ORDER_ORIENTATION_CAP_ANALYZE = 0x101218C0
+
+# Ane object fields used by bin-index leaf (cite 0x102a854e…)
+ANE_OBJ_PIXEL_OFFSET_OFF = 0x34
+ANE_OBJ_BIN_DIVISOR_OFF = 0x3C
+ANE_OBJ_PLANE_STRIDE_OFF = 0x40
+ANE_OBJ_BIN_MAX_OFF = 0x44
 
 NOISE_METHODS_GET_NOISE_TABLE = 0x10112980
 CN_PREMIUM_GET_NOISE_TABLE_CALL = 0x10056863
@@ -125,6 +157,37 @@ def noise_table_alloc_nbytes(n: int, n_channels: int) -> int:
     if n < 0 or n_channels < 0:
         raise ValueError("n and n_channels must be ≥ 0")
     return int(n) * int(n_channels) * 4
+
+
+def ane_bin_index(pixel: int, offset: int, divisor: int, max_bin: int) -> int:
+    """Analyze hist bin @ ``0x102a8555…`` — ``idiv`` + clamp (Unicorn-golden).
+
+    ``bin = trunc_toward_0((pixel - offset) / divisor)`` then
+    ``clamp(bin, 0, max_bin)``. ``divisor`` must be non-zero (DLL ``idiv``).
+    """
+    d = int(divisor)
+    if d == 0:
+        raise ValueError("divisor must be non-zero (DLL idiv)")
+    # MSVC idiv truncates toward 0; Python int(a/b) on floats does too.
+    q = int((int(pixel) - int(offset)) / d)
+    if q < 0:
+        return 0
+    hi = int(max_bin)
+    return hi if q > hi else q
+
+
+def ane_hist_slot(
+    pixel: int,
+    offset: int,
+    divisor: int,
+    max_bin: int,
+    plane_stride: int,
+    plane: int,
+) -> int:
+    """``slot = plane_stride * plane + bin`` after ``ane_bin_index``."""
+    return int(plane_stride) * int(plane) + ane_bin_index(
+        pixel, offset, divisor, max_bin
+    )
 
 
 def get_results_fill_dens(
@@ -232,16 +295,20 @@ def main() -> None:
     print(f"  Cap getResults    {ANE_ORDER_CAP_GET_RESULTS:#010x}")
     print(f"  Impl getResults   {ANE_ORDER_IMPL_GET_RESULTS:#010x}")
     print(f"  dens fill         {ANE_ORDER_GET_RESULTS_FILL:#010x}")
+    print(f"  analyze build     {ANE_ANALYZE_BUILD_CURVES:#010x}")
+    print(f"  bin-index leaf    {ANE_ANALYZE_BIN_INDEX:#010x}")
     print(f"  ctor/alloc        {NOISE_TABLE_CTOR:#010x} / {NOISE_TABLE_ALLOC:#010x}")
     print(
         f"  LAYOUT_PORTED={ANE_NOISE_TABLE_LAYOUT_PORTED} "
         f"FILL_PORTED={ANE_GET_RESULTS_FILL_PORTED} "
+        f"BIN_INDEX_PORTED={ANE_ANALYZE_BIN_INDEX_PORTED} "
         f"ANE_ORDER_PORTED={ANE_ORDER_PORTED}"
     )
     nt = NoiseTable.zeros(64, 1)
     print(f"  sample alloc nbytes={noise_table_alloc_nbytes(nt.n, nt.n_channels)}")
     sample = get_results_fill_dens([(5.0, 2.0), (15.0, 12.0)], 20, 1)
     print(f"  sample fill[0,:8]={sample[0, :8]}")
+    print(f"  sample bin slot={ane_hist_slot(100, 50, 2, 100, 128, 1)}")
 
 
 if __name__ == "__main__":

@@ -30,9 +30,19 @@ VERIFIED
 Cited dmin **writers** (size=6, name ``"dmin"``):
 
 1. ``CiColorCorrectionAnsel::bAddScene`` @ insert site ``0x10002523``
-   (string ``0x10573a58``). When scene-desc ``+0x48`` selects the packed
-   case, RGB comes from desc ``+0x54/+0x58/+0x5c`` → stack ``ebp-0x38``
-   (``0x100022f9…``), then insert.
+   (string ``0x10573a58``). Jump table ``0x10002824`` on desc
+   ``+0x48`` (``cmp eax,4; ja``):
+
+   | case | entry        | packs dmin from desc? | ``ebp-0x18`` |
+   |------|--------------|-----------------------|--------------|
+   | 0    | ``0x10002318`` | no                    | 3            |
+   | 1–3  | ``0x100022e6`` | **yes** ``+0x54/58/5c`` → ``ebp-0x38`` | 1 |
+   | 4    | ``0x1000230b`` | no                    | 3            |
+
+   Insert runs only when ``[ebp-0x18]==1`` (``0x100024f3``) — i.e. cases
+   1–3. Pack leaf Unicorn-golden → ``BADDSCENE_DMIN_PACK_PORTED``.
+   **Producing** the desc words themselves (host ``PIAnselAddScene``)
+   remains outside this module.
 2. ``ColorNegativePath::analyzeScpLutBalance`` @ ``0x100fdaa8``:
    - Remap ``path+0x3c/+0x3e/+0x40`` through a LUT (``0x100fd984…``),
    - ``lea esi, [edi+0x3c]`` then ``insert("dmin", esi, 6, …)``.
@@ -53,7 +63,9 @@ Call-site push order aliases ``stride`` to ``[esp+0x2c]`` and LUT to
 * ``B' = lut[B + 2·stride]``
 
 ``SCPLUT_DMIN_REMAP_PORTED = True``. Upstream ``path+0x3c`` **source**
-values (FUGC / balance writers) remain WALL.
+values remain WALL (FUGC Cap analyze *reads* ``&path+0x3c`` as aim
+input when policy passes — it does not fill those words; sole static
+``mov word`` to ``+0x4b6`` is ScpLut zeroing).
 
 Other ``"dmin"`` push sites exist (FUGC / noise / …); mid-aim **reader**
 is the CnPremium ``find`` above.
@@ -66,8 +78,8 @@ Host bag
 bAddScene desc or ScpLut-remapped ``path+0x3c``).
 
 ``SCENE_CONTEXT_DMIN_PORTED = True`` — bag I/O + pack/unpack + ScpLut
-remap leaf. Live AddScene desc words / ``path+0x3c`` producers still
-host-supplied.
+remap + bAddScene pack leaf. Live desc words / ``path+0x3c`` **source**
+producers still host-supplied / WALL.
 """
 from __future__ import annotations
 
@@ -77,6 +89,7 @@ from typing import Sequence
 
 SCENE_CONTEXT_DMIN_PORTED = True
 SCPLUT_DMIN_REMAP_PORTED = True
+BADDSCENE_DMIN_PACK_PORTED = True
 
 SCENE_CONTEXT_FIND = 0x10022A40
 SCENE_CONTEXT_INSERT = 0x10023F10
@@ -87,11 +100,18 @@ STR_BADDSCENE = 0x10573A58
 
 CN_PREMIUM_DMIN_FIND_CALL = 0x100566AC  # E8 → find
 BADDSCENE_DMIN_INSERT = 0x10002523
+BADDSCENE_DMIN_PACK = 0x100022E6  # cases 1–3: desc → ebp-0x38
+BADDSCENE_DMIN_PACK_END = 0x10002309  # before jmp join
+BADDSCENE_CASE_JT = 0x10002824  # dword[5] jump table on desc+0x48
 SCPLUT_DMIN_INSERT = 0x100FDAA8
 SCPLUT_DMIN_REMAP = 0x100FD984  # path+0x3c through LUT, then insert
 SCPLUT_CAP_GET_LUT = 0x10122150
 SCPLUT_IMPL_GET_LUT = 0x10212100
 PATH_DMIN_RGB_OFF = 0x3C  # 3×int16 at +0x3c/+0x3e/+0x40
+DESC_DMIN_CASE_OFF = 0x48
+DESC_DMIN_R_OFF = 0x54
+DESC_DMIN_G_OFF = 0x58
+DESC_DMIN_B_OFF = 0x5C
 DMIN_BYTES = 6
 
 
@@ -108,10 +128,18 @@ def unpack_dmin_rgb(blob: bytes) -> tuple[int, int, int]:
     return int(r), int(g), int(b)
 
 
+def baddscene_case_packs_dmin(case: int) -> bool:
+    """True when desc ``+0x48`` selects packed dmin insert (cases 1–3)."""
+    return int(case) in (1, 2, 3)
+
+
 def baddscene_pack_dmin_from_desc(
     word_54: int, word_58: int, word_5c: int
 ) -> bytes:
-    """bAddScene packed case @ ``0x100022f9`` — desc ``+0x54/+0x58/+0x5c``."""
+    """bAddScene packed case @ ``0x100022e6…`` — desc ``+0x54/+0x58/+0x5c``.
+
+    Unicorn-golden word copy into the 6-byte insert buffer (``ebp-0x38``).
+    """
     return pack_dmin_rgb(word_54, word_58, word_5c)
 
 
@@ -195,15 +223,24 @@ def main() -> None:
     print(f"  insert {SCENE_CONTEXT_INSERT:#010x}")
     print(f"  CnPremium find call {CN_PREMIUM_DMIN_FIND_CALL:#010x}")
     print(f"  bAddScene insert    {BADDSCENE_DMIN_INSERT:#010x}")
+    print(f"  bAddScene pack      {BADDSCENE_DMIN_PACK:#010x}")
     print(f"  ScpLut insert       {SCPLUT_DMIN_INSERT:#010x} (remap {SCPLUT_DMIN_REMAP:#010x})")
     print(f"  ScpLut getLut Cap/Impl {SCPLUT_CAP_GET_LUT:#010x}/{SCPLUT_IMPL_GET_LUT:#010x}")
     bag = SceneContextBag()
     bag.insert_dmin((100, 200, 300))
-    print(f"  roundtrip {bag.find_dmin()} SCENE_CONTEXT_DMIN_PORTED={SCENE_CONTEXT_DMIN_PORTED}")
+    print(
+        f"  roundtrip {bag.find_dmin()} "
+        f"SCENE_CONTEXT_DMIN_PORTED={SCENE_CONTEXT_DMIN_PORTED} "
+        f"BADDSCENE_PACK={BADDSCENE_DMIN_PACK_PORTED}"
+    )
     lut = list(range(400))
     print(
         f"  scplut remap sample {scplut_remap_dmin_rgb(lut, 100, 5, 6, 7)} "
         f"REMAP_PORTED={SCPLUT_DMIN_REMAP_PORTED}"
+    )
+    print(
+        f"  bAddScene cases pack? "
+        f"{[baddscene_case_packs_dmin(c) for c in range(5)]}"
     )
 
 

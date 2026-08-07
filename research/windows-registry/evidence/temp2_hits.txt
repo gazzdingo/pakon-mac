@@ -1,0 +1,3 @@
+4731509224:WriteLightStabilityLog
+4731512928:WriteEEPromDebugFile
+4731517064:RequireDxSensorsDuringLightCalibration

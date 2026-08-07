@@ -97,10 +97,12 @@ Worth knowing, because they were load-bearing for the old plan:
 
 * **The serial check** on the physical unit (above). Highest value, costs
   nothing.
-* **TEC / temperature setpoints are not here.** `UseTemperatureSetpoints = 0`
-  and no `TempSetpoint`, `TempLB` or `TempMB` value exists anywhere in the hive
-  — those strings live only in TLB.dll. If the TEC needs driving, the registry
-  is not the source and another route is required.
+* **TEC / temperature setpoints — RESOLVED, see `docs/38-lamp-temperature.md`.**
+  There is no per-unit temperature calibration anywhere, by design: the thermal
+  loop is closed on the light board, and the host fields are optional service
+  overrides in a diagnostics key with the override switch off. Nothing to hunt
+  for. `TempSetpoint`/`TempLB`/`TempMB` turned out to be *log column headers*,
+  not registry values.
 * **`PakonLampLog.txt` and the Pakon install directory** were not recovered.
   They are on the same virtual disk; extracting files (as opposed to registry
   hives) needs NTFS parsing, which was not done. `docs/36` steps 3 and 4 still

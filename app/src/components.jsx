@@ -1,9 +1,14 @@
-// Shared pieces of the shell: top bar, rails, filmstrip, density trace.
-// The arrangement is the approved one from design/review.html — 44 px top
-// bar, session rail left, image stage on Void, one inspector right, filmstrip
-// and density trace across the bottom.
-import React, { useEffect, useRef, useState } from 'react';
-import { Button, Chip, Tooltip } from '@heroui/react';
+// The Console — shared furniture.
+//
+// Layout is design/variants/console-scan.html and console-review.html: two
+// bars, three columns, the roll along the floor. Every class used here is
+// defined in theme.css and carried from those files.
+//
+// Copy rule, from the owner: labels are titles, not sentences. A control gets
+// a label, a value and a state. Anything that needs explaining — why Base 4
+// and 8 are disabled, why a stage is unavailable — goes behind <Info>, which
+// is closed until asked.
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { frameUrl } from './api';
 
 export const MODES = [
@@ -14,281 +19,414 @@ export const MODES = [
   ['diagnostics', 'Diagnostics'],
 ];
 
-export function Dot({ tone = 'idle' }) {
-  const bg = { ok: 'var(--pass)', live: 'var(--filament)', bad: 'var(--halt)', idle: 'var(--rule)' }[
-    tone
-  ];
-  return (
-    <i
-      className={`inline-block w-[7px] h-[7px] rounded-full shrink-0 ${tone === 'live' ? 'pulse' : ''}`}
-      style={{ background: bg }}
-    />
-  );
-}
+/* ── the info affordance ────────────────────────────────────────────────── */
 
-export function TopBar({ mode, setMode, roll, chips }) {
-  return (
-    <header
-      className="flex items-stretch h-11 shrink-0 border-b"
-      style={{ background: 'var(--plate)', borderColor: 'var(--rule)' }}
-    >
-      <div
-        className="flex flex-col justify-center px-4 border-r select-none"
-        style={{ borderColor: 'var(--rule)', WebkitAppRegion: 'drag', paddingLeft: 88 }}
-      >
-        <b className="text-[12px] tracking-[0.18em] font-semibold">PAKON F-135 PLUS</b>
-        <span className="text-[9px] tracking-[0.14em]" style={{ color: 'var(--mute)' }}>
-          film scanner
-        </span>
-      </div>
-      <nav className="flex items-stretch">
-        {MODES.map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setMode(id)}
-            className="px-[18px] text-[11px] tracking-[0.14em] border-r gate"
-            style={{
-              borderColor: 'var(--rule)',
-              color: mode === id ? 'var(--ink)' : 'var(--mute)',
-              boxShadow: mode === id ? 'inset 0 -2px 0 var(--ink)' : 'none',
-              background: mode === id ? 'var(--plate2)' : 'transparent',
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      {roll?.stock ? (
-        <div
-          className="flex items-center gap-[10px] ml-auto px-4 border-l"
-          style={{ borderColor: 'var(--rule)' }}
-        >
-          <span className="lbl">{roll.dx ? `DX ${roll.dx}` : roll.film_path}</span>
-          <span className="ledger text-[14px]">{roll.stock.name}</span>
-          {roll.stock.iso ? <span className="lbl">ISO {roll.stock.iso}</span> : null}
-        </div>
-      ) : (
-        <div
-          className="flex items-center gap-[10px] ml-auto px-4 border-l"
-          style={{ borderColor: 'var(--rule)' }}
-        >
-          <span className="lbl">Film</span>
-          <span className="ledger text-[14px]" style={{ color: 'var(--mute)' }}>
-            {roll?.film_path || (roll ? 'unset' : '—')}
-          </span>
-        </div>
-      )}
-
-      <div className="flex items-center gap-3 px-4 border-l" style={{ borderColor: 'var(--rule)' }}>
-        {chips}
-      </div>
-    </header>
-  );
-}
-
-export function Rail({ children, width = 232, side = 'left' }) {
-  return (
-    <aside
-      className={`shrink-0 overflow-y-auto ${side === 'left' ? 'border-r' : 'border-l'}`}
-      style={{ width, background: 'var(--plate)', borderColor: 'var(--rule)' }}
-    >
-      {children}
-    </aside>
-  );
-}
-
-export function Section({ title, children, action, grow }) {
-  return (
-    <section
-      className={`px-4 py-[14px] border-b ${grow ? 'mt-auto' : ''}`}
-      style={{ borderColor: 'var(--rule)' }}
-    >
-      {title ? (
-        <div className="flex items-center justify-between mb-[10px]">
-          <h2 className="text-[10px] tracking-[0.14em] uppercase font-semibold" style={{ color: 'var(--mute)' }}>
-            {title}
-          </h2>
-          {action}
-        </div>
-      ) : null}
-      {children}
-    </section>
-  );
-}
-
-export function KV({ rows }) {
-  return (
-    <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-[12px]">
-      {rows.map(([k, v]) => (
-        <React.Fragment key={k}>
-          <dt style={{ color: 'var(--mute)' }}>{k}</dt>
-          <dd className="num text-right">{v}</dd>
-        </React.Fragment>
-      ))}
-    </dl>
-  );
-}
-
-export function Plain({ children, onPress, active, className = '', ...rest }) {
-  return (
-    <Button
-      onPress={onPress}
-      className={`w-full justify-center rounded-none border text-[11px] tracking-[0.1em] uppercase h-9 gate ${className}`}
-      style={{
-        borderColor: active ? 'var(--ink)' : 'var(--rule)',
-        background: active ? 'var(--plate2)' : 'transparent',
-        color: 'var(--ink)',
-      }}
-      {...rest}
-    >
-      {children}
-    </Button>
-  );
-}
-
-/** The roll as one set of frames. Thumbnails are rendered by the backend at
- *  1/8 scale, so a 37-frame roll costs about 40 ms per thumbnail once. */
-export function Filmstrip({ roll, selected, onSelect }) {
+/** A closed disclosure. The only place long-form reasoning is allowed. */
+export function Info({ children, side = 'right', label = 'Why' }) {
+  const [open, setOpen] = useState(false);
   const ref = useRef(null);
+
   useEffect(() => {
-    const el = ref.current?.querySelector(`[data-i="${selected}"]`);
-    el?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
-  }, [selected]);
+    if (!open) return undefined;
+    const away = (e) => !ref.current?.contains(e.target) && setOpen(false);
+    const esc = (e) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
 
   return (
-    <div ref={ref} className="flex gap-[6px] px-4 pt-[10px] pb-1 overflow-x-auto">
-      {roll.frames.map((f) => {
-        const rejected = f.params?.rejected;
-        return (
-          <button
-            key={f.index}
-            data-i={f.index}
-            onClick={() => onSelect(f.index)}
-            title={`Frame ${f.index + 1} — ${f.summary}`}
-            className="relative shrink-0 w-[76px] h-[52px] overflow-hidden border gate"
-            style={{
-              borderColor: selected === f.index ? 'var(--ink)' : 'var(--rule)',
-              boxShadow: selected === f.index ? '0 0 0 1px var(--ink)' : 'none',
-            }}
-          >
-            <img
-              src={frameUrl(roll.id, f.index, 'thumb', f.version)}
-              alt=""
-              loading="lazy"
-              className="w-full h-full object-cover"
-              style={{ background: '#000' }}
-            />
-            <i
-              className="absolute left-[3px] bottom-[1px] num text-[9px] not-italic"
-              style={{ color: 'rgba(232,232,232,.85)', textShadow: '0 0 3px #000' }}
-            >
-              {f.index + 1}
-            </i>
-            {f.adjusted ? (
-              <span
-                className="absolute top-[2px] right-[3px] w-[5px] h-[5px]"
-                style={{ background: 'var(--mute)' }}
-                title="adjusted"
-              />
-            ) : null}
-            {f.confidence === 'low' ? (
-              <span
-                className="absolute top-[2px] left-[3px] w-[5px] h-[5px]"
-                style={{ background: 'var(--filament)' }}
-                title="low boundary confidence"
-              />
-            ) : null}
-            {rejected ? (
-              <span
-                className="absolute inset-0"
-                style={{
-                  background:
-                    'repeating-linear-gradient(45deg,transparent 0 6px,rgba(11,11,11,.65) 6px 9px)',
-                }}
-              />
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
+    <span className="infowrap" ref={ref}>
+      <button
+        type="button"
+        className="info"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
+      >
+        i
+      </button>
+      {open ? <span className={`infopop${side === 'left' ? ' left' : ''}`}>{children}</span> : null}
+    </span>
   );
 }
 
-/** Per-frame mean density across the roll; the cursor marks the selection. */
-export function DensityTrace({ trace, selected, onSelect }) {
-  if (!trace?.length) return null;
-  const W = 900;
-  const H = 34;
-  const lo = Math.min(...trace);
-  const hi = Math.max(...trace);
-  const span = hi - lo || 1;
-  const step = trace.length > 1 ? W / (trace.length - 1) : W;
-  const pts = trace
-    .map((v, i) => `${(i * step).toFixed(1)},${(H - 4 - ((v - lo) / span) * (H - 10)).toFixed(1)}`)
-    .join(' ');
-  return (
-    <div className="px-4 pb-2 h-[34px]" title="Per-frame mean density">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-full block">
-        <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="var(--rule)" strokeWidth="1" />
-        <polyline fill="none" stroke="var(--mute)" strokeWidth="1.25" points={pts} />
-        {trace.map((_, i) => (
-          <rect
-            key={i}
-            x={i * step - step / 2}
-            y="0"
-            width={step}
-            height={H}
-            fill="transparent"
-            style={{ cursor: 'pointer' }}
-            onClick={() => onSelect?.(i)}
-          />
-        ))}
-        <line
-          x1={selected * step}
-          y1="2"
-          x2={selected * step}
-          y2={H - 2}
-          stroke="var(--ink)"
-          strokeWidth="1"
-        />
-      </svg>
-    </div>
-  );
-}
+/* ── small parts ────────────────────────────────────────────────────────── */
 
-export function StatusLine({ left, children, right }) {
+export function Chip({ tone, dot, children, className = '', ...rest }) {
   return (
-    <div
-      className="flex gap-6 items-center h-[26px] px-4 border-t num text-[11px]"
-      style={{ borderColor: 'var(--rule)', color: 'var(--mute)' }}
-    >
-      {left ? <span style={{ color: 'var(--ink)' }}>{left}</span> : null}
-      {children}
-      <span className="flex-1" />
-      {right}
-    </div>
-  );
-}
-
-/** Machine state is the only thing allowed to be gold. */
-export function Working({ children }) {
-  return (
-    <span className="flex items-center gap-2 text-[11px] filament py-1.5">
-      <span
-        className="spin w-3 h-3 rounded-full shrink-0"
-        style={{ border: '2px solid var(--rule)', borderTopColor: 'var(--filament)' }}
-      />
+    <span className={`chip${tone ? ` ${tone}` : ''} ${className}`} {...rest}>
+      {dot ? <span className="dot" /> : null}
       {children}
     </span>
   );
 }
 
+export function Btn({ variant = '', children, onClick, disabled, ...rest }) {
+  return (
+    <button
+      type="button"
+      className={`btn ${variant}`}
+      onClick={onClick}
+      disabled={disabled || undefined}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function Num({ children, size }) {
+  return (
+    <span className="num" style={size ? { fontSize: size } : undefined}>
+      {children}
+    </span>
+  );
+}
+
+/* ── rails ──────────────────────────────────────────────────────────────── */
+
+export const Rail = ({ side = 'l', children, ...rest }) => (
+  <aside className={`rail ${side}`} {...rest}>
+    {children}
+  </aside>
+);
+
+export const RailHead = ({ title, children }) => (
+  <div className="railhead">
+    <span className="lbl">{title}</span>
+    <span className="sp" />
+    {children}
+  </div>
+);
+
+export const Grp = ({ title, info, children }) => (
+  <div className="grp">
+    {title ? (
+      <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {title}
+        {info ? <Info>{info}</Info> : null}
+      </span>
+    ) : null}
+    {children}
+  </div>
+);
+
+/** Label, control, value. No subtext — that is what `info` is for. */
+export const Field = ({ label, info, children, value }) => (
+  <div className="field">
+    {label ? (
+      <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {label}
+        {info ? <Info>{info}</Info> : null}
+        {value ? (
+          <>
+            <span className="sp" />
+            <span className="num" style={{ fontSize: 11, color: 'var(--mute)' }}>
+              {value}
+            </span>
+          </>
+        ) : null}
+      </span>
+    ) : null}
+    {children}
+  </div>
+);
+
+/** Segmented control. An option may be disabled and carry its own reason. */
+export function Seg({ options, value, onChange, ariaLabel }) {
+  return (
+    <div className="seg" role="radiogroup" aria-label={ariaLabel}>
+      {options.map(([id, label, disabled]) => (
+        <button
+          key={id}
+          type="button"
+          role="radio"
+          aria-checked={value === id}
+          className={value === id ? 'on' : ''}
+          disabled={disabled || undefined}
+          onClick={() => !disabled && onChange?.(id)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Toggle({ on, disabled, onChange, children, info }) {
+  return (
+    <label className="sw">
+      <span
+        role="switch"
+        aria-checked={!!on}
+        aria-disabled={disabled || undefined}
+        tabIndex={disabled ? -1 : 0}
+        className={`kt${on ? ' on' : ''}${disabled ? ' off' : ''}`}
+        onClick={() => !disabled && onChange?.(!on)}
+        onKeyDown={(e) => e.key === ' ' && !disabled && onChange?.(!on)}
+      />
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {children}
+        {info ? <Info>{info}</Info> : null}
+      </span>
+    </label>
+  );
+}
+
+/** One row per subsystem: name, verdict. `tone` is good | warn | bad | na. */
+export function State({ rows }) {
+  return (
+    <dl style={{ display: 'flex', flexDirection: 'column' }}>
+      {rows.map(([name, value, tone, info]) => (
+        <div className="st" key={name}>
+          <dt>
+            {name}
+            {info ? <Info>{info}</Info> : null}
+          </dt>
+          <dd className={tone || ''}>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/* ── shell bars ─────────────────────────────────────────────────────────── */
+
+const SUN = (
+  <svg className="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+    <circle cx="12" cy="12" r="4.2" />
+    <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" />
+  </svg>
+);
+const MOON = (
+  <svg className="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
+  </svg>
+);
+
+export function useTheme() {
+  const [dark, setDark] = useState(
+    () => document.documentElement.getAttribute('data-theme') === 'dark',
+  );
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  }, [dark]);
+  return [dark, setDark];
+}
+
+export function TopBar({ mode, setMode, roll, dark, setDark }) {
+  return (
+    <header className="top">
+      <span
+        className="brand"
+        style={{ WebkitAppRegion: 'drag', paddingLeft: window.pakon?.platform === 'darwin' ? 62 : 0 }}
+      >
+        PAKON&nbsp;F&#8209;135&nbsp;PLUS
+      </span>
+      <nav className="modes" aria-label="Mode">
+        {MODES.map(([id, label]) => (
+          <button key={id} type="button" className={`mode${mode === id ? ' on' : ''}`} onClick={() => setMode(id)}>
+            {label}
+          </button>
+        ))}
+      </nav>
+      <span className="sp" />
+      {roll ? (
+        <>
+          <Chip>
+            {roll.stock?.name || roll.film_path}
+            {roll.stock?.iso ? <span className="num" style={{ fontSize: 11 }}>ISO {roll.stock.iso}</span> : null}
+          </Chip>
+          <Chip>
+            Roll <span className="num" style={{ fontSize: 11 }}>{roll.name}</span>
+          </Chip>
+        </>
+      ) : (
+        <Chip>No roll open</Chip>
+      )}
+      <button
+        type="button"
+        className="themeswap"
+        aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+        onClick={() => setDark(!dark)}
+      >
+        {SUN}
+        {MOON}
+      </button>
+    </header>
+  );
+}
+
+/** Twin lanes. `capture` is permanently idle in this build — the transport is
+ *  not driven from here — and says so once, in the lane, behind an Info. */
+export function Lanes({ exportJob, onCancelExport }) {
+  const running = exportJob && exportJob.status === 'running';
+  const pct = running || exportJob?.status === 'done' ? Math.round((exportJob.progress || 0) * 100) : null;
+  return (
+    <div className="lanes">
+      <div className="lane">
+        <span className="what">
+          <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            Capture
+            <Info side="left">
+              <b>Not wired.</b> Driving the transport is proven in{' '}
+              <span className="num">tools/pakon_session.py</span> — EP&nbsp;
+              <span className="num">0x86</span> at <span className="num">11.6&nbsp;MB/s</span>, zero
+              losses — and is not connected to this window. Rolls are opened from captures already on
+              disk.
+            </Info>
+          </span>
+          <b>Idle</b>
+        </span>
+        <div className="bar">
+          <i style={{ width: '0%' }} />
+        </div>
+        <span className="pc">&mdash;</span>
+        <Btn disabled>Stop</Btn>
+      </div>
+      <div className="lane">
+        <span className="what">
+          <span className="lbl">Export</span>
+          <b>{exportJob ? exportJob.message || exportJob.phase || 'Working' : 'Idle'}</b>
+        </span>
+        <div className={`bar${running ? ' warnfill' : ''}`}>
+          <i style={{ width: `${pct ?? 0}%` }} />
+        </div>
+        <span className="pc">{pct == null ? '—' : `${pct} %`}</span>
+        <Btn disabled={!running} onClick={onCancelExport}>
+          Cancel
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+/* ── the roll, along the floor ──────────────────────────────────────────── */
+
+export function Filmstrip({ roll, selected, onSelect, children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    ref.current?.querySelector(`[data-i="${selected}"]`)?.scrollIntoView({
+      block: 'nearest',
+      inline: 'center',
+      behavior: 'smooth',
+    });
+  }, [selected]);
+
+  if (!roll) return null;
+  const accepted = roll.frames.filter((f) => !f.params?.rejected).length;
+  const rejected = roll.frames.length - accepted;
+
+  return (
+    <div className="strip">
+      <div className="striphead">
+        {children}
+        <span className="sp" />
+        <Chip tone="ok">{accepted} accepted</Chip>
+        {rejected ? <Chip>{rejected} rejected</Chip> : null}
+      </div>
+      <div className="thumbs" ref={ref} role="listbox" aria-label="Frames in this roll">
+        {roll.frames.map((f) => (
+          <button
+            key={f.index}
+            type="button"
+            data-i={f.index}
+            role="option"
+            aria-selected={selected === f.index}
+            aria-label={`Frame ${f.index + 1}`}
+            title={`Frame ${f.index + 1} — ${f.summary}`}
+            className={`th${selected === f.index ? ' on' : ''}${f.params?.rejected ? ' no' : ''}`}
+            onClick={() => onSelect(f.index)}
+          >
+            <img src={frameUrl(roll.id, f.index, 'thumb', f.version)} alt="" loading="lazy" />
+            <b>{f.index + 1}</b>
+            {f.adjusted ? <i className="mark adj" title="adjusted" /> : null}
+            {f.confidence === 'low' ? <i className="mark" title="low boundary confidence" /> : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── the vendor's button-step slider ────────────────────────────────────── */
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/** −8…+8 in quarter steps. Zero is the roll's own scene balance and is marked
+ *  with a detent; the fill grows from it, not from the left end. */
+export function StepTrack({ value, min = -8, max = 8, step = 0.25, onInput, onCommit, disabled }) {
+  const ref = useRef(null);
+  const pos = (v) => ((v - min) / (max - min)) * 100;
+  const zero = pos(0);
+  const at = pos(clamp(value, min, max));
+
+  const from = useCallback(
+    (clientX) => {
+      const r = ref.current.getBoundingClientRect();
+      const raw = min + ((clientX - r.left) / r.width) * (max - min);
+      return clamp(Math.round(raw / step) * step, min, max);
+    },
+    [min, max, step],
+  );
+
+  const down = (e) => {
+    if (disabled) return;
+    e.preventDefault();
+    ref.current.setPointerCapture(e.pointerId);
+    onInput?.(from(e.clientX));
+    const move = (ev) => onInput?.(from(ev.clientX));
+    const up = (ev) => {
+      ref.current?.releasePointerCapture?.(ev.pointerId);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      onCommit?.(from(ev.clientX));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="track"
+      onPointerDown={down}
+      role="slider"
+      tabIndex={disabled ? -1 : 0}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
+      aria-disabled={disabled || undefined}
+      style={disabled ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+    >
+      <span className="detent" />
+      <span
+        className="fill"
+        style={{ left: `${Math.min(zero, at)}%`, width: `${Math.abs(at - zero)}%` }}
+      />
+      <span className="knob" style={{ left: `${at}%` }} />
+    </div>
+  );
+}
+
 export function Empty({ title, children, action }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8">
-      <div className="ledger text-[22px]">{title}</div>
-      <p className="text-[13px] max-w-[52ch]" style={{ color: 'var(--mute)' }}>
+    <div
+      className="stage"
+      style={{ flexDirection: 'column', gap: 14, textAlign: 'center' }}
+    >
+      <div className="title" style={{ fontSize: 21 }}>
+        {title}
+      </div>
+      <p className="quiet" style={{ maxWidth: '46ch' }}>
         {children}
       </p>
       {action}
@@ -296,11 +434,20 @@ export function Empty({ title, children, action }) {
   );
 }
 
-export function useDebounced(value, ms) {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return v;
+export function Spinner({ children }) {
+  return (
+    <span className="quiet" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: '50%',
+          border: '2px solid var(--content3)',
+          borderTopColor: 'var(--primary)',
+          animation: 'pkspin 0.8s linear infinite',
+        }}
+      />
+      {children}
+    </span>
+  );
 }

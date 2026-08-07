@@ -56,13 +56,30 @@ Pipeline per frame (docs/11):
       → transport unsquash + rot90                   → square pixels
       → user geometry / tone / sharpening            → display or file
 
-Measured on this repo's captures (Apple silicon, 2026-08-07):
+Measured on this repo's captures (Apple silicon, 2026-08-07), by
+``pakon_render.py check`` on captures/test_nofifo.bin — 694.8 MB, 57 900
+lines, 47 frames. Median of nine renders after one warm-up call:
 
-    open 694 MB / 57 900 lines .......... ~3.5 s   (one time, cached)
-    full-quality single frame ........... ~0.5 - 0.9 s
-    quarter-res preview ................. ~30 - 90 ms
+    open capture ........................ ~26 s     (once per roll)
+      reading + segmenting + unpacking ...   4.9 s
+      caching the rgb14 memmap ..........    1.2 s
+      roll histogram and boundaries .....    5.4 s
+      per-frame scene balance ...........   20.4 s   <- dominates
+    thumb     361 x 250  (1/8) ..........   12 ms
+    preview   720 x 500  (1/4) ..........   39 ms
+    display  1439 x 1000 (1/2) ..........  147 ms
+    full     2878 x 2000 (1/1) ..........  630 ms
 
-so the UI drags on the preview path and commits to full quality on release.
+Two things follow, and the UI is built on both. A drag runs on the preview
+path and settles to *display*, not to full: 39 ms is inside a drag budget and
+147 ms is not perceptible on release, whereas 630 ms is. Full quality is an
+export-only path and is never rendered interactively.
+
+And an open is 26 seconds, not the 3.5 s this docstring claimed until
+2026-08-07 — an error of about 7x that had propagated into the UI as well.
+Nearly all of it is the per-frame Ansel scene balance (~0.43 s x 47 frames);
+decoding 694 MB is only about 6 s of it. That is why opening shows a real
+progress bar with a phase name rather than a spinner.
 """
 from __future__ import annotations
 
@@ -700,10 +717,16 @@ def frame_histogram(roll: Roll, index: int, params: dict | None = None) -> dict:
         hist[name] = [int(v) for v in h]
     dmin = [float(np.percentile(seg[:, :, c], 99.0)) for c in range(3)]
     clipped = float((seg >= dec.RAW14_MAX - 1).mean() * 100.0)
+    # Both ends, because the review plot reports both. On a negative the
+    # "shadow" end of the *source* is the film's own base+fog floor, so this
+    # is the count of samples that hit the sensor's bottom code, not a
+    # statement about the print.
+    floored = float((seg <= 1).mean() * 100.0)
     return {
         "hist": hist,
         "dmin": [round(v, 1) for v in dmin],
         "clipped_pct": round(clipped, 3),
+        "clipped_shadow_pct": round(floored, 3),
         "lines": [f.a, f.b],
     }
 

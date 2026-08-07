@@ -62,8 +62,11 @@ Dump / result surface (``AnsSCPLutResults:`` @ ``0x1059db0c``;
 * ``slopeDist`` / ``slopeLimiter`` / ``visualGamma``
 
 Impl analyze body (~KB, FPU / image walk) is a **soft wall** — not
-ported. No evidence of applying a shipped 4096-entry ``.lut`` file;
-parameters come from DPI, work product is the result block above.
+ported. Balance **analyze** product is the slope/offset result block
+above (DPI-driven). Separately, SCPLut Impl owns ``Ans3BandLutParams``
+at ``+0x10`` (ctor ``0x10213123``) and setShifts ``(1,2)`` indexes that
+planar table (shipped ``luts6_postROMM_equalRGBshort.lut`` via
+``common-3BandLuts.dpi``) — see ``docs/52`` / ``load_3band_lut_ascii``.
 
 Shipped data (VERIFIED)
 -----------------------
@@ -90,8 +93,10 @@ Cap ``+0x10+0x18`` (``docs/52``). Shipped dpi → ``(1, 2)``.
 Ported below
 ------------
 DPI ASCII parse + enum/bool normalization matching ``readAscii``
-tokens / range checks only; ``pass_choice_to_word`` for ntd/ctd.
-Analyze / setShifts ``(1,2)`` maths / apply **not** ported.
+tokens / range checks only; ``pass_choice_to_word`` for ntd/ctd;
+3-band LUT ASCII → planar (for setShifts ``(1,2)``). Analyze /
+``SCP_LUT_BALANCE_PORTED`` still False. setShifts closed form lives in
+``pakon_sba_apply`` / ``docs/52`` (``SETSHIFTS_12_PORTED=False``).
 """
 from __future__ import annotations
 
@@ -100,6 +105,14 @@ from pathlib import Path
 
 SCP_LUT_BALANCE_PORTED = False
 SCP_LUT_DPI_PARSE_PORTED = True  # ASCII surface only
+THREE_BAND_LUT_ASCII_PORTED = True  # file → planar only
+
+SHIPPED_3BAND_LUT_NAME = "luts6_postROMM_equalRGBshort.lut"
+SHIPPED_3BAND_INDEX_DPI = "common-3BandLuts.dpi"
+# Ans3BandLutParams / SCPLut Impl+0x10 (docs/52)
+SCP_GET_3BAND_PARAMS = 0x10122150  # → 0x10212100
+SCP_IMPL_PARAMS_STORE = 0x10213123  # mov [esi+0x10], eax
+STR_ANS_3BAND_PARAMS = 0x105A4210
 
 # setShifts control-word path (docs/52)
 SCP_DPI_NTD_OFF = 0x38
@@ -261,6 +274,69 @@ def load_scp_lut_dpi(path: Path) -> ScpLutDpi:
 def find_shipped_dpi(ansel_root: Path) -> Path | None:
     """``<ansel_root>/dataPathItems/SCPLut/<SHIPPED_DPI_NAME>`` if present."""
     p = ansel_root / "dataPathItems" / "SCPLut" / SHIPPED_DPI_NAME
+    return p if p.is_file() else None
+
+
+@dataclass(frozen=True)
+class ThreeBandLut:
+    """Planar ``Ans3BandLutParams`` table (setShifts indexing)."""
+
+    name: str
+    num_lut: int
+    num_bands: int
+    planar: tuple[int, ...]  # len == num_lut * num_bands, band-major
+
+
+def load_3band_lut_ascii(path: Path) -> ThreeBandLut:
+    """Load shipped interleaved ``index R G B`` lut into planar int16s.
+
+    File surface matches ``luts6_postROMM_equalRGBshort.lut``
+    (``NUM_LUT`` / ``NUM_BANDS`` / ``LUT_DATA``). Runtime layout used by
+    setShifts ``(1,2)`` is planar with stride ``NUM_LUT`` (``docs/52``).
+    Missing index 0 rows stay 0.
+    """
+    name = path.name
+    num_lut = 4096
+    num_bands = 3
+    rows: dict[int, tuple[int, int, int]] = {}
+    for raw in path.read_text(errors="replace").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if "=" in line:
+            k, v = line.split("=", 1)
+            key = k.strip().upper()
+            val = v.strip()
+            if key == "LUT_NAME":
+                name = val.split()[0]
+            elif key == "NUM_LUT":
+                num_lut = int(val.split()[0])
+            elif key == "NUM_BANDS":
+                num_bands = int(val.split()[0])
+            continue
+        parts = line.split()
+        if len(parts) == 4:
+            idx, r, g, b = (int(x) for x in parts)
+            rows[idx] = (r, g, b)
+    if num_bands < 3:
+        raise ValueError(f"NUM_BANDS={num_bands} too small for RGB planar")
+    planar = [0] * (num_lut * num_bands)
+    for idx, (r, g, b) in rows.items():
+        if 0 <= idx < num_lut:
+            planar[idx] = r
+            planar[idx + num_lut] = g
+            planar[idx + 2 * num_lut] = b
+    return ThreeBandLut(
+        name=name,
+        num_lut=num_lut,
+        num_bands=num_bands,
+        planar=tuple(planar),
+    )
+
+
+def find_shipped_3band_lut(ansel_root: Path) -> Path | None:
+    """``<ansel_root>/dataPathItems/common/<SHIPPED_3BAND_LUT_NAME>``."""
+    p = ansel_root / "dataPathItems" / "common" / SHIPPED_3BAND_LUT_NAME
     return p if p.is_file() else None
 
 

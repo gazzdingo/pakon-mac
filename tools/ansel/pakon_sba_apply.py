@@ -40,7 +40,8 @@ setShifts control words + ``(1,2)`` (VERIFIED — ``docs/52``)
 * CN call site: getShifts A≡B (same Sba Cap ``+0x3a38``); OUT =
   ``scene+0x4b6``. Host: ``pakon_ansel.cn_setshifts_apply_words`` →
   ``apply_balance_shifts``.
-* ``PREFERENCE_SHIFTS_PORTED`` stays False (mode-``0x11`` fragment only).
+* ``PREFERENCE_SHIFTS_PORTED=True`` for hi=``0x10`` FPU (``docs/49``);
+  host still feeds Preference words through ``setshifts_12``.
 """
 from __future__ import annotations
 

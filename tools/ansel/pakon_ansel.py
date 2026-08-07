@@ -17,8 +17,8 @@ Also: FUGC **seed** lut from ``fugc-lutMap`` → ``fugc-generic*.lut``
 (``pakon_fugc.py``: real Pakon seed; host apply **without** ``setLutInfo``
 analyze shift is a stand-in). SBA: Preference mode-``0x11`` fragment →
 ``setshifts_12(A, A)`` (CN second pass; A≡B from same Sba Cap) →
-``apply_balance_shifts``. ``PREFERENCE_SHIFTS_PORTED`` stays False (fragment
-only; lo≠1 open).
+``apply_balance_shifts``. Preference hi=``0x10`` FPU is golden
+(``PREFERENCE_SHIFTS_PORTED``); ``hi≠0x10`` UV aims still open.
 
 Pipeline here (I16 0..4095 until ICC):
 

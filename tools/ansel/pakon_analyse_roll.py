@@ -87,7 +87,7 @@ pass2 / accumulation: **UNKNOWN**.
   (``docs/52`` / ``SETSHIFTS_12_PORTED``). A≡B (same Sba Cap);
   OUT → ``scene+0x4b6``.
 * **Does not** store ``scene+0x3a38``. Preference still produces
-  ``+0x3a38``; ``PREFERENCE_SHIFTS_PORTED=False`` (fragment / lo≠1).
+  ``+0x3a38``; ``PREFERENCE_SHIFTS_PORTED=True`` (hi=``0x10``; ``hi≠0x10`` open).
 
 Other ``E8`` into balanceOrder: ``0x1005f491``, ``0x10063c5b``,
 ``0x10069139``, ``0x10069921``.

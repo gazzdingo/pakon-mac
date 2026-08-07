@@ -111,10 +111,17 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
   path when float-LUT flag ``[obj+0xc]==0`` — skip ``0x10056c61…``):
 
   1. Seed ``[ebp-0x34…]`` from ``params+0x3c`` (``black``), then overwrite
-     via named property ``"dmin"`` ``0x10022a40`` (6-byte RGB int16).
-     **Host still needs the property-bag RGB** (getter wiring open).
-  2. AneOrder dens via ``0x10112980`` / ``"aneOrder"``: object
-     ``+0x44=n``, ``+0x48`` advance count, ``+0x4c=float*``. Per channel
+     via ``AnsSceneContext::find`` @ ``0x10022a40`` name ``"dmin"``
+     (``0x105737c8``), size 6 (RGB int16). CnPremium call
+     ``0x100566ac``. Insert writers: ``bAddScene`` ``0x10002523``
+     (desc ``+0x54/+0x58/+0x5c``); ScpLutBalance ``0x100fdaa8`` after
+     LUT-remap of ``path+0x3c`` (``0x100fd984``). Host bag I/O ported
+     (``pakon_scene_context``); **live RGB still from those writers**.
+  2. Dens via ``NoiseMethods::getNoiseTable`` @ ``0x10112980`` (string
+     ``0x105879f4``; CnPremium ``0x10056863``): QI ``"aneOrder"`` → Cap
+     ``getResults`` ``0x10110830`` / Impl ``0x101ebe90``. Returned object
+     ``+0x44=n``, ``+0x48`` advance, ``+0x4c=float*`` (ctor
+     ``0x10195070`` / alloc ``0x102560a0``, ``n*ch*4``). Per channel
      ``i∈{0,1,2}`` @ ``0x100569a1…``:
 
      ``idx = clamp(dmin[i], 0, n-1)``;
@@ -124,7 +131,8 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
      ``dmin_dens[i] = int16(dmin[i] + dens_i)`` (16-bit wrap);
      advance ``table`` by ``n`` floats while ``i+1 < +0x48``.
 
-     **Host still needs AneOrder dens table contents.**
+     Layout ported (``pakon_ane_order.NoiseTable``); **float fill from
+     ``getResults`` interpolation still WALL**.
   3. Master LUT = global ``AnsLut`` @ ``0x106b5f74`` built by CRT init
      ``0x1056a470`` → ctor ``0x100f42a0(0xc, 0, 0xfff)``. Data pointer
      ``[0x106b5f7c] = alloc+0x10000`` (signed-int16 index 0). Fill:
@@ -150,11 +158,11 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
   ``metricGray`` / processed-dmin avgs / ``white``.
 
 * Mid-aim **arithmetic** is host-ported (``cn_premium_mid_aim_rgb``;
-  ``SHASTA_AIM_MID_RGB_PORTED``). **WALL for ``ANALYZE``:** produce
-  dmin RGB (``0x10022a40`` bag) + AneOrder dens floats on the host;
-  contrast / float-LUT side paths. Then ``0x10293960`` fill.
-  Do **not** invent percentile tone from dpi ``shadowPercent`` /
-  ``highlightPercent``.
+  ``SHASTA_AIM_MID_RGB_PORTED``). Input **path** cited + bag/layout
+  helpers (``SHASTA_AIM_INPUT_PATH_PORTED``). **WALL for ``ANALYZE``:**
+  live dmin writer values + ``getResults`` dens fill; contrast /
+  float-LUT side paths. Then ``0x10293960`` fill. Do **not** invent
+  percentile tone from dpi ``shadowPercent`` / ``highlightPercent``.
 
 CapabilityImpl ``+0x3e0`` vs working ``+0x3b0`` (VERIFIED facts)
 ---------------------------------------------------------------
@@ -231,11 +239,11 @@ Relationship to SRA forward LUT
 
 UNKNOWN / blockers (honest)
 ---------------------------
-* Mid-aim **inputs**: dmin property bag (``0x10022a40``) and AneOrder dens
-  table (``0x10112980`` / ``+0x4c``). Arithmetic + master clip LUT +
-  ``avg2largest`` are ported; ``ANALYZE`` stays False until those inputs
-  are host-sourced. Contrast (``0x10119060``) / float-table
-  (``0x1004f7b0``) side paths still open.
+* Mid-aim **input values**: find/insert/getNoiseTable **path** closed;
+  bag + ``NoiseTable`` layout ported. Still need live dmin bytes from
+  AddScene/ScpLut and dens floats from AneOrder ``getResults`` fill.
+  Contrast (``0x10119060``) / float-table (``0x1004f7b0``) side paths
+  open. ``ANALYZE`` stays False.
 * Full ``0x10293960`` LUT write loop + builder ``0x10293ee0`` field←dpi
   map (setup call graph mapped; loop not host-ported) — **next VA**.
 * Cap ``+0x3e0`` ← working ``+0x3b0`` automatic path.
@@ -265,8 +273,10 @@ SHASTA_TONE_LUT_FRAGMENTS = True
 # avg2largest 0x1004f690 + dpi metricGray/white → +0x2b0/+0x2bc mapped.
 SHASTA_AIM_AVG2_PORTED = True
 # CnPremium mid-aim arithmetic (dens+setShifts+master clip+avg2) ported;
-# dmin/AneOrder *inputs* still WALL → ANALYZE stays False.
+# dmin/AneOrder *values* still WALL → ANALYZE stays False.
 SHASTA_AIM_MID_RGB_PORTED = True
+# find/insert/getNoiseTable provenance + bag/layout helpers ported.
+SHASTA_AIM_INPUT_PATH_PORTED = True
 # Unicorn-golden closed forms for 0x10292c50 / 0x10292cb0 (not full curve).
 SHASTA_CURVE_LOG_RATIO_PORTED = True
 # Unicorn-golden 0x10292d30 / 0x10292d80.
@@ -640,8 +650,9 @@ def cn_premium_mid_aim_rgb(
 ) -> tuple[int, int]:
     """Core CnPremium mid aims → triage ``+0x2b4/+0x2b8`` (no contrast/float).
 
-    Cite: ``0x100569a1…0x100570b3``. Caller supplies dmin RGB and AneOrder
-    dens floats — property-bag / ``0x10112980`` fetch not ported.
+    Cite: ``0x100569a1…0x100570b3``. Caller supplies dmin RGB (from
+    ``SceneContextBag.find_dmin`` / writers) and dens floats (from
+    ``NoiseTable`` after ``getResults`` fill — values still WALL).
     """
     dens_i, dmin_dens = ane_dens_contrib(
         dmin_rgb, dens_table, black_noise_sigma_mult, dens_n_channels
@@ -672,6 +683,31 @@ def cn_premium_mid_aim_rgb(
     return (
         avg2largest_i16(remapped_dmin[0], remapped_dmin[1], remapped_dmin[2]),
         avg2largest_i16(remapped_dens[0], remapped_dens[1], remapped_dens[2]),
+    )
+
+
+def cn_premium_mid_aim_from_bag(
+    bag: Any,
+    noise_table: Any,
+    setshifts_out: tuple[int, int, int] | list[int],
+    **kwargs: Any,
+) -> tuple[int, int] | None:
+    """Compose bag dmin + ``NoiseTable`` → ``cn_premium_mid_aim_rgb``.
+
+    Returns ``None`` if ``dmin`` is missing (matches CnPremium abort when
+    ``find`` fails). ``noise_table`` must expose ``n_channels`` and
+    ``planes_for_mid_aim()`` (see ``pakon_ane_order.NoiseTable``).
+    """
+    dmin = bag.find_dmin()
+    if dmin is None:
+        return None
+    planes = noise_table.planes_for_mid_aim()
+    return cn_premium_mid_aim_rgb(
+        dmin,
+        planes,
+        setshifts_out,
+        dens_n_channels=int(noise_table.n_channels),
+        **kwargs,
     )
 
 
@@ -894,7 +930,8 @@ def main() -> None:
     print(
         f"  avg2largest(1,2,3)={avg2largest_i16(1, 2, 3)} "
         f"(0x1004f690; AIM_AVG2={SHASTA_AIM_AVG2_PORTED} "
-        f"MID_RGB={SHASTA_AIM_MID_RGB_PORTED})"
+        f"MID_RGB={SHASTA_AIM_MID_RGB_PORTED} "
+        f"INPUT_PATH={SHASTA_AIM_INPUT_PATH_PORTED})"
     )
     print(
         f"  master_lut_clip(-1)={master_lut_clip_i16(-1)} "
@@ -919,8 +956,9 @@ def main() -> None:
         f"cb0(0.5,1)={curve_log_ratio_cb0(0.5, 1.0):.6g}"
     )
     print(
-        "  mid-aim maths ported; dmin/AneOrder inputs + 0x10293960 fill "
-        "still WALL (toneLut STAND-IN; SHASTA_TONE_LUT_PORTED=False)"
+        "  mid-aim maths + input path ported; live dmin/getResults dens "
+        "+ 0x10293960 fill still WALL (toneLut STAND-IN; "
+        "SHASTA_TONE_LUT_PORTED=False)"
     )
 
 

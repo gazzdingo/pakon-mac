@@ -6,6 +6,8 @@
   (``pakon_sba_preference.ftol2_104ffe44``); host trunc checks only here
 * Host closed-form checks for master clip LUT + ``cn_premium_mid_aim_rgb``
   (master LUT ctor ``0x100f42a0`` / CRT ``0x1056a470`` cited)
+* SceneContext dmin bag + ``NoiseTable`` layout; Unicorn
+  ``0x10256102`` dens-alloc ``n*ch*4``
 
 ShastaParams ctor defaults for ``metricGray``/``black``/``white`` /
 ``blackNoiseSigmaMult`` are sanity-checked against cited immediates —
@@ -21,15 +23,21 @@ import numpy as np
 from unicorn import Uc, UcError, UC_ARCH_X86, UC_MODE_32
 from unicorn.x86_const import (
     UC_X86_REG_EAX,
+    UC_X86_REG_EBX,
+    UC_X86_REG_EDI,
     UC_X86_REG_ESP,
 )
 
+import pakon_ane_order as ane
+import pakon_scene_context as sc
 import pakon_shasta as shasta
 
 IMAGE_BASE = 0x10000000
 STACK_ADDR = 0x0BF00000
 STACK_SIZE = 0x100000
 VA_AVG2 = 0x1004F690
+# dens alloc size: mov eax,ebx; imul eax,edi; shl eax,2 @ 0x10256102
+VA_NOISE_ALLOC_IMUL = 0x10256102
 TRIPLE_ADDR = STACK_ADDR + 0x80000
 
 
@@ -63,6 +71,20 @@ def run_avg2(dll: bytes, a: int, b: int, c: int) -> int:
     except UcError:
         pass
     return int(uc.reg_read(UC_X86_REG_EAX))
+
+
+def run_noise_alloc_size(dll: bytes, n: int, n_channels: int) -> int:
+    """Unicorn ``mov eax,ebx; imul eax,edi; shl eax,2`` @ ``0x10256102``."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_text(uc, dll)
+    end_va = 0x1025610A  # after shl eax, 2 (before push)
+    uc.reg_write(UC_X86_REG_EBX, n & 0xFFFFFFFF)
+    uc.reg_write(UC_X86_REG_EDI, n_channels & 0xFFFFFFFF)
+    try:
+        uc.emu_start(VA_NOISE_ALLOC_IMUL, end_va, timeout=100_000, count=8)
+    except UcError:
+        pass
+    return int(uc.reg_read(UC_X86_REG_EAX)) & 0xFFFFFFFF
 
 
 def _sx32(v: int) -> int:
@@ -174,11 +196,73 @@ def main() -> int:
         f"white={shasta.SHASTA_PARAMS_CTOR_WHITE} "
         f"sigmaMult={shasta.SHASTA_PARAMS_CTOR_BLACK_NOISE_SIGMA_MULT}"
     )
+
+    # Scene-context dmin bag (find/insert contract; host model)
+    bag = sc.SceneContextBag()
+    ok = bag.find_dmin() is None
+    print(f"  bag empty find: {bag.find_dmin()} {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+    blob = sc.baddscene_pack_dmin_from_desc(100, 200, 300)
+    expect_blob = bytes([0x64, 0x00, 0xC8, 0x00, 0x2C, 0x01])  # LE int16
+    ok = (
+        blob == expect_blob
+        and blob == sc.pack_dmin_rgb(100, 200, 300)
+        and sc.unpack_dmin_rgb(blob) == (100, 200, 300)
+    )
+    print(f"  dmin pack/unpack: {blob.hex()} {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+    bag.insert_dmin((100, 200, 300))
+    got = bag.find_dmin()
+    ok = got == (100, 200, 300)
+    print(f"  bag roundtrip: {got} {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+
+    # NoiseTable layout + alloc size (0x102560a0 formula)
+    for n, ch, expect_nb in [(64, 1, 256), (100, 3, 1200), (0, 1, 0)]:
+        nb = ane.noise_table_alloc_nbytes(n, ch)
+        ok = nb == expect_nb
+        print(f"  noise_alloc({n},{ch})={nb} (expect {expect_nb}) {'OK' if ok else 'FAIL'}")
+        if not ok:
+            fail += 1
+    # Unicorn: run imul/shl fragment with eax=n, edi=ch → eax=nbytes
+    for n, ch in [(64, 1), (100, 3), (4096, 1)]:
+        ref = run_noise_alloc_size(dll, n, ch)
+        host = ane.noise_table_alloc_nbytes(n, ch)
+        ok = ref == host
+        print(
+            f"  noise_alloc unicorn n={n} ch={ch}: host={host} dll={ref} "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+
+    nt = ane.NoiseTable.zeros(4096, 1)
+    nt.dens[0, 200] = 10.0
+    m = shasta.cn_premium_mid_aim_from_bag(
+        bag, nt, (0, 0, 0), black_noise_sigma_mult=2.0
+    )
+    expect0 = shasta.avg2largest_i16(100, 200, 300)
+    expect1 = shasta.avg2largest_i16(100, 220, 300)
+    ok = m == (expect0, expect1)
+    print(
+        f"  mid_aim from bag+NoiseTable: {m} (expect {(expect0, expect1)}) "
+        f"{'OK' if ok else 'FAIL'}"
+    )
+    if not ok:
+        fail += 1
+
     print(
         f"  SHASTA_AIM_AVG2_PORTED={shasta.SHASTA_AIM_AVG2_PORTED} "
         f"MID_RGB={shasta.SHASTA_AIM_MID_RGB_PORTED} "
+        f"INPUT_PATH={shasta.SHASTA_AIM_INPUT_PATH_PORTED} "
         f"ANALYZE={shasta.SHASTA_ANALYZE_PORTED} "
-        f"TONE_LUT={shasta.SHASTA_TONE_LUT_PORTED}"
+        f"TONE_LUT={shasta.SHASTA_TONE_LUT_PORTED} "
+        f"SCENE_DMIN={sc.SCENE_CONTEXT_DMIN_PORTED} "
+        f"NOISE_LAYOUT={ane.ANE_NOISE_TABLE_LAYOUT_PORTED} "
+        f"ANE_ORDER={ane.ANE_ORDER_PORTED}"
     )
     return 1 if fail else 0
 

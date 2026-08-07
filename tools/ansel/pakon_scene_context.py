@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""AnsSceneContext find/insert — dmin bag for CnPremium mid-aims.
+
+PakonIMAu.dll base ``0x10000000``. Host models the named property bag that
+``CnPremium_analyzeSceneSpecific`` reads for mid-aim RGB. Do **not** invent
+scene dmin values — only pack/unpack + bag I/O matching the binary.
+
+VERIFIED
+========
+
+``AnsSceneContext::find`` @ ``0x10022a40``
+-----------------------------------------
+* String ``0x10576ba4`` / source ``AnsSceneContext.cpp`` ``0x10576bd4``.
+* Looks up name in map at ``this+0xc`` via ``0x10022900``; on hit copies
+  stored blob into caller buffer (``rep movsd`` @ ``0x10022bc4``).
+* CnPremium mid-aim call @ ``0x100566ac``:
+
+  - Seed stack RGB ``[ebp-0x34…]`` from ShastaParams ``black`` (``+0x3c``)
+    replicated to R=G=B (``0x10056663…``).
+  - ``find("dmin" @ ``0x105737c8``, size=6, buf=*)`` — 6-byte RGB int16.
+  - Success (status == null sentinel ``0x106b5bd4``) continues to
+    ``NoiseMethods::getNoiseTable`` @ ``0x10112980``; failure aborts
+    SceneSpecific (no silent keep-seed on the dens path).
+
+``AnsSceneContext::insert`` @ ``0x10023f10``
+-------------------------------------------
+* String ``0x10576c98``.
+* Args include name, data pointer, byte size, overwrite flag.
+
+Cited dmin **writers** (size=6, name ``"dmin"``):
+
+1. ``CiColorCorrectionAnsel::bAddScene`` @ insert site ``0x10002523``
+   (string ``0x10573a58``). When scene-desc ``+0x48`` selects the packed
+   case, RGB comes from desc ``+0x54/+0x58/+0x5c`` → stack ``ebp-0x38``
+   (``0x100022f9…``), then insert.
+2. ``ColorNegativePath::analyzeScpLutBalance`` @ ``0x100fdaa8``:
+   - Remap ``path+0x3c/+0x3e/+0x40`` through a LUT (``0x100fd984…``),
+   - ``lea esi, [edi+0x3c]`` then ``insert("dmin", esi, 6, …)``.
+
+Other ``"dmin"`` push sites exist (FUGC / noise / …); mid-aim **reader**
+is the CnPremium ``find`` above.
+
+Host bag
+--------
+``SceneContextBag`` is a plain name→bytes map. It is **not** a COM port of
+``0x10022a40`` / ``0x10023f10`` (STL/refcount). It is enough to feed
+``cn_premium_mid_aim_rgb`` when the host already knows dmin RGB (e.g. from
+bAddScene desc or ScpLut-remapped ``path+0x3c``).
+
+``SCENE_CONTEXT_DMIN_PORTED = True`` — bag I/O + pack/unpack only.
+Producing live scene dmin still requires the writer path (AddScene /
+ScpLut remap) to supply the six bytes.
+"""
+from __future__ import annotations
+
+import struct
+from dataclasses import dataclass, field
+
+SCENE_CONTEXT_DMIN_PORTED = True
+
+SCENE_CONTEXT_FIND = 0x10022A40
+SCENE_CONTEXT_INSERT = 0x10023F10
+STR_DMIN = 0x105737C8
+STR_FIND = 0x10576BA4
+STR_INSERT = 0x10576C98
+STR_BADDSCENE = 0x10573A58
+
+CN_PREMIUM_DMIN_FIND_CALL = 0x100566AC  # E8 → find
+BADDSCENE_DMIN_INSERT = 0x10002523
+SCPLUT_DMIN_INSERT = 0x100FDAA8
+SCPLUT_DMIN_REMAP = 0x100FD984  # path+0x3c through LUT, then insert
+PATH_DMIN_RGB_OFF = 0x3C  # 3×int16 at +0x3c/+0x3e/+0x40
+DMIN_BYTES = 6
+
+
+def pack_dmin_rgb(r: int, g: int, b: int) -> bytes:
+    """6-byte little-endian int16 RGB (find/insert size)."""
+    return struct.pack("<hhh", int(r), int(g), int(b))
+
+
+def unpack_dmin_rgb(blob: bytes) -> tuple[int, int, int]:
+    """Inverse of ``pack_dmin_rgb``; requires exactly 6 bytes."""
+    if len(blob) != DMIN_BYTES:
+        raise ValueError(f"dmin blob must be {DMIN_BYTES} bytes, got {len(blob)}")
+    r, g, b = struct.unpack("<hhh", blob)
+    return int(r), int(g), int(b)
+
+
+def baddscene_pack_dmin_from_desc(
+    word_54: int, word_58: int, word_5c: int
+) -> bytes:
+    """bAddScene packed case @ ``0x100022f9`` — desc ``+0x54/+0x58/+0x5c``."""
+    return pack_dmin_rgb(word_54, word_58, word_5c)
+
+
+@dataclass
+class SceneContextBag:
+    """Host stand-in for AnsSceneContext named blobs (dmin and kin)."""
+
+    items: dict[str, bytes] = field(default_factory=dict)
+
+    def insert(self, name: str, data: bytes, *, overwrite: bool = True) -> None:
+        """``0x10023f10`` contract: store ``data`` under ``name``."""
+        if not overwrite and name in self.items:
+            return
+        self.items[name] = bytes(data)
+
+    def insert_dmin(self, rgb: tuple[int, int, int] | list[int], *, overwrite: bool = True) -> None:
+        self.insert("dmin", pack_dmin_rgb(rgb[0], rgb[1], rgb[2]), overwrite=overwrite)
+
+    def find(self, name: str, size: int | None = None) -> bytes | None:
+        """``0x10022a40`` contract: return blob or ``None`` if missing.
+
+        When ``size`` is set, require exact length (CnPremium passes 6).
+        """
+        blob = self.items.get(name)
+        if blob is None:
+            return None
+        if size is not None and len(blob) != size:
+            raise ValueError(f"{name!r}: stored {len(blob)} bytes, find size={size}")
+        return bytes(blob)
+
+    def find_dmin(
+        self,
+        *,
+        seed_black: int | None = None,
+    ) -> tuple[int, int, int] | None:
+        """CnPremium dmin read: optional black seed, then find size=6.
+
+        Returns ``None`` if ``dmin`` is absent (DLL aborts SceneSpecific).
+        When present, returns the stored RGB (seed is only the pre-find
+        stack init the binary overwrites on success).
+        """
+        blob = self.find("dmin", DMIN_BYTES)
+        if blob is None:
+            return None
+        return unpack_dmin_rgb(blob)
+
+
+def main() -> None:
+    print("AnsSceneContext dmin bag (base 0x10000000)")
+    print(f"  find   {SCENE_CONTEXT_FIND:#010x}")
+    print(f"  insert {SCENE_CONTEXT_INSERT:#010x}")
+    print(f"  CnPremium find call {CN_PREMIUM_DMIN_FIND_CALL:#010x}")
+    print(f"  bAddScene insert    {BADDSCENE_DMIN_INSERT:#010x}")
+    print(f"  ScpLut insert       {SCPLUT_DMIN_INSERT:#010x} (remap {SCPLUT_DMIN_REMAP:#010x})")
+    bag = SceneContextBag()
+    bag.insert_dmin((100, 200, 300))
+    print(f"  roundtrip {bag.find_dmin()} SCENE_CONTEXT_DMIN_PORTED={SCENE_CONTEXT_DMIN_PORTED}")
+
+
+if __name__ == "__main__":
+    main()

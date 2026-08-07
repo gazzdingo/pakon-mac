@@ -96,9 +96,11 @@ Other ``E8`` into balanceOrder: ``0x1005f491``, ``0x10063c5b``,
 ------------------------------------------------------------------
 * Sole Cap call ``0x100faf90`` → ``AnsAneOrderCapability::analyze`` @
   ``0x10110540`` → Impl ``0x101ed3a0``. See ``pakon_ane_order.py``.
-* ``getResults`` consumed only by ``exportNoise`` (``0x10112aab``) —
-  **not** balanceOrder / PreBalance / ScpLut. No static data edge into
-  SBA/FOS/``+0x3a38``. ``ANE_ORDER_PORTED=False``.
+* ``getResults`` consumed by ``NoiseMethods::getNoiseTable``
+  (``0x10112980`` @ ``0x10112aab`` → CnPremium mid-aim) and
+  ``exportNoise``. **Not** balanceOrder / PreBalance / ScpLut →
+  SBA/FOS/``+0x3a38``. Layout ported; dens fill
+  ``ANE_ORDER_PORTED=False`` (see ``pakon_ane_order.py``).
 * ``OrderOrientation`` Cap ``0x101218c0`` is **not** in this function —
   called from ``analyzeAttributes`` (``0x100fb576``).
 

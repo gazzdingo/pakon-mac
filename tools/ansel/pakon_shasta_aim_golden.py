@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Golden ``avg2largest_i16`` (``0x1004f690``) vs PakonIMAu.dll (Unicorn).
+"""Golden Shasta aim fragments vs PakonIMAu.dll (Unicorn).
 
-Also sanity-checks ShastaParams ctor defaults for ``metricGray``/``black``/
-``white`` (``+0x38/+0x3c/+0x40``) against the cited immediates — not a full
-analyze golden.
+* ``avg2largest_i16`` (``0x1004f690``) — Unicorn
+* ``ftol2_chop`` (``0x104ffe44``) — same leaf as Preference golden
+  (``pakon_sba_preference.ftol2_104ffe44``); host trunc checks only here
+* Host closed-form checks for master clip LUT + ``cn_premium_mid_aim_rgb``
+  (master LUT ctor ``0x100f42a0`` / CRT ``0x1056a470`` cited)
+
+ShastaParams ctor defaults for ``metricGray``/``black``/``white`` /
+``blackNoiseSigmaMult`` are sanity-checked against cited immediates —
+not a full analyze golden.
 """
 from __future__ import annotations
 
@@ -11,6 +17,7 @@ import struct
 import sys
 from pathlib import Path
 
+import numpy as np
 from unicorn import Uc, UcError, UC_ARCH_X86, UC_MODE_32
 from unicorn.x86_const import (
     UC_X86_REG_EAX,
@@ -45,7 +52,6 @@ def run_avg2(dll: bytes, a: int, b: int, c: int) -> int:
     uc.mem_map(STACK_ADDR, STACK_SIZE)
     triple = struct.pack("<hhh", a, b, c)
     uc.mem_write(TRIPLE_ADDR, triple)
-    # stdcall/cdecl leaf: eax = &triple; ret
     esp = STACK_ADDR + STACK_SIZE - 0x100
     ret_addr = STACK_ADDR + 0x100
     uc.mem_write(ret_addr, b"\xcc")
@@ -55,9 +61,13 @@ def run_avg2(dll: bytes, a: int, b: int, c: int) -> int:
     try:
         uc.emu_start(VA_AVG2, ret_addr, timeout=1_000_000, count=200)
     except UcError:
-        # int3 at ret_addr stops emulation — read eax anyway
         pass
     return int(uc.reg_read(UC_X86_REG_EAX))
+
+
+def _sx32(v: int) -> int:
+    v &= 0xFFFFFFFF
+    return v - 0x100000000 if v >= 0x80000000 else v
 
 
 def main() -> int:
@@ -68,6 +78,8 @@ def main() -> int:
         "program files/Pakon/F-X35 COM SERVER/PakonIMAu.dll"
     )
     dll = _load_dll(dll_path)
+    fail = 0
+
     cases = [
         (1, 2, 3),
         (10, 10, 10),
@@ -77,28 +89,94 @@ def main() -> int:
         (-3, -1, -2),
         (0, -5, 7),
     ]
-    fail = 0
     for a, b, c in cases:
         got = shasta.avg2largest_i16(a, b, c)
-        ref = run_avg2(dll, a, b, c)
-        # DLL returns AX (movsx already in eax from sar path)
-        ref16 = ref & 0xFFFFFFFF
-        if ref16 >= 0x80000000:
-            ref16 -= 0x100000000
-        ok = got == ref16
-        print(f"  avg2({a},{b},{c}): host={got} dll={ref16} {'OK' if ok else 'FAIL'}")
+        ref = _sx32(run_avg2(dll, a, b, c))
+        ok = got == ref
+        print(f"  avg2({a},{b},{c}): host={got} dll={ref} {'OK' if ok else 'FAIL'}")
         if not ok:
             fail += 1
+
+    # ftol2 already Unicorn-golden via Preference; host trunc contract only.
+    for x, expect in [(0.5, 0), (2.5, 2), (-0.5, 0), (-2.5, -2), (20.0, 20)]:
+        got = shasta.ftol2_chop(x)
+        ok = got == expect
+        print(f"  ftol2_chop({x}): {got} (expect {expect}) {'OK' if ok else 'FAIL'}")
+        if not ok:
+            fail += 1
+
+    # Master clip LUT closed form (ctor 0x100f42a0 fill loops)
+    for code, expect in [(-1, 0), (0, 0), (100, 100), (4095, 4095), (4096, 4095)]:
+        got = shasta.master_lut_clip_i16(code)
+        ok = got == expect
+        print(f"  master_lut({code}): {got} (expect {expect}) {'OK' if ok else 'FAIL'}")
+        if not ok:
+            fail += 1
+
+    # Mid-aim: zero dens + zero shifts → avg2(dmin) twice
+    dens = np.zeros(4096, dtype=np.float32)
+    dmin = (100, 200, 300)
+    m0, m1 = shasta.cn_premium_mid_aim_rgb(dmin, dens, (0, 0, 0))
+    expect = shasta.avg2largest_i16(*dmin)
+    ok = m0 == expect == m1
+    print(f"  mid_aim zero-dens: {m0},{m1} (expect {expect},{expect}) {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+
+    # dens[200]=10, scale=2 → dens_i=20 on G; dmin_dens=(100,220,300)
+    dens[200] = 10.0
+    m0, m1 = shasta.cn_premium_mid_aim_rgb(
+        dmin, dens, (0, 0, 0), black_noise_sigma_mult=2.0
+    )
+    expect0 = shasta.avg2largest_i16(100, 200, 300)
+    expect1 = shasta.avg2largest_i16(100, 220, 300)
+    ok = m0 == expect0 and m1 == expect1
+    print(
+        f"  mid_aim dens: {m0},{m1} (expect {expect0},{expect1}) "
+        f"{'OK' if ok else 'FAIL'}"
+    )
+    if not ok:
+        fail += 1
+
+    # setShifts + clip: dmin+(500,0,0) stays in range
+    m0, m1 = shasta.cn_premium_mid_aim_rgb(
+        (100, 100, 100), np.zeros(64, dtype=np.float32), (50, -20, 0)
+    )
+    expect = shasta.avg2largest_i16(150, 80, 100)
+    ok = m0 == m1 == expect
+    print(f"  mid_aim shifts: {m0},{m1} (expect {expect}) {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+
+    # metricGray threshold alternate: remapped dmin > thr → lut[black+shift]
+    m0, m1 = shasta.cn_premium_mid_aim_rgb(
+        (2000, 2000, 2000),
+        np.zeros(4096, dtype=np.float32),
+        (10, 20, 30),
+        black=600,
+        metric_gray=1550,
+    )
+    expect = shasta.avg2largest_i16(610, 620, 630)
+    ok = m0 == m1 == expect
+    print(
+        f"  mid_aim threshold: {m0},{m1} (expect {expect}) {'OK' if ok else 'FAIL'}"
+    )
+    if not ok:
+        fail += 1
+
     assert shasta.SHASTA_PARAMS_CTOR_METRIC_GRAY == 0x60E
     assert shasta.SHASTA_PARAMS_CTOR_BLACK == 0x258
     assert shasta.SHASTA_PARAMS_CTOR_WHITE == 0x936
+    assert shasta.SHASTA_PARAMS_CTOR_BLACK_NOISE_SIGMA_MULT == 2.0
     print(
         f"  params ctor defaults: metricGray={shasta.SHASTA_PARAMS_CTOR_METRIC_GRAY} "
         f"black={shasta.SHASTA_PARAMS_CTOR_BLACK} "
-        f"white={shasta.SHASTA_PARAMS_CTOR_WHITE}"
+        f"white={shasta.SHASTA_PARAMS_CTOR_WHITE} "
+        f"sigmaMult={shasta.SHASTA_PARAMS_CTOR_BLACK_NOISE_SIGMA_MULT}"
     )
     print(
         f"  SHASTA_AIM_AVG2_PORTED={shasta.SHASTA_AIM_AVG2_PORTED} "
+        f"MID_RGB={shasta.SHASTA_AIM_MID_RGB_PORTED} "
         f"ANALYZE={shasta.SHASTA_ANALYZE_PORTED} "
         f"TONE_LUT={shasta.SHASTA_TONE_LUT_PORTED}"
     )

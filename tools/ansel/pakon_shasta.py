@@ -107,28 +107,52 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
   ``+0x2bc``  ShastaParams ``white``       triage ``[ebp+0x18]``
   ==========  =========================  ==============================
 
-* RGB triple provenance before ``avg2largest`` (CnPremium ``0x10056663…``):
+* RGB mid-aim closed form (CnPremium ``0x10056663…0x100570b3``, core
+  path when float-LUT flag ``[obj+0xc]==0`` — skip ``0x10056c61…``):
 
-  1. Seed all three channels from ``params+0x3c`` (``black``).
-  2. Named property fetch ``"dmin"`` via ``0x10022a40`` into
-     ``[ebp-0x34…]`` (6-byte RGB).
-  3. AneOrder dens floats @ result ``+0x4c`` (via ``0x10112980`` /
-     ``"aneOrder"``): second triple ``[ebp-0x2e…] = dmin +
-     fist(table[dmin]*scale)`` (scale ``[ebp-0x23c]``).
-  4. Add scene setShifts OUT ``+0x4b6/+0x4b8/+0x4ba``; remap through
-     master LUT ``[0x106b5f7c]``; optional contrast / scene``+0x30`` path;
-     float LUT index via ``0x1004f7b0`` + ``ftol2`` ``0x104ffe44``.
-  5. ``0x1004f690`` on each triple → triage aims.
+  1. Seed ``[ebp-0x34…]`` from ``params+0x3c`` (``black``), then overwrite
+     via named property ``"dmin"`` ``0x10022a40`` (6-byte RGB int16).
+     **Host still needs the property-bag RGB** (getter wiring open).
+  2. AneOrder dens via ``0x10112980`` / ``"aneOrder"``: object
+     ``+0x44=n``, ``+0x48`` advance count, ``+0x4c=float*``. Per channel
+     ``i∈{0,1,2}`` @ ``0x100569a1…``:
+
+     ``idx = clamp(dmin[i], 0, n-1)``;
+     ``dens_i = ftol2(table[idx] * params+0x1c0)``
+     (``blackNoiseSigmaMult``, dump ``0x1012896a``; ctor default ``2.0``
+     @ ``0x10574f48``; stack alias ``[ebp-0x23c]``);
+     ``dmin_dens[i] = int16(dmin[i] + dens_i)`` (16-bit wrap);
+     advance ``table`` by ``n`` floats while ``i+1 < +0x48``.
+
+     **Host still needs AneOrder dens table contents.**
+  3. Master LUT = global ``AnsLut`` @ ``0x106b5f74`` built by CRT init
+     ``0x1056a470`` → ctor ``0x100f42a0(0xc, 0, 0xfff)``. Data pointer
+     ``[0x106b5f7c] = alloc+0x10000`` (signed-int16 index 0). Fill:
+     ``code<0 → 0``; ``0…4095 → identity``; ``>4095 → 4095``.
+  4. Add scene setShifts OUT ``+0x4b6/+0x4b8/+0x4ba`` (int16) to both
+     triples; remap each channel through master LUT (@ ``0x10056a0a…``).
+  5. If any remapped dmin channel ``> params+0x38`` (``metricGray``),
+     replace both triples (@ ``0x10056aab…``):
+
+     ``dmin'[c] = lut[black + shift[c]]``;
+     ``dmin_dens'[c] = lut[black + dens_i + shift[c]]``.
+  6. Optional contrast remap if ``scene+0x30`` non-null and
+     ``[+0xc]`` set (``0x10119060`` + plane stride ``0x1000`` @
+     ``0x10589834``) — **not** host-ported.
+  7. Optional float-table remap via ``0x1004f7b0`` (pointer =
+     ``obj+4→+0x2c→+0x38 + idx*4``) + ``ftol2`` when flag set —
+     **not** on the core path; **not** host-ported.
+  8. ``0x1004f690`` on each triple → triage ``[ebp+0x10/+0x14]``.
 
 * Dump names ``extShadowAim`` / ``cumExtShadowPt`` @ ``0x10589630…`` are
   **ShastaParams/Results fields** (``0x10128d20`` / ``0x10128033``), not
   the triage stack slots themselves. Input codes are
   ``metricGray`` / processed-dmin avgs / ``white``.
 
-* **WALL (next VA):** closed form for steps 2–4 (dmin getter, AneOrder
-  dens table, master/contrast LUT wiring) so ``+0x2b4/+0x2b8`` are host-
-  computable without inventing percentiles. ``metricGray``/``white`` and
-  ``avg2largest`` are cited fragments only — **not** a full analyze.
+* Mid-aim **arithmetic** is host-ported (``cn_premium_mid_aim_rgb``;
+  ``SHASTA_AIM_MID_RGB_PORTED``). **WALL for ``ANALYZE``:** produce
+  dmin RGB (``0x10022a40`` bag) + AneOrder dens floats on the host;
+  contrast / float-LUT side paths. Then ``0x10293960`` fill.
   Do **not** invent percentile tone from dpi ``shadowPercent`` /
   ``highlightPercent``.
 
@@ -207,12 +231,13 @@ Relationship to SRA forward LUT
 
 UNKNOWN / blockers (honest)
 ---------------------------
-* ``+0x2b4/+0x2b8`` RGB pipeline (dmin getter ``0x10022a40``, AneOrder
-  dens ``0x10112980``, master LUT ``0x106b5f7c``, contrast path) — WALL.
-  ``metricGray``/``white`` → ``+0x2b0/+0x2bc`` and ``avg2largest`` are
-  mapped/ported fragments only.
+* Mid-aim **inputs**: dmin property bag (``0x10022a40``) and AneOrder dens
+  table (``0x10112980`` / ``+0x4c``). Arithmetic + master clip LUT +
+  ``avg2largest`` are ported; ``ANALYZE`` stays False until those inputs
+  are host-sourced. Contrast (``0x10119060``) / float-table
+  (``0x1004f7b0``) side paths still open.
 * Full ``0x10293960`` LUT write loop + builder ``0x10293ee0`` field←dpi
-  map (setup call graph mapped; loop not host-ported).
+  map (setup call graph mapped; loop not host-ported) — **next VA**.
 * Cap ``+0x3e0`` ← working ``+0x3b0`` automatic path.
 * Full ``ImaShastaOp`` / ``ShastaApply`` aggregate wiring.
 * Therefore ``SHASTA_ANALYZE_PORTED`` / ``SHASTA_TONE_LUT_PORTED = False``
@@ -220,7 +245,7 @@ UNKNOWN / blockers (honest)
   (``working-images-v1``); do **not** claim that stand-in is Shasta.
 
 Log-ratio + exp + Newton/dispatch leaves are Unicorn-golden but **not** a
-toneLut by themselves (fill + image-derived mid aims still open).
+toneLut by themselves (fill still open; mid-aim maths closed, inputs not).
 """
 from __future__ import annotations
 
@@ -237,9 +262,11 @@ SHASTA_TONE_LUT_PORTED = False
 SHASTA_APPLY_PORTED = False
 # Fragments below are cited but insufficient for a scene toneLut.
 SHASTA_TONE_LUT_FRAGMENTS = True
-# avg2largest 0x1004f690 + dpi metricGray/white → +0x2b0/+0x2bc mapped;
-# +0x2b4/+0x2b8 RGB pipeline still WALL → ANALYZE stays False.
+# avg2largest 0x1004f690 + dpi metricGray/white → +0x2b0/+0x2bc mapped.
 SHASTA_AIM_AVG2_PORTED = True
+# CnPremium mid-aim arithmetic (dens+setShifts+master clip+avg2) ported;
+# dmin/AneOrder *inputs* still WALL → ANALYZE stays False.
+SHASTA_AIM_MID_RGB_PORTED = True
 # Unicorn-golden closed forms for 0x10292c50 / 0x10292cb0 (not full curve).
 SHASTA_CURVE_LOG_RATIO_PORTED = True
 # Unicorn-golden 0x10292d30 / 0x10292d80.
@@ -251,10 +278,18 @@ SHASTA_CURVE_DISPATCH_PORTED = True
 SHASTA_PARAMS_METRIC_GRAY_OFF = 0x38
 SHASTA_PARAMS_BLACK_OFF = 0x3C
 SHASTA_PARAMS_WHITE_OFF = 0x40
+SHASTA_PARAMS_BLACK_NOISE_SIGMA_MULT_OFF = 0x1C0  # dump 0x1012896a
 # Ctor defaults before selectParams (erimm-shaped: black=600, white=2358)
 SHASTA_PARAMS_CTOR_METRIC_GRAY = 0x60E  # 1550
 SHASTA_PARAMS_CTOR_BLACK = 0x258  # 600
 SHASTA_PARAMS_CTOR_WHITE = 0x936  # 2358
+SHASTA_PARAMS_CTOR_BLACK_NOISE_SIGMA_MULT = 2.0  # 0x10574f48
+
+# Global AnsLut @ 0x106b5f74 (CRT 0x1056a470 → ctor 0x100f42a0(0xc,0,0xfff))
+MASTER_LUT_OBJ = 0x106B5F74
+MASTER_LUT_DATA_PTR = 0x106B5F7C  # obj+8 = alloc+0x10000 (signed index 0)
+MASTER_LUT_MAX = 0xFFF  # 4095 — identity high clamp
+SCENE_SETSHIFTS_OUT_OFF = 0x4B6  # +0x4b8/+0x4ba siblings (int16)
 
 # CapabilityImpl getToneLut / setToneLut (int32 toneLut)
 CAP_TONE_LUT_VEC_OFF = 0x3E0  # begin; end +0x3e4; int32 stride
@@ -269,6 +304,7 @@ WORK_CODE_OFF = 0x2B0  # seed index; +0x2b4/+0x2b8/+0x2bc siblings
 # .rdata
 F64_0 = 0.0  # 0x10573c40
 F64_1 = 1.0  # 0x10574f50
+F64_2 = 2.0  # 0x10574f48 — blackNoiseSigmaMult ctor default
 F64_HALF = 0.5  # 0x10574f40
 F64_NEG_1 = -1.0  # 0x10574f58 — exp leaves / Newton
 F64_0_95 = 0.95  # 0x105800a8 — curve helper 0x10293960
@@ -524,6 +560,121 @@ def avg2largest_i16(a: int, b: int, c: int) -> int:
     return _sar_div2(a16 + b16 + c16 - min(a16, b16, c16))
 
 
+def ftol2_chop(x: float) -> int:
+    """``0x104ffe44`` — trunc toward zero (dens scale path @ ``0x100569c9``)."""
+    return int(math.trunc(x))
+
+
+def master_lut_clip_i16(code: int, lo: int = 0, hi: int = MASTER_LUT_MAX) -> int:
+    """Global master LUT lookup (``[0x106b5f7c]``, ctor ``0x100f42a0``).
+
+    Signed-int16 index into identity/clip table: ``<lo → lo``,
+    ``lo…hi → identity``, ``>hi → hi``. Static init uses ``lo=0``,
+    ``hi=0xfff``.
+    """
+    c = int(code)
+    if c < lo:
+        return int(lo)
+    if c > hi:
+        return int(hi)
+    return c
+
+
+def _i16_add(a: int, b: int) -> int:
+    """16-bit wrapping add (``add ax, …``)."""
+    return _sx16((int(a) + int(b)) & 0xFFFF)
+
+
+def ane_dens_contrib(
+    dmin_rgb: tuple[int, int, int] | list[int],
+    dens_table: np.ndarray,
+    scale: float,
+    n_channels: int = 1,
+) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """AneOrder dens add @ ``0x100569a1…`` (before setShifts / master LUT).
+
+    ``dens_table`` is ``(n,)`` when ``n_channels==1`` (shared), or
+    ``(n_channels, n)`` when per-channel tables advance (``+0x48``).
+    Returns ``(dens_i int32×3, dmin_dens int16×3)``.
+    """
+    tbl = np.asarray(dens_table, dtype=np.float32)
+    if tbl.ndim == 1:
+        planes = [tbl, tbl, tbl]
+        n = int(tbl.shape[0])
+    elif tbl.ndim == 2:
+        if tbl.shape[0] < 3:
+            raise ValueError("per-channel dens_table needs ≥3 planes")
+        planes = [tbl[0], tbl[1], tbl[2]]
+        n = int(tbl.shape[1])
+    else:
+        raise ValueError("dens_table must be 1-D or 2-D")
+    if n <= 0:
+        raise ValueError("dens_table length is 0")
+    dens_i: list[int] = []
+    dmin_dens: list[int] = []
+    for i in range(3):
+        code = _sx16(dmin_rgb[i])
+        idx = 0 if code < 0 else (n - 1 if code > n - 1 else code)
+        plane = planes[i if n_channels > 1 else 0]
+        di = ftol2_chop(float(plane[idx]) * float(scale))
+        dens_i.append(di)
+        dmin_dens.append(_i16_add(code, di))
+    return (dens_i[0], dens_i[1], dens_i[2]), (
+        dmin_dens[0],
+        dmin_dens[1],
+        dmin_dens[2],
+    )
+
+
+def cn_premium_mid_aim_rgb(
+    dmin_rgb: tuple[int, int, int] | list[int],
+    dens_table: np.ndarray,
+    setshifts_out: tuple[int, int, int] | list[int],
+    *,
+    black: int = SHASTA_PARAMS_CTOR_BLACK,
+    metric_gray: int = SHASTA_PARAMS_CTOR_METRIC_GRAY,
+    black_noise_sigma_mult: float = SHASTA_PARAMS_CTOR_BLACK_NOISE_SIGMA_MULT,
+    dens_n_channels: int = 1,
+    master_lo: int = 0,
+    master_hi: int = MASTER_LUT_MAX,
+) -> tuple[int, int]:
+    """Core CnPremium mid aims → triage ``+0x2b4/+0x2b8`` (no contrast/float).
+
+    Cite: ``0x100569a1…0x100570b3``. Caller supplies dmin RGB and AneOrder
+    dens floats — property-bag / ``0x10112980`` fetch not ported.
+    """
+    dens_i, dmin_dens = ane_dens_contrib(
+        dmin_rgb, dens_table, black_noise_sigma_mult, dens_n_channels
+    )
+    shifts = (_sx16(setshifts_out[0]), _sx16(setshifts_out[1]), _sx16(setshifts_out[2]))
+    dmin = (_sx16(dmin_rgb[0]), _sx16(dmin_rgb[1]), _sx16(dmin_rgb[2]))
+
+    remapped_dmin = [
+        master_lut_clip_i16(_i16_add(dmin[c], shifts[c]), master_lo, master_hi)
+        for c in range(3)
+    ]
+    remapped_dens = [
+        master_lut_clip_i16(_i16_add(dmin_dens[c], shifts[c]), master_lo, master_hi)
+        for c in range(3)
+    ]
+
+    thr = int(metric_gray)
+    if any(remapped_dmin[c] > thr for c in range(3)):
+        b = int(black)
+        remapped_dmin = [
+            master_lut_clip_i16(b + shifts[c], master_lo, master_hi) for c in range(3)
+        ]
+        remapped_dens = [
+            master_lut_clip_i16(b + dens_i[c] + shifts[c], master_lo, master_hi)
+            for c in range(3)
+        ]
+
+    return (
+        avg2largest_i16(remapped_dmin[0], remapped_dmin[1], remapped_dmin[2]),
+        avg2largest_i16(remapped_dens[0], remapped_dens[1], remapped_dens[2]),
+    )
+
+
 def store_aim_codes(
     code_2b0: int,
     code_2b4: int,
@@ -533,9 +684,8 @@ def store_aim_codes(
     """``0x1027be10`` store of analyze args → ``+0x2b0…+0x2bc``.
 
     Provenance (see module doc): ``metricGray``, ``avg2largest(dmin RGB)``,
-    ``avg2largest(dmin+dens)``, ``white``. Mid codes still require the
-    CnPremium RGB pipeline (WALL) — pass host-computed values only when
-    that path is cited.
+    ``avg2largest(dmin+dens)``, ``white``. Mid codes: use
+    ``cn_premium_mid_aim_rgb`` when dmin + AneOrder dens are known.
     """
     return int(code_2b0), int(code_2b4), int(code_2b8), int(code_2bc)
 
@@ -545,11 +695,11 @@ def aim_codes_from_dpi_ends(
     avg_dmin_rgb: int,
     avg_dmin_dens_rgb: int,
 ) -> tuple[int, int, int, int]:
-    """Partial aim tuple: dpi ``metricGray``/``white`` + caller mid avgs.
+    """Aim tuple: dpi ``metricGray``/``white`` + mid avgs from caller.
 
     Matches store map ``+0x2b0/+0x2bc`` ← ShastaParams (selectParams/dpi)
-    and ``+0x2b4/+0x2b8`` ← ``avg2largest`` results. Does **not** compute
-    the mid avgs from an image.
+    and ``+0x2b4/+0x2b8`` ← ``avg2largest`` results (e.g. from
+    ``cn_premium_mid_aim_rgb``).
     """
     return store_aim_codes(
         int(round(dpi.metric_gray)),
@@ -663,6 +813,7 @@ class ShastaDpi:
     filter_policy: int = 3
     use_white_pt_compression: bool = True
     black_noise_supp_stops: float = 0.75
+    black_noise_sigma_mult: float = 2.0
     row_portion: float = 0.875
     col_portion: float = 0.875
 
@@ -687,6 +838,9 @@ class ShastaDpi:
             filter_policy=int(_num(d, "filterPolicy", 3)),
             use_white_pt_compression=_bool(d, "bUseWhitePtCompression", True),
             black_noise_supp_stops=_num(d, "blackNoiseSuppStops", 0.75),
+            black_noise_sigma_mult=_num(
+                d, "blackNoiseSigmaMult", SHASTA_PARAMS_CTOR_BLACK_NOISE_SIGMA_MULT
+            ),
             row_portion=_num(d, "rowPortion", 0.875),
             col_portion=_num(d, "colPortion", 0.875),
         )
@@ -721,16 +875,31 @@ def main() -> None:
     print(f"  seed fragment: toneLut[{code}]={int(lut[code])} (identity only)")
     a, b = prep_breakpoint_pair(3.67, 1.1, dpi.code_values_per_button, code, code)
     print(f"  prep fragment example (highlightButtons*aggr): a={a} b={b}")
-    mid_lo = avg2largest_i16(code, code, code)
-    mid_hi = avg2largest_i16(code, code + 50, code + 100)
+    # Synthetic dens table + zero shifts — demos mid-aim maths only.
+    dens = np.zeros(4096, dtype=np.float32)
+    dens[code] = 10.0
+    mid_lo, mid_hi = cn_premium_mid_aim_rgb(
+        (code, code, code),
+        dens,
+        (0, 0, 0),
+        black=int(round(dpi.black)),
+        metric_gray=int(round(dpi.metric_gray)),
+        black_noise_sigma_mult=dpi.black_noise_sigma_mult,
+    )
     codes = aim_codes_from_dpi_ends(dpi, mid_lo, mid_hi)
     print(
         f"  aim ends: metricGray→+0x2b0={codes[0]} white→+0x2bc={codes[3]} "
-        f"(mid avgs stand-in only: {codes[1]}, {codes[2]})"
+        f"mids={codes[1]},{codes[2]} (synthetic dens; not scene dmin)"
     )
     print(
         f"  avg2largest(1,2,3)={avg2largest_i16(1, 2, 3)} "
-        f"(0x1004f690; AIM_AVG2={SHASTA_AIM_AVG2_PORTED})"
+        f"(0x1004f690; AIM_AVG2={SHASTA_AIM_AVG2_PORTED} "
+        f"MID_RGB={SHASTA_AIM_MID_RGB_PORTED})"
+    )
+    print(
+        f"  master_lut_clip(-1)={master_lut_clip_i16(-1)} "
+        f"4096→{master_lut_clip_i16(4096)} "
+        f"ftol2(2.5*2)={ftol2_chop(5.0)}"
     )
     # Apply fragment smoke (identity seed only)
     plane = np.array([code], dtype=np.int16)
@@ -750,8 +919,8 @@ def main() -> None:
         f"cb0(0.5,1)={curve_log_ratio_cb0(0.5, 1.0):.6g}"
     )
     print(
-        "  +0x2b4/+0x2b8 RGB pipeline + 0x10293960 fill still WALL "
-        "(toneLut STAND-IN on host; SHASTA_TONE_LUT_PORTED=False)"
+        "  mid-aim maths ported; dmin/AneOrder inputs + 0x10293960 fill "
+        "still WALL (toneLut STAND-IN; SHASTA_TONE_LUT_PORTED=False)"
     )
 
 

@@ -1,8 +1,8 @@
-# 52 — `ColorNegativePath::setShifts` control words (CN auto)
+# 52 — `ColorNegativePath::setShifts` (CN auto)
 
 DLL: `PakonIMAu.dll` image base `0x10000000`.
-Closes the control-word provenance for CN auto rolls. Does **not** port the
-`(1,2)` transform maths or enable `PREFERENCE_SHIFTS_PORTED`.
+Closes control-word provenance and the shipped **`(1,2)`** closed form.
+Does **not** enable `PREFERENCE_SHIFTS_PORTED` (no golden vs DLL yet).
 
 ---
 
@@ -97,8 +97,82 @@ Two `getShifts` results:
 is passthrough of getShifts buffer B. The `0x60e` (1550) pivot appears on
 the mixed / mode-1 branches, including shipped `(1, 2)`.
 
-`0x10122150` → `0x10212100`: reads three signed words from
-`*(Impl+0x10)` (SCPLut work/LUT base) for table indexing — **not** ported.
+`0x10122150` → `0x10212100`: reads **`Ans3BandLutParams`** at
+`AnsSCPLutCapabilityImpl+0x10` (allocated in SCPLut Impl ctor
+`0x10213123`; fail string cites
+`AnsSCPLutCapabilityImpl.cpp` + `Ans3BandLutParams`):
+
+| Out slot (after stack-arg fixups) | Field | Use in `(1,2)` |
+|-----------------------------------|-------|----------------|
+| `[esp+0x28]` | `+0` `NUM_LUT` (int16→i32) | planar band stride |
+| `[esp+0x30]` | `+2` `NUM_BANDS` | dump / unused in index |
+| `[esp+0x2c]` | `+4` `int16*` table | planar LUT base |
+
+Dump `@ 0x1026bf90` names `NUM_LUT` / `NUM_BANDS` / `LUT_NAME`.
+
+---
+
+## `(1, 2)` maths (VERIFIED closed form)
+
+Entry `@ 0x10100a37`. Same combine tail as `(0, 2)` `@ 0x10100510`
+(merge `@ 0x10100651` / OUT `@ 0x10100f31`→`0x1010109d`); only the
+**Y** source differs.
+
+Shared axis helpers = FOS opening (`fos_opening_axes` / `×0x186a0` +
+MSVC magic) — see `tools/ansel/pakon_fos.py`.
+
+### Steps
+
+1. **Pivot A:** `A' = 0x60e − A` (int16), `0x60e = 1550`.
+2. **3-band LUT lookup** (planar `int16[NUM_BANDS * NUM_LUT]`):
+
+   ```
+   L_r = lut[A'_r]
+   L_g = lut[A'_g + NUM_LUT]
+   L_b = lut[A'_b + 2·NUM_LUT]
+   ```
+
+3. **Y from LUT RGB:** `Y = axis_y(L)` (= FOS opening Y).
+4. **Pivot B:** `B' = 0x60e − B`.
+5. **Chrominance from B':** `C1 = axis_c1(B')`, `C2 = axis_c2(B')`.
+6. **Axis → code** (same magics, axis·scale ± bias):
+
+   ```
+   Yc  = magic_y (Y  · 0x186a0 ± BIAS_Y)
+   C1c = magic_c1(C1 · 0x186a0 ± BIAS_C1)
+   C2c = magic_c2(C2 · 0x186a0 ± BIAS_C2)
+   C1×2 = magic_c1(C1 · 0x30d40 ± BIAS_C1)   // 0x30d40 = 2·0x186a0
+   ```
+
+7. **Reconstruct RGB codes:**
+
+   ```
+   R = Yc  − C1c − C2c
+   G = Yc  + C1×2
+   B = Yc  − C1c + C2c
+   ```
+
+8. **OUT:** `OUT = 0x60e − (R,G,B)` (int16) @ `0x10100f31` / `0x1010109d`.
+
+`(0, 2)` is identical with step 2–3 replaced by `Y = axis_y(A')`
+(no LUT).
+
+### Shipped 3-band LUT data
+
+* Index dpi: `anselinstalldir/dataPathItems/common/common-3BandLuts.dpi`
+  → `LUT_DPI = luts6_postROMM_equalRGBshort.lut`
+* File: ASCII `NUM_LUT = 4096`, `NUM_BANDS = 3`, rows
+  `index R G B` (interleaved). Equal-RGB short post-ROMM
+  (brightness 1.34, gamma 1.1).
+* Runtime table is **planar** (indexing above). Host loader should
+  de-interleave into `R||G||B` of length `NUM_LUT` each.
+
+### Port flags
+
+* Closed form cited in `pakon_sba_apply.setshifts_12` /
+  `fos_opening_axes_inverse`.
+* `SETSHIFTS_12_PORTED = False` until golden vs DLL.
+* `PREFERENCE_SHIFTS_PORTED` stays **False**.
 
 ---
 
@@ -118,18 +192,20 @@ treat lighting-adjust `+0x38` as setShifts control words.
 
 ## CN-auto conclusion (apply wiring)
 
-For shipped CN SCPLut dpi, setShifts runs **`(1, 2)`**, which **transforms**
-Preference/`getShifts` words through `0x60e` + SCPLut LUT indices +
-`×0x186a0` axes. It is **not** a Preference passthrough.
+For shipped CN SCPLut dpi, setShifts runs **`(1, 2)`**:
+
+* **Luma/tone** from 3-band LUT of pivoted Preference words (buffer A).
+* **Chroma** from pivoted second getShifts (buffer B).
+* **Not** Preference passthrough.
 
 Therefore:
 
-* Raw Preference `+0x3a38` words are **not** proven apply LUT inputs for CN auto.
-* `PREFERENCE_SHIFTS_PORTED` stays **False**.
-* Full `(1, 2)` closed form + golden vs DLL remain **UNKNOWN** (next RE).
+* Raw Preference `+0x3a38` words are **not** apply LUT inputs for CN auto.
+* Apply needs `setShifts` **OUT** (`0x60e − reconstruct(Y_lut(A'), C(B'))`).
+* `PREFERENCE_SHIFTS_PORTED` / `SETSHIFTS_12_PORTED` stay **False** until
+  golden vs DLL.
 
-Optional: if a configuration forced `(0, 0)`, passthrough would copy
-Preference words to OUT — that is **not** the shipped CN path.
+Optional: `(0, 0)` would copy Preference → OUT — **not** shipped CN.
 
 ---
 
@@ -137,10 +213,11 @@ Preference words to OUT — that is **not** the shipped CN path.
 
 | File | Role |
 |------|------|
-| This doc | setShifts control-word / branch report |
+| This doc | setShifts control words + `(1,2)` closed form |
 | `docs/49-preference-fpu-binary.md` | Preference FPU; points here for setShifts |
 | `docs/46-ansel-parity-checklist.md` | Blockers / next RE |
-| `tools/ansel/pakon_sba_apply.py` | Apply helper; setShifts cites |
+| `tools/ansel/pakon_sba_apply.py` | Apply helper + `setshifts_12` fragment |
+| `tools/ansel/pakon_fos.py` | Shared `×0x186a0` axes + inverse |
 | `tools/ansel/pakon_analyse_roll.py` | balanceOrder / setShifts I/O |
-| `tools/ansel/pakon_scp_lut.py` | ntd/ctd → int16 helpers |
+| `tools/ansel/pakon_scp_lut.py` | ntd/ctd + 3-band lut ASCII load |
 | `tools/ansel/pakon_sba_preference.py` | Preference fragments; port flag False |

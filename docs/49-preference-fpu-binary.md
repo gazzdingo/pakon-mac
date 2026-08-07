@@ -219,7 +219,7 @@ Helpers: `opening_rgb_from_sba_fpo`, `preference_shifts_from_dpi_fields`
 
 ## Remaining UNKNOWNs (block apply wiring)
 
-1. **`setShifts` `(1,2)` closed form** — `0x60e` + `0x10122150` LUT index + `×0x186a0` combine (control words **closed**; maths open). See `docs/52`.
+1. **Golden `setShifts` `(1,2)`** — closed form in `docs/52` / `setshifts_12`; need DLL compare before wiring.
 2. **Exact mode distribution** when user color/neutral balance tokens present.
 3. **`aimY` when lo≠1** — `scene+0x38a2` word map / pcode coupling.
 4. **arg1** payload when hi∈{`0x30`} or lo=`3` (FOS get `0x1013c4e0`).

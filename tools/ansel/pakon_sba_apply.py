@@ -27,39 +27,100 @@ VERIFIED
   ``getShifts`` and writes a 3×int16 **OUT** buffer — it does **not**
   populate ``+0x3a38``.
 
-setShifts control words (VERIFIED — ``docs/52``)
-------------------------------------------------
+setShifts control words + ``(1,2)`` (VERIFIED — ``docs/52``)
+------------------------------------------------------------
 * Filled from **AnsSCPLutCapability** Cap ``+0x10+0x18`` via ``0x10122a70``
   → ``0x10122190``: ``ntdChoice`` / ``ctdChoice`` at ``+0x38`` / ``+0x3a``.
-* Dump ``0x101d0050`` names those fields on ``AnsSCPLutDPI``.
-* Shipped CN dpi: ``ntd=ANS_LUT_FIRST_PASS``, ``ctd=ANS_SECOND_PASS`` →
-  **``(1, 2)``** — **not** ``(0, 0)`` passthrough.
-* ``(0, 0)`` → copy Preference/getShifts buffer A → OUT.
-* ``(2, 2)`` → copy getShifts buffer B → OUT (not the ``0x60e`` path).
-* ``(1, 2)`` → ``0x60e − ch`` + Cap LUT ``0x10122150`` + ``×0x186a0``
-  three-axis path — maths **UNKNOWN** / not ported.
-* ``AnsLightingAdjust`` ctor ``+0x38=0`` and ``ans_*_pass`` strings are
-  **not** this control source (pass tokens are SCPLut DPI only).
-
-UNKNOWN / not wired
--------------------
-* Preference FPU → ``+0x3a38`` is mapped (``docs/49``), but CN auto
-  ``setShifts`` **transforms** those words on ``(1, 2)``. Keep median
-  ``channel_balance`` until that transform and a golden are closed.
-  ``PREFERENCE_SHIFTS_PORTED`` stays False.
+* Shipped CN dpi → **``(1, 2)``** — not passthrough.
+* ``(0, 0)`` → copy A; ``(2, 2)`` → copy B.
+* ``(1, 2)`` closed form (fragment below): LUT(Y from A') + chroma(B')
+  → reconstruct → ``OUT = 0x60e − RGB``. See ``docs/52``.
+* ``SETSHIFTS_12_PORTED = False`` until golden vs DLL.
+* ``PREFERENCE_SHIFTS_PORTED`` stays False; host still uses median
+  ``channel_balance``.
 """
 from __future__ import annotations
 
 import numpy as np
 
+from pakon_fos import (
+    fos_opening_axes,
+    fos_opening_axes_inverse,
+)
+
 MASTER_MAX = 0xFFF  # 4095
 
-# setShifts pivot (CN (1,2) and related branches) — cite docs/52
 SETSHIFTS_PIVOT_0x60E = 0x60E  # 1550
 SETSHIFTS_SCALE_0x186A0 = 0x186A0
 PATH_SET_SHIFTS = 0x10100260
-# Shipped SCPLut dpi control words after readAscii
+PATH_SET_SHIFTS_12 = 0x10100A37
 SHIPPED_CN_SETSHIFTS_CTRL = (1, 2)  # ntd=lut_first, ctd=second
+
+# Closed form cited; no DLL golden yet
+SETSHIFTS_12_PORTED = False
+
+
+def _i16(x: int) -> int:
+    x &= 0xFFFF
+    return x - 0x10000 if x >= 0x8000 else x
+
+
+def _pivot(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
+    p = SETSHIFTS_PIVOT_0x60E
+    return _i16(p - rgb[0]), _i16(p - rgb[1]), _i16(p - rgb[2])
+
+
+def lookup_3band_planar(
+    idx_rgb: tuple[int, int, int],
+    planar: list[int] | tuple[int, ...],
+    num_lut: int,
+) -> tuple[int, int, int]:
+    """Planar index as setShifts ``(1,*)`` (@ ``0x10100a8f``).
+
+    ``planar`` length ``num_bands * num_lut``; band ``b`` at
+    ``planar[i + b * num_lut]``.
+    """
+    r_i, g_i, b_i = (_i16(x) for x in idx_rgb)
+    return (
+        _i16(planar[r_i]),
+        _i16(planar[g_i + num_lut]),
+        _i16(planar[b_i + 2 * num_lut]),
+    )
+
+
+def setshifts_12(
+    shifts_a: tuple[int, int, int],
+    shifts_b: tuple[int, int, int],
+    planar_lut: list[int] | tuple[int, ...],
+    num_lut: int = 4096,
+) -> tuple[int, int, int]:
+    """CN shipped ``(ntd,ctd)=(1,2)`` @ ``0x10100a37`` → OUT 3×int16.
+
+    * ``Y = axis_y(lut[0x60e − A])`` (planar 3-band)
+    * ``C1,C2 = axis_c*(0x60e − B)``
+    * ``OUT = 0x60e − inverse(Y, C1, C2)``
+
+    Not wired; ``SETSHIFTS_12_PORTED`` is False until golden.
+    """
+    a_p = _pivot(shifts_a)
+    lut_rgb = lookup_3band_planar(a_p, planar_lut, num_lut)
+    y, _, _ = fos_opening_axes(*lut_rgb)
+    b_p = _pivot(shifts_b)
+    _, c1, c2 = fos_opening_axes(*b_p)
+    rec = fos_opening_axes_inverse(y, c1, c2)
+    return _pivot(rec)
+
+
+def setshifts_02(
+    shifts_a: tuple[int, int, int],
+    shifts_b: tuple[int, int, int],
+) -> tuple[int, int, int]:
+    """``(ntd,ctd)=(0,2)`` @ ``0x10100510`` — same combine, Y from ``A'`` (no LUT)."""
+    a_p = _pivot(shifts_a)
+    y, _, _ = fos_opening_axes(*a_p)
+    b_p = _pivot(shifts_b)
+    _, c1, c2 = fos_opening_axes(*b_p)
+    return _pivot(fos_opening_axes_inverse(y, c1, c2))
 
 
 def apply_balance_shifts(rpd12: np.ndarray, shifts: tuple[int, int, int]) -> np.ndarray:

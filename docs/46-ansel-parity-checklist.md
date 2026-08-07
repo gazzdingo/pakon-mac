@@ -63,7 +63,7 @@ See `tools/ansel/README.md`.
 - [x] **FUGC aim fields ≠ histogram:** `+0x60f8`←`aTableDmin`; `+0x60f2`←analyze `[ebp+0x14]`; `+0x60ec`←`[ebp+0x18]` or Cap `+0x12` (ParamsDpi copy `0x10118380`); metrics write `+0x14178…` only (cite: DLL; `fill_setlutinfo_aim_words`)
 - [x] **AnalyseRoll call graph (cited, not ported):** TLA `JT+0x5c` → Ci `AnalyzeRoll` `0x10002843` → `0x10020100` → `AnsOrder::analyzeOrder` `0x1001fc30` → `CnPremium_analyzeOrderWide` `0x10059d90` → `analyzeBalanceOrder` `0x10101220` (×2, with AneOrder/PreBalance/ScpLut/getCnContext around it). Apply: Ci `bColorSceneBalancePlanar` `~0x10002c50` / TLA `JT+0x64` (cite: DLL; `pakon_analyse_roll.py`)
 - [x] **`analyzeBalanceOrder` body (cited):** scene walk stride `0x64dc`; pass1 → FOS analyze → pass2 → path `setShifts` → `getShifts` accumulate; FOS → Impl `0x1023ff80` → `SbaCalcFosResults` `0x1028f570` (cite: DLL; `pakon_analyse_roll.py` / `pakon_fos.py`)
-- [x] **`setShifts` I/O + control words:** consumes `getShifts` → OUT; does **not** write `+0x3a38`. Control words = SCPLut Cap `+0x10+0x18` `ntdChoice`/`ctdChoice` (`+0x38`/`+0x3a`); shipped CN dpi → **`(1,2)`** → `0x60e`+LUT+`×0x186a0` (**not** Preference passthrough). `(0,0)`/`(2,2)` are passthrough A/B only. Lighting-adjust / `ans_*_pass` conflation refuted for control source (`docs/52`) (cite: DLL; `pakon_sba_apply.py` / `pakon_scp_lut.py`)
+- [x] **`setShifts` I/O + control words + `(1,2)` closed form:** consumes `getShifts` → OUT; does **not** write `+0x3a38`. Control words = SCPLut Cap `+0x10+0x18` `ntdChoice`/`ctdChoice` (`+0x38`/`+0x3a`); shipped CN → **`(1,2)`**: `Y=axis_y(3BandLut[0x60e−A])`, `C*=axis(0x60e−B)`, `OUT=0x60e−inverse(Y,C1,C2)` via `Ans3BandLutParams` @ SCPLut `Impl+0x10` (planar stride `NUM_LUT`). `(0,0)`/`(2,2)` passthrough only. Golden vs DLL still open — `SETSHIFTS_12_PORTED=False` (`docs/52`; `pakon_sba_apply.py` / `pakon_fos.py` / `pakon_scp_lut.py`)
 - [x] **FOS Cap→Impl→calc (cited; OUT layout known; opening ported):** Cap `0x1013cb30` → Impl `0x1023ff80` → `SbaCalcFosResults` `0x1028f570` (10 args; OUT `Impl+0x18` = `SbaFOSResults`). Cap dump names OUT fields (`numPixels`/`gmRSquare`/`illRSquare` at `+0x1e/+20/+22`). Opening RGB→3-axis `×0x186a0` fragment ported; dens/R²/slope **equations** still **UNKNOWN** (`FOS_ANALYZE_PORTED=False`; `pakon_fos.py` / `docs/47`)
 - [x] **AneOrder chain (cited; not ported):** Path `0x100fad90` → Cap `0x10110540` → Impl `0x101ed3a0`; `getResults` Cap `0x10110830` / Impl `0x101ebe90` → sole caller `exportNoise` `0x10112aab`. Order-only before PreBalance/balanceOrder; **no** static edge into SBA/FOS/ScpLut/`+0x3a38` (`ANE_ORDER_PORTED=False`; cite: DLL; `pakon_ane_order.py`)
 - [x] **OrderOrientation pin (separate):** Cap `0x101218c0` → Impl `0x102101d0`; from `analyzeAttributes` `0x100fb576`, **not** AneOrder (cite: DLL; `pakon_ane_order.py`)
@@ -81,7 +81,7 @@ See `tools/ansel/README.md`.
 
 ## Implemented but NOT Pakon-same (stand-ins)
 
-- [ ] **SBA channel balance** — median equalise (`channel_balance`). Preference FPU **mapped** (`docs/49`); `pcls=w1e` solved (shipped 0); `setShifts` control words **closed** (shipped `(1,2)`); apply blocked on `(1,2)` maths + golden (`PREFERENCE_SHIFTS_PORTED=False`; `docs/52`).
+- [ ] **SBA channel balance** — median equalise (`channel_balance`). Preference FPU **mapped** (`docs/49`); `pcls=w1e` solved (shipped 0); `setShifts` `(1,2)` **closed form** cited (`docs/52`); apply blocked on golden vs DLL (`SETSHIFTS_12_PORTED=False`; `PREFERENCE_SHIFTS_PORTED=False`).
 - [ ] **Tone** — we apply shipped **SRA** fwd lut as tone. Pakon CN auto-tone builds **Shasta** `toneLut` via analyze→export→`ImaShastaOp`. SRA table is a real artefact but **wrong stage** for Shasta parity.
 - [ ] **FUGC apply** — we apply shipped **seed** `fugc-generic*.lut`. Pakon may `setLutInfo`-shift it from analyze aims (`+0x6140`). Offset-0 matches seed; non-zero aims not wired.
 - [ ] **Post-balance aim** — `aim_medians(…, neutralBalancePoint)` stand-in.
@@ -168,7 +168,7 @@ See `tools/ansel/README.md`.
 
 ## Suggested next RE order (Pakon-only)
 
-1. **Port / golden `setShifts` `(1,2)`** (`0x60e` + `0x10122150` LUT + `×0x186a0`) → apply LUT inputs; then consider wiring.
+1. **Golden `setShifts` `(1,2)`** vs DLL (`setshifts_12` + shipped 3-band lut) → then consider wiring apply.
 2. User-balance / lo≠1 `aimY` paths if needed.
 3. FOS dens closed form (FOS parity — not Preference RGB).
 4. FUGC aim writers / `setLutInfo` wiring.

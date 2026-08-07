@@ -35,9 +35,10 @@ setShifts control words + ``(1,2)`` (VERIFIED — ``docs/52``)
 * ``(0, 0)`` → copy A; ``(2, 2)`` → copy B.
 * ``(1, 2)`` closed form (fragment below): LUT(Y from A') + chroma(B')
   → reconstruct → ``OUT = 0x60e − RGB``. See ``docs/52``.
-* ``SETSHIFTS_12_PORTED = False`` until golden vs DLL.
+* ``SETSHIFTS_12_PORTED = True`` — Unicorn golden vs DLL ``(1,2)`` body
+  (``pakon_setshifts_golden.py``).
 * ``PREFERENCE_SHIFTS_PORTED`` stays False; host still uses median
-  ``channel_balance``.
+  ``channel_balance`` until Preference→A/B + apply wiring.
 """
 from __future__ import annotations
 
@@ -56,8 +57,8 @@ PATH_SET_SHIFTS = 0x10100260
 PATH_SET_SHIFTS_12 = 0x10100A37
 SHIPPED_CN_SETSHIFTS_CTRL = (1, 2)  # ntd=lut_first, ctd=second
 
-# Closed form cited; no DLL golden yet
-SETSHIFTS_12_PORTED = False
+# Closed form + Unicorn golden vs PakonIMAu.dll (1,2) fragment
+SETSHIFTS_12_PORTED = True
 
 
 def _i16(x: int) -> int:
@@ -100,7 +101,7 @@ def setshifts_12(
     * ``C1,C2 = axis_c*(0x60e − B)``
     * ``OUT = 0x60e − inverse(Y, C1, C2)``
 
-    Not wired; ``SETSHIFTS_12_PORTED`` is False until golden.
+    Golden vs DLL (``pakon_setshifts_golden``). Not wired into host apply.
     """
     a_p = _pivot(shifts_a)
     lut_rgb = lookup_3band_planar(a_p, planar_lut, num_lut)

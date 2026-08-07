@@ -108,3 +108,85 @@ TLB.dll tests for it.
 `captures/` is gitignored and holds the owner's personal photographs — do not
 commit anything from it, do not copy images out, do not describe their content.
 The repo is private. `app/node_modules` is gitignored (538 MB).
+
+---
+
+## 7. CORRECTION — calibration policy, and smear does not exist here
+
+Traced from the bytes 2026-08-07. Two things in §5 above are wrong.
+
+### Smear is NOT a candidate for the band — it has no implementation
+
+I named the smear accumulator as the best remaining explanation for the
+residual band. **That was wrong.** `fcn.100079c0` is not
+`FN_bCalibrateFindSmearAndFPC` — the recovered FN map gives it as
+`FN_iFramePictures`, and its only two call sites are inside `FN_bAfterScan`
+(`0x1002aba5`, `0x1002abb8`), doing post-capture frame detection.
+
+The string `FN_bCalibrateFindSmearAndFPC` (`0x10061af0`) is referenced exactly
+once in the whole image, at `0x10018be6`, inside the FN-id→name table used for
+logging. **There is no implementation bound to it in this build, and smear is
+not part of any calibration path.** Do not chase it.
+
+### Calibration policy — the vendor does NOT recalibrate per scan
+
+The gate is at `0x1002ded2`, on `[scanner+0x130]` — the vendor's own
+`iCalibrateControl` (named at `0x10040b16`). Zeroed at the top of every
+`FN_bBeforeScan`, so it is per-call scratch, not persistent state. It fires on:
+
+1. **no per-pixel table for this configuration** (`+0x20 == 0`) — true after
+   process start, any parameter change, or an aborted scan
+2. **> 60 minutes** since this configuration last calibrated. Hardcoded in the
+   `CiConfigScan` constructor (`0x100120a2`, `mov eax, 0x3c`), never
+   registry-backed, not configurable
+3. **> 20 hours** since the last *full* light calibration — `0x11940` seconds,
+   compared against the persisted registry value `FullLightCorrections`
+
+Conditions 1–2 rerun dark offsets, per-pixel dark, duty cycle, per-pixel bright
+and IR-lag. Condition 3 *additionally* reruns the LED current search from
+`Current_* = 1`.
+
+**Otherwise nothing runs at all.** A whole roll calibrates at most once.
+
+### Purely time-based. No temperature trigger — proven, not assumed
+
+Every caller of the three invalidation routines was enumerated. Nothing reaches
+them from the light-board monitor thread, and the gate's entire call graph is
+`time()`, `Invalidate()` and the 20-hour test. **A temperature reading can never
+trigger recalibration in this build.** The 3.7 % warm-up droop is handled by
+`WaitForLamp_*` settling sleeps instead.
+
+### What persists, what does not
+
+| artefact | persisted? | redone when |
+|---|---|---|
+| per-pixel dark, bright/gain, IR-lag | **no** — heap only | any gate hit; every process start |
+| AFE dark offsets `Offset_R/G/B` | yes, registry | every calibration run |
+| AFE gains `Gain_R/G/B` | yes, registry | every calibration run |
+| LED duty cycle | yes, registry | every calibration run |
+| **LED current** | yes, registry | **only** on 20-hour expiry |
+
+Identity is **(DPI base × film colour × IR)** — 18 independent records, each with
+its own table pointer and timestamps. Changing resolution, film colour, film
+format or IR calls `fcn.10011420` at `0x1003c494` and **destroys the tables for
+all 18**.
+
+### So, for our port
+
+* **Do not regenerate before every scan.** The vendor does not.
+* **Once per session is right** — and is effectively what the vendor does, since
+  its per-pixel tables cannot survive a restart.
+* **Regenerate after 60 minutes**, and on any change of DPI base, film colour,
+  film format or IR. Those are hard invalidations in the vendor code.
+* `calibration/dark_2000x3.npy` and `gain_2000x3.npy` correspond to something
+  the vendor never writes to disk, so reusing them across sessions has no vendor
+  precedent. It is a defensible choice, but the vendor's own bound is 60 minutes
+  and one configuration — and stale corrections look exactly like the
+  column-structured residual we are already chasing.
+
+### Also corrected: `[scanner+0x298]`
+
+`docs/15` says that flag "is set by the light-board monitor". A byte search for
+stores with displacement `0x298` finds 11 hits and **none is a store** — nothing
+in TLB.dll writes it. `fcn.1002cf10` is a DSP/ringtail completion wait (250 ms
+poll, 300 s timeout), not a lamp-temperature wait.

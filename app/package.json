@@ -11,8 +11,11 @@
   "build": {
     "appId": "com.langfordlee.pakonscan",
     "productName": "Pakon Scan",
-    "files": ["main.js", "preload.js", "index.html", "renderer.js", "style.css"],
-    "extraResources": [{ "from": "../tools", "to": "tools" }],
+    "files": ["main.js", "preload.js"],
+    "extraResources": [
+      { "from": "../tools", "to": "tools", "filter": ["**/*", "!**/__pycache__/**", "!**/WRITES_LOCKED"] },
+      { "from": "../research/film-products.json", "to": "research/film-products.json" }
+    ],
     "mac": { "category": "public.app-category.photography", "target": ["dmg", "zip"] },
     "win": { "target": ["nsis"] },
     "linux": { "target": ["AppImage", "deb"], "category": "Graphics" }

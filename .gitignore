@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 captures/
+app/node_modules/
+.DS_Store
 vendor/
 # Third-party driver source, fetched locally. Not redistributed: the upstream
 # repository ships no LICENSE file. Obtain it yourself:

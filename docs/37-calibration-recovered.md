@@ -128,3 +128,20 @@ StepperLens 3133    StepperCCD 970
   unsigned parsing gives ~4.29e9 for the negatives.
 * `DutyCycle_*` and `DutyCycleOpenGate_*` are `REG_SZ` **strings**, not numbers.
   `CiConfigLight` round-trips the doubles through text.
+
+## Where everything is
+
+```
+vendor/windows-registry/
+    README.md                     folder index and how to reproduce
+    NOTES.md                      verdict, provenance, trust tiers
+    lamp-calibration.md           all 18 keys as tables
+    pakon_registry_full.txt/.json 122 keys, Pakon + Kodak
+    extract_hive.py               the hive walker
+    tools/                        the 7-step extraction pipeline
+    evidence/                     USB attach log, timeline correlation, raw carves
+```
+
+The single most useful file for checking this work is
+`vendor/windows-registry/evidence/usb-timeline-correlation.txt` — it shows, key
+by key, which scanner each set of values belongs to and why.

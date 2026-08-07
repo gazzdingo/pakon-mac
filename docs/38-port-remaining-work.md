@@ -118,3 +118,55 @@ chip with a hole in its flash.
 
 The single highest-value next action is **B**, because it is free, it is
 read-only, and it may retire the oldest blocker in the project.
+
+## macOS-specific notes
+
+**Host confirmed: Apple M2 Max, arm64, macOS 26.5.2.**
+
+Reconciling two conflicting claims now in the repo: `docs/36` said "Apple
+Silicon" and `research/windows-registry/NOTES.md` says "this Mac is Intel
+(i5-7360U)". Both are right about *different machines* — the M2 Max is this
+development Mac, the i5-7360U is the laptop that hosted the Parallels VM and
+where the scanner actually attached in July 2025. The recovered calibration is
+unaffected: the attach records are in the VM's own log.
+
+### What is already solved, and it was the biggest macOS risk
+
+The vendor shipped a kernel driver (`F235Ldr.sys` / `F135USB3.sys`). **None of
+it is needed.** `tools/pakon_load.py` reimplements the two-stage EZ-USB load in
+userspace over libusb, and today the entire chain — load, re-enumerate, command
+round-trip, motor, register reads, EP 0x86 capture — ran natively on arm64. No
+kext, no Rosetta, no VM. That was the single largest "will this port at all"
+question and it is answered.
+
+### The real macOS engineering risk: sustained throughput
+
+EP 0x86 delivers **~30 MB/s**. Synchronous single-buffer `dev.read()` in Python
+is fine for the 16 KB probes used so far and will very likely **not** hold that
+rate for a whole roll — one stall and the free-running FIFO overruns, which
+`docs/06:139` already warns about.
+
+Needed before stage F:
+* libusb **asynchronous** transfers with a submitted ring of buffers, not
+  blocking reads;
+* measure actual sustained rate and drop behaviour before designing the frame
+  assembler around it;
+* if Python cannot hold it, a small C or Swift capture core writing to a ring
+  buffer, with Python retained for orchestration and colour.
+
+Treat this as a measurement task, not an assumption — nobody has yet captured
+more than a few buffers in a row.
+
+### Packaging
+
+* libusb is currently a Homebrew dependency; a distributable app must bundle it.
+* Code signing and notarisation for anything shipped outside the dev machine.
+* No special entitlement is required for libusb bulk I/O to a device macOS has
+  not claimed. If a system class driver ever claims the interface, it must be
+  detached first — not currently an issue for `0f05:f135`.
+
+### One macOS advantage worth using
+
+The vendor `.pf` colour profiles are standard ICC v2 (Kodak KCMS), so
+**ColorSync consumes them directly** (`tools/pakon_profile.py`). Rendering can
+hand off to the system colour engine rather than reimplementing it.

@@ -20,7 +20,8 @@ Reads are sensors. Writes are actuators.
 | `0x83` | **R** | GetRegByte | light-board status — **decoded**, `docs/39` |
 | `0x84` | **R** | GetRegWord | lamp temp setpoint — **decoded**, `docs/39` |
 | `0x88` | **R**/W | GetReg(4) | lamp + motherboard temps — **decoded**, `docs/39` |
-| `0x93` | **R** | GetReg(4) | **UNDECODED — 4 bytes, 4 out-params** |
+| `0x93` | **R** | GetReg(4) | 4 bytes, 4 out-params — **decoded, `docs/43`**; paired with `0x96` |
+| `0x96` | W | fcn.10009ee0 | 4 bytes — trim/pot write, pair of `0x93` (`docs/43`) |
 | `0xea` | **R** | GetRegByte | **UNDECODED — byte, board `0x28`** |
 | `0xef` | **R** | GetRegByte | **UNDECODED — byte, board `[this+0x2f8]`** |
 | `0x80` `0x81` `0x82` | W | Put | LED enable / current / duty (`docs/15`) |
@@ -81,8 +82,9 @@ This independently confirms `docs/39`: exactly three temperatures, all `%f`
 (the ×0.0625 scaling), named setpoint / LB / MB. It also names one sensor we
 have **not** located a register for:
 
-* **`FilmPresent`** (`%d`) — film-presence detection. TLB reads it from
-  somewhere; `0x93`, `0xea` and `0xef` are the candidates.
+* **`FilmPresent`** (`%d`) — **located, `docs/43`**: it is `[[this+0x28]+0x54]`,
+  a cached host-side field, not a register read at all. The remaining question
+  is which code path writes it.
 
 **Row B — a richer telemetry set, from a different binary on the same disk:**
 
@@ -113,8 +115,9 @@ registers, so Row A is ours. Row B is a lead, not a fact. `[INFERRED]`
 
 ## The gap list, ranked
 
-1. **`0x93`, the four-byte sensor bank** — undocumented, 15 call sites, almost
-   certainly includes `FilmPresent`. Decode the callers.
+1. ~~`0x93`~~ — **done, `docs/43`.** It is a four-channel trim/measure pair with
+   `0x96`, most likely the DX pots — and it does **not** carry `FilmPresent`.
+   What remains is the channel→sensor assignment.
 2. **`TempLocked`** — if it is a real F-135 field, it is the natural source of
    the stability flag `docs/39` could not find a writer for. Worth chasing
    together with the TLA.dll thread.
@@ -131,3 +134,10 @@ Setpoint (`0x84`), lamp temperature and motherboard temperature (`0x88`), the
 status byte (`0x83`), all eight supervision comparisons, and the abort mask are
 decoded in `docs/39`. Nothing further is needed to read the scanner's
 temperatures or to supervise the lamp safely.
+
+## Correction (see `docs/43`)
+
+This table's write column is a **lower bound**. It was built from a fixed list of
+accessor functions; `fcn.10009ee0` was not among them, so register `0x96` was
+missed entirely. Any register reached only through an unlisted accessor is
+absent here.

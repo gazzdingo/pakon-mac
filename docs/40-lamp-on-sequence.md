@@ -313,3 +313,94 @@ risk class from the light board, and worth doing deliberately.
 ~1575) permute between slots across captures, because the USB buffer boundary
 does not land on a 3-sample pixel group. The *set* is constant; the labels are
 not. Do not read a per-channel delta from an unaligned capture.
+
+---
+
+## 12. Corrections from the full call-site enumeration
+
+A second pass rebuilt the FN symbol table and enumerated **every** packet-emitting
+call site in TLB.dll — 86 sites, a closed set, not a sample. It was briefed
+before first light was achieved, so its "still dark" experiments are moot, but
+these corrections stand and several matter for the acquisition work.
+
+### `0x80` is written FIRST, not last
+
+```
+0x1002c6a4  PutRegisterByte  reg 0x80 <- mask      <<< FIRST
+0x1002cc3c  PutRegister      reg 0x81 <- 5 B levels
+0x1002ce08  PutRegister      reg 0x82 <- 12 B PWM
+```
+
+`docs/14` and `docs/40` §3/§5 both had this backwards. There is no second `0x80`
+write anywhere in `FN_bDrvLampOn`; the mask is cached (`0x1002c704`) and skipped
+when unchanged. The vendor **never programs non-zero drive with the lamp
+disabled** — in `FN_bCalibrateFindLedCurrent` the mask is 1 on every iteration,
+so all level changes land while it is already lit.
+
+Our working sequence used the opposite order and lit anyway, so the ordering is
+evidently not required — but the vendor-faithful order is enable-first.
+
+### The event register is never acknowledged, and bit 7 is not benign
+
+**Every Type-1 read this project has ever made from `0x40` returns
+`resp[3] = 0x88` — bit 7 set.** The monitor thread treats bit 7 as *interrupt
+pending* and clears it several times a second:
+
+```
+01 03 40 01 02              read event register           0x1000bed8
+02 05 40 02 06 00 <ev>      ACK via reg 0x06 (0xFF if ev==0)  0x1000bf1a
+```
+
+`docs/12` §9 called bit 7 "benign". It is not. **We have never acknowledged an
+event, in any session, in the entire project.** Whether that inhibits anything is
+firmware-side and not determinable statically — but it is the single most
+conspicuous thing the vendor does that we do not, and it is pure diagnosis: the
+event byte says what the board has been trying to report all along.
+
+### `0x83` decoded bit by bit (`fcn.1000b890`, decode from `0x1000b9cd`)
+
+| bit | meaning |
+|---|---|
+| 0 | fault → status bit 14, only if lamp firmware `>= 4` |
+| 1 | advances lamp-stability state −1 → 0; transient, self-clearing |
+| 3 | **temperature readings valid** — gates the host's threshold checks |
+| 5 | **FAULT** → status bit 6 |
+| 6 | **FAULT** → status bit 7 |
+| 2, 4, 7 | never tested by the host |
+
+Applied to our observations: `0x02` after the init block is the **correct
+expected response** (board entered temperature regulation). `0x00` after enable
+is bit 1 self-clearing, **not a rejection**. But **`0xa0` seen earlier is bits 5
+and 7 — bit 5 is a real fault**, and the vendor would have aborted
+`FN_bLampTemperatureStable` on it. Worth reproducing.
+
+Also: **bit 3 has never been set in any reading we have taken**, so the board has
+never declared its temperature readings valid — despite `0x84`/`0x88` returning
+sensible values.
+
+### There is no filter wheel, shutter or gate — hypothesis dead
+
+Enumerating all 86 emitter sites, the only mechanical actuators in the binary
+are film transport (`0x44` reg `0xA5`, cmds `0xA0/0xA1/0xA2`) and focus steppers
+(`0x28` regs `0x88`/`0x8B`). No position, home or park register exists on either
+board. `FN_bDrvMoveFilterWheel` and `EC_MotorFault_FilterWheel` are names only in
+family-shared enum tables with no code pushing their ids, and
+`FILTER_WHEEL_BLOCKED` appears nowhere in TLB.dll.
+
+**"Open gate" is not a shutter** — `DutyCycleOpenGate_*` means the film gate with
+*no film in it*, an exposure compensation. That is why two complete duty sets
+exist. The F-135 replaced the F-235/335 filter wheel with the RGB LED array.
+
+### Clamp note: R was already at ceiling
+
+With IR off the ceilings are R≤4, G≤20, B≤20, Ir≤0. Our 4/4/4 therefore ran
+**red at the vendor's maximum**, and the calibrated `Current_R = 5` would itself
+be clamped to 4 in any non-IR scan. Green at 4 was only 20 % of its ceiling —
+so a brighter test is G=20, which is both calibrated and legal.
+
+### Lamp needs no acquisition, FPGA or motor board
+
+`FN_bCalibrateFindLedCurrent` lamps on (`0x1001e860`) *then* acquires
+(`0x1001e8a8`); `FN_bDrvInitCcd` lamps on before any FPGA programming. Nothing in
+`FN_bDrvLampOn` touches board `0x44`. Confirms the lamp and acquisition are
+independent — which is why first light worked with acquisition never started.

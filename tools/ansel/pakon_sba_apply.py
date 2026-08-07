@@ -37,8 +37,10 @@ setShifts control words + ``(1,2)`` (VERIFIED — ``docs/52``)
   → reconstruct → ``OUT = 0x60e − RGB``. See ``docs/52``.
 * ``SETSHIFTS_12_PORTED = True`` — Unicorn golden vs DLL ``(1,2)`` body
   (``pakon_setshifts_golden.py``).
-* ``PREFERENCE_SHIFTS_PORTED`` stays False; host still uses median
-  ``channel_balance`` until Preference→A/B + apply wiring.
+* CN call site: getShifts A≡B (same Sba Cap ``+0x3a38``); OUT =
+  ``scene+0x4b6``. Host: ``pakon_ansel.cn_setshifts_apply_words`` →
+  ``apply_balance_shifts``.
+* ``PREFERENCE_SHIFTS_PORTED`` stays False (mode-``0x11`` fragment only).
 """
 from __future__ import annotations
 

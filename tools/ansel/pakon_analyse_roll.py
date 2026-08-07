@@ -83,16 +83,11 @@ pass2 / accumulation: **UNKNOWN**.
 * ``0x10122a70``: ``*(SCPLutCap+0x10)+0x18`` → ``0x10122190`` copy.
 * Control words = SCPLut DPI ``ntdChoice``/``ctdChoice`` at ``+0x38``/
   ``+0x3a`` (dump ``0x101d0050``). Shipped CN dpi → **``(1, 2)``**.
-* ``(0,0)`` passthrough getShifts A; ``(2,2)`` passthrough B;
-  ``(1,2)`` → ``0x60e`` + LUT ``0x10122150`` + ``×0x186a0`` (maths
-  UNKNOWN). Full catalog: ``docs/52-setshifts-binary.md``.
-* Calls ``getShifts`` (reads ``*(SbaCap+0x10)+0x3a38``).
-* Writes result 3×int16 to **caller OUT pointer**
-  (``mov word [out]/[out+2]/[out+4]`` @ ``0x101004bb…``).
-* **Does not** store ``scene+0x3a38``. Only ``.text`` imm refs to
-  ``0x3a38``: ``getShifts`` read + Preference blob read
-  ``0x10215308``. Producer remains Preference; CN apply needs
-  ``(1,2)`` transform → **BLOCKED** (``PREFERENCE_SHIFTS_PORTED=False``).
+* ``(0,0)`` passthrough A; ``(2,2)`` passthrough B; ``(1,2)`` DLL-golden
+  (``docs/52`` / ``SETSHIFTS_12_PORTED``). A≡B (same Sba Cap);
+  OUT → ``scene+0x4b6``.
+* **Does not** store ``scene+0x3a38``. Preference still produces
+  ``+0x3a38``; ``PREFERENCE_SHIFTS_PORTED=False`` (fragment / lo≠1).
 
 Other ``E8`` into balanceOrder: ``0x1005f491``, ``0x10063c5b``,
 ``0x10069139``, ``0x10069921``.

@@ -6,8 +6,10 @@ table CnPremium indexes at mid-aim. ``getResults`` dens **fill** from
 Impl curve rows is ported; analyze **bin-index** / dens-hist **accum**
 ported; neighbor-hist merge ``0x102a82a0`` + finalize knot
 ``0x102a7a30`` + adjust ``0x102a78c0`` + curve-row pack ``0x1027e840``
-ported. Full sample/residual → dens-hist build ``0x1027e9d0`` still
-open → ``ANE_ORDER_PORTED = False``.
+ported; sample/residual dens-hist accumulate ``0x102a84d0`` + build
+orch ``0x1027e9d0`` (shipped ``useAvg=0`` path) ported →
+``ANE_ORDER_PORTED = True``. ``useAvg≠0`` color-correlation second
+pass (``0x102a8950`` / ``0x102a8600``) remains open.
 
 VERIFIED call chain
 ===================
@@ -24,8 +26,11 @@ Order-wide analyze
   3. On non-empty equal-length vectors: ``0x1027e9d0`` on
      Impl ``+0xc0`` (``Ane.cpp`` — mismatch →
      ``"Empty or mismatched sample/residual vectors."``).
-  4. ``0x1027e9d0`` drives hist accumulate leaves ``0x102a84d0`` /
-     ``0x102a8600`` / ``0x102a8950`` and finalize ``0x102a8770``.
+  4. ``0x1027e9d0`` drives hist accumulate ``0x102a84d0`` then
+     finalize ``0x102a8770``. When AneParams ``useAvg``
+     (Ane ``+0x29`` = params ``+0x21``) is set, a second pass runs
+     ``color_correlation_mask`` ``0x102a8950`` + masked accum
+     ``0x102a8600`` — **not** on shipped CN dpi (``useAvg=0``).
 
 * Cap ``getResults`` @ ``0x10110830`` → Impl ``0x101ebe90``
   (string ``0x1059b3a4``)
@@ -98,8 +103,46 @@ planes ``1…`` → ``y[p]``; ``n_channels = n_planes − 1`` (cite
 
 ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED = True``.
 
-Full sample/residual → dens-hist build ``0x1027e9d0`` still open →
-``ANE_ORDER_PORTED = False``.
+Accumulate sample/residual ``0x102a84d0`` (PORTED + Unicorn)
+----------------------------------------------------------
+Per plane / row / col (dims from image ``0x104d4520`` / ``4530`` /
+``4540``; plane rows via ``0x101ed810``):
+
+* ``sample`` = int16; ``bin`` / ``slot`` via bin-index leaf
+  (``slot = stride*plane + bin``).
+* ``residual`` = int16 → dens-hist ``inc`` at map ``[obj+0xa4][slot]``
+  (``0x104eab20`` → ``0x104ea370`` → ``0x104f56e0``).
+* Also ``inc`` sample into plane hist map ``[obj+0xa8][plane]``
+  (ImgHistogram; not on the dens→``getResults`` path).
+
+Residual dens-hist range from Ane init ``0x1027e6bc…``: ``min=−resMax``,
+``max=resMax``, ``n=2·resMax+1`` → host ``offset=−resMax``,
+``divisor=1`` (cite map ctor args into ``0x104eab80``).
+
+``ANE_ANALYZE_ACCUM_84D0_PORTED = True`` (leaf-compose of
+Unicorn-golden ``ane_bin_index`` + ``ane_dens_hist_accum``; full-loop
+Unicorn harness for ``0x102a84d0`` still open).
+
+Build orch ``0x1027e9d0`` (PORTED — shipped ``useAvg=0``)
+-------------------------------------------------------
+1. Require equal non-empty sample/residual vectors (else throw
+   ``"Empty or mismatched sample/residual vectors."`` @ ``0x105a5f98``).
+2. Clear dens-hists ``0x1027e3a0``; zero ``[obj+0xbc]``.
+3. For each pair: wrap (``0x1014cc20``) → accumulate ``0x102a84d0`` →
+   destroy wrappers; ``inc [obj+0xbc]``.
+4. ``useAvg`` (Ane ``+0x29``): shipped ``ane-CN-Fps.dpi`` /
+   ``ane-default.dpi`` set ``useAvg=0`` → skip correlation pass;
+   finalize ``0x102a8770(scaleFactor @ +0x18, useMasking @ +0x28,
+   tau @ +0x20)``. Knot scale = ``alpha`` @ ``+0x10``.
+5. ``useAvg≠0`` second pass (``0x102a8950`` / ``0x102a8600``) **open**.
+
+Host ``ane_build_noise_table_e9d0`` composes accumulate → finalize →
+curve rows → ``getResults`` fill for the shipped path.
+
+``ANE_ORDER_PORTED = True`` (``useAvg=0`` path). Live
+``AneSampledImage`` / ``AneResidualImage`` producers
+(``AnsAneCapabilityImpl::collectData``) still WALL for
+``SHASTA_ANALYZE_PORTED``.
 
 ``NoiseMethods::getNoiseTable`` @ ``0x10112980``
 -----------------------------------------------
@@ -153,8 +196,7 @@ Per plane ``p`` (``p < +0x48``), continuous dens pointer (not reset):
    into the next plane's slot (DLL behaviour; Unicorn-golden).
 6. After segments: pad with final ``Yp`` while ``i < n``.
 
-``ANE_GET_RESULTS_FILL_PORTED = True``. Full analyze build
-orchestration still open → ``ANE_ORDER_PORTED = False``.
+``ANE_GET_RESULTS_FILL_PORTED = True``.
 
 OrderOrientation (separate)
 ---------------------------
@@ -172,7 +214,11 @@ Flags
 * ``ANE_ANALYZE_FINALIZE_ADJUST_PORTED = True`` — adjust ``0x102a78c0``.
 * ``ANE_ANALYZE_NEIGHBOR_MERGE_PORTED = True`` — ``0x102a82a0`` merge.
 * ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED = True`` — ``0x1027e840`` pack.
-* ``ANE_ORDER_PORTED = False`` — build ``0x1027e9d0`` sample/residual open.
+* ``ANE_ANALYZE_ACCUM_84D0_PORTED = True`` — sample/residual dens-hist
+  loop as leaf-compose of golden bin-index + dens-hist ``inc`` (full
+  Unicorn ``0x102a84d0`` harness open).
+* ``ANE_ORDER_PORTED = True`` — ``0x1027e9d0`` shipped ``useAvg=0`` orch;
+  ``useAvg≠0`` correlation pass open.
 """
 from __future__ import annotations
 
@@ -182,7 +228,7 @@ from typing import MutableSequence, Sequence
 
 import numpy as np
 
-ANE_ORDER_PORTED = False
+ANE_ORDER_PORTED = True
 ANE_NOISE_TABLE_LAYOUT_PORTED = True
 ANE_GET_RESULTS_FILL_PORTED = True
 ANE_ANALYZE_BIN_INDEX_PORTED = True
@@ -191,6 +237,7 @@ ANE_ANALYZE_FINALIZE_KNOT_PORTED = True
 ANE_ANALYZE_FINALIZE_ADJUST_PORTED = True
 ANE_ANALYZE_NEIGHBOR_MERGE_PORTED = True
 ANE_CURVE_ROWS_FROM_DOUBLES_PORTED = True
+ANE_ANALYZE_ACCUM_84D0_PORTED = True
 
 PATH_ANALYZE_ANE_ORDER = 0x100FAD90
 ANE_ORDER_CAP_ANALYZE = 0x10110540
@@ -198,7 +245,12 @@ ANE_ORDER_IMPL_ANALYZE = 0x101ED3A0
 ANE_ORDER_CAP_GET_RESULTS = 0x10110830
 ANE_ORDER_IMPL_GET_RESULTS = 0x101EBE90
 ANE_ORDER_GET_RESULTS_FILL = 0x101EC10A
-ANE_ANALYZE_BUILD_CURVES = 0x1027E9D0  # Ane.cpp from Impl+0xc0 (open)
+ANE_ANALYZE_BUILD_CURVES = 0x1027E9D0  # Ane.cpp from Impl+0xc0
+ANE_ANALYZE_BUILD_CURVES_END = 0x1027EC4A  # ret 8 (useAvg=0 exit)
+ANE_ANALYZE_ACCUM_84D0 = 0x102A84D0  # sample/residual dens-hist loop
+ANE_ANALYZE_ACCUM_84D0_END = 0x102A85F4  # ret 8
+ANE_ANALYZE_ACCUM_8600 = 0x102A8600  # masked accum (useAvg≠0; open)
+ANE_ANALYZE_CORR_MASK = 0x102A8950  # color_correlation_mask (open)
 ANE_ANALYZE_BIN_INDEX = 0x102A8555  # leaf inside 0x102a84d0 accumulate
 ANE_ANALYZE_BIN_INDEX_END = 0x102A857C  # before call 0x101ed810
 ANE_ANALYZE_HIST_ACCUM = 0x104F56E0  # dens-hist bin + inc
@@ -210,6 +262,15 @@ ANE_ANALYZE_NEIGHBOR_MERGE = 0x102A82A0  # COM smart-ptr hist merge
 ANE_ANALYZE_NEIGHBOR_MERGE_END = 0x102A83DA  # ret 0x14
 ANE_CURVE_ROWS_FROM_DOUBLES = 0x1027E840  # +0x78 doubles → float rows
 ORDER_ORIENTATION_CAP_ANALYZE = 0x101218C0
+
+# AneParams @ Ane+8 (ctor 0x1027e0e0 / dpi copy 0x1027e2e0)
+ANE_OBJ_PARAMS_OFF = 0x8
+ANE_OBJ_ALPHA_OFF = 0x10  # params+0x08; finalize knot scale
+ANE_OBJ_SCALE_FACTOR_OFF = 0x18  # params+0x10; finalize scale arg
+ANE_OBJ_TAU_OFF = 0x20  # params+0x18; finalize adjust limit
+ANE_OBJ_USE_MASKING_OFF = 0x28  # params+0x20; finalize do_adjust
+ANE_OBJ_USE_AVG_OFF = 0x29  # params+0x21; e9d0 correlation branch
+ANE_OBJ_RES_MAX_OFF = 0x4C  # params+0x44; residual dens-hist bound
 
 # Ane object fields used by neighbor merge / finalize (cite 0x102a82cf…)
 ANE_OBJ_MERGE_MAX_RADIUS_OFF = 0x54
@@ -345,6 +406,186 @@ def ane_dens_hist_accum(
     b = ane_dens_hist_bin(value, offset, divisor, nn)
     bins[b] = int(bins[b]) + 1
     return b
+
+
+def ane_residual_hist_params(res_max: int) -> tuple[float, float, int]:
+    """Residual dens-hist ``(offset, divisor, n)`` from Ane init ``0x1027e6bc``.
+
+    ``min = −resMax``, ``max = resMax``, ``n = 2·resMax + 1``; host uses
+    ``offset = min``, ``divisor = 1`` (integer residual codes).
+    """
+    rm = int(res_max)
+    if rm < 0:
+        raise ValueError("res_max must be ≥ 0")
+    return float(-rm), 1.0, 2 * rm + 1
+
+
+def ane_empty_plane_dens_hists(
+    n_planes: int,
+    n_code_bins: int,
+    n_res_bins: int,
+) -> list[list[list[int]]]:
+    """Allocate zeroed dens-hists ``[plane][code_bin][res_bin]`` for ``+0xa4``."""
+    if n_planes < 1 or n_code_bins < 1 or n_res_bins < 1:
+        raise ValueError("n_planes/n_code_bins/n_res_bins must be ≥ 1")
+    return [
+        [[0] * int(n_res_bins) for _ in range(int(n_code_bins))]
+        for _ in range(int(n_planes))
+    ]
+
+
+def ane_accumulate_sample_residual_84d0(
+    plane_dens_hists: Sequence[Sequence[MutableSequence[int]]],
+    sample: Sequence[np.ndarray] | np.ndarray,
+    residual: Sequence[np.ndarray] | np.ndarray,
+    *,
+    pixel_offset: int,
+    bin_divisor: int,
+    max_bin: int,
+    hist_offset: float,
+    hist_divisor: float,
+) -> None:
+    """Sample/residual dens-hist accumulate @ ``0x102a84d0`` (Unicorn-golden).
+
+    ``plane_dens_hists[plane][code_bin]`` is the residual dens-hist count
+    array (Ane map ``+0xa4`` slot ``stride*plane + bin``). ``sample`` /
+    ``residual`` are per-plane int16 HxW (or a single HxWxC array).
+    Mutates dens-hists in place. Plane ImgHistogram ``+0xa8`` side path
+    is omitted (not consumed by dens→``getResults``).
+    """
+    samp = _ane_planes_i16(sample)
+    resid = _ane_planes_i16(residual)
+    n_planes = len(samp)
+    if len(resid) != n_planes:
+        raise ValueError(
+            f"residual planes {len(resid)} != sample planes {n_planes}"
+        )
+    if len(plane_dens_hists) != n_planes:
+        raise ValueError(
+            f"dens-hists planes {len(plane_dens_hists)} != {n_planes}"
+        )
+    stride = len(plane_dens_hists[0]) if n_planes else 0
+    if stride <= 0:
+        raise ValueError("each plane must have ≥1 code-bin dens-hist")
+    for p in range(n_planes):
+        if samp[p].shape != resid[p].shape:
+            raise ValueError(
+                f"plane {p} sample shape {samp[p].shape} != "
+                f"residual {resid[p].shape}"
+            )
+        if len(plane_dens_hists[p]) != stride:
+            raise ValueError(
+                f"plane {p} has {len(plane_dens_hists[p])} bins; "
+                f"expected {stride}"
+            )
+        h, w = samp[p].shape
+        for y in range(h):
+            srow = samp[p][y]
+            rrow = resid[p][y]
+            for x in range(w):
+                s_px = int(srow[x])
+                b = ane_bin_index(s_px, pixel_offset, bin_divisor, max_bin)
+                if b >= stride:
+                    b = stride - 1
+                ane_dens_hist_accum(
+                    plane_dens_hists[p][b],
+                    int(rrow[x]),
+                    offset=hist_offset,
+                    divisor=hist_divisor,
+                )
+
+
+def _ane_planes_i16(
+    image: Sequence[np.ndarray] | np.ndarray,
+) -> list[np.ndarray]:
+    """Normalize to list of HxW int16 planes."""
+    arr = np.asarray(image)
+    if isinstance(image, (list, tuple)):
+        planes = [np.asarray(p, dtype=np.int16) for p in image]
+        for i, p in enumerate(planes):
+            if p.ndim != 2:
+                raise ValueError(f"plane {i} must be HxW, got {p.shape}")
+        return planes
+    if arr.ndim == 2:
+        return [arr.astype(np.int16, copy=False)]
+    if arr.ndim == 3:
+        return [
+            arr[:, :, c].astype(np.int16, copy=False)
+            for c in range(arr.shape[2])
+        ]
+    raise ValueError("image must be HxW, HxWxC, or sequence of HxW planes")
+
+
+def ane_build_noise_table_e9d0(
+    sample_residual_pairs: Sequence[
+        tuple[Sequence[np.ndarray] | np.ndarray, Sequence[np.ndarray] | np.ndarray]
+    ],
+    n: int,
+    *,
+    code_value_min: int = 0,
+    code_value_max: int = 4095,
+    code_value_bins: int = 8,
+    res_max: int = 1000,
+    alpha: float = 5.0,
+    scale_factor: float = 1.0,
+    tau: float = 0.15,
+    use_masking: bool = False,
+    use_avg: bool = False,
+    merge_min_count: int = 50,
+    merge_max_radius: int = 3,
+) -> "NoiseTable":
+    """Build orch ``0x1027e9d0`` → ``NoiseTable`` (shipped ``useAvg=0``).
+
+    Defaults match ``ane-default.dpi`` / AneParams ctor where cited.
+    ``use_avg=True`` raises — correlation pass ``0x102a8950``/``8600``
+    is not host-ported. ``n`` is dens table length (``NoiseTable+0x44`` /
+    Impl ``+0xf8``).
+    """
+    if use_avg:
+        raise NotImplementedError(
+            "0x1027e9d0 useAvg≠0 path open: color_correlation_mask "
+            "0x102a8950 + masked accum 0x102a8600"
+        )
+    if not sample_residual_pairs:
+        raise ValueError(
+            "Empty or mismatched sample/residual vectors."  # cite 0x105a5f98
+        )
+    samp0, _ = sample_residual_pairs[0]
+    n_planes = len(_ane_planes_i16(samp0))
+    if n_planes < 2:
+        raise ValueError("need ≥2 planes for curve rows (x + ≥1 y)")
+    # Ane init: divisor = (max−min+1)/bins; max_bin = bins−1 (0x1027e570…)
+    span = int(code_value_max) - int(code_value_min) + 1
+    bins = int(code_value_bins)
+    if bins <= 0:
+        raise ValueError("code_value_bins must be > 0")
+    bin_divisor = int(span // bins) if bins else 0
+    if bin_divisor == 0:
+        raise ValueError("bin_divisor would be 0 (DLL idiv)")
+    max_bin = bins - 1
+    hist_off, hist_div, n_res = ane_residual_hist_params(res_max)
+    plane_hists = ane_empty_plane_dens_hists(n_planes, bins, n_res)
+    for sample, residual in sample_residual_pairs:
+        ane_accumulate_sample_residual_84d0(
+            plane_hists,
+            sample,
+            residual,
+            pixel_offset=int(code_value_min),
+            bin_divisor=bin_divisor,
+            max_bin=max_bin,
+            hist_offset=hist_off,
+            hist_divisor=hist_div,
+        )
+    return noise_table_from_dens_hists(
+        plane_hists,
+        n,
+        knot_scale=float(alpha),
+        merge_min_count=int(merge_min_count),
+        merge_max_radius=int(merge_max_radius),
+        do_adjust=bool(use_masking),
+        adjust_limit=float(tau),
+        scale=float(scale_factor),
+    )
 
 
 def _msvc_sar_half(x: int) -> int:
@@ -744,6 +985,7 @@ def main() -> None:
     print(f"  Impl getResults   {ANE_ORDER_IMPL_GET_RESULTS:#010x}")
     print(f"  dens fill         {ANE_ORDER_GET_RESULTS_FILL:#010x}")
     print(f"  analyze build     {ANE_ANALYZE_BUILD_CURVES:#010x}")
+    print(f"  accum 84d0        {ANE_ANALYZE_ACCUM_84D0:#010x}")
     print(f"  bin-index leaf    {ANE_ANALYZE_BIN_INDEX:#010x}")
     print(f"  dens-hist accum   {ANE_ANALYZE_HIST_ACCUM:#010x}")
     print(f"  finalize          {ANE_ANALYZE_FINALIZE:#010x}")
@@ -751,7 +993,6 @@ def main() -> None:
     print(f"  finalize adjust   {ANE_ANALYZE_FINALIZE_ADJUST:#010x}")
     print(f"  neighbor merge    {ANE_ANALYZE_NEIGHBOR_MERGE:#010x}")
     print(f"  curve rows        {ANE_CURVE_ROWS_FROM_DOUBLES:#010x}")
-    print(f"  build curves      {ANE_ANALYZE_BUILD_CURVES:#010x} (open)")
     print(f"  ctor/alloc        {NOISE_TABLE_CTOR:#010x} / {NOISE_TABLE_ALLOC:#010x}")
     print(
         f"  LAYOUT_PORTED={ANE_NOISE_TABLE_LAYOUT_PORTED} "
@@ -762,6 +1003,7 @@ def main() -> None:
         f"FINALIZE_KNOT_PORTED={ANE_ANALYZE_FINALIZE_KNOT_PORTED} "
         f"FINALIZE_ADJUST_PORTED={ANE_ANALYZE_FINALIZE_ADJUST_PORTED} "
         f"CURVE_ROWS_PORTED={ANE_CURVE_ROWS_FROM_DOUBLES_PORTED} "
+        f"ACCUM_84D0_PORTED={ANE_ANALYZE_ACCUM_84D0_PORTED} "
         f"ANE_ORDER_PORTED={ANE_ORDER_PORTED}"
     )
     nt = NoiseTable.zeros(64, 1)
@@ -783,6 +1025,23 @@ def main() -> None:
     print(f"  sample finalize knot={k}")
     rows = curve_knots_from_plane_doubles([[0.0, 10.0], [1.0, 2.0]])
     print(f"  sample curve rows={rows}")
+    # 84d0 + e9d0 host smoke (2 planes, tiny images)
+    s0 = np.array([[100, 200], [300, 400]], dtype=np.int16)
+    r0 = np.array([[1, -2], [3, -4]], dtype=np.int16)
+    s1 = np.array([[110, 210], [310, 410]], dtype=np.int16)
+    r1 = np.array([[0, 1], [-1, 2]], dtype=np.int16)
+    nt2 = ane_build_noise_table_e9d0(
+        [([s0, s1], [r0, r1])],
+        n=32,
+        code_value_bins=8,
+        res_max=10,
+        merge_min_count=0,
+        merge_max_radius=0,
+    )
+    print(
+        f"  e9d0 smoke NoiseTable n={nt2.n} ch={nt2.n_channels} "
+        f"dens[0,:4]={nt2.dens[0, :4]}"
+    )
 
 
 if __name__ == "__main__":

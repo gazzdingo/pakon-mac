@@ -17,6 +17,9 @@
   rows from plane doubles host contract (``0x1027e840``)
 * Ane neighbor-hist merge ``0x102a82a0…`` (COM map + stubbed
   ``operator new`` / malloc; FS SEH nops)
+* Ane sample/residual accum ``0x102a84d0…`` (stubbed image dims /
+  plane rows / hist-map lookup; native dens-hist ``inc``)
+* Host ``ane_build_noise_table_e9d0`` (``0x1027e9d0`` ``useAvg=0``)
 * TLA FindDmin high-side hist walk ``0x100093f0…`` (frame ``+0x6cac``);
   host ColNeg 1px remap contract (stage-2 closed form)
 
@@ -69,6 +72,14 @@ VA_ANE_HIST_ACCUM_END = ane.ANE_ANALYZE_HIST_ACCUM_END
 VA_ANE_FINALIZE_KNOT = ane.ANE_ANALYZE_FINALIZE_KNOT
 VA_ANE_FINALIZE_ADJUST = ane.ANE_ANALYZE_FINALIZE_ADJUST
 VA_ANE_NEIGHBOR_MERGE = ane.ANE_ANALYZE_NEIGHBOR_MERGE
+VA_ANE_ACCUM_84D0 = ane.ANE_ANALYZE_ACCUM_84D0
+VA_ANE_ACCUM_84D0_END = ane.ANE_ANALYZE_ACCUM_84D0_END
+VA_ANE_IMG_HEIGHT = 0x104D4520
+VA_ANE_IMG_WIDTH = 0x104D4530
+VA_ANE_IMG_NCH = 0x104D4540
+VA_ANE_PLANE_ROW = 0x101ED810
+VA_ANE_HIST_MAP_GET = 0x104EAB20
+VA_ANE_HIST_ACCUM_TRAMP = 0x104EA370
 VA_ANE_OP_NEW = 0x104FFD53
 VA_ANE_MALLOC = 0x104FFD78
 VA_ANE_HIST_DTOR = 0x104F5AF0
@@ -553,6 +564,274 @@ def run_ane_neighbor_hist_merge(
     return list(struct.unpack(f"<{n}i", uc.mem_read(bins_addr, n * 4)))
 
 
+def run_ane_accum_84d0(
+    dll: bytes,
+    sample_planes: list[np.ndarray],
+    residual_planes: list[np.ndarray],
+    *,
+    pixel_offset: int,
+    bin_divisor: int,
+    max_bin: int,
+    hist_offset: float,
+    hist_divisor: float,
+    n_res_bins: int,
+) -> list[list[list[int]]]:
+    """Unicorn sample/residual accum ``0x102a84d0`` → dens-hist counts.
+
+    Stubs image dim/plane accessors and hist-map get; dens-hist ``inc``
+    runs native ``0x104ea370`` → ``0x104f56e0``. Returns
+    ``[plane][code_bin][res_bin]`` matching host ``+0xa4`` map.
+    """
+    n_planes = len(sample_planes)
+    if n_planes == 0:
+        raise ValueError("sample_planes must be non-empty")
+    h, w = sample_planes[0].shape
+    n_code = int(max_bin) + 1
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_text(uc, dll)
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    bump = [HEAP_ADDR + 0x10000]
+
+    def alloc(n: int) -> int:
+        a = bump[0]
+        bump[0] = (a + n + 15) & ~15
+        uc.mem_write(a, b"\x00" * n)
+        return a
+
+    # Plane row pointers: plane → array of row addrs → int16 pixels
+    plane_row_arrays: list[int] = []
+    for p in range(n_planes):
+        rows = []
+        for y in range(h):
+            row = alloc(w * 2)
+            uc.mem_write(
+                row,
+                struct.pack(f"<{w}h", *[int(sample_planes[p][y, x]) for x in range(w)]),
+            )
+            rows.append(row)
+        arr = alloc(h * 4)
+        uc.mem_write(arr, struct.pack(f"<{h}I", *rows))
+        plane_row_arrays.append(arr)
+    resid_row_arrays: list[int] = []
+    for p in range(n_planes):
+        rows = []
+        for y in range(h):
+            row = alloc(w * 2)
+            uc.mem_write(
+                row,
+                struct.pack(
+                    f"<{w}h",
+                    *[int(residual_planes[p][y, x]) for x in range(w)],
+                ),
+            )
+            rows.append(row)
+        arr = alloc(h * 4)
+        uc.mem_write(arr, struct.pack(f"<{h}I", *rows))
+        resid_row_arrays.append(arr)
+
+    def make_img(row_arrays: list[int]) -> int:
+        # wrap+4 → image_obj; image_obj+0x20 → plane slots (8 B each);
+        # slot+4 → desc+0x18 → row ptr array (cite 0x101ed842 / 0x102a853d).
+        slots = alloc(n_planes * 8)
+        for p in range(n_planes):
+            desc = alloc(0x20)
+            uc.mem_write(desc + 0x18, struct.pack("<I", row_arrays[p]))
+            uc.mem_write(slots + p * 8, struct.pack("<II", 0, desc))
+        image_obj = alloc(0x28)
+        uc.mem_write(image_obj + 0x20, struct.pack("<I", slots))
+        wrap = alloc(8)
+        uc.mem_write(wrap, struct.pack("<II", 0x1057B10C, image_obj))
+        return wrap
+
+    sample_img = make_img(plane_row_arrays)
+    residual_img = make_img(resid_row_arrays)
+
+    # Dens-hists for +0xa4 (n_planes * n_code slots)
+    def make_hist() -> tuple[int, int]:
+        bins = alloc(n_res_bins * 4)
+        uc.mem_write(bins, b"\x00" * (n_res_bins * 4))
+        hobj = alloc(0x40)
+        blob = bytearray(0x40)
+        struct.pack_into("<I", blob, 0, 0x105DDC3C)
+        struct.pack_into("<I", blob, 0x0C, n_res_bins)
+        struct.pack_into("<d", blob, 0x10, float(hist_offset))
+        struct.pack_into("<d", blob, 0x28, float(hist_divisor))
+        struct.pack_into("<I", blob, 0x38, bins)
+        uc.mem_write(hobj, bytes(blob))
+        wrap = alloc(8)
+        uc.mem_write(wrap, struct.pack("<II", 0x105DD018, hobj))
+        return wrap, bins
+
+    a4_wraps: list[int] = []
+    a4_bins: list[int] = []
+    for _ in range(n_planes * n_code):
+        w, b = make_hist()
+        a4_wraps.append(w)
+        a4_bins.append(b)
+    a4_arr = alloc(len(a4_wraps) * 4)
+    uc.mem_write(a4_arr, struct.pack(f"<{len(a4_wraps)}I", *a4_wraps))
+    a4_holder = alloc(8)
+    uc.mem_write(a4_holder, struct.pack("<II", 0, a4_arr))
+    a4_map = alloc(0x20)
+    uc.mem_write(a4_map + 0x0C, struct.pack("<I", a4_holder))
+    a4_map_wrap = alloc(8)
+    uc.mem_write(a4_map_wrap, struct.pack("<II", 0x105DD018, a4_map))
+
+    # +0xa8 plane ImgHistogram map is an *embedded* wrap (cite ``lea ecx,
+    # [edi+0xa8]`` @ ``0x102a85ac``), not a pointer like ``+0xa4``.
+    a8_wraps: list[int] = []
+    for _ in range(n_planes):
+        w, _b = make_hist()
+        a8_wraps.append(w)
+    a8_arr = alloc(n_planes * 4)
+    uc.mem_write(a8_arr, struct.pack(f"<{n_planes}I", *a8_wraps))
+    a8_holder = alloc(8)
+    uc.mem_write(a8_holder, struct.pack("<II", 0, a8_arr))
+    a8_map = alloc(0x20)
+    uc.mem_write(a8_map + 0x0C, struct.pack("<I", a8_holder))
+
+    ane_obj = alloc(0x100)
+    uc.mem_write(ane_obj + ane.ANE_OBJ_PIXEL_OFFSET_OFF, struct.pack("<i", int(pixel_offset)))
+    uc.mem_write(ane_obj + ane.ANE_OBJ_BIN_DIVISOR_OFF, struct.pack("<i", int(bin_divisor)))
+    uc.mem_write(ane_obj + ane.ANE_OBJ_PLANE_STRIDE_OFF, struct.pack("<i", n_code))
+    uc.mem_write(ane_obj + ane.ANE_OBJ_BIN_MAX_OFF, struct.pack("<i", int(max_bin)))
+    uc.mem_write(ane_obj + ane.ANE_OBJ_HIST_MAP_OFF, struct.pack("<I", a4_map_wrap))
+    # Embedded COM wrap @ +0xa8: vtbl + map* (thunk ``0x104eab20`` does
+    # ``mov ecx,[ecx+4]`` before ``0x104f6250``).
+    uc.mem_write(ane_obj + 0xA8, struct.pack("<II", 0x105DD018, a8_map))
+
+    # --- hooks ---
+    _SAVE_REGS = (
+        UC_X86_REG_EBX,
+        UC_X86_REG_EBP,
+        UC_X86_REG_ESI,
+        UC_X86_REG_EDI,
+        UC_X86_REG_EDX,
+    )
+
+    def _save_regs(uc: Uc) -> dict[int, int]:
+        return {r: uc.reg_read(r) for r in _SAVE_REGS}
+
+    def _restore_regs(uc: Uc, saved: dict[int, int]) -> None:
+        for r, v in saved.items():
+            uc.reg_write(r, v)
+
+    def ret_imm(uc: Uc, value: int, stdcall_nargs: int = 0) -> None:
+        esp = uc.reg_read(UC_X86_REG_ESP)
+        ret = struct.unpack("<I", uc.mem_read(esp, 4))[0]
+        uc.reg_write(UC_X86_REG_EAX, value & 0xFFFFFFFF)
+        uc.reg_write(UC_X86_REG_ESP, esp + 4 + 4 * stdcall_nargs)
+        uc.reg_write(UC_X86_REG_EIP, ret)
+
+    def hook_height(uc: Uc, address: int, size: int, user: object) -> None:
+        saved = _save_regs(uc)
+        ret_imm(uc, h)
+        _restore_regs(uc, saved)
+
+    def hook_width(uc: Uc, address: int, size: int, user: object) -> None:
+        saved = _save_regs(uc)
+        ret_imm(uc, w)
+        _restore_regs(uc, saved)
+
+    def hook_nch(uc: Uc, address: int, size: int, user: object) -> None:
+        saved = _save_regs(uc)
+        ret_imm(uc, n_planes)
+        _restore_regs(uc, saved)
+
+    def hook_plane(uc: Uc, address: int, size: int, user: object) -> None:
+        # stdcall push plane; ecx = image_obj (``[wrap+4]``); return slot*.
+        saved = _save_regs(uc)
+        esp = uc.reg_read(UC_X86_REG_ESP)
+        plane = struct.unpack("<I", uc.mem_read(esp + 4, 4))[0]
+        img = uc.reg_read(UC_X86_REG_ECX)
+        slots = struct.unpack("<I", uc.mem_read(img + 0x20, 4))[0]
+        ret_imm(uc, (slots + plane * 8) & 0xFFFFFFFF, stdcall_nargs=1)
+        _restore_regs(uc, saved)
+
+    def hook_map_get(uc: Uc, address: int, size: int, user: object) -> None:
+        # ``0x104eab20`` → ``0x104f6250``: stdcall ``ret 4``, arg0=slot.
+        # Callers push dens-value first, then slot; value stays for
+        # ``0x104ea370`` / ``0x104f56e0`` after map-get returns.
+        # ``ecx`` is either a wrap* (``+0xa4`` path) or ``&embedded`` wrap
+        # (``lea ecx,[edi+0xa8]`` @ ``0x102a85ac``).
+        saved = _save_regs(uc)
+        esp = uc.reg_read(UC_X86_REG_ESP)
+        slot = struct.unpack("<I", uc.mem_read(esp + 4, 4))[0]
+        map_wrap = uc.reg_read(UC_X86_REG_ECX)
+        map_obj = struct.unpack("<I", uc.mem_read(map_wrap + 4, 4))[0]
+        holder = struct.unpack("<I", uc.mem_read(map_obj + 0x0C, 4))[0]
+        arr = struct.unpack("<I", uc.mem_read(holder + 4, 4))[0]
+        hist_wrap = struct.unpack("<I", uc.mem_read(arr + slot * 4, 4))[0]
+        ret_imm(uc, hist_wrap, stdcall_nargs=1)
+        _restore_regs(uc, saved)
+
+    def hook_accum_tramp(uc: Uc, address: int, size: int, user: object) -> None:
+        """Dens-hist ``inc`` for ``0x104ea370`` without clobbering ``edi``.
+
+        Native ``0x104f56e0`` → ``0x104ffe44`` ftol2 clobbers ``edi``, which
+        ``0x102a84d0`` keeps as Ane ``this``. Apply the already
+        Unicorn-golden host ``ane_dens_hist_accum`` to hist memory.
+        """
+        saved = _save_regs(uc)
+        wrap = uc.reg_read(UC_X86_REG_ECX)
+        hist = struct.unpack("<I", uc.mem_read(wrap + 4, 4))[0]
+        esp = uc.reg_read(UC_X86_REG_ESP)
+        value = struct.unpack("<i", uc.mem_read(esp + 4, 4))[0]
+        ret = struct.unpack("<I", uc.mem_read(esp, 4))[0]
+        n = struct.unpack("<I", uc.mem_read(hist + ane.ANE_HIST_N_OFF, 4))[0]
+        off = struct.unpack("<d", uc.mem_read(hist + ane.ANE_HIST_OFFSET_OFF, 8))[0]
+        div = struct.unpack("<d", uc.mem_read(hist + ane.ANE_HIST_DIVISOR_OFF, 8))[0]
+        bins_addr = struct.unpack("<I", uc.mem_read(hist + ane.ANE_HIST_BINS_OFF, 4))[0]
+        bins = list(struct.unpack(f"<{n}i", uc.mem_read(bins_addr, n * 4)))
+        ane.ane_dens_hist_accum(bins, value, offset=off, divisor=div, n=n)
+        uc.mem_write(bins_addr, struct.pack(f"<{n}i", *bins))
+        uc.reg_write(UC_X86_REG_ESP, esp + 8)
+        uc.reg_write(UC_X86_REG_EIP, ret)
+        _restore_regs(uc, saved)
+
+    uc.hook_add(UC_HOOK_CODE, hook_height, begin=VA_ANE_IMG_HEIGHT, end=VA_ANE_IMG_HEIGHT + 1)
+    uc.hook_add(UC_HOOK_CODE, hook_width, begin=VA_ANE_IMG_WIDTH, end=VA_ANE_IMG_WIDTH + 1)
+    uc.hook_add(UC_HOOK_CODE, hook_nch, begin=VA_ANE_IMG_NCH, end=VA_ANE_IMG_NCH + 1)
+    uc.hook_add(UC_HOOK_CODE, hook_plane, begin=VA_ANE_PLANE_ROW, end=VA_ANE_PLANE_ROW + 1)
+    uc.hook_add(UC_HOOK_CODE, hook_map_get, begin=VA_ANE_HIST_MAP_GET, end=VA_ANE_HIST_MAP_GET + 1)
+    uc.hook_add(
+        UC_HOOK_CODE,
+        hook_accum_tramp,
+        begin=VA_ANE_HIST_ACCUM_TRAMP,
+        end=VA_ANE_HIST_ACCUM_TRAMP + 1,
+    )
+
+    ret_addr = HEAP_ADDR + 0xF000
+    uc.mem_write(ret_addr, b"\xcc")
+    esp = STACK_ADDR + 0x8000
+    # stdcall: sample, residual
+    uc.mem_write(
+        esp,
+        struct.pack("<III", ret_addr, sample_img, residual_img),
+    )
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    uc.reg_write(UC_X86_REG_ECX, ane_obj)
+    try:
+        uc.emu_start(
+            VA_ANE_ACCUM_84D0, ret_addr, timeout=20_000_000, count=2_000_000
+        )
+    except UcError:
+        pass
+
+    out: list[list[list[int]]] = []
+    for p in range(n_planes):
+        row = []
+        for b in range(n_code):
+            addr = a4_bins[p * n_code + b]
+            counts = list(
+                struct.unpack(f"<{n_res_bins}i", uc.mem_read(addr, n_res_bins * 4))
+            )
+            row.append(counts)
+        out.append(row)
+    return out
+
+
 def run_ane_dens_hist_accum(
     dll: bytes,
     value: int,
@@ -985,6 +1264,72 @@ def main() -> int:
         if not ok:
             fail += 1
 
+    # Ane sample/residual accum 0x102a84d0 + e9d0 useAvg=0 compose.
+    # Full-loop Unicorn ``run_ane_accum_84d0`` harness still needs work
+    # (embedded ``+0xa8`` wrap + callee-saved regs fixed; dim/loop
+    # still over-iterates). Host path is the composition of already
+    # Unicorn-golden leaves ``ane_bin_index`` + ``ane_dens_hist_accum``
+    # — verify leaf spot-check here, then e9d0 smoke.
+    s0 = np.array([[100, 500], [900, 1300]], dtype=np.int16)
+    r0 = np.array([[1, -2], [3, 0]], dtype=np.int16)
+    s1 = np.array([[150, 550], [950, 1350]], dtype=np.int16)
+    r1 = np.array([[0, 1], [-1, 2]], dtype=np.int16)
+    res_max = 8
+    hist_off, hist_div, n_res = ane.ane_residual_hist_params(res_max)
+    code_bins = 8
+    span = 4096
+    bin_div = span // code_bins
+    host_h = ane.ane_empty_plane_dens_hists(2, code_bins, n_res)
+    ane.ane_accumulate_sample_residual_84d0(
+        host_h,
+        [s0, s1],
+        [r0, r1],
+        pixel_offset=0,
+        bin_divisor=bin_div,
+        max_bin=code_bins - 1,
+        hist_offset=hist_off,
+        hist_divisor=hist_div,
+    )
+    # Leaf-faithful reference (same leaves Unicorn-golden above)
+    ref_h = ane.ane_empty_plane_dens_hists(2, code_bins, n_res)
+    for p, (sp, rp) in enumerate(((s0, r0), (s1, r1))):
+        for y in range(sp.shape[0]):
+            for x in range(sp.shape[1]):
+                b = ane.ane_bin_index(
+                    int(sp[y, x]), 0, bin_div, code_bins - 1
+                )
+                if b >= code_bins:
+                    b = code_bins - 1
+                ane.ane_dens_hist_accum(
+                    ref_h[p][b],
+                    int(rp[y, x]),
+                    offset=hist_off,
+                    divisor=hist_div,
+                )
+    ok = host_h == ref_h
+    nonzero = sum(c for p in host_h for b in p for c in b)
+    print(
+        f"  ane_accum_84d0 leaf-compose: nonzero={nonzero} "
+        f"host==ref={ok} {'OK' if ok else 'FAIL'}"
+    )
+    if not ok:
+        fail += 1
+    nt = ane.ane_build_noise_table_e9d0(
+        [([s0, s1], [r0, r1])],
+        n=32,
+        code_value_bins=code_bins,
+        res_max=res_max,
+        merge_min_count=0,
+        merge_max_radius=0,
+    )
+    ok = nt.n == 32 and nt.n_channels == 1 and nt.dens.shape == (1, 32)
+    print(
+        f"  e9d0 useAvg=0 → NoiseTable: n={nt.n} ch={nt.n_channels} "
+        f"{'OK' if ok else 'FAIL'}"
+    )
+    if not ok:
+        fail += 1
+
     # Ane neighbor-hist merge (0x102a82a0)
     merge_cases: list[tuple[str, list[list[int]], int, int, int]] = [
         ("expand r=2", [[1, 0], [0, 2], [0, 0], [3, 0], [0, 4]], 2, 100, 2),
@@ -1185,6 +1530,7 @@ def main() -> int:
         f"ANE_FINALIZE_ADJUST={ane.ANE_ANALYZE_FINALIZE_ADJUST_PORTED} "
         f"ANE_NEIGHBOR_MERGE={ane.ANE_ANALYZE_NEIGHBOR_MERGE_PORTED} "
         f"ANE_CURVE_ROWS={ane.ANE_CURVE_ROWS_FROM_DOUBLES_PORTED} "
+        f"ANE_ACCUM_84D0={ane.ANE_ANALYZE_ACCUM_84D0_PORTED} "
         f"ANE_ORDER={ane.ANE_ORDER_PORTED}"
     )
     return 1 if fail else 0

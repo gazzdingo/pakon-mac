@@ -37,6 +37,24 @@ Cited dmin **writers** (size=6, name ``"dmin"``):
    - Remap ``path+0x3c/+0x3e/+0x40`` through a LUT (``0x100fd984…``),
    - ``lea esi, [edi+0x3c]`` then ``insert("dmin", esi, 6, …)``.
 
+ScpLut remap @ ``0x100fd984…0x100fd9b3`` (VERIFIED + Unicorn)
+-------------------------------------------------------------
+Cap getter ``0x10122150`` → Impl ``0x10212100`` (``ret 0xc``) writes:
+
+* ``out0`` ← ``int16`` at CapImpl ``+0x10`` blob ``+0`` → **stride**
+* ``out1`` ← ``int16`` at blob ``+2`` (unused by remap)
+* ``out2`` ← ``dword`` at blob ``+4`` → **int16 LUT** base
+
+Call-site push order aliases ``stride`` to ``[esp+0x2c]`` and LUT to
+``[esp+0x20]``. Remap (in place on ``path+0x3c``):
+
+* ``R' = lut[R]``
+* ``G' = lut[G + stride]``
+* ``B' = lut[B + 2·stride]``
+
+``SCPLUT_DMIN_REMAP_PORTED = True``. Upstream ``path+0x3c`` **source**
+values (FUGC / balance writers) remain WALL.
+
 Other ``"dmin"`` push sites exist (FUGC / noise / …); mid-aim **reader**
 is the CnPremium ``find`` above.
 
@@ -47,16 +65,18 @@ Host bag
 ``cn_premium_mid_aim_rgb`` when the host already knows dmin RGB (e.g. from
 bAddScene desc or ScpLut-remapped ``path+0x3c``).
 
-``SCENE_CONTEXT_DMIN_PORTED = True`` — bag I/O + pack/unpack only.
-Producing live scene dmin still requires the writer path (AddScene /
-ScpLut remap) to supply the six bytes.
+``SCENE_CONTEXT_DMIN_PORTED = True`` — bag I/O + pack/unpack + ScpLut
+remap leaf. Live AddScene desc words / ``path+0x3c`` producers still
+host-supplied.
 """
 from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
+from typing import Sequence
 
 SCENE_CONTEXT_DMIN_PORTED = True
+SCPLUT_DMIN_REMAP_PORTED = True
 
 SCENE_CONTEXT_FIND = 0x10022A40
 SCENE_CONTEXT_INSERT = 0x10023F10
@@ -69,6 +89,8 @@ CN_PREMIUM_DMIN_FIND_CALL = 0x100566AC  # E8 → find
 BADDSCENE_DMIN_INSERT = 0x10002523
 SCPLUT_DMIN_INSERT = 0x100FDAA8
 SCPLUT_DMIN_REMAP = 0x100FD984  # path+0x3c through LUT, then insert
+SCPLUT_CAP_GET_LUT = 0x10122150
+SCPLUT_IMPL_GET_LUT = 0x10212100
 PATH_DMIN_RGB_OFF = 0x3C  # 3×int16 at +0x3c/+0x3e/+0x40
 DMIN_BYTES = 6
 
@@ -91,6 +113,36 @@ def baddscene_pack_dmin_from_desc(
 ) -> bytes:
     """bAddScene packed case @ ``0x100022f9`` — desc ``+0x54/+0x58/+0x5c``."""
     return pack_dmin_rgb(word_54, word_58, word_5c)
+
+
+def scplut_remap_dmin_rgb(
+    lut: Sequence[int],
+    stride: int,
+    r: int,
+    g: int,
+    b: int,
+) -> tuple[int, int, int]:
+    """ScpLutBalance dmin remap @ ``0x100fd984…`` before insert.
+
+    ``lut`` is int16-indexed (host may pass a list/array of int). Indices
+    are ``R``, ``G+stride``, ``B+2*stride`` — cite Cap getter outs.
+    """
+    rr = int(r)
+    gg = int(g)
+    bb = int(b)
+    s = int(stride)
+    return int(lut[rr]), int(lut[gg + s]), int(lut[bb + 2 * s])
+
+
+def scplut_remap_and_pack(
+    lut: Sequence[int],
+    stride: int,
+    r: int,
+    g: int,
+    b: int,
+) -> bytes:
+    """Remap then pack 6-byte dmin (insert payload)."""
+    return pack_dmin_rgb(*scplut_remap_dmin_rgb(lut, stride, r, g, b))
 
 
 @dataclass
@@ -144,9 +196,15 @@ def main() -> None:
     print(f"  CnPremium find call {CN_PREMIUM_DMIN_FIND_CALL:#010x}")
     print(f"  bAddScene insert    {BADDSCENE_DMIN_INSERT:#010x}")
     print(f"  ScpLut insert       {SCPLUT_DMIN_INSERT:#010x} (remap {SCPLUT_DMIN_REMAP:#010x})")
+    print(f"  ScpLut getLut Cap/Impl {SCPLUT_CAP_GET_LUT:#010x}/{SCPLUT_IMPL_GET_LUT:#010x}")
     bag = SceneContextBag()
     bag.insert_dmin((100, 200, 300))
     print(f"  roundtrip {bag.find_dmin()} SCENE_CONTEXT_DMIN_PORTED={SCENE_CONTEXT_DMIN_PORTED}")
+    lut = list(range(400))
+    print(
+        f"  scplut remap sample {scplut_remap_dmin_rgb(lut, 100, 5, 6, 7)} "
+        f"REMAP_PORTED={SCPLUT_DMIN_REMAP_PORTED}"
+    )
 
 
 if __name__ == "__main__":

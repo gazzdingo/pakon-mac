@@ -8,6 +8,7 @@
   (master LUT ctor ``0x100f42a0`` / CRT ``0x1056a470`` cited)
 * SceneContext dmin bag + ``NoiseTable`` layout; Unicorn
   ``0x10256102`` dens-alloc ``n*ch*4``
+* ScpLut dmin remap ``0x100fd984…``; AneOrder dens fill ``0x101ec10a…``
 
 ShastaParams ctor defaults for ``metricGray``/``black``/``white`` /
 ``blackNoiseSigmaMult`` are sanity-checked against cited immediates —
@@ -24,6 +25,7 @@ from unicorn import Uc, UcError, UC_ARCH_X86, UC_MODE_32
 from unicorn.x86_const import (
     UC_X86_REG_EAX,
     UC_X86_REG_EBX,
+    UC_X86_REG_EBP,
     UC_X86_REG_EDI,
     UC_X86_REG_ESP,
 )
@@ -35,9 +37,15 @@ import pakon_shasta as shasta
 IMAGE_BASE = 0x10000000
 STACK_ADDR = 0x0BF00000
 STACK_SIZE = 0x100000
+HEAP_ADDR = 0x20000000
+HEAP_SIZE = 0x200000
 VA_AVG2 = 0x1004F690
 # dens alloc size: mov eax,ebx; imul eax,edi; shl eax,2 @ 0x10256102
 VA_NOISE_ALLOC_IMUL = 0x10256102
+VA_SCPLUT_REMAP = 0x100FD984
+VA_SCPLUT_REMAP_END = 0x100FD9B7
+VA_GET_RESULTS_FILL = 0x101EC10A
+VA_GET_RESULTS_FILL_END = 0x101EC1D6
 TRIPLE_ADDR = STACK_ADDR + 0x80000
 
 
@@ -45,13 +53,27 @@ def _load_dll(path: Path) -> bytes:
     return path.read_bytes()
 
 
+def _map_region(uc: Uc, dll: bytes, va: int, size: int) -> None:
+    page = va & ~0xFFF
+    end = (va + size + 0xFFF) & ~0xFFF
+    span = end - page
+    try:
+        uc.mem_map(page, span)
+    except UcError:
+        pass
+    off = page - IMAGE_BASE
+    uc.mem_write(page, dll[off : off + span])
+
+
 def _map_text(uc: Uc, dll: bytes) -> None:
     # PE .text at file/VA offset 0x1000, size 0x572000 (Update 3 layout).
-    text_off = 0x1000
-    text_va = IMAGE_BASE + text_off
-    text_size = 0x572000
-    uc.mem_map(text_va & ~0xFFF, text_size + 0x1000)
-    uc.mem_write(text_va, dll[text_off : text_off + text_size])
+    _map_region(uc, dll, IMAGE_BASE + 0x1000, 0x572000)
+
+
+def _map_fill_deps(uc: Uc, dll: bytes) -> None:
+    _map_text(uc, dll)
+    _map_region(uc, dll, 0x1059B000, 0x2000)  # FLT_EPSILON + strings
+    _map_region(uc, dll, 0x10577000, 0x2000)  # curve wrapper vtables
 
 
 def run_avg2(dll: bytes, a: int, b: int, c: int) -> int:
@@ -85,6 +107,82 @@ def run_noise_alloc_size(dll: bytes, n: int, n_channels: int) -> int:
     except UcError:
         pass
     return int(uc.reg_read(UC_X86_REG_EAX)) & 0xFFFFFFFF
+
+
+def run_scplut_remap(
+    dll: bytes, lut: list[int], stride: int, r: int, g: int, b: int
+) -> tuple[int, int, int]:
+    """Unicorn ScpLut remap leaf ``0x100fd984…0x100fd9b7``."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_text(uc, dll)
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    path = HEAP_ADDR + 0x1000
+    lut_addr = HEAP_ADDR + 0x2000
+    for i, v in enumerate(lut):
+        uc.mem_write(lut_addr + i * 2, struct.pack("<h", int(v)))
+    uc.mem_write(path + 0x3C, struct.pack("<hhh", r, g, b))
+    esp = STACK_ADDR + 0x8000
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    uc.mem_write(esp + 0x20, struct.pack("<I", lut_addr))
+    uc.mem_write(esp + 0x2C, struct.pack("<I", stride & 0xFFFFFFFF))
+    uc.reg_write(UC_X86_REG_EDI, path)
+    try:
+        uc.emu_start(VA_SCPLUT_REMAP, VA_SCPLUT_REMAP_END, timeout=1_000_000, count=80)
+    except UcError:
+        pass
+    return struct.unpack("<hhh", uc.mem_read(path + 0x3C, 6))
+
+
+def run_get_results_fill(
+    dll: bytes,
+    knots: list[tuple[float, ...]],
+    n: int,
+    n_channels: int = 1,
+) -> np.ndarray:
+    """Unicorn dens fill ``0x101ec10a…0x101ec1d6`` with synthetic curve rows."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_fill_deps(uc, dll)
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    n_segs = len(knots)
+    impl = HEAP_ADDR + 0x10000
+    results = HEAP_ADDR + 0x11000
+    dens = HEAP_ADDR + 0x12000
+    curve_inner = HEAP_ADDR + 0x13000
+    rows_ptr = HEAP_ADDR + 0x14000
+    row_data = HEAP_ADDR + 0x15000
+    uc.mem_write(dens, b"\x00" * (n * n_channels * 4 + 64))
+    uc.mem_write(results + 0x44, struct.pack("<I", n))
+    uc.mem_write(results + 0x48, struct.pack("<I", n_channels))
+    uc.mem_write(results + 0x4C, struct.pack("<I", dens))
+    uc.mem_write(impl + 0x180, struct.pack("<I", results))
+    for i, vals in enumerate(knots):
+        rd = row_data + i * 0x80
+        uc.mem_write(rd, struct.pack("<" + "f" * len(vals), *vals))
+        uc.mem_write(rows_ptr + i * 4, struct.pack("<I", rd))
+    uc.mem_write(curve_inner + 0x10, struct.pack("<I", n_segs))
+    uc.mem_write(curve_inner + 0x14, struct.pack("<I", n_channels + 1))
+    uc.mem_write(curve_inner + 0x18, struct.pack("<I", rows_ptr))
+    ebp = STACK_ADDR + 0x9000
+    uc.mem_write(ebp - 0x44, struct.pack("<II", 0x10577BC0, curve_inner))
+    uc.mem_write(ebp - 0x34, struct.pack("<I", n))
+    uc.mem_write(ebp - 0x38, struct.pack("<I", impl))
+    uc.reg_write(UC_X86_REG_EBP, ebp)
+    uc.reg_write(UC_X86_REG_ESP, ebp - 0x100)
+    uc.reg_write(UC_X86_REG_EBX, impl + 0x180)
+    uc.reg_write(UC_X86_REG_EDI, impl)
+    try:
+        uc.emu_start(
+            VA_GET_RESULTS_FILL,
+            VA_GET_RESULTS_FILL_END,
+            timeout=10_000_000,
+            count=200_000,
+        )
+    except UcError:
+        pass
+    raw = uc.mem_read(dens, n * n_channels * 4)
+    return np.frombuffer(bytes(raw), dtype=np.float32).reshape(n_channels, n)
 
 
 def _sx32(v: int) -> int:
@@ -254,6 +352,51 @@ def main() -> int:
     if not ok:
         fail += 1
 
+    # ScpLut dmin remap leaf (0x100fd984)
+    lut = [i + 1000 for i in range(400)]
+    for stride, rgb in [(100, (5, 6, 7)), (64, (1, 2, 3)), (0, (10, 20, 30))]:
+        host = sc.scplut_remap_dmin_rgb(lut, stride, *rgb)
+        ref = run_scplut_remap(dll, lut, stride, *rgb)
+        ok = host == ref
+        print(
+            f"  scplut_remap stride={stride} {rgb}: host={host} dll={ref} "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+
+    # getResults dens fill (0x101ec10a) — synthetic curve knots
+    fill_cases: list[tuple[list[tuple[float, ...]], int, int]] = [
+        ([(0.0, 1.0), (10.0, 1.0), (20.0, 11.0)], 20, 1),
+        ([(5.0, 2.0), (15.0, 12.0)], 20, 1),
+        ([(0.0, 1.0, 2.0), (8.0, 1.0, 4.0), (16.0, 9.0, 10.0)], 16, 2),
+    ]
+    for knots, n, ch in fill_cases:
+        host = ane.get_results_fill_dens(knots, n, ch)
+        ref = run_get_results_fill(dll, knots, n, ch)
+        ok = np.allclose(host, ref, rtol=0, atol=1e-5)
+        print(
+            f"  dens_fill n={n} ch={ch} knots={len(knots)}: "
+            f"maxdiff={float(np.max(np.abs(host - ref))):.3g} "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+
+    # Compose: remapped dmin → bag → mid-aim with filled dens
+    remapped = sc.scplut_remap_dmin_rgb(lut, 100, 5, 6, 7)
+    bag2 = sc.SceneContextBag()
+    bag2.insert_dmin(remapped)
+    nt2 = ane.noise_table_from_knots([(5.0, 2.0), (15.0, 12.0)], 20, 1)
+    m2 = shasta.cn_premium_mid_aim_from_bag(bag2, nt2, (0, 0, 0))
+    ok = m2 is not None
+    print(
+        f"  mid_aim from ScpLut+fill: dmin={remapped} mids={m2} "
+        f"{'OK' if ok else 'FAIL'}"
+    )
+    if not ok:
+        fail += 1
+
     print(
         f"  SHASTA_AIM_AVG2_PORTED={shasta.SHASTA_AIM_AVG2_PORTED} "
         f"MID_RGB={shasta.SHASTA_AIM_MID_RGB_PORTED} "
@@ -261,7 +404,9 @@ def main() -> int:
         f"ANALYZE={shasta.SHASTA_ANALYZE_PORTED} "
         f"TONE_LUT={shasta.SHASTA_TONE_LUT_PORTED} "
         f"SCENE_DMIN={sc.SCENE_CONTEXT_DMIN_PORTED} "
+        f"SCPLUT_REMAP={sc.SCPLUT_DMIN_REMAP_PORTED} "
         f"NOISE_LAYOUT={ane.ANE_NOISE_TABLE_LAYOUT_PORTED} "
+        f"GET_RESULTS_FILL={ane.ANE_GET_RESULTS_FILL_PORTED} "
         f"ANE_ORDER={ane.ANE_ORDER_PORTED}"
     )
     return 1 if fail else 0

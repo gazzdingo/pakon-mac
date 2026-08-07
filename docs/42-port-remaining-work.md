@@ -241,3 +241,81 @@ step D (scan-line framing) obtained for free.
 
 Still open: does it respond to illumination? That needs the lamp, or a torch at
 the gate, and is the one part of the light-meter test not yet re-run.
+
+---
+
+## ACQUISITION DECODED — 2026-08-06
+
+Full call-site analysis of TLB.dll plus one free hardware test. **The FPGA has
+never been configured.** That is why the sensor clocks but does not integrate.
+
+### The decisive test — free, read-only
+
+Line sync is **bit 0 of each u16 sample**. Proven at two independent sites:
+`fcn.1002f240` @`0x1002f287` and the scan worker `fcn.1002f550` @`0x1002ff03`
+both loop `test byte [esi],1`, and exhaustion raises
+`EC_DRV_CannotFindStartOfScanLine` (1001). Because the search tests *every*
+word, bit 0 must be 0 on every word except the first of a line.
+
+Measured on our stream:
+
+```
+262,144 samples   words with bit 0 set: 0   (0.00%)
+```
+
+**Zero markers.** The FPGA is emitting no line starts. This distinguishes
+"unconfigured FPGA" from "configured but not integrating" — it is the former.
+The period-3 interleave we measured is the AFE clocking three channels; the
+line framing the FPGA would add is simply absent.
+
+### The likely original error
+
+`tools/init_ccd.py` writes control word **`0x163`**. The correct value is
+**`0x061`**. Bit 8 (`0x100`) is **IR mode** and bit 1 (`0x002`) is **binning**,
+and the vendor sets neither for a normal colour scan. Worse, the geometry
+(offset 62 + height 2000 = 2062) violates the binning limit of 1060. A
+structured stream that ignores visible light is exactly what that produces.
+
+### Corrections
+
+* **`0x82`/`0x84` ARE readable.** `docs/12` §8 says no Type-1 read of `0x82`
+  exists so the shadow cannot be recovered. Wrong — `PutRegisterCcd` has a
+  verify path (`0x1000a69c`) using read-back register `0x83` for FPGA, `0x85`
+  for A/D:
+  ```
+  02 04 44 01 83 <idx>      select readback index
+  01 03 44 02 07            read 2 bytes -> the value
+  ```
+  Every FPGA/AFE write can be verified instead of trusted.
+* **`InitCcd` is not called from `BeforeScan`** — it lives in `FN_bInit3`, once
+  at bring-up. `docs/12` §6 has the order wrong.
+* **`0x84` idx 5/6/7 are offsets, not "CCD exposures".** `docs/12` §3 is wrong;
+  `FN_bDrvPutCcdExposures` has no implementation in this binary.
+* **The event ACK is NOT the blocker.** Verified four ways: `fcn.1000bdd0` has
+  one caller (a background poll); the packet error decoder never tests bit 7;
+  the acquisition path's only status poll is `GetPpbHostStatusByte`; and our
+  lamp sequence worked with bit 7 set throughout. Worth adding for hygiene, but
+  it will not change EP 0x86. **My hypothesis was wrong.**
+* **Our 2151 px/line is not corroborated** — the binary says 2000 for
+  DpiBase16. Do not hard-code either: **segment on bit 0**, as the vendor does.
+* **Gains/offsets do NOT gate integration**, only data quality — `InitCcd`
+  never programs them and the dark phase acquires with offsets 0,0,0. Program
+  them anyway (6 packets, no risk): a gain of 0 would mask a real light
+  response and the power-on default is unknowable.
+
+### Ordering that matters
+
+**The host read must be armed BEFORE the acquire bit.**
+`FN_bCalibrateStartDataFlow` issues the overlapped `ReadFile` (`0x10020150`),
+expects `ERROR_IO_PENDING`, and only then calls `CcdAcquireControl(1)`
+(`0x1002016d`). Teardown reverses it.
+
+`0x060` in the control word is **required but of unknown meaning**, and is
+written only when the integration shadow is −1 — which `InitCcd` sets. That is
+the mechanism behind "these init writes are not optional".
+
+### Channel identity is NOT determined by the binary
+
+Which sub-stream is R, G or B is not named anywhere. Given the lamp registers
+run **B, Ir, R, –, G**, do not assume RGB. Cheap test once integrating: drive
+one LED channel at a time and see which sub-stream moves.

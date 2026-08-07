@@ -267,7 +267,7 @@ export function TopBar({ mode, setMode, roll, dark, setDark }) {
 
 /** Twin lanes. `capture` is permanently idle in this build — the transport is
  *  not driven from here — and says so once, in the lane, behind an Info. */
-export function Lanes({ exportJob, onCancelExport }) {
+export function Lanes({ exportJob }) {
   const running = exportJob && exportJob.status === 'running';
   const pct = running || exportJob?.status === 'done' ? Math.round((exportJob.progress || 0) * 100) : null;
   return (
@@ -301,9 +301,15 @@ export function Lanes({ exportJob, onCancelExport }) {
           <i style={{ width: `${pct ?? 0}%` }} />
         </div>
         <span className="pc">{pct == null ? '—' : `${pct} %`}</span>
-        <Btn disabled={!running} onClick={onCancelExport}>
-          Cancel
-        </Btn>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <Btn disabled>Cancel</Btn>
+          <Info side="left">
+            <b>Not implemented.</b> The export loop has no interrupt check to
+            cancel into, and there is no cancel endpoint. Left disabled rather
+            than enabled and inert — see <span className="num">docs/54</span>{' '}
+            §4.3.
+          </Info>
+        </span>
       </div>
     </div>
   );

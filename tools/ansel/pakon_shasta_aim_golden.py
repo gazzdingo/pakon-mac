@@ -11,6 +11,8 @@
 * ScpLut dmin remap ``0x100fd984…``; AneOrder dens fill ``0x101ec10a…``
 * bAddScene dmin pack ``0x100022e6…``; AneOrder analyze bin-index
   ``0x102a8555…``
+* TLA AddScene desc pack ``0x1003f901…``; Ane dens-hist ``inc``
+  ``0x104f56e0…``; getCnContext path-from-bag host contract
 
 ShastaParams ctor defaults for ``metricGray``/``black``/``white`` /
 ``blackNoiseSigmaMult`` are sanity-checked against cited immediates —
@@ -28,6 +30,7 @@ from unicorn.x86_const import (
     UC_X86_REG_EAX,
     UC_X86_REG_EBX,
     UC_X86_REG_EBP,
+    UC_X86_REG_ECX,
     UC_X86_REG_EDI,
     UC_X86_REG_EDX,
     UC_X86_REG_ESI,
@@ -54,7 +57,19 @@ VA_BADDSCENE_PACK = 0x100022E6
 VA_BADDSCENE_PACK_END = 0x10002309
 VA_ANE_BIN_INDEX = 0x102A8555
 VA_ANE_BIN_INDEX_END = 0x102A857C
+VA_ANE_HIST_ACCUM = ane.ANE_ANALYZE_HIST_ACCUM
+VA_ANE_HIST_ACCUM_END = ane.ANE_ANALYZE_HIST_ACCUM_END
+VA_TLA_DESC_PACK = sc.TLA_DESC_PACK
+VA_TLA_DESC_PACK_END = sc.TLA_DESC_PACK_END
 TRIPLE_ADDR = STACK_ADDR + 0x80000
+DEFAULT_IMAU = (
+    "/Users/guy/Downloads/Pakon Update 3/fx35install/"
+    "program files/Pakon/F-X35 COM SERVER/PakonIMAu.dll"
+)
+DEFAULT_TLA = (
+    "/Users/guy/Downloads/Pakon Update 3/fx35install/"
+    "program files/Pakon/F-X35 COM SERVER/TLA.dll"
+)
 
 
 def _load_dll(path: Path) -> bytes:
@@ -266,14 +281,95 @@ def run_ane_hist_slot(
     return int(uc.reg_read(UC_X86_REG_ESI)) & 0xFFFFFFFF
 
 
+def run_ane_dens_hist_accum(
+    dll: bytes,
+    value: int,
+    *,
+    offset: float,
+    divisor: float,
+    n: int,
+    seed_bins: list[int] | None = None,
+) -> tuple[int, list[int]]:
+    """Unicorn dens-hist ``inc`` leaf ``0x104f56e0…`` → (bin, bins)."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_text(uc, dll)
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    hist = HEAP_ADDR + 0x1000
+    bins_addr = HEAP_ADDR + 0x2000
+    bins0 = list(seed_bins) if seed_bins is not None else [0] * int(n)
+    if len(bins0) < int(n):
+        raise ValueError("seed_bins shorter than n")
+    raw = b"".join(struct.pack("<i", int(x)) for x in bins0[:n])
+    uc.mem_write(bins_addr, raw)
+    uc.mem_write(hist + ane.ANE_HIST_N_OFF, struct.pack("<i", int(n)))
+    uc.mem_write(hist + ane.ANE_HIST_OFFSET_OFF, struct.pack("<d", float(offset)))
+    uc.mem_write(hist + ane.ANE_HIST_DIVISOR_OFF, struct.pack("<d", float(divisor)))
+    uc.mem_write(hist + ane.ANE_HIST_BINS_OFF, struct.pack("<I", bins_addr))
+    esp = STACK_ADDR + 0x8000
+    # cdecl: [esp]=ret, [esp+4]=value; leaf does ret 4.
+    ret_addr = STACK_ADDR + 0x100
+    uc.mem_write(ret_addr, b"\xcc")
+    uc.mem_write(esp, struct.pack("<Ii", ret_addr, int(value)))
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    uc.reg_write(UC_X86_REG_ECX, hist)
+    try:
+        uc.emu_start(
+            VA_ANE_HIST_ACCUM,
+            VA_ANE_HIST_ACCUM_END,
+            timeout=1_000_000,
+            count=200,
+        )
+    except UcError:
+        pass
+    out = list(struct.unpack(f"<{n}i", uc.mem_read(bins_addr, n * 4)))
+    # Recover bin as the index that increased (or host formula on tie).
+    host_bin = ane.ane_dens_hist_bin(value, offset, divisor, n)
+    return host_bin, out
+
+
+def run_tla_desc_pack(
+    tla: bytes, case: int, r: int, g: int, b: int
+) -> tuple[int, int, int, int]:
+    """Unicorn TLA AddScene desc pack ``0x1003f901…`` → case + RGB words."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_text(uc, tla)
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    esp = STACK_ADDR + 0x7000
+    # Locals relative to esp at leaf entry (cite 0x1003f901).
+    uc.mem_write(esp + 0x14, struct.pack("<I", int(case) & 0xFFFFFFFF))
+    uc.mem_write(esp + 0x34, struct.pack("<H", int(r) & 0xFFFF))
+    uc.mem_write(esp + 0x3C, struct.pack("<H", int(g) & 0xFFFF))
+    uc.mem_write(esp + 0x44, struct.pack("<H", int(b) & 0xFFFF))
+    # Desc buffer at esp+0x68 — leaf zeros 0x68 bytes then stores.
+    uc.mem_write(esp + 0x68, b"\xcc" * sc.DESC_BYTES)
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    # ebx used after stores for vtable call; leaf end is before call.
+    uc.reg_write(UC_X86_REG_EBX, HEAP_ADDR)  # unused before END
+    try:
+        uc.mem_map(HEAP_ADDR, 0x1000)
+    except UcError:
+        pass
+    try:
+        uc.emu_start(
+            VA_TLA_DESC_PACK,
+            VA_TLA_DESC_PACK_END,
+            timeout=100_000,
+            count=80,
+        )
+    except UcError:
+        pass
+    desc = uc.mem_read(esp + 0x68, sc.DESC_BYTES)
+    case_out = struct.unpack_from("<I", desc, sc.DESC_DMIN_CASE_OFF)[0]
+    rgb = sc.addscene_desc_dmin_rgb(desc)
+    return int(case_out), rgb[0], rgb[1], rgb[2]
+
+
 def main() -> int:
-    dll_path = Path(
-        sys.argv[1]
-        if len(sys.argv) > 1
-        else "/Users/guy/Downloads/Pakon Update 3/fx35install/"
-        "program files/Pakon/F-X35 COM SERVER/PakonIMAu.dll"
-    )
+    dll_path = Path(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_IMAU)
+    tla_path = Path(sys.argv[2] if len(sys.argv) > 2 else DEFAULT_TLA)
     dll = _load_dll(dll_path)
+    tla = _load_dll(tla_path)
     fail = 0
 
     cases = [
@@ -511,6 +607,71 @@ def main() -> int:
         if not ok:
             fail += 1
 
+    # Ane dens-hist accum inc leaf (0x104f56e0)
+    hist_cases = [
+        (25, 5.0, 2.0, 16),
+        (0, 0.0, 1.0, 8),
+        (-10, 0.0, 2.0, 8),
+        (100, 10.0, 3.0, 16),
+        (7, 0.5, 1.5, 10),
+    ]
+    for value, off, div, n in hist_cases:
+        host_bins = [0] * n
+        host_bin = ane.ane_dens_hist_accum(
+            host_bins, value, offset=off, divisor=div, n=n
+        )
+        _bin, dll_bins = run_ane_dens_hist_accum(
+            dll, value, offset=off, divisor=div, n=n
+        )
+        ok = host_bins == dll_bins and host_bin == ane.ane_dens_hist_bin(
+            value, off, div, n
+        )
+        print(
+            f"  ane_dens_hist value={value} off={off} div={div}: "
+            f"bin={host_bin} host={host_bins} dll={dll_bins} "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+
+    # TLA AddScene desc pack (0x1003f901) + getCnContext bag load
+    for case, rgb in [
+        (1, (100, 200, 300)),
+        (2, (0, 0, 0)),
+        (3, (-1, 42, 0x7FFF)),
+    ]:
+        host = sc.addscene_pack_desc(case, *rgb)
+        host_t = (
+            struct.unpack_from("<I", host, sc.DESC_DMIN_CASE_OFF)[0],
+            *sc.addscene_desc_dmin_rgb(host),
+        )
+        ref = run_tla_desc_pack(tla, case, *rgb)
+        ok = host_t == ref
+        print(
+            f"  tla_desc_pack case={case} {rgb}: host={host_t} dll={ref} "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+        # Compose: desc → bAddScene pack → bag → getCnContext path load
+        blob = sc.baddscene_pack_dmin_from_desc(*sc.addscene_desc_dmin_rgb(host))
+        bag3 = sc.SceneContextBag()
+        bag3.insert("dmin", blob)
+        path_rgb = sc.getcncontext_path_dmin_from_bag(bag3)
+        ok = path_rgb == rgb
+        print(
+            f"  getCnContext path from desc {rgb}: {path_rgb} "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+    empty = sc.SceneContextBag()
+    z = sc.getcncontext_path_dmin_from_bag(empty)
+    ok = z == (0, 0, 0)
+    print(f"  getCnContext empty → zero: {z} {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+
     print(
         f"  SHASTA_AIM_AVG2_PORTED={shasta.SHASTA_AIM_AVG2_PORTED} "
         f"MID_RGB={shasta.SHASTA_AIM_MID_RGB_PORTED} "
@@ -520,9 +681,12 @@ def main() -> int:
         f"SCENE_DMIN={sc.SCENE_CONTEXT_DMIN_PORTED} "
         f"SCPLUT_REMAP={sc.SCPLUT_DMIN_REMAP_PORTED} "
         f"BADDSCENE_PACK={sc.BADDSCENE_DMIN_PACK_PORTED} "
+        f"ADDSCENE_DESC={sc.ADDSCENE_DESC_PACK_PORTED} "
+        f"PATH_FROM_BAG={sc.PATH_DMIN_FROM_BAG_PORTED} "
         f"NOISE_LAYOUT={ane.ANE_NOISE_TABLE_LAYOUT_PORTED} "
         f"GET_RESULTS_FILL={ane.ANE_GET_RESULTS_FILL_PORTED} "
         f"ANE_BIN_INDEX={ane.ANE_ANALYZE_BIN_INDEX_PORTED} "
+        f"ANE_HIST_ACCUM={ane.ANE_ANALYZE_HIST_ACCUM_PORTED} "
         f"ANE_ORDER={ane.ANE_ORDER_PORTED}"
     )
     return 1 if fail else 0

@@ -133,9 +133,10 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
 
      Layout ported (``pakon_ane_order.NoiseTable``); dens **fill** from
      curve rows ported (``get_results_fill_dens`` /
-     ``ANE_GET_RESULTS_FILL_PORTED``). Analyze hist **bin-index** leaf
-     ported (``ANE_ANALYZE_BIN_INDEX_PORTED``); sample/residual → curve
-     knots still WALL.
+     ``ANE_GET_RESULTS_FILL_PORTED``). Analyze hist **bin-index** +
+     dens-hist ``inc`` leaves ported (``ANE_ANALYZE_BIN_INDEX_PORTED`` /
+     ``ANE_ANALYZE_HIST_ACCUM_PORTED``); finalize ``0x102a8770`` →
+     curve knots still WALL.
   3. Master LUT = global ``AnsLut`` @ ``0x106b5f74`` built by CRT init
      ``0x1056a470`` → ctor ``0x100f42a0(0xc, 0, 0xfff)``. Data pointer
      ``[0x106b5f7c] = alloc+0x10000`` (signed-int16 index 0). Fill:
@@ -162,13 +163,16 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
 
 * Mid-aim **arithmetic** is host-ported (``cn_premium_mid_aim_rgb``;
   ``SHASTA_AIM_MID_RGB_PORTED``). Input **path** + ScpLut remap +
-  ``getResults`` dens fill ported (``SHASTA_AIM_INPUT_PATH_PORTED`` /
+  ``getResults`` dens fill + AddScene desc pack + getCnContext path
+  load + Ane hist leaves ported (``SHASTA_AIM_INPUT_PATH_PORTED`` /
   ``SCPLUT_DMIN_REMAP_PORTED`` / ``ANE_GET_RESULTS_FILL_PORTED`` /
-  ``BADDSCENE_DMIN_PACK_PORTED`` / ``ANE_ANALYZE_BIN_INDEX_PORTED``).
-  **WALL for ``ANALYZE``:** live AddScene desc **values** /
-  ``path+0x3c`` **source** writers and AneOrder sample/residual →
-  curve knots; contrast / float-LUT side paths. Do **not** invent
-  percentile tone from dpi ``shadowPercent`` / ``highlightPercent``.
+  ``BADDSCENE_DMIN_PACK_PORTED`` / ``ADDSCENE_DESC_PACK_PORTED`` /
+  ``PATH_DMIN_FROM_BAG_PORTED`` / ``ANE_ANALYZE_BIN_INDEX_PORTED`` /
+  ``ANE_ANALYZE_HIST_ACCUM_PORTED``).
+  **WALL for ``ANALYZE``:** frame ``+0x6cac`` live RGB (ColNeg remap)
+  and AneOrder finalize ``0x102a8770`` → curve knots; contrast /
+  float-LUT side paths. Do **not** invent percentile tone from dpi
+  ``shadowPercent`` / ``highlightPercent``.
 
 CapabilityImpl ``+0x3e0`` vs working ``+0x3b0`` (VERIFIED facts)
 ---------------------------------------------------------------
@@ -300,9 +304,10 @@ Relationship to SRA forward LUT
 UNKNOWN / blockers (honest)
 ---------------------------
 * Mid-aim **upstream producers**: ScpLut remap + dens fill + bAddScene
-  pack + Ane bin-index closed (Unicorn-golden). Still need live AddScene
-  desc **values** / ``path+0x3c`` **source** writers and AneOrder
-  sample/residual → curve knots. Contrast (``0x10119060``) /
+  pack + AddScene desc pack + getCnContext ``path+0x3c`` bag load +
+  Ane bin-index + dens-hist ``inc`` closed (Unicorn-golden). Still need
+  frame ``+0x6cac`` live RGB / ColNeg side path and AneOrder finalize
+  ``0x102a8770`` → curve knots. Contrast (``0x10119060``) /
   float-table (``0x1004f7b0``) side paths open. ``ANALYZE`` stays False.
 * Live image sampling ``0x1027b3c0`` → ``+0x2e4…+0x2f0`` still inject for
   ``0x102935d0`` (leaf itself Unicorn-golden).

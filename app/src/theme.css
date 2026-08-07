@@ -1,0 +1,163 @@
+@import 'tailwindcss';
+@import '@heroui/styles/css';
+
+/* ------------------------------------------------------------------------
+   The approved palette (design/index.html), mapped onto HeroUI's semantic
+   tokens rather than fighting them. Dark only, deliberately: the surround a
+   print is judged against must contribute no hue and no glare.
+
+   Filament (#C9A227) is machine state ONLY. It is deliberately NOT wired to
+   --accent, because HeroUI paints ordinary buttons with the accent and the
+   design forbids that. Machine state uses .filament / text-[--filament].
+   ---------------------------------------------------------------------- */
+@theme {
+  --font-sans: 'Avenir Next', 'Segoe UI Variable Text', 'Segoe UI', Verdana,
+    system-ui, sans-serif;
+  --font-serif: 'Iowan Old Style', Palatino, 'Palatino Linotype', Georgia,
+    serif;
+  --font-mono: 'SF Mono', 'Cascadia Mono', 'IBM Plex Mono', ui-monospace, Menlo,
+    Consolas, monospace;
+}
+
+:root,
+.dark,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --void: #0b0b0b;
+  --plate: #141414;
+  --plate2: #1a1a1a;
+  --rule: #2e2e2e;
+  --ink: #e8e8e8;
+  --mute: #8c8c8c;
+  --filament: #c9a227;
+  --halt: #b5484d;
+  --pass: #5e8c61;
+
+  /* HeroUI base */
+  --background: var(--void);
+  --foreground: var(--ink);
+  --surface: var(--plate);
+  --surface-foreground: var(--ink);
+  --surface-secondary: var(--plate2);
+  --surface-secondary-foreground: var(--ink);
+  --surface-tertiary: #202020;
+  --surface-tertiary-foreground: var(--ink);
+  --overlay: var(--plate);
+  --overlay-foreground: var(--ink);
+  --muted: var(--mute);
+  --default: #232323;
+  --default-foreground: var(--ink);
+
+  /* Restrained accent: the images carry the colour, not the chrome. */
+  --accent: #3f3f3f;
+  --accent-foreground: var(--ink);
+
+  --success: var(--pass);
+  --success-foreground: #0b0b0b;
+  --warning: var(--filament);
+  --warning-foreground: #0b0b0b;
+  --danger: var(--halt);
+  --danger-foreground: #f4f4f4;
+
+  --border: var(--rule);
+  --field-border-width: 1px;
+
+  /* 4 px grid, radius 0, no shadows — depth is hairlines on Plate. */
+  --radius: 0px;
+  --field-radius: 0px;
+  --scrollbar-thumb: #333;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+
+/* Every changing number is monospaced with tabular figures. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* Roll names and film stocks — the ledger voice. */
+.ledger {
+  font-family: var(--font-serif);
+  font-style: italic;
+}
+.lbl {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+.hair {
+  border-color: var(--rule);
+}
+.filament {
+  color: var(--filament);
+}
+
+/* One motion curve, three uses, all behind prefers-reduced-motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .gate {
+    transition: all 180ms cubic-bezier(0.55, 0.05, 0.2, 1);
+  }
+  .pulse {
+    animation: pulse 1.6s cubic-bezier(0.55, 0.05, 0.2, 1) infinite;
+  }
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #303030;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Native controls must not introduce a colour the palette does not have. */
+input[type='checkbox'] {
+  accent-color: #6a6a6a;
+  width: 13px;
+  height: 13px;
+}
+input[type='range'] {
+  accent-color: var(--mute);
+}
+input::placeholder {
+  color: #5a5a5a;
+}
+
+/* The image stage never scrolls sideways. */
+.stage-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}

@@ -1,19 +1,45 @@
 {
   "name": "pakon-scan",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Scanning application for the Kodak Pakon F-135 — macOS, Windows and Linux",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder --mac --win --linux"
+    "build": "vite build",
+    "start": "vite build && electron .",
+    "dev": "concurrently -k \"vite\" \"wait-on tcp:5273 && cross-env PAKON_DEV_SERVER=http://localhost:5273 electron .\"",
+    "dist": "vite build && electron-builder --mac --win --linux"
   },
-  "devDependencies": { "electron": "^33.0.0", "electron-builder": "^25.0.0" },
+  "dependencies": {
+    "@heroui/react": "^3.2.4",
+    "@heroui/styles": "^3.2.4",
+    "@react-aria/i18n": "^3.13.1",
+    "@react-aria/ssr": "^3.10.1",
+    "@react-aria/utils": "^3.34.1",
+    "framer-motion": "^12.23.28",
+    "react": "^19.2.8",
+    "react-aria": "^3.51.0",
+    "react-aria-components": "^1.20.0",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.1"
+  },
   "build": {
     "appId": "com.langfordlee.pakonscan",
     "productName": "Pakon Scan",
-    "files": ["main.js", "preload.js"],
+    "files": ["main.js", "preload.js", "dist/**/*"],
     "extraResources": [
-      { "from": "../tools", "to": "tools", "filter": ["**/*", "!**/__pycache__/**", "!**/WRITES_LOCKED"] },
+      {
+        "from": "../tools",
+        "to": "tools",
+        "filter": ["**/*", "!**/__pycache__/**", "!**/WRITES_LOCKED"]
+      },
+      { "from": "../calibration", "to": "calibration" },
       { "from": "../research/film-products.json", "to": "research/film-products.json" }
     ],
     "mac": { "category": "public.app-category.photography", "target": ["dmg", "zip"] },

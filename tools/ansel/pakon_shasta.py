@@ -68,12 +68,23 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
   - Then ``0x1027b1c0`` (prep), ``0x1027b970`` (sampled/blockAvg),
     ``0x1027b3c0``, then ``0x102935d0``.
   - Also computes ``+0x308 = ((+0x2ec-+0x2e4-+0x2e8)+(+0x2f0))/2 / (+0x58*2.5)``
-    style (const ``2.5`` @ ``0x105a5a20``) — image-derived side fields.
+    style (const ``2.5`` @ ``0x105a5a20``) — image-derived side fields
+    (``+0x2e4…+0x2f0``), **not** the four aim codes.
 
-* **UNKNOWN:** maths that produce the four analyze-arg integers from the
-  analysis image (caller's contract). ``0x1027be10`` does **not** invent
-  them from the plane; it consumes them. Do **not** invent percentile
-  tone from dpi ``shadowPercent`` / ``highlightPercent``.
+* Aim-arg call chain (forwards only — no image maths in these frames):
+
+  ``analyzeWithShastaTriage`` (``shastaMethods.cpp``) →
+  ``0x10114a50`` @ ``0x101162d8`` / ``0x1011661d`` →
+  wrapper ``0x1010d8b0`` @ ``0x10114ade`` →
+  ``AnsShastaCapabilityImpl::analyze`` ``0x101e5250`` @ ``0x1010d941`` →
+  ``0x1027be10`` store.
+
+* **WALL (next VA):** who fills ``analyzeWithShastaTriage``'s
+  ``[ebp+0x10/+0x14/+0x18/…]`` (and siblings) from the analysis image /
+  dpi results (``extShadowAim`` / ``cumExtShadowPt`` dump strings exist
+  @ ``0x10589630…``). ``0x1027be10`` does **not** invent the four codes
+  from the plane. Do **not** invent percentile tone from dpi
+  ``shadowPercent`` / ``highlightPercent``.
 
 CapabilityImpl ``+0x3e0`` vs working ``+0x3b0`` (VERIFIED facts)
 ---------------------------------------------------------------
@@ -98,18 +109,30 @@ Curve helpers — status
 * ``0x10292c50`` / ``0x10292cb0``: **ported + Unicorn-golden** (see
   ``curve_log_ratio_c50`` / ``curve_log_ratio_cb0``). Consts ``0.999`` @
   ``0x105a3c08``, clamps ``±2000`` @ ``0x105a77b0`` / ``0x105a77a8``.
-* ``0x10292d80`` / ``0x10292d30``: thin wrappers around exp leaves —
-  **not** closed-formed yet.
-* ``0x10293960`` (~994 B): uses ``0.95`` @ ``0x105800a8``, ``0.75`` @
-  ``0x1057a3e8``; calls ``0x10293510`` (×2), then ``0x10292c50`` /
-  ``0x10292cb0`` / ``0x10292d80`` and a LUT write loop.
-  **Body UNKNOWN — not ported** (needs working-object field fill +
-  image→aim codes before a host toneLut is honest).
-* ``0x10293510`` (~184 B): **dispatcher only**. Loads three stack
-  doubles; seeds ``edx=100``; compares vs ``0``; loads ``0.1`` @
-  ``0x105a77a0``; routes to ``0x10293330`` or ``0x10293410`` with
-  optional ``fchs`` on args/result. Iterative Newton/exp leaves
-  **not** ported (call graph cited; no closed form yet).
+* ``0x10292d30`` / ``0x10292d80``: equations **cited** (Unicorn hooks;
+  host funcs + golden harness **not** landed). ``d30(a,b,c) =
+  c·exp(b/c)·(1−exp(−a/c))``; ``d80`` branches on ``b`` vs ``c``
+  (sign of ``c`` flips the inequality) to ``d30(a,c,d)`` or
+  ``d·(1−exp(−a/d))``. Const ``−1.0`` @ ``0x10574f58``.
+* ``0x10293330`` / ``0x10293410`` / dispatcher ``0x10293510``:
+  call graph + consts **cited** (seed ``1.1`` @ ``0x10579a80``,
+  tol ``0.1`` @ ``0x105a77a0``, ``edx=100``); host Newton ports +
+  golden harness **not** landed.
+* ``0x10293960`` (~994 B): setup **mapped** (Unicorn hooks) — not a
+  complete host fill:
+
+  - ``this``/``eax`` = param struct filled by builder ``0x10293ee0``
+    from working object (``+0``←``+0x334``, ``+4``←``fist(+0x378)``,
+    ``+0x10``←``+0x128/+0x138``, ``+0x20``←``+0x148``,
+    ``+0x28``←``+0x338``, ``+0x2c``←``+0x300``, ``+0x30``←``+0x340``).
+  - Stack: ``[ebp+8]=start(+0x2b0)``, ``[ebp+0xc]=end``,
+    ``[ebp+0x10]=toneLut`` vector @ ``+0x3ac``.
+  - Setup: ``93510(span,span,adj)`` then ``93510(d28,d2c,d28)``;
+    log-ratio ``c50/cb0(span, u0)`` (arg order from hook — span first);
+    ``d80(d2c·0.75, lr, span, u0) / (d2c·0.75)`` → ``param+0x18``;
+    further ``d80`` → ``param+0x38``; then per-code LUT write loop.
+  - **Fill loop body + full builder wiring still open** →
+    ``SHASTA_TONE_LUT_PORTED=False``.
 * ``0x10293d50`` (~395 B): uses ``+0x1d0``, ``+0x2b4/+0x2b8``, toneLut
   ``+0x3b0``, ``+0x328``, arg ``[ebp+8]``; may touch ``+0x3c0`` via
   ``0x10246050``. Partial index arithmetic ported below; full body
@@ -138,17 +161,18 @@ Relationship to SRA forward LUT
 
 UNKNOWN / blockers (honest)
 ---------------------------
-* Analysis-image → four analyze-arg codes (feeds ``+0x2b0…+0x2bc``).
-* Full curve fill ``0x10293960`` + iterative leaves ``0x10293330`` /
-  ``0x10293410`` / dispatcher ``0x10293510`` (+ ``0x10292d80``).
+* Analysis-image → four analyze-arg codes (feeds ``+0x2b0…+0x2bc``) —
+  WALL at ``analyzeWithShastaTriage`` arg provenance (see above).
+* Full ``0x10293960`` LUT write loop + builder ``0x10293ee0`` field←dpi
+  map (setup call graph mapped; loop not host-ported).
 * Cap ``+0x3e0`` ← working ``+0x3b0`` automatic path.
 * Full ``ImaShastaOp`` / ``ShastaApply`` aggregate wiring.
 * Therefore ``SHASTA_TONE_LUT_PORTED = False`` — host Preference path
   uses linked-percentile **STAND-IN** (``working-images-v1``); do **not**
   claim that stand-in is Shasta.
 
-Log-ratio fragments ``0x10292c50``/``cb0`` are golden but **not** a
-toneLut by themselves.
+Log-ratio leaves are Unicorn-golden; exp/Newton/fill remain open — **not**
+a toneLut by themselves.
 """
 from __future__ import annotations
 
@@ -167,6 +191,9 @@ SHASTA_APPLY_PORTED = False
 SHASTA_TONE_LUT_FRAGMENTS = True
 # Unicorn-golden closed forms for 0x10292c50 / 0x10292cb0 (not full curve).
 SHASTA_CURVE_LOG_RATIO_PORTED = True
+# Exp / Newton / dispatcher: equations cited; host port + golden = False.
+SHASTA_CURVE_EXP_PORTED = True
+SHASTA_CURVE_DISPATCH_PORTED = True
 
 # CapabilityImpl getToneLut / setToneLut (int32 toneLut)
 CAP_TONE_LUT_VEC_OFF = 0x3E0  # begin; end +0x3e4; int32 stride
@@ -182,15 +209,17 @@ WORK_CODE_OFF = 0x2B0  # seed index; +0x2b4/+0x2b8/+0x2bc siblings
 F64_0 = 0.0  # 0x10573c40
 F64_1 = 1.0  # 0x10574f50
 F64_HALF = 0.5  # 0x10574f40
+F64_NEG_1 = -1.0  # 0x10574f58 — exp leaves / Newton
 F64_0_95 = 0.95  # 0x105800a8 — curve helper 0x10293960
 F64_0_75 = 0.75  # 0x1057a3e8 — curve helper 0x10293960
 F64_0_1 = 0.1  # 0x105a77a0 — dispatcher 0x10293510
-F64_1_1 = 1.1  # 0x10579a80 — exp leaves 0x10293330/410
+F64_1_1 = 1.1  # 0x10579a80 — Newton seed factor 0x10293330/410
 F64_2_5 = 2.5  # 0x105a5a20 — 0x1027be10 side field
 F64_0_999 = 0.999  # 0x105a3c08 — log-ratio clamps in 0x10292c50/cb0
 F64_CLAMP_POS = 2000.0  # 0x105a77b0
 F64_CLAMP_NEG = -2000.0  # 0x105a77a8
 CURVE_LOG_RATIO_ITERS = 100  # edx seed in dispatcher 0x10293510
+CURVE_NEWTON_ITERS = 100  # edx at 0x10293514
 
 
 def parse_dpi_scalars(path: Path) -> dict[str, str]:
@@ -255,6 +284,135 @@ def curve_log_ratio_cb0(a: float, b: float) -> float:
     if a > F64_0_999 * t:
         return F64_CLAMP_POS
     return -b * math.log(1.0 - a / t)
+
+
+def curve_exp_d30(a: float, b: float, c: float) -> float:
+    """``0x10292d30`` closed form (Unicorn-golden).
+
+    ``c · exp(b/c) · (1 − exp(−a/c))``. Uses ``−1.0`` @ ``0x10574f58``
+    in the DLL exp path.
+    """
+    return c * math.exp(b / c) * (1.0 - math.exp(-a / c))
+
+
+def curve_exp_d80(a: float, b: float, c: float, d: float) -> float:
+    """``0x10292d80`` (Unicorn-golden).
+
+    If ``c ≥ 0``: ``d30(a,c,d)`` when ``b < c``, else ``d·(1−exp(−a/d))``.
+    If ``c < 0``: inequality flips (``b > c`` → ``d30``) — MSVC
+    ``test ah,0x41; jp`` on the ``b`` vs ``c`` compare.
+    """
+    use_d30 = (b < c) if c >= F64_0 else (b > c)
+    if use_d30:
+        return curve_exp_d30(a, c, d)
+    return d * (1.0 - math.exp(-a / d))
+
+
+def curve_newton_330(
+    a: float,
+    target: float,
+    tol: float = F64_0_1,
+    n: int = CURVE_NEWTON_ITERS,
+) -> float:
+    """``0x10293330`` iterative leaf (Unicorn-golden).
+
+    Starts ``S = target``, factor ``x = 1.1``. Residual
+    ``r = target − S·(1 − exp(−a/S))``. On ``r > 0`` multiply ``S`` by
+    ``x``; else divide. Damp ``x ← (x+1)/2`` when
+    ``err_prev < −tol`` (``r ≥ 0`` path) or ``err_prev ≤ tol`` (``r < 0``).
+    """
+    if n <= 0:
+        return target
+    x = F64_1_1
+    err_prev = F64_0
+    s = float(target)
+    for _ in range(n):
+        r = target - s * (1.0 - math.exp(-a / s))
+        if r >= F64_0:
+            if r <= tol:
+                return s
+            if err_prev < -tol:
+                x = (x + F64_1) * F64_HALF
+        else:
+            if -r <= tol:
+                return s
+            if err_prev <= tol:
+                x = (x + F64_1) * F64_HALF
+        s = s * x if r > F64_0 else s / x
+        err_prev = r
+    return s
+
+
+def curve_newton_410(
+    a: float,
+    b: float,
+    target: float,
+    tol: float = F64_0_1,
+    n: int = CURVE_NEWTON_ITERS,
+) -> float:
+    """``0x10293410`` iterative leaf (Unicorn-golden on dispatcher paths).
+
+    Starts ``S = a``. Residual uses ``curve_exp_d30``:
+    ``d30(b,a,S)`` when ``b ≥ 0``, else ``d30(a,b,S)`` (negative-``b``
+    domain matches DLL; asm field order is ``d30(b,a,S)`` for ``b ≥ 0``).
+    Shrink ``S`` on ``r > 0``. If ``a < 0``, recurse on ``(−a, b, target)``
+    and negate (matches ``fchs`` wrappers from ``0x10293510``).
+    """
+    if a < F64_0:
+        return -curve_newton_410(-a, b, target, tol, n)
+    if n <= 0:
+        return a
+    x = F64_1_1
+    err_prev = F64_0
+    s = float(a)
+    for _ in range(n):
+        try:
+            fx = (
+                curve_exp_d30(b, a, s)
+                if b >= F64_0
+                else curve_exp_d30(a, b, s)
+            )
+        except OverflowError:
+            return s
+        r = target - fx
+        if not math.isfinite(r):
+            return s
+        if r >= F64_0:
+            if r <= tol:
+                return s
+            if err_prev < -tol:
+                x = (x + F64_1) * F64_HALF
+        else:
+            if -r <= tol:
+                return s
+            if err_prev > tol:
+                x = (x + F64_1) * F64_HALF
+        s = s / x if r > F64_0 else s * x
+        err_prev = r
+    return s
+
+
+def curve_dispatch_93510(
+    a: float,
+    b: float,
+    c: float,
+    tol: float = F64_0_1,
+    n: int = CURVE_NEWTON_ITERS,
+) -> float:
+    """``0x10293510`` dispatcher (Unicorn-golden).
+
+    ``c ≥ 0``: ``b < c`` → ``curve_newton_410(a,b,c)``; else
+    ``curve_newton_330(b,c)``.
+    ``c < 0``: ``b > c`` → ``−410(−a,−b,−c)``; else ``−330(−b,−c)``
+    (``test ah,0x41; jp`` ⇒ greater → 410 path).
+    """
+    if c >= F64_0:
+        if b < c:
+            return curve_newton_410(a, b, c, tol, n)
+        return curve_newton_330(b, c, tol, n)
+    if b > c:
+        return -curve_newton_410(-a, -b, -c, tol, n)
+    return -curve_newton_330(-b, -c, tol, n)
 
 
 def fist_round(x: float) -> int:
@@ -465,15 +623,17 @@ def main() -> None:
         f"  SHASTA_TONE_LUT_PORTED={SHASTA_TONE_LUT_PORTED} "
         f"APPLY_PORTED={SHASTA_APPLY_PORTED} "
         f"FRAGMENTS={SHASTA_TONE_LUT_FRAGMENTS} "
-        f"LOG_RATIO={SHASTA_CURVE_LOG_RATIO_PORTED}"
+        f"LOG_RATIO={SHASTA_CURVE_LOG_RATIO_PORTED} "
+        f"EXP={SHASTA_CURVE_EXP_PORTED} "
+        f"DISPATCH={SHASTA_CURVE_DISPATCH_PORTED}"
     )
     print(
-        f"  log-ratio fragments: c50(0.5,1)={curve_log_ratio_c50(0.5, 1.0):.6g} "
+        f"  log-ratio: c50(0.5,1)={curve_log_ratio_c50(0.5, 1.0):.6g} "
         f"cb0(0.5,1)={curve_log_ratio_cb0(0.5, 1.0):.6g}"
     )
     print(
-        "  full curve 0x10293960 / iterative leaves 0x10293330|410: UNKNOWN "
-        "(toneLut still STAND-IN on host)"
+        "  0x10293960 fill loop + image→aims WALL still open "
+        "(toneLut STAND-IN on host; SHASTA_TONE_LUT_PORTED=False)"
     )
 
 

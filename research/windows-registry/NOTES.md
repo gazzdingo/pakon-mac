@@ -214,3 +214,19 @@ risk. Do it before any lamp attempt.
 
 Caveat worth carrying: this flag is stamped 2022-11-10, so it belongs to the
 community image's configuration rather than to our 2025 calibration session.
+
+### Provenance CONFIRMED by the owner — 2026-08-06
+
+Asked directly, the owner confirms: **the scanner that attached to the VM in
+July 2025 is this Pakon.** So the five 2025-stamped calibration keys are this
+unit's own values, confirmed by the person who owns the machine — independent of
+the `parallels.log` timestamp correlation, which had already reached the same
+conclusion.
+
+That closes the question the date-split analysis was built to answer. The 2025
+set is safe to use.
+
+The 2022-11-10 set (serial 16275) remains a different unit's and must still not
+be mixed in. Reading the physical serial is now a lower-priority curiosity
+rather than a validation step — it would only tell us whether we *additionally*
+inherit a `DpiBase8` set, which we currently lack.

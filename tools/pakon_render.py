@@ -96,11 +96,10 @@ import pakon_ansel as ansel     # noqa: E402
 # Where user corrections enter, and in what unit.
 #
 # They are applied to the *toned* RPD, after AnselEngine.render_scene and
-# before to_srgb. On the median-balance fallback path, render_scene still
-# ends in aim_medians() (NBP=1550), which would cancel upstream offsets.
-# On the CN Preference→setShifts→apply path aim_medians is skipped (it
-# cancelled Preference OUT — Gold 400), so corrections remain post-render
-# for a single consistent hook before to_srgb.
+# before to_srgb. Fallback path: render_scene ends in aim_medians(NBP).
+# Preference path: linked_percentile_tone STAND-IN for Shasta toneLut
+# (working-images-v1; p1..p99→0..white) — not aim_medians (cancels
+# Preference OUT). Corrections stay a single hook before to_srgb.
 #
 # The unit is the vendor's own: codeValuesPerButton from the shipped Shasta
 # DPI file (75.0 for this stock; pakon_shasta.py:236 uses it as

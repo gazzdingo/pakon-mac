@@ -10,8 +10,9 @@ Rpd2Pcs→Srgb.
 
 **SRA** (``pakon_sra.py``): shipped ``common-sraFwdLut-metric-*.lut`` is
 ``AnsCommonSraFwdLutDPI`` — a real Pakon table, but **not** Shasta's
-``toneLut``. We apply it as an explicit tone **stand-in** until Shasta
-analyze is ported.
+``toneLut``. Fallback path only (median balance) still uses it as a tone
+stand-in. On the CN Preference path we use **linked percentile tone**
+instead (from tag ``working-images-v1`` / ``c5f63c9``).
 
 Also: FUGC **seed** lut from ``fugc-lutMap`` → ``fugc-generic*.lut``
 (``pakon_fugc.py``: real Pakon seed; host apply **without** ``setLutInfo``
@@ -22,14 +23,16 @@ analyze shift is a stand-in). SBA: Preference mode-``0x11`` fragment →
 
 Pipeline here (I16 0..4095 until ICC):
 
-  RPD12 → setshifts_12(A,A)+apply (CN) → SRA fwd lut (Shasta stand-in)
-        → FUGC seed lut (stand-in; missing setLutInfo) → Rpd2Pcs→Srgb
+  Preference path (ports True):
+    RPD12 → setshifts_12(A,A)+apply → linked percentile tone
+          (STAND-IN for Shasta toneLut; p1..p99 → 0..white, same
+          offset/scale on R,G,B) → Rpd2Pcs→Srgb
+    No SRA, no FUGC, no ``aim_medians`` / per-channel re-equalize
+    (those cancelled Preference OUT or crushed contrast on Gold 400).
 
-  When Preference→setShifts apply is unavailable (port flags off), fallback
-  is median ``channel_balance`` then ``aim_medians(…, NBP)``. ``aim_medians``
-  is **not** run after CN Preference apply — it forces each channel median
-  to NBP (1550) and cancels Preference balance (Gold 400 A=(746,350,189),
-  OUT=(688,292,130)).
+  Fallback (Preference→setShifts apply unavailable):
+    RPD12 → median ``channel_balance`` → SRA fwd lut → FUGC seed
+          → ``aim_medians(…, NBP)`` → Rpd2Pcs→Srgb
 
 See ``docs/46-ansel-parity-checklist.md``.
 """
@@ -246,12 +249,46 @@ def cn_setshifts_apply_words(
 
 
 def aim_medians(rpd12: np.ndarray, aim: float) -> np.ndarray:
+    """Per-channel median → aim (equalises R/G/B). Fallback path only."""
     x = rpd12.astype(np.float64)
     for c in range(3):
         med = float(np.median(x[:, :, c]))
         if med > 1.0:
             x[:, :, c] *= aim / med
     return np.clip(x, 0, SHASTA_MAX)
+
+
+def linked_percentile_tone(
+    rpd12: np.ndarray,
+    *,
+    white: float = 3000.0,
+    shadow_percent: float = 1.0,
+    highlight_percent: float = 99.0,
+    max_value: float = SHASTA_MAX,
+) -> np.ndarray:
+    """STAND-IN for Shasta ``toneLut`` (pending analyze→export→``ImaShastaOp``).
+
+    Linked core from tag ``working-images-v1`` / ``c5f63c9``
+    (``ansel_shasta_tone_rpd12`` in ``pakon_decode.py``): luminance
+    ``p{shadow}..p{highlight}`` → ``0..white`` with the **same** offset and
+    scale on R, G, B so stage-2 / Preference channel ratios survive into
+    Rpd2Pcs.
+
+    Deliberately omits the tag helper's optional highlight channel-balance
+    and its post-tone per-channel median→``metricGray`` re-equalize — both
+    fight DLL-correct Preference OUT (Gold 400 A=(746,350,189),
+    OUT=(688,292,130)). Caller runs Preference/setShifts apply (or median
+    ``channel_balance``) first.
+    """
+    x = rpd12.astype(np.float64)
+    y = x.mean(axis=2)
+    lo = float(np.percentile(y, shadow_percent))
+    hi = float(np.percentile(y, highlight_percent))
+    if hi <= lo:
+        hi = lo + 1.0
+    scale = float(white) / (hi - lo)
+    x = (x - lo) * scale
+    return np.clip(x, 0, float(max_value))
 
 
 # Preference opening RGB source labels (docs/48). Host uses dpi fpo until a
@@ -435,26 +472,40 @@ class AnselEngine:
 
     def render_scene(self, rpd12: np.ndarray,
                      roll_scale: np.ndarray | None = None) -> np.ndarray:
-        """I16 RPD12 → toned I16 (SBA + Shasta tone stand-ins + FUGC)."""
-        x = rpd12.astype(np.float64)
-        if roll_scale is not None:
-            x = x * roll_scale.reshape(1, 1, 3)
+        """I16 RPD12 → toned I16 (SBA + Shasta tone stand-in; FUGC on fallback)."""
         preference_apply = self.setshifts_out is not None
         if preference_apply:
+            # Preference OUT is the channel balance — skip median roll_scale
+            # (it cancels R/G/B ratios from setShifts).
+            x = rpd12.astype(np.float64)
             x = sba_apply.apply_balance_shifts(
                 x.astype(np.int32), self.setshifts_out
             ).astype(np.float64)
+            # STAND-IN for Shasta toneLut until SHASTA_TONE_LUT_PORTED.
+            # Linked core from working-images-v1 / c5f63c9. When Shasta
+            # analyze→toneLut ports, replace this block (not SRA).
+            if shasta_mod.SHASTA_TONE_LUT_PORTED:
+                raise RuntimeError(
+                    "SHASTA_TONE_LUT_PORTED=True but host wire missing — "
+                    "wire ImaShastaOp apply here"
+                )
+            x = linked_percentile_tone(
+                x,
+                white=self.shasta.white,
+                shadow_percent=self.shasta.shadow_percent,
+                highlight_percent=self.shasta.highlight_percent,
+                max_value=self.shasta.max_value,
+            )
+            # FUGC: setLutInfo fragment is ported but aim words at path+0x4b6
+            # hit a static writer WALL — do not invent aims / skip seed stub.
         else:
+            x = rpd12.astype(np.float64)
+            if roll_scale is not None:
+                x = x * roll_scale.reshape(1, 1, 3)
             x = channel_balance(x, mode="median")
-        # SRA fwd lut = AnsCommonSraFwdLutDPI stand-in for Shasta toneLut
-        x = apply_1d_lut(x, self.sra_lut)
-        x = apply_1d_lut(x, self.fugc_lut)
-        # Skip aim_medians on the CN Preference→setShifts→apply path.
-        # Diagnosis (Gold 400): Preference A=(746,350,189), setShifts OUT=
-        # (688,292,130) match DLL, but aim_medians(…, NBP=1550) then forces
-        # each channel median to 1550 and cancels that balance. Keep the
-        # stand-in only for the median channel_balance fallback.
-        if not preference_apply:
+            # SRA fwd lut = AnsCommonSraFwdLutDPI stand-in for Shasta toneLut
+            x = apply_1d_lut(x, self.sra_lut)
+            x = apply_1d_lut(x, self.fugc_lut)
             x = aim_medians(x, self.sba.neutral_balance_point)
         return np.clip(x, 0, SHASTA_MAX)
 
@@ -514,9 +565,15 @@ class AnselEngine:
                      return_toned: bool = False):
         rpd12_full = rpd16_to_rpd12(rpd16)
         scenes = [rpd12_full[a:b] for a, b in spans if b > a]
-        roll_scale = self.analyze_roll_scales(scenes) if scenes else None
+        # Median roll scales are a fallback AnalyseRoll stand-in only.
+        # On the CN Preference path they fight setShifts OUT ratios.
+        roll_scale = None
+        if self.setshifts_out is None and scenes:
+            roll_scale = self.analyze_roll_scales(scenes)
         if not quiet and roll_scale is not None:
             print(f"  Ansel roll channel scales = {roll_scale.round(3)}")
+        elif not quiet and self.setshifts_out is not None:
+            print("  Ansel roll channel scales: skipped (Preference setShifts)")
 
         n = rpd16.shape[0]
         out = np.zeros((n, rpd16.shape[1], 3), dtype=np.uint8)

@@ -95,16 +95,21 @@ CapabilityImpl ``+0x3e0`` vs working ``+0x3b0`` (VERIFIED facts)
 
 Curve helpers — status
 ----------------------
+* ``0x10292c50`` / ``0x10292cb0``: **ported + Unicorn-golden** (see
+  ``curve_log_ratio_c50`` / ``curve_log_ratio_cb0``). Consts ``0.999`` @
+  ``0x105a3c08``, clamps ``±2000`` @ ``0x105a77b0`` / ``0x105a77a8``.
+* ``0x10292d80`` / ``0x10292d30``: thin wrappers around exp leaves —
+  **not** closed-formed yet.
 * ``0x10293960`` (~994 B): uses ``0.95`` @ ``0x105800a8``, ``0.75`` @
   ``0x1057a3e8``; calls ``0x10293510`` (×2), then ``0x10292c50`` /
   ``0x10292cb0`` / ``0x10292d80`` and a LUT write loop.
-  **Body UNKNOWN — not ported** (too large / not byte-faithful).
+  **Body UNKNOWN — not ported** (needs working-object field fill +
+  image→aim codes before a host toneLut is honest).
 * ``0x10293510`` (~184 B): **dispatcher only**. Loads three stack
   doubles; seeds ``edx=100``; compares vs ``0``; loads ``0.1`` @
   ``0x105a77a0``; routes to ``0x10293330`` or ``0x10293410`` with
-  optional ``fchs`` on args/result. Leaves use ``fldl2e``/``f2xm1``/
-  ``fscale`` with consts incl. ``1.1`` @ ``0x10579a80``, ``-1.0`` @
-  ``0x10574f58`` — **exp leaves UNKNOWN / not ported**.
+  optional ``fchs`` on args/result. Iterative Newton/exp leaves
+  **not** ported (call graph cited; no closed form yet).
 * ``0x10293d50`` (~395 B): uses ``+0x1d0``, ``+0x2b4/+0x2b8``, toneLut
   ``+0x3b0``, ``+0x328``, arg ``[ebp+8]``; may touch ``+0x3c0`` via
   ``0x10246050``. Partial index arithmetic ported below; full body
@@ -134,17 +139,20 @@ Relationship to SRA forward LUT
 UNKNOWN / blockers (honest)
 ---------------------------
 * Analysis-image → four analyze-arg codes (feeds ``+0x2b0…+0x2bc``).
-* Full curve fill ``0x10293960`` + exp leaves ``0x10293330`` /
-  ``0x10293410`` (+ helpers ``0x10292*``).
+* Full curve fill ``0x10293960`` + iterative leaves ``0x10293330`` /
+  ``0x10293410`` / dispatcher ``0x10293510`` (+ ``0x10292d80``).
 * Cap ``+0x3e0`` ← working ``+0x3b0`` automatic path.
 * Full ``ImaShastaOp`` / ``ShastaApply`` aggregate wiring.
-* Therefore ``SHASTA_TONE_LUT_PORTED = False`` — do **not** invent a
-  percentile tone and call it Shasta.
+* Therefore ``SHASTA_TONE_LUT_PORTED = False`` — host Preference path
+  uses linked-percentile **STAND-IN** (``working-images-v1``); do **not**
+  claim that stand-in is Shasta.
 
-Pivot: curve stuck → FUGC analyze/export cites in ``pakon_fugc.py``.
+Log-ratio fragments ``0x10292c50``/``cb0`` are golden but **not** a
+toneLut by themselves.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -157,6 +165,8 @@ SHASTA_TONE_LUT_PORTED = False
 SHASTA_APPLY_PORTED = False
 # Fragments below are cited but insufficient for a scene toneLut.
 SHASTA_TONE_LUT_FRAGMENTS = True
+# Unicorn-golden closed forms for 0x10292c50 / 0x10292cb0 (not full curve).
+SHASTA_CURVE_LOG_RATIO_PORTED = True
 
 # CapabilityImpl getToneLut / setToneLut (int32 toneLut)
 CAP_TONE_LUT_VEC_OFF = 0x3E0  # begin; end +0x3e4; int32 stride
@@ -175,7 +185,12 @@ F64_HALF = 0.5  # 0x10574f40
 F64_0_95 = 0.95  # 0x105800a8 — curve helper 0x10293960
 F64_0_75 = 0.75  # 0x1057a3e8 — curve helper 0x10293960
 F64_0_1 = 0.1  # 0x105a77a0 — dispatcher 0x10293510
+F64_1_1 = 1.1  # 0x10579a80 — exp leaves 0x10293330/410
 F64_2_5 = 2.5  # 0x105a5a20 — 0x1027be10 side field
+F64_0_999 = 0.999  # 0x105a3c08 — log-ratio clamps in 0x10292c50/cb0
+F64_CLAMP_POS = 2000.0  # 0x105a77b0
+F64_CLAMP_NEG = -2000.0  # 0x105a77a8
+CURVE_LOG_RATIO_ITERS = 100  # edx seed in dispatcher 0x10293510
 
 
 def parse_dpi_scalars(path: Path) -> dict[str, str]:
@@ -212,6 +227,34 @@ def clamp01(x: float) -> float:
     if x > F64_1:
         return F64_1
     return x
+
+
+def curve_log_ratio_c50(a: float, b: float) -> float:
+    """``0x10292c50`` closed form (Unicorn-golden vs PakonIMAu.dll).
+
+    ``-b·log(1 − a/b)`` when ``0 ≤ a ≤ 0.999·b``; else ``−2000`` / ``+2000``.
+    Used by curve fill ``0x10293960`` — not a toneLut by itself.
+    """
+    if a < F64_0:
+        return F64_CLAMP_NEG
+    if a > F64_0_999 * b:
+        return F64_CLAMP_POS
+    return -b * math.log(1.0 - a / b)
+
+
+def curve_log_ratio_cb0(a: float, b: float) -> float:
+    """``0x10292cb0`` closed form (Unicorn-golden vs PakonIMAu.dll).
+
+    ``t = b·exp(a/b)``; then ``-b·log(1 − a/t)`` when ``0 ≤ a ≤ 0.999·t``;
+    else ``±2000``. Sibling of ``0x10292c50`` on the opposite branch of
+    ``0x10293960``.
+    """
+    if a < F64_0:
+        return F64_CLAMP_NEG
+    t = b * math.exp(a / b)
+    if a > F64_0_999 * t:
+        return F64_CLAMP_POS
+    return -b * math.log(1.0 - a / t)
 
 
 def fist_round(x: float) -> int:
@@ -421,11 +464,16 @@ def main() -> None:
     print(
         f"  SHASTA_TONE_LUT_PORTED={SHASTA_TONE_LUT_PORTED} "
         f"APPLY_PORTED={SHASTA_APPLY_PORTED} "
-        f"FRAGMENTS={SHASTA_TONE_LUT_FRAGMENTS}"
+        f"FRAGMENTS={SHASTA_TONE_LUT_FRAGMENTS} "
+        f"LOG_RATIO={SHASTA_CURVE_LOG_RATIO_PORTED}"
     )
     print(
-        "  curve 0x10293960 / leaves 0x10293330|410: UNKNOWN "
-        "(see module docstring; pivot pakon_fugc.py)"
+        f"  log-ratio fragments: c50(0.5,1)={curve_log_ratio_c50(0.5, 1.0):.6g} "
+        f"cb0(0.5,1)={curve_log_ratio_cb0(0.5, 1.0):.6g}"
+    )
+    print(
+        "  full curve 0x10293960 / iterative leaves 0x10293330|410: UNKNOWN "
+        "(toneLut still STAND-IN on host)"
     )
 
 

@@ -179,9 +179,10 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
   ``ANE_ANALYZE_FINALIZE_KNOT_PORTED`` / ``ANE_ANALYZE_FINALIZE_ADJUST_PORTED`` /
   ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED``). Host dens-hist→finalize→
   ``getResults`` compose is wired when dens-hists are supplied.
-  **WALL for ``ANALYZE``:** Ane build orch ``0x1027e9d0``
-  sample/residual → dens-hist (frame/`+0x6cac` + merge/finalize leaves
-  closed); contrast / float-LUT side paths. Do **not** invent
+  **WALL for ``ANALYZE``:** live ``AneSampledImage`` /
+  ``AneResidualImage`` producers (``collectData``); ``ANE_ORDER``
+  shipped ``useAvg=0`` orch is ported. Contrast / float-LUT side
+  paths. Do **not** invent
   percentile tone from dpi ``shadowPercent`` / ``highlightPercent``.
 
 CapabilityImpl ``+0x3e0`` vs working ``+0x3b0`` (VERIFIED facts)

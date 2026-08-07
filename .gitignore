@@ -18,3 +18,8 @@ log.*
 # Scan captures -- the owner's own photographs and raw sensor dumps.
 # NEVER commit anything from here. Personal image data, and large.
 captures/
+
+# Electron dependencies -- 538 MB, restored with npm install
+app/node_modules/
+app/dist/
+.DS_Store

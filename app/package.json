@@ -1,0 +1,20 @@
+{
+  "name": "pakon-scan",
+  "version": "0.1.0",
+  "description": "Scanning application for the Kodak Pakon F-135 — macOS, Windows and Linux",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac --win --linux"
+  },
+  "devDependencies": { "electron": "^33.0.0", "electron-builder": "^25.0.0" },
+  "build": {
+    "appId": "com.langfordlee.pakonscan",
+    "productName": "Pakon Scan",
+    "files": ["main.js", "preload.js", "index.html", "renderer.js", "style.css"],
+    "extraResources": [{ "from": "../tools", "to": "tools" }],
+    "mac": { "category": "public.app-category.photography", "target": ["dmg", "zip"] },
+    "win": { "target": ["nsis"] },
+    "linux": { "target": ["AppImage", "deb"], "category": "Graphics" }
+  }
+}

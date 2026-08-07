@@ -63,7 +63,7 @@ See `tools/ansel/README.md`.
 - [x] **FUGC aim fields ≠ histogram:** `+0x60f8`←`aTableDmin`; `+0x60f2`←analyze `[ebp+0x14]`; `+0x60ec`←`[ebp+0x18]` or Cap `+0x12` (ParamsDpi copy `0x10118380`); metrics write `+0x14178…` only (cite: DLL; `fill_setlutinfo_aim_words`)
 - [x] **AnalyseRoll call graph (cited, not ported):** TLA `JT+0x5c` → Ci `AnalyzeRoll` `0x10002843` → `0x10020100` → `AnsOrder::analyzeOrder` `0x1001fc30` → `CnPremium_analyzeOrderWide` `0x10059d90` → `analyzeBalanceOrder` `0x10101220` (×2, with AneOrder/PreBalance/ScpLut/getCnContext around it). Apply: Ci `bColorSceneBalancePlanar` `~0x10002c50` / TLA `JT+0x64` (cite: DLL; `pakon_analyse_roll.py`)
 - [x] **`analyzeBalanceOrder` body (cited):** scene walk stride `0x64dc`; pass1 → FOS analyze → pass2 → path `setShifts` → `getShifts` accumulate; FOS → Impl `0x1023ff80` → `SbaCalcFosResults` `0x1028f570` (cite: DLL; `pakon_analyse_roll.py` / `pakon_fos.py`)
-- [x] **`setShifts` I/O + control words + `(1,2)` closed form:** consumes `getShifts` → OUT; does **not** write `+0x3a38`. Control words = SCPLut Cap `+0x10+0x18` `ntdChoice`/`ctdChoice` (`+0x38`/`+0x3a`); shipped CN → **`(1,2)`**: `Y=axis_y(3BandLut[0x60e−A])`, `C*=axis(0x60e−B)`, `OUT=0x60e−inverse(Y,C1,C2)` via `Ans3BandLutParams` @ SCPLut `Impl+0x10` (planar stride `NUM_LUT`). `(0,0)`/`(2,2)` passthrough only. Golden vs DLL still open — `SETSHIFTS_12_PORTED=False` (`docs/52`; `pakon_sba_apply.py` / `pakon_fos.py` / `pakon_scp_lut.py`)
+- [x] **`setShifts` I/O + control words + `(1,2)` closed form + DLL golden:** consumes `getShifts` → OUT; does **not** write `+0x3a38`. Control words = SCPLut Cap `+0x10+0x18` `ntdChoice`/`ctdChoice`; shipped CN → **`(1,2)`**: `Y=axis_y(3BandLut[0x60e−A])`, `C*=axis(0x60e−B)`, `OUT=0x60e−inverse(Y,C1,C2)`. Unicorn golden matches DLL (`pakon_setshifts_golden.py`) → `SETSHIFTS_12_PORTED=True`. Host apply unwired (`docs/52`)
 - [x] **FOS Cap→Impl→calc (cited; OUT layout known; opening ported):** Cap `0x1013cb30` → Impl `0x1023ff80` → `SbaCalcFosResults` `0x1028f570` (10 args; OUT `Impl+0x18` = `SbaFOSResults`). Cap dump names OUT fields (`numPixels`/`gmRSquare`/`illRSquare` at `+0x1e/+20/+22`). Opening RGB→3-axis `×0x186a0` fragment ported; dens/R²/slope **equations** still **UNKNOWN** (`FOS_ANALYZE_PORTED=False`; `pakon_fos.py` / `docs/47`)
 - [x] **AneOrder chain (cited; not ported):** Path `0x100fad90` → Cap `0x10110540` → Impl `0x101ed3a0`; `getResults` Cap `0x10110830` / Impl `0x101ebe90` → sole caller `exportNoise` `0x10112aab`. Order-only before PreBalance/balanceOrder; **no** static edge into SBA/FOS/ScpLut/`+0x3a38` (`ANE_ORDER_PORTED=False`; cite: DLL; `pakon_ane_order.py`)
 - [x] **OrderOrientation pin (separate):** Cap `0x101218c0` → Impl `0x102101d0`; from `analyzeAttributes` `0x100fb576`, **not** AneOrder (cite: DLL; `pakon_ane_order.py`)
@@ -81,7 +81,7 @@ See `tools/ansel/README.md`.
 
 ## Implemented but NOT Pakon-same (stand-ins)
 
-- [ ] **SBA channel balance** — median equalise (`channel_balance`). Preference FPU **mapped** (`docs/49`); `pcls=w1e` solved (shipped 0); `setShifts` `(1,2)` **closed form** cited (`docs/52`); apply blocked on golden vs DLL (`SETSHIFTS_12_PORTED=False`; `PREFERENCE_SHIFTS_PORTED=False`).
+- [ ] **SBA channel balance** — median equalise (`channel_balance`). Preference FPU **mapped** (`docs/49`); `setShifts` `(1,2)` **DLL-golden** (`SETSHIFTS_12_PORTED=True`); apply blocked on Preference→A/B wiring (`PREFERENCE_SHIFTS_PORTED=False`).
 - [ ] **Tone** — we apply shipped **SRA** fwd lut as tone. Pakon CN auto-tone builds **Shasta** `toneLut` via analyze→export→`ImaShastaOp`. SRA table is a real artefact but **wrong stage** for Shasta parity.
 - [ ] **FUGC apply** — we apply shipped **seed** `fugc-generic*.lut`. Pakon may `setLutInfo`-shift it from analyze aims (`+0x6140`). Offset-0 matches seed; non-zero aims not wired.
 - [ ] **Post-balance aim** — `aim_medians(…, neutralBalancePoint)` stand-in.
@@ -100,7 +100,7 @@ See `tools/ansel/README.md`.
 - [x] **Preference FPU equation map** — mode aims, combine, clamp, inverse, shift store; see `docs/49-preference-fpu-binary.md`.
 - [x] **`w1e` = dpi `pcls`** — `inner+0x24` / `scene+0x4d14`; dump `0x102ae48f`; parse `0x102ad38d`; all shipped `sba-*.dpi` = 0 (`docs/49`).
 - [ ] Full `Sba()` / `createAlgData` (separate from Preference FPU map)
-- [ ] Preference **end-to-end port** — `setShifts` `(1,2)` transform maths + mode/`aimY` when lo≠1; golden vs DLL (`PREFERENCE_SHIFTS_PORTED=False`; control words in `docs/52`)
+- [ ] Preference **end-to-end port** — wire Preference/`getShifts` → `setshifts_12` → apply; mode/`aimY` when lo≠1 (`PREFERENCE_SHIFTS_PORTED=False`; `(1,2)` itself golden in `docs/52`)
 - [ ] FOS/HISTORY → nested `fpo` overwrite before Preference (static edge **not** found; Cap dump tags derivation at `Impl+0x3c` only)
 - [ ] Full `0x102b7280` after range checks; Makesfs post `0x102ac430`
 - [ ] `analyzePass1` histogram / paxel; wire `apply_balance_shifts`
@@ -138,13 +138,13 @@ See `tools/ansel/README.md`.
 - [ ] **FOS/HISTORY → nested `fpo` swap** — Cap dump tags `Impl+0x3c`; no static copy of OUT `orderFpo` into nested `fpo` found (`docs/48`).
 - [x] **Preference FPU map** — equations + mode tables in `docs/49`; portable mode-`0x11` fragment only.
 - [x] **`setShifts` control words for CN auto** — SCPLut `ntd`/`ctd` = `(1,2)` (`docs/52`).
-- [ ] **Port Preference → apply** — close `setShifts` `(1,2)` maths + lo≠1 aims; set `PREFERENCE_SHIFTS_PORTED` only when byte-faithful.
+- [ ] **Port Preference → apply** — `(1,2)` golden; wire inputs/outputs + lo≠1 aims; set `PREFERENCE_SHIFTS_PORTED` only when end-to-end.
 - [ ] **FOS dens closed forms** (slopes / R²) — structure cited; equations UNKNOWN (`FOS_ANALYZE_PORTED=False`) — for FOS parity, not Preference RGB.
 - [ ] **FUGC non-zero `obj+0x4b6` / `+0x3c`** — only ScpLut **zero** stores found; still needs more binary work or dynamic RE.
 - [ ] **Shasta image→aims + curve** — still UNKNOWN.
 
 ### Honest blockers (current)
-1. **Close Preference → apply**: control words **proven** shipped `(1,2)` (`docs/52`); still need `(1,2)` closed-form maths + golden vs DLL before `PREFERENCE_SHIFTS_PORTED` / default apply. Mode-`0x11`/`pcls=0` Preference fragment remains diagnostic-only (`docs/49`).
+1. **Wire Preference → `setshifts_12` → apply** — `(1,2)` is DLL-golden (`SETSHIFTS_12_PORTED`); need buffer-B provenance + host apply path before `PREFERENCE_SHIFTS_PORTED`.
 2. **lo≠1 / user-balance modes** — `aimY` from `scene+0x38a2` / FOS arg1 when tokens present.
 3. **Confirm / refute FOS `orderFpo` → nested `fpo`** (static: absent; dynamic only if needed).
 4. **FOS dens closed form** (FOS parity, not Preference RGB).
@@ -157,7 +157,7 @@ See `tools/ansel/README.md`.
 | `scene+0x4d0e` *writers* | **Solved** (ctor / readAscii / assign-copy) |
 | Preference FPU → shifts *equations* | **Mapped** (`docs/49`); port flag False |
 | `inner+0x24` (`w1e`) | **Solved** = dpi `pcls` (shipped = 0) |
-| `setShifts` → apply words | **Control words closed** — shipped `(1,2)`; transform maths UNKNOWN (`docs/52`) |
+| `setShifts` → apply words | **`(1,2)` DLL-golden** (`SETSHIFTS_12_PORTED`); apply unwired (`docs/52`) |
 | FOS OUT `+0x1e/+20/+22` | **Solved** as stats (`numPixels`/`gmRSquare`/`illRSquare`) |
 | FOS → nested `fpo` | **UNKNOWN** (no static edge; Cap tag only) |
 | FOS dens equations | Structure cited; closed forms UNKNOWN (`docs/47`) |
@@ -168,7 +168,7 @@ See `tools/ansel/README.md`.
 
 ## Suggested next RE order (Pakon-only)
 
-1. **Golden `setShifts` `(1,2)`** vs DLL (`setshifts_12` + shipped 3-band lut) → then consider wiring apply.
+1. **Wire** `setshifts_12` into host (Preference A + getShifts B → apply OUT).
 2. User-balance / lo≠1 `aimY` paths if needed.
 3. FOS dens closed form (FOS parity — not Preference RGB).
 4. FUGC aim writers / `setLutInfo` wiring.

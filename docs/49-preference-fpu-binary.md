@@ -24,7 +24,7 @@ Do **not** invent missing aim/mode inputs. Mark UNKNOWN honestly.
 | `analyzePass2` common mode shape | Often forces **hi=0x10**; lo often **1** → `dU=dV=0`, `dY=w1e` |
 | `inner+0x24` (`w1e` / blob `+0x1e`) | **Solved** — dpi **`pcls`** (dump `0x102ae48f`, parse `0x102ad38d`); all shipped `sba-*.dpi` = **0** |
 | `setShifts` before apply | Control words = SCPLut `ntd`/`ctd` (**closed**); shipped CN → `(1,2)` transform — **not** passthrough (`docs/52`) |
-| Full byte-faithful port / apply wiring | **Blocked** (`(1,2)` maths + lo≠1 aims + golden) |
+| Full byte-faithful port / apply wiring | **Blocked** (wire `(1,2)` + lo≠1 aims; `(1,2)` itself DLL-golden) |
 
 ---
 
@@ -204,7 +204,7 @@ CN-default fragment yields Preference words ≈ `(1421, 1035, 889)` — these ar
 Call site `areaMethods` `0x100e1b63` pushes `[buf+0/+2/+4]` into apply — buffer
 provenance is the setShifts/accumulate path in `analyzeBalanceOrder`.
 **CN auto (shipped SCPLut dpi): `(1,2)` transform — Preference words are not
-apply inputs.** Blocks `PREFERENCE_SHIFTS_PORTED` until `(1,2)` maths + golden.
+apply inputs.** `(1,2)` is DLL-golden; blocks `PREFERENCE_SHIFTS_PORTED` until wired.
 
 ---
 
@@ -219,7 +219,7 @@ Helpers: `opening_rgb_from_sba_fpo`, `preference_shifts_from_dpi_fields`
 
 ## Remaining UNKNOWNs (block apply wiring)
 
-1. **Golden `setShifts` `(1,2)`** — closed form in `docs/52` / `setshifts_12`; need DLL compare before wiring.
+1. **Wire `setShifts` `(1,2)`** — DLL-golden (`docs/52` / `pakon_setshifts_golden.py`); next is host apply path.
 2. **Exact mode distribution** when user color/neutral balance tokens present.
 3. **`aimY` when lo≠1** — `scene+0x38a2` word map / pcode coupling.
 4. **arg1** payload when hi∈{`0x30`} or lo=`3` (FOS get `0x1013c4e0`).

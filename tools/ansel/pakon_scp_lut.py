@@ -95,8 +95,9 @@ Ported below
 DPI ASCII parse + enum/bool normalization matching ``readAscii``
 tokens / range checks only; ``pass_choice_to_word`` for ntd/ctd;
 3-band LUT ASCII → planar (for setShifts ``(1,2)``). Analyze /
-``SCP_LUT_BALANCE_PORTED`` still False. setShifts closed form lives in
-``pakon_sba_apply`` / ``docs/52`` (``SETSHIFTS_12_PORTED=False``).
+``SCP_LUT_BALANCE_PORTED`` still False. setShifts ``(1,2)`` is
+DLL-golden in ``pakon_sba_apply`` / ``pakon_setshifts_golden``
+(``SETSHIFTS_12_PORTED=True``).
 """
 from __future__ import annotations
 

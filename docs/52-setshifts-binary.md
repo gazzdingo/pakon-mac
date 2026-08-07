@@ -2,7 +2,8 @@
 
 DLL: `PakonIMAu.dll` image base `0x10000000`.
 Closes control-word provenance and the shipped **`(1,2)`** closed form.
-Does **not** enable `PREFERENCE_SHIFTS_PORTED` (no golden vs DLL yet).
+`(1,2)` closed form is **golden vs DLL** (Unicorn). Does **not** enable
+`PREFERENCE_SHIFTS_PORTED` (Preference→A/B + apply wiring still open).
 
 ---
 
@@ -167,12 +168,15 @@ MSVC magic) — see `tools/ansel/pakon_fos.py`.
 * Runtime table is **planar** (indexing above). Host loader should
   de-interleave into `R||G||B` of length `NUM_LUT` each.
 
-### Port flags
+### Port flags / golden
 
-* Closed form cited in `pakon_sba_apply.setshifts_12` /
+* Closed form in `pakon_sba_apply.setshifts_12` /
   `fos_opening_axes_inverse`.
-* `SETSHIFTS_12_PORTED = False` until golden vs DLL.
-* `PREFERENCE_SHIFTS_PORTED` stays **False**.
+* **Golden:** `tools/ansel/pakon_setshifts_golden.py` maps
+  `PakonIMAu.dll` in Unicorn, enters `@ 0x10100a37`, stops at OUT
+  `@ 0x101010ac`, compares to `setshifts_12` on the shipped 3-band lut.
+  All harness cases match → `SETSHIFTS_12_PORTED = True`.
+* `PREFERENCE_SHIFTS_PORTED` stays **False** (no host wire yet).
 
 ---
 
@@ -202,8 +206,8 @@ Therefore:
 
 * Raw Preference `+0x3a38` words are **not** apply LUT inputs for CN auto.
 * Apply needs `setShifts` **OUT** (`0x60e − reconstruct(Y_lut(A'), C(B'))`).
-* `PREFERENCE_SHIFTS_PORTED` / `SETSHIFTS_12_PORTED` stay **False** until
-  golden vs DLL.
+* `SETSHIFTS_12_PORTED = True` (DLL golden). Wiring + Preference inputs
+  still block `PREFERENCE_SHIFTS_PORTED`.
 
 Optional: `(0, 0)` would copy Preference → OUT — **not** shipped CN.
 
@@ -216,7 +220,8 @@ Optional: `(0, 0)` would copy Preference → OUT — **not** shipped CN.
 | This doc | setShifts control words + `(1,2)` closed form |
 | `docs/49-preference-fpu-binary.md` | Preference FPU; points here for setShifts |
 | `docs/46-ansel-parity-checklist.md` | Blockers / next RE |
-| `tools/ansel/pakon_sba_apply.py` | Apply helper + `setshifts_12` fragment |
+| `tools/ansel/pakon_sba_apply.py` | Apply helper + `setshifts_12` (`PORTED=True`) |
+| `tools/ansel/pakon_setshifts_golden.py` | Unicorn golden vs DLL `(1,2)` |
 | `tools/ansel/pakon_fos.py` | Shared `×0x186a0` axes + inverse |
 | `tools/ansel/pakon_analyse_roll.py` | balanceOrder / setShifts I/O |
 | `tools/ansel/pakon_scp_lut.py` | ntd/ctd + 3-band lut ASCII load |

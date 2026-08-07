@@ -428,8 +428,11 @@ def job_export(jid: str, body: dict) -> None:
         results = []
         total = len(idxs)
         for k, i in enumerate(idxs):
+            # k is the position in the queue, i is the frame's own number.
+            # The lane reads "3 of 12", so it needs the position; naming the
+            # frame here produced "frame 4 of 2" when a subset was exported.
             S.job_set(jid, progress=k / max(1, total), phase="rendering",
-                      message=f"frame {i + 1} of {total}", current=i,
+                      message=f"frame {i + 1} — {k + 1} of {total}", current=i,
                       results=list(results))
             try:
                 r = pr.export_frame(roll, i, dest, fmt=fmt, colour=colour,

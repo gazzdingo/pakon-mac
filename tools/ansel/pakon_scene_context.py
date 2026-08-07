@@ -59,13 +59,36 @@ Host ``PIAnselAddScene`` / TLA desc pack (VERIFIED + Unicorn)
      from locals ``esp+0x34/+0x3c/+0x44`` (bAddScene reads as int16).
 
 * Seed RGB words before pack (``0x1003f7db…``): frame object
-  ``+0x6cac/+0x6cb0/+0x6cb4`` → locals; optional 1-pixel ColNeg
-  ``JT+0x44`` / ColRev ``JT+0x4c`` remap of the 3-word buffer
-  (``0x1003f82d…``) — **not** host-ported (needs planar args).
+  ``+0x6cac/+0x6cb0/+0x6cb4`` → locals ``esp+0x34/+0x3c/+0x44``.
+* Film-class ``vt+0x34``; ``test al,2`` @ ``0x1003f820`` selects
+  ColRev ``JT+0x4c`` (``0x1003f82d…``) else ColNeg ``JT+0x44``
+  (``0x1003f848…``). Call shape: planar ``width=4``, ``height=1``,
+  in-place buffer with R/G/B at ``+0/+8/+16`` (pixel0 only seeded;
+  MMX chunk width). ColNeg 1px = stage-2 LUT+matrix
+  (``pakon_color.render_pixel`` / TLA ``0x1001c470``). ColRev still
+  runs extra ``ColRevLut*`` stages after the shared kernel — host
+  ports ColNeg remap only; ColRev dispatch bit is cited.
 * Case table from ``[ebx]+0x34`` film class (``0x1003f89b…``).
 
-``ADDSCENE_DESC_PACK_PORTED = True``. Frame ``+0x6cac`` producers +
-ColNeg remap of those words still open for end-to-end live RGB.
+``ADDSCENE_DESC_PACK_PORTED = True``.
+``FRAME_DMIN_RGB_PORTED = True`` (FindDmin ``0x10009250`` hist leaf).
+``ADDSCENE_COLNEG_REMAP_PORTED = True`` (1px ColNeg path).
+
+Frame ``+0x6cac`` producer — ``FN_bFindDmin`` / ``0x10009250`` (VERIFIED)
+-----------------------------------------------------------------------
+TLA ``fcn.10009250`` (caller ``0x10030d72``; log string ``FN_bFindDmin``):
+
+* Per channel, hist of ROI samples into ``0x4000`` int32 bins, then
+  high-side walk ``0x100093f0…0x1000941f`` (Unicorn-golden):
+
+  - ``thr = (n_pixels * 0x10624dd3) >> 38`` ≡ ``n_pixels // 1000``
+  - walk ``code`` from ``0x3fff`` down; ``cum += hist[code]`` until
+    ``cum > thr``; if result still ``0x3fff`` store ``0``.
+  - store dword at frame ``+0x6cac/+0x6cb0/+0x6cb4`` (``esi`` steps +4).
+
+* ROI margins use frame ``+0xc6c/+0xc70`` and vtable getters
+  (``+0x10/+0x20/+0x24/+0x44``); host API takes explicit per-channel
+  samples (same leaf once the window is chosen).
 
 ``path+0x3c`` source — ``getCnContext`` (VERIFIED)
 -------------------------------------------------
@@ -107,9 +130,9 @@ Host bag
 bAddScene desc or ScpLut-remapped ``path+0x3c``).
 
 ``SCENE_CONTEXT_DMIN_PORTED = True`` — bag I/O + pack/unpack + ScpLut
-remap + bAddScene pack + AddScene desc pack + getCnContext path load.
-Frame ``+0x6cac`` live RGB + ColNeg side path + Ane knots still open
-for ``SHASTA_ANALYZE_PORTED``.
+remap + bAddScene pack + AddScene desc pack + getCnContext path load +
+FindDmin ``+0x6cac`` leaf + ColNeg 1px remap. AneOrder finalize knots
+still open for ``SHASTA_ANALYZE_PORTED``.
 """
 from __future__ import annotations
 
@@ -122,6 +145,8 @@ SCPLUT_DMIN_REMAP_PORTED = True
 BADDSCENE_DMIN_PACK_PORTED = True
 ADDSCENE_DESC_PACK_PORTED = True
 PATH_DMIN_FROM_BAG_PORTED = True
+FRAME_DMIN_RGB_PORTED = True
+ADDSCENE_COLNEG_REMAP_PORTED = True
 
 SCENE_CONTEXT_FIND = 0x10022A40
 SCENE_CONTEXT_INSERT = 0x10023F10
@@ -144,6 +169,16 @@ TLA_DESC_PACK_END = 0x1003F941  # before call [vt+0x70]
 TLA_FRAME_DMIN_R_OFF = 0x6CAC
 TLA_FRAME_DMIN_G_OFF = 0x6CB0
 TLA_FRAME_DMIN_B_OFF = 0x6CB4
+TLA_FIND_DMIN = 0x10009250  # FN_bFindDmin body (TLA.dll)
+TLA_FIND_DMIN_HIST_WALK = 0x100093F0  # high-side cum walk → store
+TLA_FIND_DMIN_HIST_WALK_END = 0x10009422  # after dword store
+TLA_FIND_DMIN_THR_MAGIC = 0x10624DD3  # (n * magic) >> 38 == n // 1000
+TLA_FIND_DMIN_N_BINS = 0x4000  # 14-bit hist
+TLA_FIND_DMIN_CODE_MAX = 0x3FFF
+TLA_ADDSCENE_SEED_FRAME = 0x1003F7DB  # mov dx,[ebx+0x6cac]…
+TLA_ADDSCENE_COLNEG_CALL = 0x1003F85E  # call [JT+0x44]
+TLA_ADDSCENE_COLREV_CALL = 0x1003F843  # call [JT+0x4c]
+TLA_ADDSCENE_FILM_BIT2 = 0x1003F820  # test al,2 → ColRev else ColNeg
 GET_CN_CONTEXT = 0x100F8620
 GET_CN_CONTEXT_DMIN_FIND = 0x100F8BD6  # lea path+0x3c; find dmin
 GET_CN_CONTEXT_DMIN_ZERO = 0x100F8C6F  # empty → zero +0x3c/3e/40
@@ -158,6 +193,11 @@ DESC_DMIN_R_OFF = 0x54
 DESC_DMIN_G_OFF = 0x58
 DESC_DMIN_B_OFF = 0x5C
 DMIN_BYTES = 6
+# Stage-2 ColNeg constants (TLA MMX kernel / pakon_color)
+_COLNEG_LUT_SIZE = 16384
+_COLNEG_COEFF_FIXED = 8192
+_COLNEG_RPD_MAX = 4092
+_COLNEG_PLANAR_WIDTH = 4  # MMX chunk; only pixel0 seeded from frame dmin
 
 
 def pack_dmin_rgb(r: int, g: int, b: int) -> bytes:
@@ -260,6 +300,158 @@ def scplut_remap_and_pack(
     return pack_dmin_rgb(*scplut_remap_dmin_rgb(lut, stride, r, g, b))
 
 
+def find_dmin_thr_n_pixels(n_pixels: int) -> int:
+    """FindDmin threshold ``(n * 0x10624dd3) >> 38`` @ ``0x10009362…``.
+
+    Equals ``n_pixels // 1000`` for non-negative ``n`` (Unicorn-checked).
+    """
+    return (int(n_pixels) * TLA_FIND_DMIN_THR_MAGIC) >> 38
+
+
+def find_dmin_code_from_hist(
+    counts: Sequence[int],
+    thr: int,
+    *,
+    n_bins: int = TLA_FIND_DMIN_N_BINS,
+) -> int:
+    """High-side hist walk ``0x100093f0…0x1000941f`` (Unicorn-golden).
+
+    Walk ``code`` from ``n_bins-1`` down; stop when cumulative count
+    ``> thr``. If the first bin (``0x3fff``) already exceeds ``thr``,
+    store ``0`` (DLL ``sete`` / ``and`` special case).
+    """
+    n = int(n_bins)
+    if n <= 0:
+        return 0
+    code = n - 1
+    cum = 0
+    thr_i = int(thr)
+    while True:
+        if 0 <= code < len(counts):
+            cum += int(counts[code])
+        if thr_i < cum:
+            break
+        code -= 1
+        if code == 0:
+            break
+    if code == n - 1:
+        return 0
+    return int(code)
+
+
+def find_dmin_code_from_samples(
+    samples: Sequence[int],
+    *,
+    n_bins: int = TLA_FIND_DMIN_N_BINS,
+    thr: int | None = None,
+) -> int:
+    """Build 14-bit hist from samples then ``find_dmin_code_from_hist``.
+
+    ``thr`` defaults to ``len(samples) // 1000`` via the magic mul.
+    Sample values are masked to ``n_bins-1`` (DLL ``movzx`` path).
+    """
+    n = int(n_bins)
+    hist = [0] * n
+    n_pix = 0
+    mask = n - 1
+    for v in samples:
+        hist[int(v) & mask] += 1
+        n_pix += 1
+    if thr is None:
+        thr = find_dmin_thr_n_pixels(n_pix)
+    return find_dmin_code_from_hist(hist, int(thr), n_bins=n)
+
+
+def frame_dmin_rgb_from_planes(
+    plane_r: Sequence[int],
+    plane_g: Sequence[int],
+    plane_b: Sequence[int],
+    *,
+    n_bins: int = TLA_FIND_DMIN_N_BINS,
+) -> tuple[int, int, int]:
+    """FindDmin → frame ``+0x6cac/+0x6cb0/+0x6cb4`` from per-channel samples.
+
+    Caller supplies the ROI window (DLL margins via ``+0xc6c/+0xc70`` /
+    vtable getters). Each plane is hist'd independently with
+    ``thr = n_samples // 1000``.
+    """
+    return (
+        find_dmin_code_from_samples(plane_r, n_bins=n_bins),
+        find_dmin_code_from_samples(plane_g, n_bins=n_bins),
+        find_dmin_code_from_samples(plane_b, n_bins=n_bins),
+    )
+
+
+def addscene_seed_from_frame_dmin(
+    r: int, g: int, b: int
+) -> tuple[int, int, int]:
+    """TLA seed ``0x1003f7db…``: frame dmin words → pack locals (low 16)."""
+    return int(r) & 0xFFFF, int(g) & 0xFFFF, int(b) & 0xFFFF
+
+
+def addscene_film_uses_colrev(film_flags: int) -> bool:
+    """``test al,2`` @ ``0x1003f820`` — bit1 set → ColRev ``JT+0x4c``."""
+    return (int(film_flags) & 2) != 0
+
+
+def addscene_colneg_remap_dmin_rgb(
+    r: int,
+    g: int,
+    b: int,
+    lut: Sequence[float] | Sequence[int],
+    coeff: Sequence[Sequence[int]],
+    offset: Sequence[int],
+) -> tuple[int, int, int]:
+    """1px ColNeg remap of frame dmin words @ ``0x1003f848…`` (JT+0x44).
+
+    DLL builds a planar ``width=4`` / ``height=1`` buffer with only pixel0
+    of each plane set (``+0/+8/+16``), then runs
+    ``PIColorCorrectColNegPlanarScan``. Host applies the verified stage-2
+    closed form (LUT → 3×4 → clamp ``0…4092``) to that single pixel —
+    same arithmetic as ``pakon_color.render_pixel`` / TLA ``0x1001c470``.
+
+    ColRev (``JT+0x4c``) shares this kernel then applies extra
+    ``ColRevLut*`` stages — **not** included here; use
+    ``addscene_film_uses_colrev`` for dispatch only.
+    """
+    raw = (int(r) & (_COLNEG_LUT_SIZE - 1), int(g) & (_COLNEG_LUT_SIZE - 1), int(b) & (_COLNEG_LUT_SIZE - 1))
+    dens = [float(lut[c]) for c in raw]
+    out: list[int] = []
+    for i in range(3):
+        acc = sum(int(coeff[i][c]) * dens[c] for c in range(3)) / float(_COLNEG_COEFF_FIXED)
+        v = int(acc / 8.0 + float(offset[i]))
+        if v < 0:
+            v = 0
+        elif v > _COLNEG_RPD_MAX:
+            v = _COLNEG_RPD_MAX
+        out.append(v)
+    return out[0], out[1], out[2]
+
+
+def addscene_dmin_rgb_from_frame(
+    frame_r: int,
+    frame_g: int,
+    frame_b: int,
+    *,
+    film_flags: int = 0,
+    lut: Sequence[float] | Sequence[int] | None = None,
+    coeff: Sequence[Sequence[int]] | None = None,
+    offset: Sequence[int] | None = None,
+) -> tuple[int, int, int]:
+    """Seed from frame ``+0x6cac`` RGB, optionally ColNeg-remap for desc pack.
+
+    When ``lut``/``coeff``/``offset`` are provided and film is not ColRev,
+    apply ``addscene_colneg_remap_dmin_rgb``. ColRev bit returns the
+    seeded words unchanged (extra ColRev stages not host-ported).
+    """
+    seeded = addscene_seed_from_frame_dmin(frame_r, frame_g, frame_b)
+    if lut is None or coeff is None or offset is None:
+        return seeded
+    if addscene_film_uses_colrev(film_flags):
+        return seeded
+    return addscene_colneg_remap_dmin_rgb(*seeded, lut, coeff, offset)
+
+
 @dataclass
 class SceneContextBag:
     """Host stand-in for AnsSceneContext named blobs (dmin and kin)."""
@@ -323,8 +515,16 @@ def main() -> None:
         f"SCENE_CONTEXT_DMIN_PORTED={SCENE_CONTEXT_DMIN_PORTED} "
         f"BADDSCENE_PACK={BADDSCENE_DMIN_PACK_PORTED} "
         f"ADDSCENE_DESC={ADDSCENE_DESC_PACK_PORTED} "
-        f"PATH_FROM_BAG={PATH_DMIN_FROM_BAG_PORTED}"
+        f"PATH_FROM_BAG={PATH_DMIN_FROM_BAG_PORTED} "
+        f"FRAME_DMIN={FRAME_DMIN_RGB_PORTED} "
+        f"COLNEG_REMAP={ADDSCENE_COLNEG_REMAP_PORTED}"
     )
+    demo = frame_dmin_rgb_from_planes(
+        [100, 100, 5000, 5000],
+        [200, 200, 6000, 6000],
+        [300, 300, 7000, 7000],
+    )
+    print(f"  find_dmin demo RGB={demo} thr4={find_dmin_thr_n_pixels(4)}")
     desc = addscene_pack_desc(2, 100, 200, 300)
     print(
         f"  addscene desc case={struct.unpack_from('<I', desc, DESC_DMIN_CASE_OFF)[0]} "

@@ -13,6 +13,8 @@
   ``0x102a8555…``
 * TLA AddScene desc pack ``0x1003f901…``; Ane dens-hist ``inc``
   ``0x104f56e0…``; getCnContext path-from-bag host contract
+* TLA FindDmin high-side hist walk ``0x100093f0…`` (frame ``+0x6cac``);
+  host ColNeg 1px remap contract (stage-2 closed form)
 
 ShastaParams ctor defaults for ``metricGray``/``black``/``white`` /
 ``blackNoiseSigmaMult`` are sanity-checked against cited immediates —
@@ -61,6 +63,8 @@ VA_ANE_HIST_ACCUM = ane.ANE_ANALYZE_HIST_ACCUM
 VA_ANE_HIST_ACCUM_END = ane.ANE_ANALYZE_HIST_ACCUM_END
 VA_TLA_DESC_PACK = sc.TLA_DESC_PACK
 VA_TLA_DESC_PACK_END = sc.TLA_DESC_PACK_END
+VA_TLA_FIND_DMIN_WALK = sc.TLA_FIND_DMIN_HIST_WALK
+VA_TLA_FIND_DMIN_WALK_END = sc.TLA_FIND_DMIN_HIST_WALK_END
 TRIPLE_ADDR = STACK_ADDR + 0x80000
 DEFAULT_IMAU = (
     "/Users/guy/Downloads/Pakon Update 3/fx35install/"
@@ -69,6 +73,10 @@ DEFAULT_IMAU = (
 DEFAULT_TLA = (
     "/Users/guy/Downloads/Pakon Update 3/fx35install/"
     "program files/Pakon/F-X35 COM SERVER/TLA.dll"
+)
+DEFAULT_COLOR_DIR = (
+    "/Users/guy/Downloads/Pakon Update 3/fx35install/"
+    "program files/Pakon/F-X35 COM SERVER/Config/ColorCorrection"
 )
 
 
@@ -91,6 +99,11 @@ def _map_region(uc: Uc, dll: bytes, va: int, size: int) -> None:
 def _map_text(uc: Uc, dll: bytes) -> None:
     # PE .text at file/VA offset 0x1000, size 0x572000 (Update 3 layout).
     _map_region(uc, dll, IMAGE_BASE + 0x1000, 0x572000)
+
+
+def _map_tla_text(uc: Uc, tla: bytes) -> None:
+    """Map TLA.dll .text (Update 3: VA/file ``0x1000``, size ``0x63000``)."""
+    _map_region(uc, tla, IMAGE_BASE + 0x1000, 0x63000)
 
 
 def _map_fill_deps(uc: Uc, dll: bytes) -> None:
@@ -328,12 +341,45 @@ def run_ane_dens_hist_accum(
     return host_bin, out
 
 
+def run_tla_find_dmin_walk(
+    tla: bytes, counts: list[int], thr: int
+) -> int:
+    """Unicorn FindDmin high-side walk ``0x100093f0…`` → dword code."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_tla_text(uc, tla)
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    hist = HEAP_ADDR + 0x1000
+    out = HEAP_ADDR + 0x20000
+    n = sc.TLA_FIND_DMIN_N_BINS
+    raw = b"".join(struct.pack("<i", int(c)) for c in counts[:n])
+    if len(raw) < n * 4:
+        raw += b"\x00" * (n * 4 - len(raw))
+    uc.mem_write(hist, raw)
+    uc.mem_write(out, b"\x00" * 16)
+    esp = STACK_ADDR + 0x8000
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    uc.mem_write(esp + 0x30, struct.pack("<I", int(thr) & 0xFFFFFFFF))
+    uc.mem_write(esp + 0x1C, struct.pack("<I", out))
+    uc.reg_write(UC_X86_REG_EBX, hist)
+    try:
+        uc.emu_start(
+            VA_TLA_FIND_DMIN_WALK,
+            VA_TLA_FIND_DMIN_WALK_END,
+            timeout=5_000_000,
+            count=500_000,
+        )
+    except UcError:
+        pass
+    return int(struct.unpack("<I", uc.mem_read(out, 4))[0])
+
+
 def run_tla_desc_pack(
     tla: bytes, case: int, r: int, g: int, b: int
 ) -> tuple[int, int, int, int]:
     """Unicorn TLA AddScene desc pack ``0x1003f901…`` → case + RGB words."""
     uc = Uc(UC_ARCH_X86, UC_MODE_32)
-    _map_text(uc, tla)
+    _map_tla_text(uc, tla)
     uc.mem_map(STACK_ADDR, STACK_SIZE)
     esp = STACK_ADDR + 0x7000
     # Locals relative to esp at leaf entry (cite 0x1003f901).
@@ -672,6 +718,85 @@ def main() -> int:
     if not ok:
         fail += 1
 
+    # TLA FindDmin high-side hist walk (frame +0x6cac producer leaf)
+    for thr, peak, peak_count in [
+        (3, 1000, 5),
+        (10, 5000, 20),
+        (1, 0x3FFF, 100),
+        (5, 100, 10),
+        (0, 50, 1),
+    ]:
+        counts = [0] * sc.TLA_FIND_DMIN_N_BINS
+        counts[peak] = peak_count
+        if peak < sc.TLA_FIND_DMIN_CODE_MAX - 1:
+            counts[peak + 10] = 1
+        host = sc.find_dmin_code_from_hist(counts, thr)
+        ref = run_tla_find_dmin_walk(tla, counts, thr)
+        ok = host == ref
+        print(
+            f"  find_dmin_walk thr={thr} peak={peak}: host={host} dll={ref} "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+    for n in (0, 999, 1000, 10000, 3097440):
+        host = sc.find_dmin_thr_n_pixels(n)
+        expect = n // 1000
+        ok = host == expect
+        print(f"  find_dmin_thr n={n}: {host} (expect {expect}) {'OK' if ok else 'FAIL'}")
+        if not ok:
+            fail += 1
+    # Compose: samples → frame RGB → seed → (optional) ColNeg 1px
+    planes = (
+        [100] * 500 + [8000] * 500,
+        [200] * 500 + [9000] * 500,
+        [300] * 500 + [10000] * 500,
+    )
+    frame_rgb = sc.frame_dmin_rgb_from_planes(*planes)
+    seeded = sc.addscene_seed_from_frame_dmin(*frame_rgb)
+    ok = seeded == frame_rgb and all(0 <= c <= 0x3FFF for c in frame_rgb)
+    print(f"  frame_dmin_rgb from planes: {frame_rgb} {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+    ok = sc.addscene_film_uses_colrev(0) is False and sc.addscene_film_uses_colrev(2) is True
+    print(f"  film bit2 ColRev dispatch: {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+    color_dir = Path(DEFAULT_COLOR_DIR)
+    lut_path = color_dir / "_ClientColNegLut.txt"
+    mat_path = color_dir / "_ClientColNegMat.txt"
+    if lut_path.is_file() and mat_path.is_file():
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import pakon_color as pc  # noqa: E402
+
+        lut = [float(int(v)) for v in pc.load_vendor_lut(str(lut_path))]
+        coeff, offset = pc.quantise_matrix(pc.load_vendor_matrix(str(mat_path)))
+        remapped = sc.addscene_colneg_remap_dmin_rgb(*seeded, lut, coeff, offset)
+        expect = pc.render_pixel(seeded, lut, coeff, offset)
+        ok = remapped == expect
+        print(
+            f"  colneg_1px remap {seeded} → {remapped} (pakon_color={expect}) "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+        # ColRev bit skips host ColNeg remap (extra ColRev stages open)
+        skipped = sc.addscene_dmin_rgb_from_frame(
+            *frame_rgb, film_flags=2, lut=lut, coeff=coeff, offset=offset
+        )
+        ok = skipped == seeded
+        print(f"  colrev bit skips ColNeg remap: {skipped} {'OK' if ok else 'FAIL'}")
+        if not ok:
+            fail += 1
+        # Full seed→ColNeg→desc pack compose
+        desc = sc.addscene_pack_desc(2, *remapped)
+        ok = sc.addscene_desc_dmin_rgb(desc) == tuple(int(x) & 0xFFFF for x in remapped)
+        print(f"  frame→ColNeg→desc pack: {sc.addscene_desc_dmin_rgb(desc)} {'OK' if ok else 'FAIL'}")
+        if not ok:
+            fail += 1
+    else:
+        print(f"  colneg_1px remap: SKIP (no ColorCorrection at {color_dir})")
+
     print(
         f"  SHASTA_AIM_AVG2_PORTED={shasta.SHASTA_AIM_AVG2_PORTED} "
         f"MID_RGB={shasta.SHASTA_AIM_MID_RGB_PORTED} "
@@ -683,6 +808,8 @@ def main() -> int:
         f"BADDSCENE_PACK={sc.BADDSCENE_DMIN_PACK_PORTED} "
         f"ADDSCENE_DESC={sc.ADDSCENE_DESC_PACK_PORTED} "
         f"PATH_FROM_BAG={sc.PATH_DMIN_FROM_BAG_PORTED} "
+        f"FRAME_DMIN={sc.FRAME_DMIN_RGB_PORTED} "
+        f"COLNEG_REMAP={sc.ADDSCENE_COLNEG_REMAP_PORTED} "
         f"NOISE_LAYOUT={ane.ANE_NOISE_TABLE_LAYOUT_PORTED} "
         f"GET_RESULTS_FILL={ane.ANE_GET_RESULTS_FILL_PORTED} "
         f"ANE_BIN_INDEX={ane.ANE_ANALYZE_BIN_INDEX_PORTED} "

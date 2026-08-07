@@ -116,7 +116,9 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
      ``0x100566ac``. Insert writers: ``bAddScene`` ``0x10002523``
      (desc ``+0x54/+0x58/+0x5c``); ScpLutBalance ``0x100fdaa8`` after
      LUT-remap of ``path+0x3c`` (``0x100fd984``). Host bag I/O ported
-     (``pakon_scene_context``); **live RGB still from those writers**.
+     (``pakon_scene_context``). Live frame RGB via TLA FindDmin
+     ``0x10009250`` → ``+0x6cac`` + ColNeg 1px remap
+     (``FRAME_DMIN_RGB_PORTED`` / ``ADDSCENE_COLNEG_REMAP_PORTED``).
   2. Dens via ``NoiseMethods::getNoiseTable`` @ ``0x10112980`` (string
      ``0x105879f4``; CnPremium ``0x10056863``): QI ``"aneOrder"`` → Cap
      ``getResults`` ``0x10110830`` / Impl ``0x101ebe90``. Returned object
@@ -169,8 +171,8 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
   ``BADDSCENE_DMIN_PACK_PORTED`` / ``ADDSCENE_DESC_PACK_PORTED`` /
   ``PATH_DMIN_FROM_BAG_PORTED`` / ``ANE_ANALYZE_BIN_INDEX_PORTED`` /
   ``ANE_ANALYZE_HIST_ACCUM_PORTED``).
-  **WALL for ``ANALYZE``:** frame ``+0x6cac`` live RGB (ColNeg remap)
-  and AneOrder finalize ``0x102a8770`` → curve knots; contrast /
+  **WALL for ``ANALYZE``:** AneOrder finalize ``0x102a8770`` → curve
+  knots (frame ``+0x6cac`` FindDmin + ColNeg 1px closed); contrast /
   float-LUT side paths. Do **not** invent percentile tone from dpi
   ``shadowPercent`` / ``highlightPercent``.
 
@@ -324,9 +326,9 @@ UNKNOWN / blockers (honest)
 ---------------------------
 * Mid-aim **upstream producers**: ScpLut remap + dens fill + bAddScene
   pack + AddScene desc pack + getCnContext ``path+0x3c`` bag load +
-  Ane bin-index + dens-hist ``inc`` closed (Unicorn-golden). Still need
-  frame ``+0x6cac`` live RGB / ColNeg side path and AneOrder finalize
-  ``0x102a8770`` → curve knots. Contrast (``0x10119060``) /
+  Ane bin-index + dens-hist ``inc`` + frame FindDmin ``+0x6cac`` +
+  ColNeg 1px remap closed (Unicorn-golden). Still need AneOrder
+  finalize ``0x102a8770`` → curve knots. Contrast (``0x10119060``) /
   float-table (``0x1004f7b0``) side paths open. ``ANALYZE`` stays False.
 * Cap ``+0x3e0`` automatic assign from analyze still UNKNOWN; host
   publishes via cited ``setToneLut`` ``0x101e48d0`` (``SHASTA_CAP_TONE_LUT_PORTED``).

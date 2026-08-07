@@ -13,6 +13,8 @@
   ``0x102a8555…``
 * TLA AddScene desc pack ``0x1003f901…``; Ane dens-hist ``inc``
   ``0x104f56e0…``; getCnContext path-from-bag host contract
+* Ane finalize knot ``0x102a7a30…`` + adjust ``0x102a78c0…``; curve
+  rows from plane doubles host contract (``0x1027e840``)
 * TLA FindDmin high-side hist walk ``0x100093f0…`` (frame ``+0x6cac``);
   host ColNeg 1px remap contract (stage-2 closed form)
 
@@ -61,6 +63,8 @@ VA_ANE_BIN_INDEX = 0x102A8555
 VA_ANE_BIN_INDEX_END = 0x102A857C
 VA_ANE_HIST_ACCUM = ane.ANE_ANALYZE_HIST_ACCUM
 VA_ANE_HIST_ACCUM_END = ane.ANE_ANALYZE_HIST_ACCUM_END
+VA_ANE_FINALIZE_KNOT = ane.ANE_ANALYZE_FINALIZE_KNOT
+VA_ANE_FINALIZE_ADJUST = ane.ANE_ANALYZE_FINALIZE_ADJUST
 VA_TLA_DESC_PACK = sc.TLA_DESC_PACK
 VA_TLA_DESC_PACK_END = sc.TLA_DESC_PACK_END
 VA_TLA_FIND_DMIN_WALK = sc.TLA_FIND_DMIN_HIST_WALK
@@ -292,6 +296,92 @@ def run_ane_hist_slot(
     except UcError:
         pass
     return int(uc.reg_read(UC_X86_REG_ESI)) & 0xFFFFFFFF
+
+
+def _map_pe_image(uc: Uc, dll: bytes, size: int = 0x700000) -> None:
+    """Map PE image for leaves that touch rdata constants."""
+    try:
+        uc.mem_map(IMAGE_BASE, size)
+    except UcError:
+        pass
+    uc.mem_write(IMAGE_BASE, dll[: min(len(dll), size)])
+
+
+def run_ane_finalize_knot(
+    dll: bytes,
+    counts: list[int],
+    scale: float = 1.0,
+    min_count: int = 0,
+) -> float:
+    """Unicorn finalize knot leaf ``0x102a7a30`` → double (via ``fstp``)."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_pe_image(uc, dll)
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    n = len(counts)
+    counts_addr = HEAP_ADDR + 0x1000
+    hist = HEAP_ADDR + 0x8000
+    wrap = HEAP_ADDR + 0x9000
+    out = HEAP_ADDR + 0xA000
+    ret_addr = HEAP_ADDR + 0xF000
+    stub = HEAP_ADDR + 0xB000
+    uc.mem_write(counts_addr, struct.pack(f"<{n}i", *counts))
+    blob = bytearray(0x40)
+    struct.pack_into("<i", blob, ane.ANE_HIST_N_OFF, n)
+    struct.pack_into("<I", blob, ane.ANE_HIST_BINS_OFF, counts_addr)
+    uc.mem_write(hist, bytes(blob))
+    uc.mem_write(wrap, struct.pack("<II", 0, hist))
+    uc.mem_write(ret_addr, b"\xcc")
+    esp = STACK_ADDR + 0x8000
+    uc.mem_write(
+        esp,
+        struct.pack("<IIdI", ret_addr, wrap, float(scale), int(min_count)),
+    )
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    try:
+        uc.emu_start(
+            VA_ANE_FINALIZE_KNOT, ret_addr, timeout=10_000_000, count=500_000
+        )
+    except UcError:
+        pass
+    # ST0 bit-pattern via Unicorn reg_read is unreliable; fstp to memory.
+    uc.mem_write(stub, b"\xDD\x1D" + struct.pack("<I", out) + b"\xCC")
+    try:
+        uc.emu_start(stub, stub + 5, timeout=100_000, count=10)
+    except UcError:
+        pass
+    return float(struct.unpack("<d", uc.mem_read(out, 8))[0])
+
+
+def run_ane_finalize_adjust(dll: bytes, value: float, limit: float) -> float:
+    """Unicorn finalize adjust leaf ``0x102a78c0`` → double."""
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    _map_pe_image(uc, dll)
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    out = HEAP_ADDR + 0xA000
+    ret_addr = HEAP_ADDR + 0xF000
+    stub = HEAP_ADDR + 0xB000
+    uc.mem_write(ret_addr, b"\xcc")
+    esp = STACK_ADDR + 0x8000
+    uc.mem_write(
+        esp,
+        struct.pack("<I", ret_addr)
+        + struct.pack("<dd", float(value), float(limit)),
+    )
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    try:
+        uc.emu_start(
+            VA_ANE_FINALIZE_ADJUST, ret_addr, timeout=1_000_000, count=5000
+        )
+    except UcError:
+        pass
+    uc.mem_write(stub, b"\xDD\x1D" + struct.pack("<I", out) + b"\xCC")
+    try:
+        uc.emu_start(stub, stub + 5, timeout=100_000, count=10)
+    except UcError:
+        pass
+    return float(struct.unpack("<d", uc.mem_read(out, 8))[0])
 
 
 def run_ane_dens_hist_accum(
@@ -680,6 +770,68 @@ def main() -> int:
         if not ok:
             fail += 1
 
+    # Ane finalize knot leaf (0x102a7a30)
+    knot_cases: list[tuple[list[int], float]] = [
+        ([1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1], 1.0),
+        ([10] * 11, 1.0),
+        ([1] * 21, 1.0),
+        ([0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0], 1.0),
+        ([1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1], 2.0),
+        (list(range(1, 16)), 1.0),
+        ([20, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 1.0),
+        ([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 20], 1.0),
+        ([0, 0, 10, 10, 10, 10, 10, 0, 0], 1.0),
+    ]
+    for counts, scale in knot_cases:
+        host = ane.ane_finalize_knot_7a30(counts, scale)
+        ref = run_ane_finalize_knot(dll, counts, scale)
+        ok = abs(host - ref) < 1e-9
+        print(
+            f"  ane_finalize_knot scale={scale} n={len(counts)}: "
+            f"host={host:.6f} dll={ref:.6f} {'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+
+    # Ane finalize adjust leaf (0x102a78c0)
+    adj_cases = [
+        (0.5, 0.1),
+        (0.5, 0.2),
+        (1.0, 0.5),
+        (0.0, 0.1),
+        (0.3, 0.03),
+        (2.0, 1.0),
+        (0.1, 0.25),
+        (1.5, 2.0),
+        (10.0, 5.0),
+    ]
+    for value, limit in adj_cases:
+        host = ane.ane_finalize_adjust_78c0(value, limit)
+        ref = run_ane_finalize_adjust(dll, value, limit)
+        ok = abs(host - ref) < 1e-8
+        print(
+            f"  ane_finalize_adjust v={value} lim={limit}: "
+            f"host={host:.6f} dll={ref:.6f} {'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+
+    # Curve rows from plane doubles (0x1027e840) → dens fill compose
+    planes = [[0.0, 10.0, 20.0], [1.0, 1.0, 11.0]]
+    knots = ane.curve_knots_from_plane_doubles(planes)
+    ok = knots == [(0.0, 1.0), (10.0, 1.0), (20.0, 11.0)]
+    print(f"  curve_rows_from_doubles: {knots} {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+    dens = ane.get_results_fill_dens(knots, 20, 1)
+    ref_dens = ane.get_results_fill_dens(
+        [(0.0, 1.0), (10.0, 1.0), (20.0, 11.0)], 20, 1
+    )
+    ok = np.allclose(dens, ref_dens)
+    print(f"  curve_rows→dens_fill compose: {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+
     # TLA AddScene desc pack (0x1003f901) + getCnContext bag load
     for case, rgb in [
         (1, (100, 200, 300)),
@@ -814,6 +966,9 @@ def main() -> int:
         f"GET_RESULTS_FILL={ane.ANE_GET_RESULTS_FILL_PORTED} "
         f"ANE_BIN_INDEX={ane.ANE_ANALYZE_BIN_INDEX_PORTED} "
         f"ANE_HIST_ACCUM={ane.ANE_ANALYZE_HIST_ACCUM_PORTED} "
+        f"ANE_FINALIZE_KNOT={ane.ANE_ANALYZE_FINALIZE_KNOT_PORTED} "
+        f"ANE_FINALIZE_ADJUST={ane.ANE_ANALYZE_FINALIZE_ADJUST_PORTED} "
+        f"ANE_CURVE_ROWS={ane.ANE_CURVE_ROWS_FROM_DOUBLES_PORTED} "
         f"ANE_ORDER={ane.ANE_ORDER_PORTED}"
     )
     return 1 if fail else 0

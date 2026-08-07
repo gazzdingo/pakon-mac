@@ -3,8 +3,11 @@
 
 PakonIMAu.dll base ``0x10000000``. Catalog + host layout for the float
 table CnPremium indexes at mid-aim. ``getResults`` dens **fill** from
-Impl curve rows is ported; analyze **bin-index** leaf is ported;
-full AneOrder **analyze** (sample/residual → curve knots) remains WALL.
+Impl curve rows is ported; analyze **bin-index** / dens-hist **accum**
+ported; finalize knot leaf ``0x102a7a30`` + adjust ``0x102a78c0`` +
+curve-row pack ``0x1027e840`` ported. Neighbor-hist merge ``0x102a82a0``
+and full sample/residual → knots orchestration still open →
+``ANE_ORDER_PORTED = False``.
 
 VERIFIED call chain
 ===================
@@ -47,8 +50,41 @@ Called from accumulate ``0x102a84d0`` after bin-index slot lookup
 * Clamp ``bin`` to ``[0, [hist+0xc])`` (``n-1`` max).
 * ``inc dword [[hist+0x38] + bin*4]``.
 
-``ANE_ANALYZE_HIST_ACCUM_PORTED = True``. Percentile / finalize
-``0x102a8770`` → curve knots still open → ``ANE_ORDER_PORTED = False``.
+``ANE_ANALYZE_HIST_ACCUM_PORTED = True``.
+
+Finalize ``0x102a8770`` → knot doubles (leaves PORTED)
+-----------------------------------------------------
+Per ``(plane, bin)``: neighbor merge ``0x102a82a0`` (COM; open) then
+knot leaf ``0x102a7a30`` (PORTED + Unicorn) writes a ``double`` into
+the ``+0x78`` plane vectors. Optional adjust ``0x102a78c0`` (PORTED)
+when finalize flag set and ``[obj+0x2c]==0``. Scale pass ``0x104ee9c0``
+multiplies plane vectors when arg ≠ 1.
+
+Knot leaf ``0x102a7a30`` (hist counts → double):
+
+* Early-out ``0.0`` when ``sum(counts) < min_count``.
+* ``mid = n//2`` (MSVC sar); each side (high/low) accumulates
+  ``sum_c`` / ``sum_c·Δ`` / ``sum_c·Δ²`` with ``Δ = i−mid``, stopping
+  after **2** zero bins (total, not reset); each side's ``sum_c``
+  seeds with ``counts[mid]//2``.
+* ``rms_high`` / ``rms_low`` = ``√(ΣcΔ² / Σc)`` per side; ``mean`` =
+  combined ``ΣcΔ / Σc``.
+* Windowed core RMS inside ``±scale·rms_{high|low}`` (same zero stop);
+  blend ``(1−t)·r_neg + t·r_pos`` with ``t`` from mean (cite DLL).
+
+``ANE_ANALYZE_FINALIZE_KNOT_PORTED = True``.
+``ANE_ANALYZE_FINALIZE_ADJUST_PORTED = True``.
+
+Curve rows from plane doubles @ ``0x1027e840`` (PORTED)
+------------------------------------------------------
+``getResults`` copies ``+0x78`` doubles → float rows: plane0 → ``x``,
+planes ``1…`` → ``y[p]``; ``n_channels = n_planes − 1`` (cite
+``0x101ebff8``). Host ``curve_knots_from_plane_doubles``.
+
+``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED = True``.
+
+Neighbor merge ``0x102a82a0`` + full build orchestration still open →
+``ANE_ORDER_PORTED = False``.
 
 ``NoiseMethods::getNoiseTable`` @ ``0x10112980``
 -----------------------------------------------
@@ -102,8 +138,8 @@ Per plane ``p`` (``p < +0x48``), continuous dens pointer (not reset):
    into the next plane's slot (DLL behaviour; Unicorn-golden).
 6. After segments: pad with final ``Yp`` while ``i < n``.
 
-``ANE_GET_RESULTS_FILL_PORTED = True``. AneOrder analyze that produces
-the curve rows is still open → ``ANE_ORDER_PORTED = False``.
+``ANE_GET_RESULTS_FILL_PORTED = True``. Neighbor merge + full analyze
+orchestration still open → ``ANE_ORDER_PORTED = False``.
 
 OrderOrientation (separate)
 ---------------------------
@@ -117,7 +153,10 @@ Flags
 * ``ANE_GET_RESULTS_FILL_PORTED = True`` — dens fill from cited curve rows.
 * ``ANE_ANALYZE_BIN_INDEX_PORTED = True`` — hist bin/slot leaf (Unicorn).
 * ``ANE_ANALYZE_HIST_ACCUM_PORTED = True`` — dens-hist ``inc`` leaf (Unicorn).
-* ``ANE_ORDER_PORTED = False`` — sample/residual → curve knots still open.
+* ``ANE_ANALYZE_FINALIZE_KNOT_PORTED = True`` — hist→knot ``0x102a7a30``.
+* ``ANE_ANALYZE_FINALIZE_ADJUST_PORTED = True`` — adjust ``0x102a78c0``.
+* ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED = True`` — ``0x1027e840`` pack.
+* ``ANE_ORDER_PORTED = False`` — ``0x102a82a0`` merge + full build open.
 """
 from __future__ import annotations
 
@@ -132,6 +171,9 @@ ANE_NOISE_TABLE_LAYOUT_PORTED = True
 ANE_GET_RESULTS_FILL_PORTED = True
 ANE_ANALYZE_BIN_INDEX_PORTED = True
 ANE_ANALYZE_HIST_ACCUM_PORTED = True
+ANE_ANALYZE_FINALIZE_KNOT_PORTED = True
+ANE_ANALYZE_FINALIZE_ADJUST_PORTED = True
+ANE_CURVE_ROWS_FROM_DOUBLES_PORTED = True
 
 PATH_ANALYZE_ANE_ORDER = 0x100FAD90
 ANE_ORDER_CAP_ANALYZE = 0x10110540
@@ -145,7 +187,25 @@ ANE_ANALYZE_BIN_INDEX_END = 0x102A857C  # before call 0x101ed810
 ANE_ANALYZE_HIST_ACCUM = 0x104F56E0  # dens-hist bin + inc
 ANE_ANALYZE_HIST_ACCUM_END = 0x104F570B  # after ret 4 prologue target
 ANE_ANALYZE_FINALIZE = 0x102A8770
+ANE_ANALYZE_FINALIZE_KNOT = 0x102A7A30  # hist counts → knot double
+ANE_ANALYZE_FINALIZE_ADJUST = 0x102A78C0  # optional knot adjust
+ANE_ANALYZE_NEIGHBOR_MERGE = 0x102A82A0  # open (COM smart-ptr hist merge)
+ANE_CURVE_ROWS_FROM_DOUBLES = 0x1027E840  # +0x78 doubles → float rows
 ORDER_ORIENTATION_CAP_ANALYZE = 0x101218C0
+
+# 0x102a78c0 piecewise tables (cite rdata @ listed VAs)
+_ANE_78C0_THRESH = (0.03, 0.06, 0.125, 0.25, 0.5, 1.0, 10.0)
+_ANE_78C0_A8760 = (-1.523, -1.222, -0.903, -0.602, -0.301, 0.0, 1.0)
+_ANE_78C0_A8730 = (3.322, 3.137, 3.322, 3.322, 3.322, 1.0, -1.523)
+_ANE_78C0_A8700 = (-0.012, -0.131, -0.034, -0.001, 0.012, 0.018, 3.322)
+_ANE_78C0_A86C8 = (0.212, 0.2, 0.069, 0.035, 0.034, 0.046, 0.064)
+_ANE_78C0_A8698 = (0.005, 0.111, 0.076, 0.061, 0.034, 0.009, 0.212)
+_ANE_78C0_A8660 = (0.321, 0.326, 0.437, 0.513, 0.574, 0.608, 0.617)
+_ANE_78C0_LO_A = 0.212  # st0 when ecx==0
+_ANE_78C0_LO_B = 0.321
+_ANE_78C0_HI_A = 0.064  # st0 when ecx==6
+_ANE_78C0_HI_B = 0.617
+_ANE_78C0_POS_STANDIN = 1000.0  # @ 0x105a3c18 when lim ≤ 0
 
 # Ane object fields used by bin-index leaf (cite 0x102a854e…)
 ANE_OBJ_PIXEL_OFFSET_OFF = 0x34
@@ -257,6 +317,161 @@ def ane_dens_hist_accum(
     return b
 
 
+def _msvc_sar_half(x: int) -> int:
+    """``cdq; sub eax,edx; sar eax,1`` for signed ``x``."""
+    x = int(x)
+    return (x - (-1 if x < 0 else 0)) >> 1
+
+
+def _ane_side_accum(
+    counts: Sequence[int], mid: int, direction: int
+) -> tuple[float, float, float]:
+    """One side of ``0x102a7a30`` mass / moment accum (stop after 2 zeros)."""
+    n = len(counts)
+    sum_c = sum_cd = sum_cd2 = 0.0
+    zeros = 0
+    indices = range(mid + 1, n) if direction > 0 else range(mid - 1, -1, -1)
+    for i in indices:
+        c = int(counts[i])
+        if c == 0:
+            zeros += 1
+            if zeros >= 2:
+                break
+        d = float(i - mid)
+        sum_c += float(c)
+        sum_cd += float(c) * d
+        sum_cd2 += float(c) * d * d
+    return sum_c, sum_cd, sum_cd2
+
+
+def _ane_window_rms(
+    counts: Sequence[int],
+    mid: int,
+    mid_half: float,
+    lo: float,
+    hi: float,
+    direction: int,
+) -> float:
+    """Windowed core RMS inside finalize knot leaf (cite ``0x102a7e4e…``)."""
+    n = len(counts)
+    sc = float(mid_half)
+    scd2 = 0.0
+    zeros = 0
+    indices = range(mid + 1, n) if direction > 0 else range(mid - 1, -1, -1)
+    for i in indices:
+        d = float(i - mid)
+        if direction > 0:
+            if d > hi:
+                continue
+        elif d < lo:
+            continue
+        c = int(counts[i])
+        if c == 0:
+            zeros += 1
+            if zeros >= 2:
+                break
+        sc += float(c)
+        scd2 += float(c) * d * d
+    if sc == 0.0:
+        return 0.0
+    return math.sqrt(scd2 / sc)
+
+
+def ane_finalize_knot_7a30(
+    counts: Sequence[int],
+    scale: float = 1.0,
+    min_count: int = 0,
+) -> float:
+    """Finalize hist→knot double @ ``0x102a7a30`` (Unicorn-golden).
+
+    ``scale`` is the ``double`` at finalize ``[ebp+0xc]`` (from Ane
+    ``+0x10`` / ``+0x18``). ``min_count`` is ``[ebp+0x14]`` (usually 0).
+    """
+    c = [int(x) for x in counts]
+    n = len(c)
+    if n <= 0 or sum(c) < int(min_count):
+        return 0.0
+    mid = _msvc_sar_half(n)
+    mh = float(_msvc_sar_half(c[mid])) if 0 <= mid < n else 0.0
+    hc, hcd, hcd2 = _ane_side_accum(c, mid, +1)
+    lc, lcd, lcd2 = _ane_side_accum(c, mid, -1)
+    c_h = mh + hc
+    c_l = mh + lc
+    rms_high = math.sqrt(hcd2 / c_h) if c_h else 0.0
+    rms_low = math.sqrt(lcd2 / c_l) if c_l else 0.0
+    sum_c = c_h + c_l
+    mean = ((hcd + lcd) / sum_c) if sum_c else 0.0
+    r_pos = _ane_window_rms(c, mid, mh, 0.0, float(scale) * rms_high, +1)
+    r_neg = _ane_window_rms(
+        c, mid, mh, -float(scale) * rms_low, 0.0, -1
+    )
+    if mean < 0.0:
+        # Path ``0x102a823f``: t = (mean + r_neg) / (2·r_neg)
+        if r_neg == 0.0:
+            t = 1.0
+        else:
+            t = (mean + r_neg) / (2.0 * r_neg)
+            t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+        return (1.0 - t) * r_pos + t * r_neg
+    # Path ``0x102a81db``: t = (r_pos − mean) / (2·r_pos)
+    if r_pos == 0.0:
+        t = 1.0
+    else:
+        t = (r_pos - mean) / (2.0 * r_pos)
+        t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+    return (1.0 - t) * r_neg + t * r_pos
+
+
+def ane_finalize_adjust_78c0(value: float, limit: float) -> float:
+    """Optional finalize adjust @ ``0x102a78c0`` (Unicorn-golden).
+
+    ``value`` = current knot double; ``limit`` = Ane ``+0x20`` (second
+    finalize arg path). Returns 0 when ``value < a`` for the band.
+    """
+    v = float(value)
+    y = float(limit)
+    if y <= 0.0:
+        y = _ANE_78C0_POS_STANDIN
+    ecx = 6
+    while ecx > 0 and y < _ANE_78C0_THRESH[ecx]:
+        ecx -= 1
+    if ecx == 0:
+        a, b = _ANE_78C0_LO_A, _ANE_78C0_LO_B
+    elif ecx == 6:
+        a, b = _ANE_78C0_HI_A, _ANE_78C0_HI_B
+    else:
+        lg = math.log10(y)
+        t = (lg - _ANE_78C0_A8760[ecx]) * _ANE_78C0_A8730[ecx]
+        a = t * _ANE_78C0_A8700[ecx] + _ANE_78C0_A86C8[ecx]
+        b = t * _ANE_78C0_A8698[ecx] + _ANE_78C0_A8660[ecx]
+    if v < a:
+        return 0.0
+    return (v - a) / b
+
+
+def curve_knots_from_plane_doubles(
+    plane_doubles: Sequence[Sequence[float]],
+) -> list[tuple[float, ...]]:
+    """``0x1027e840`` — plane doubles → getResults knot rows.
+
+    ``plane_doubles[0][i]`` → knot ``x``; ``plane_doubles[1+][i]`` →
+    ``y[p]``. All planes must share the same length (n_segs).
+    """
+    if not plane_doubles:
+        raise ValueError("plane_doubles must be non-empty")
+    n_planes = len(plane_doubles)
+    n_segs = len(plane_doubles[0])
+    for p, row in enumerate(plane_doubles):
+        if len(row) != n_segs:
+            raise ValueError(
+                f"plane {p} length {len(row)} != plane0 length {n_segs}"
+            )
+    knots: list[tuple[float, ...]] = []
+    for i in range(n_segs):
+        knots.append(tuple(float(plane_doubles[p][i]) for p in range(n_planes)))
+    return knots
+
+
 def get_results_fill_dens(
     knots: Sequence[Sequence[float]],
     n: int,
@@ -366,12 +581,19 @@ def main() -> None:
     print(f"  bin-index leaf    {ANE_ANALYZE_BIN_INDEX:#010x}")
     print(f"  dens-hist accum   {ANE_ANALYZE_HIST_ACCUM:#010x}")
     print(f"  finalize          {ANE_ANALYZE_FINALIZE:#010x}")
+    print(f"  finalize knot     {ANE_ANALYZE_FINALIZE_KNOT:#010x}")
+    print(f"  finalize adjust   {ANE_ANALYZE_FINALIZE_ADJUST:#010x}")
+    print(f"  neighbor merge    {ANE_ANALYZE_NEIGHBOR_MERGE:#010x} (open)")
+    print(f"  curve rows        {ANE_CURVE_ROWS_FROM_DOUBLES:#010x}")
     print(f"  ctor/alloc        {NOISE_TABLE_CTOR:#010x} / {NOISE_TABLE_ALLOC:#010x}")
     print(
         f"  LAYOUT_PORTED={ANE_NOISE_TABLE_LAYOUT_PORTED} "
         f"FILL_PORTED={ANE_GET_RESULTS_FILL_PORTED} "
         f"BIN_INDEX_PORTED={ANE_ANALYZE_BIN_INDEX_PORTED} "
         f"HIST_ACCUM_PORTED={ANE_ANALYZE_HIST_ACCUM_PORTED} "
+        f"FINALIZE_KNOT_PORTED={ANE_ANALYZE_FINALIZE_KNOT_PORTED} "
+        f"FINALIZE_ADJUST_PORTED={ANE_ANALYZE_FINALIZE_ADJUST_PORTED} "
+        f"CURVE_ROWS_PORTED={ANE_CURVE_ROWS_FROM_DOUBLES_PORTED} "
         f"ANE_ORDER_PORTED={ANE_ORDER_PORTED}"
     )
     nt = NoiseTable.zeros(64, 1)
@@ -382,6 +604,10 @@ def main() -> None:
     hist = [0] * 16
     b = ane_dens_hist_accum(hist, 25, offset=5.0, divisor=2.0)
     print(f"  sample dens-hist bin={b} counts={hist[b]}")
+    k = ane_finalize_knot_7a30([1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1], 1.0)
+    print(f"  sample finalize knot={k}")
+    rows = curve_knots_from_plane_doubles([[0.0, 10.0], [1.0, 2.0]])
+    print(f"  sample curve rows={rows}")
 
 
 if __name__ == "__main__":

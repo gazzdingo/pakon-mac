@@ -1,21 +1,23 @@
 # Brief for the agent on the Windows machine
 
-> **STATUS 2026-08-06 — SUPERSEDED FOR THE LAMP QUESTION. DO NOT RUN THIS.**
+> **STATUS 2026-08-06 — SUPERSEDED. DO NOT RUN THIS FOR THE LAMP VALUES.**
 >
 > The calibration was recovered on the Mac instead, by carving the SOFTWARE hive
-> straight out of the VM's virtual disk. The VM was never booted (its Parallels
-> licence has expired anyway). Results, and the important caveat about *whose*
-> scanner they belong to, are in **`vendor/windows-registry/NOTES.md`**.
+> out of the VM's virtual disk. The VM was never booted — its Parallels licence
+> has expired. **Read `docs/37-calibration-recovered.md` first**, then
+> `vendor/windows-registry/NOTES.md`.
 >
-> Headline: the values exist and are real, but the VM is a prebuilt Pakon XP
-> image from the Facebook community, registered to `Pakon F135`, installed
-> 2016-06-23 — not an image of our original machine. The calibration in it is
-> for **scanner serial 16275**, which must be checked against the physical unit
-> before any of it is used to drive the LEDs.
+> Two premises below are wrong and were load-bearing: the Mac is **Intel**, not
+> Apple Silicon, and **USB passthrough did work** — our scanner attached to this
+> VM four times in July 2025 and was calibrated there. This unit's own LED
+> values are in the registry as a result.
 >
-> The rest of this brief is kept for the parts not yet answered — the lamp log,
-> the Pakon install directory files, and anything on the *original physical
-> machine*, which is now the place worth looking.
+> The VM is a community-built Pakon XP image and also carries a *different*
+> scanner's calibration (serial 16275, 2022). The two are told apart by write
+> date; `docs/37` explains which to use.
+>
+> Still useful below: the lamp log, the Pakon install directory files, and
+> anything on the original physical machine.
 
 **Goal: recover this scanner's lamp calibration from the Windows registry.**
 

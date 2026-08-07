@@ -280,15 +280,34 @@ Curve helpers — status
   ``toneLut[i] += arg − blackNoise[i]`` and clamps to ``[+0x60,+0x64]``
   for ``i∈[0,+0x64]`` inclusive.
 
-``ImaShastaOp`` apply (verified fragment)
-----------------------------------------
-* I16 path @ ``0x1014dcc0`` / loop ``0x1014dcf1``:
+``ImaShastaOp`` apply
+--------------------
+* Type dispatch ``0x1014de50``: I16 → ``0x1014dcc0``, float →
+  ``0x1014dd20``; other types throw (string ``0x1057c848`` I16-only).
+* I16 loop @ ``0x1014dcf1``:
   ``out = (int16)(*(int16*)&toneLut[(uint16)in])`` — table is int32[],
   low word taken (``mov bx, word [table + code*4]``).
-* Float path @ ``0x1014dd20`` / loop ``0x1014dd60``:
-  ``out = (float)toneLut[fist(in)]``.
-* Table pointer from aggregate slot ``[+4]`` (vector begin). Full Op /
-  aggregate wiring **not** ported → ``SHASTA_APPLY_PORTED = False``.
+* Float loop @ ``0x1014dd60``: ``out = (float)toneLut[fist(in)]``.
+* Table pointer from aggregate slot ``[+4]`` (vector begin). Host
+  ``ima_shasta_op_apply`` matches I16 dispatch → ``SHASTA_APPLY_PORTED``.
+
+Image sampling → ``935d0`` inputs (cited)
+-----------------------------------------
+* ``0x1027b970`` (sampled/blockAvg): hist percentile leaf ``0x104ea6c0``
+  (``percent·0.01·sum`` → first bin with cum≥target → identity
+  bin→code ``0x104f5710``). Generate work doubles ``+0x80/+0x88/+0x90/
+  +0x98`` = dpi ``extShadow/shadow/highlight/extHighlight`` percents
+  (Params dump those at ``+0x70…+0x88``; Generate slots differ).
+  Writes ``+0x2e4…+0x2f0``; optional highlightDiff adjust from blockAvg
+  ``+0x2e0`` via work ``+0xa0/+0xa8`` (dpi ``highlightDiffMult/Limit``);
+  clamp lo to mid ``+0x2b4``, hi to white ``+0x2bc``.
+* ``0x1027b3c0``: among pixels with **plane0** in
+  ``[+0x2ec,+0x2f0]``, accumulate plane1/plane2 means → ``+0x310/+0x318``,
+  ``+0x320=hypot``; ``+0x340`` white-pt ratio from work ``+0x208`` flag +
+  ``+0x210/+0x218``·``+0x58`` (dpi ``bUseWhitePtCompression`` /
+  ``whiteSatLower/Upper`` · ``codeValuesPerButton``).
+* ``0x1027be10`` seed: ``+0x2f4…+0x300 ← +0x2e4…+0x2f0``;
+  ``+0x308 = ((+0x2ec-+0x2e4-+0x2e8)+(+0x2f0))/2 / (+0x58·2.5)``.
 
 DPI
 ---
@@ -309,16 +328,16 @@ UNKNOWN / blockers (honest)
   frame ``+0x6cac`` live RGB / ColNeg side path and AneOrder finalize
   ``0x102a8770`` → curve knots. Contrast (``0x10119060``) /
   float-table (``0x1004f7b0``) side paths open. ``ANALYZE`` stays False.
-* Live image sampling ``0x1027b3c0`` → ``+0x2e4…+0x2f0`` still inject for
-  ``0x102935d0`` (leaf itself Unicorn-golden).
 * Cap ``+0x3e0`` automatic assign from analyze still UNKNOWN; host
   publishes via cited ``setToneLut`` ``0x101e48d0`` (``SHASTA_CAP_TONE_LUT_PORTED``).
-* Full ``ImaShastaOp`` / ``ShastaApply`` aggregate wiring
-  (``SHASTA_APPLY_PORTED=False``); I16/float index loops cited.
-* ``SHASTA_TONE_LUT_PORTED=True`` when assemble (935d0 + builder + Cap
-  publish) is golden with injected image codes/aims. ``ANALYZE`` stays
-  False until live producers land. Preference applies host ``tone_lut``
-  when present, else linked-percentile fallback.
+* Iem hist fill ``0x104ea940`` from plane list not ported — host builds
+  int32 counts from I16 plane0 (same plane ``0x1027b3c0`` keys on).
+* ``SHASTA_TONE_LUT_PORTED=True`` (assemble golden). Image→codes via
+  ``0x1027b970`` + ``0x1027b3c0`` + ``0x1027be10`` seed ported
+  (``SHASTA_IMAGE_PERCENTILE_7B970_PORTED`` /
+  ``SHASTA_IMAGE_SAMPLE_7B3C0_PORTED``). ``SHASTA_APPLY_PORTED=True``:
+  I16 Op dispatch ``0x1014de50``→``0x1014dcc0`` + Preference assemble.
+  ``ANALYZE`` stays False until live aim producers land.
 """
 from __future__ import annotations
 
@@ -332,9 +351,9 @@ import numpy as np
 # Explicit markers — do not invent analyze → toneLut.
 SHASTA_ANALYZE_PORTED = False
 # Table assemble (935d0 + builder + Cap setToneLut) Unicorn-golden.
-# Live 0x1027b3c0 image sampling + full ImaShastaOp still open → ANALYZE/APPLY False.
 SHASTA_TONE_LUT_PORTED = True
-SHASTA_APPLY_PORTED = False
+# ImaShastaOp I16 type-dispatch + Preference assemble→apply wired.
+SHASTA_APPLY_PORTED = True
 # Fragments below are cited but insufficient for a scene toneLut.
 SHASTA_TONE_LUT_FRAGMENTS = True
 # avg2largest 0x1004f690 + dpi metricGray/white → +0x2b0/+0x2bc mapped.
@@ -360,6 +379,12 @@ SHASTA_TONE_LUT_BUILDER_PORTED = True
 SHASTA_IMAGE_FIELDS_935D0_PORTED = True
 # Cap setToneLut 0x101e48d0 int16→int32 @ +0x3e0 (sole Cap writer found).
 SHASTA_CAP_TONE_LUT_PORTED = True
+# Hist percentile leaf 0x104ea6c0 (+ identity bin→code 0x104f5710).
+SHASTA_HIST_PERCENTILE_PORTED = True
+# 0x1027b970 sampled-hist → +0x2e4…+0x2f0 (injected/host hist counts).
+SHASTA_IMAGE_PERCENTILE_7B970_PORTED = True
+# 0x1027b3c0 highlight-range means → +0x310/+0x318/+0x320/+0x340.
+SHASTA_IMAGE_SAMPLE_7B3C0_PORTED = True
 
 # ShastaParams early scalars (ctor 0x100543b0 / dump 0x101280a0)
 SHASTA_PARAMS_METRIC_GRAY_OFF = 0x38
@@ -1071,8 +1096,9 @@ class ToneLutBuilderWork:
     """Injected Generate/work snapshot for ``0x102935d0`` + ``0x10293ee0``.
 
     Image codes ``+0x2f4…+0x300`` come from ``0x1027be10`` after
-    ``0x1027b3c0`` (inject for golden; live sampling still WALL for
-    ``ANALYZE``). ``image_derived_fields_935d0`` overwrites codes + adjs.
+    ``0x1027b970`` (percents) + ``0x1027b3c0`` (``+0x340``). Prefer
+    ``seed_image_fields_from_analysis`` over inject when a plane hist /
+    analysis image is available.
     """
 
     code_start: int  # +0x2b0
@@ -1370,6 +1396,8 @@ def assemble_tone_lut(
     *,
     run_935d0: bool = True,
     scale_adjs: bool = True,
+    run_prep: bool = False,
+    prep_inputs: tuple[tuple[float, float], ...] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Build work ``toneLut`` + Cap publish vector from cited aims/fields.
 
@@ -1384,7 +1412,14 @@ def assemble_tone_lut(
     n = max(int(w.code_max) + 1, 1)
     tone = empty_tone_lut(n)
     bn = empty_tone_lut(n)
-    tone_lut_builder_93ee0(tone, bn, w)
+    tone_lut_builder_93ee0(
+        tone,
+        bn,
+        w,
+        run_prep=run_prep,
+        prep_inputs=prep_inputs,
+        code_values_per_button=float(w.code_values_per_button),
+    )
     cap = publish_work_tone_lut_to_cap(tone)
     # write back adj/codes the caller may want
     work.code_2f4 = w.code_2f4
@@ -1414,6 +1449,57 @@ def _builder_clamp_blends(w: ToneLutBuilderWork) -> None:
     w.shadow_exp_sat_factor = clamp01(w.shadow_exp_sat_factor)
 
 
+
+def apply_prep_7b1c0(
+    work: ToneLutBuilderWork,
+    prep_inputs: tuple[tuple[float, float], ...],
+    *,
+    code_values_per_button: float | None = None,
+) -> ToneLutBuilderWork:
+    """``0x1027b1c0`` breakpoint prep → ``off_328`` / ``code_32c…338``.
+
+    Runs in ``0x1027be10`` before sampling/``935d0``, and again at the
+    start of builder ``0x10293ee0``.
+    """
+    if len(prep_inputs) != 5:
+        raise ValueError("prep needs five (stops, aggr) pairs")
+    cv = (
+        float(work.code_values_per_button)
+        if code_values_per_button is None
+        else float(code_values_per_button)
+    )
+    _a0, b0 = prep_breakpoint_pair(
+        prep_inputs[0][0], prep_inputs[0][1], cv, work.code_48, work.code_48
+    )
+    work.off_328 = b0
+    start = int(work.code_start)
+    _a1, b1 = prep_breakpoint_pair(
+        prep_inputs[1][0], prep_inputs[1][1], cv, start, start
+    )
+    work.code_32c = b1
+    _a2, b2 = prep_breakpoint_pair(
+        prep_inputs[2][0], prep_inputs[2][1], cv, start, start
+    )
+    work.code_330 = b2
+    a3, _ = prep_breakpoint_pair(
+        prep_inputs[3][0], prep_inputs[3][1], cv, start, start
+    )
+    work.code_334 = start + a3
+    a4, _ = prep_breakpoint_pair(
+        prep_inputs[4][0], prep_inputs[4][1], cv, start, start
+    )
+    work.code_338 = start + a4
+    if work.code_330 >= start:
+        work.code_330 = start - 1
+    if work.code_32c >= work.code_330:
+        work.code_32c = work.code_330 - 1
+    if work.code_334 <= start:
+        work.code_334 = start + 1
+    if work.code_338 <= work.code_334:
+        work.code_338 = work.code_334 + 1
+    return work
+
+
 def tone_lut_builder_93ee0(
     tone_lut: np.ndarray,
     black_noise: np.ndarray,
@@ -1436,59 +1522,11 @@ def tone_lut_builder_93ee0(
     if tone_lut.dtype != np.int32 or black_noise.dtype != np.int32:
         raise TypeError("toneLut/blackNoise expect int32")
     if run_prep:
-        if prep_inputs is None or len(prep_inputs) != 5:
+        if prep_inputs is None:
             raise ValueError("run_prep needs five (stops, aggr) pairs")
-        # Channel 0: vs +0x48 → +0x2c0 / +0x328
-        a0, b0 = prep_breakpoint_pair(
-            prep_inputs[0][0],
-            prep_inputs[0][1],
-            code_values_per_button,
-            work.code_48,
-            work.code_48,
+        apply_prep_7b1c0(
+            work, prep_inputs, code_values_per_button=code_values_per_button
         )
-        work.off_328 = b0
-        start = int(work.code_start)
-        a1, b1 = prep_breakpoint_pair(
-            prep_inputs[1][0],
-            prep_inputs[1][1],
-            code_values_per_button,
-            start,
-            start,
-        )
-        work.code_32c = b1
-        a2, b2 = prep_breakpoint_pair(
-            prep_inputs[2][0],
-            prep_inputs[2][1],
-            code_values_per_button,
-            start,
-            start,
-        )
-        work.code_330 = b2
-        a3, _ = prep_breakpoint_pair(
-            prep_inputs[3][0],
-            prep_inputs[3][1],
-            code_values_per_button,
-            start,
-            start,
-        )
-        work.code_334 = start + a3
-        a4, _ = prep_breakpoint_pair(
-            prep_inputs[4][0],
-            prep_inputs[4][1],
-            code_values_per_button,
-            start,
-            start,
-        )
-        work.code_338 = start + a4
-        # Prep guards @ 0x1027b29a…
-        if work.code_330 >= start:
-            work.code_330 = start - 1
-        if work.code_32c >= work.code_330:
-            work.code_32c = work.code_330 - 1
-        if work.code_334 <= start:
-            work.code_334 = start + 1
-        if work.code_338 <= work.code_334:
-            work.code_338 = work.code_334 + 1
 
     _builder_clamp_blends(work)
     start = int(work.code_start)
@@ -1583,6 +1621,343 @@ def tone_lut_builder_93ee0(
     return work
 
 
+@dataclass
+class ImagePercentileCodes:
+    """Generate ``+0x2e4…+0x2f0`` from ``0x1027b970``."""
+
+    code_2e4: int  # extShadow
+    code_2e8: int  # shadow
+    code_2ec: int  # highlight
+    code_2f0: int  # extHighlight
+
+
+@dataclass
+class ImageRangeMeans:
+    """``0x1027b3c0`` outputs ``+0x310/+0x318/+0x320/+0x340``."""
+
+    mean_310: float  # plane1 mean in range
+    mean_318: float  # plane2 mean in range
+    hypot_320: float
+    p340: float
+
+
+def hist_counts_from_plane0(
+    plane: np.ndarray,
+    n_bins: int = 4096,
+) -> np.ndarray:
+    """Host hist counts for percentile leaf (Iem ``0x104ea940`` not ported).
+
+    Uses plane0 samples clipped to ``[0, n_bins)`` — same plane
+    ``0x1027b3c0`` keys on.
+    """
+    p = np.asarray(plane).astype(np.int32, copy=False).ravel()
+    p = np.clip(p, 0, n_bins - 1)
+    return np.bincount(p, minlength=n_bins).astype(np.int32)
+
+
+def hist_percentile_ea6c0(
+    counts: np.ndarray,
+    percent: float,
+    *,
+    origin: float = 0.0,
+    scale: float = 1.0,
+) -> int:
+    """``0x104ea6c0`` + identity bin→code ``0x104f5710`` (Unicorn-golden).
+
+    ``target = ftol2(percent * 0.01 * sum(counts))``; first bin with
+    cumulative ≥ target; ``code = ftol2(bin * scale + origin)``.
+    """
+    c = np.asarray(counts, dtype=np.int32)
+    total = int(c.sum())
+    if total <= 0:
+        return ftol2_chop(origin)
+    target = ftol2_chop(float(percent) * 0.01 * float(total))
+    cum = 0
+    bin_i = 0
+    n = int(c.shape[0])
+    while bin_i < n:
+        cum += int(c[bin_i])
+        if cum >= target:
+            break
+        bin_i += 1
+        if bin_i >= n:
+            bin_i = n - 1
+            break
+    return ftol2_chop(float(bin_i) * float(scale) + float(origin))
+
+
+def image_percentile_codes_7b970(
+    sampled_counts: np.ndarray,
+    *,
+    ext_shadow_percent: float,
+    shadow_percent: float,
+    highlight_percent: float,
+    ext_highlight_percent: float,
+    mid_lo: int,
+    code_white: int,
+    blockavg_counts: np.ndarray | None = None,
+    highlight_diff_mult: float = 0.0,
+    highlight_diff_limit: float = 0.0,
+    code_values_per_button: float = 75.0,
+) -> ImagePercentileCodes:
+    """``0x1027b970`` core: hist percents → ``+0x2e4…+0x2f0``.
+
+    Generate work slots ``+0x80/+0x88/+0x90/+0x98`` carry the four dpi
+    percent fields (see module doc). Optional blockAvg hist adjusts
+    ``+0x2f0`` when ``highlightDiffMult > 0``.
+    """
+    c2e4 = hist_percentile_ea6c0(sampled_counts, ext_shadow_percent)
+    c2e8 = hist_percentile_ea6c0(sampled_counts, shadow_percent)
+    c2ec = hist_percentile_ea6c0(sampled_counts, highlight_percent)
+    c2f0 = hist_percentile_ea6c0(sampled_counts, ext_highlight_percent)
+
+    if (
+        blockavg_counts is not None
+        and float(highlight_diff_mult) > F64_0
+    ):
+        # Second image: same +0x80 / +0x98 → +0x2dc / +0x2e0 (cite DLL).
+        _c2dc = hist_percentile_ea6c0(blockavg_counts, ext_shadow_percent)
+        c2e0 = hist_percentile_ea6c0(blockavg_counts, ext_highlight_percent)
+        delta = ftol2_chop(
+            float(c2e0 - c2f0) * float(highlight_diff_mult) + F64_HALF
+        )
+        lim = ftol2_chop(
+            float(highlight_diff_limit)
+            * float(code_values_per_button)
+            * F64_2_5
+            + F64_HALF
+        )
+        if delta > lim:
+            delta = lim
+        if delta > 0:
+            c2f0 = int(c2f0) + int(delta)
+        if c2f0 > c2e0:
+            c2f0 = int(c2e0)
+        del _c2dc
+
+    if c2e4 < int(mid_lo):
+        c2e4 = int(mid_lo)
+    if c2e8 < int(mid_lo):
+        c2e8 = int(mid_lo)
+    if c2ec > int(code_white):
+        c2ec = int(code_white)
+    if c2f0 > int(code_white):
+        c2f0 = int(code_white)
+    return ImagePercentileCodes(c2e4, c2e8, c2ec, c2f0)
+
+
+def white_pt_ratio_7b3c0(
+    hypot_320: float,
+    *,
+    use_white_pt: bool,
+    white_sat_lower: float,
+    white_sat_upper: float,
+    code_values_per_button: float,
+) -> float:
+    """``0x1027b3c0`` ``+0x340`` from ``+0x320`` and sat limits."""
+    if not use_white_pt:
+        return F64_1
+    lo = float(white_sat_lower) * float(code_values_per_button)
+    hi = float(white_sat_upper) * float(code_values_per_button)
+    h = float(hypot_320)
+    if lo <= F64_0 or hi <= lo or h <= lo:
+        return F64_1
+    if h >= hi:
+        return F64_0
+    return (hi - h) / (hi - lo)
+
+
+def image_range_means_7b3c0(
+    rgb_i16: np.ndarray,
+    lo: int,
+    hi: int,
+    *,
+    use_white_pt: bool = True,
+    white_sat_lower: float = 0.33,
+    white_sat_upper: float = 0.8,
+    code_values_per_button: float = 75.0,
+) -> ImageRangeMeans:
+    """``0x1027b3c0`` planar means for plane0 in ``[lo, hi]``.
+
+    ``rgb_i16`` is HxWx3 (or 3xH rows of plane pointers flattened as
+    channels last). Keys on channel 0; accumulates channels 1 and 2.
+    """
+    img = np.asarray(rgb_i16)
+    if img.ndim != 3 or img.shape[2] < 3:
+        raise ValueError("0x1027b3c0 expects HxWx3 I16")
+    p0 = img[:, :, 0].astype(np.int32, copy=False).ravel()
+    p1 = img[:, :, 1].astype(np.int32, copy=False).ravel()
+    p2 = img[:, :, 2].astype(np.int32, copy=False).ravel()
+    mask = (p0 >= int(lo)) & (p0 <= int(hi))
+    n = int(mask.sum())
+    if n <= 0:
+        return ImageRangeMeans(F64_0, F64_0, F64_0, F64_1)
+    m1 = float(p1[mask].sum()) / float(n)
+    m2 = float(p2[mask].sum()) / float(n)
+    hyp = math.sqrt(m1 * m1 + m2 * m2)
+    p340 = white_pt_ratio_7b3c0(
+        hyp,
+        use_white_pt=use_white_pt,
+        white_sat_lower=white_sat_lower,
+        white_sat_upper=white_sat_upper,
+        code_values_per_button=code_values_per_button,
+    )
+    return ImageRangeMeans(m1, m2, hyp, p340)
+
+
+def seed_image_fields_7be10(
+    work: ToneLutBuilderWork,
+    codes: ImagePercentileCodes,
+    *,
+    p340: float | None = None,
+) -> ToneLutBuilderWork:
+    """``0x1027be10`` after sampling: ``+0x2f4…+0x300`` + ``+0x308``.
+
+    ``+0x308 = ((+0x2ec-+0x2e4-+0x2e8)+(+0x2f0))/2 / (+0x58·2.5)``.
+    """
+    work.code_2f4 = int(codes.code_2e4)
+    work.code_2f8 = int(codes.code_2e8)
+    work.code_2fc = int(codes.code_2ec)
+    work.code_300 = int(codes.code_2f0)
+    if p340 is not None:
+        work.p340 = float(p340)
+    num = _sar_div2(
+        int(codes.code_2ec)
+        - int(codes.code_2e4)
+        - int(codes.code_2e8)
+        + int(codes.code_2f0)
+    )
+    den = float(work.code_values_per_button) * F64_2_5
+    # stored at +0x308 (not on ToneLutBuilderWork); side-effect free here
+    _ = float(num) / den if den else F64_0
+    return work
+
+
+def seed_image_fields_from_analysis(
+    work: ToneLutBuilderWork,
+    rgb_i16: np.ndarray,
+    dpi: "ShastaDpi",
+    *,
+    blockavg_rgb: np.ndarray | None = None,
+) -> ToneLutBuilderWork:
+    """Inject-free ``+0x2f4…+0x300`` / ``+0x340`` from analysis image.
+
+    Runs ``0x1027b970`` + ``0x1027b3c0`` + ``0x1027be10`` seed maths.
+    """
+    n_bins = int(round(dpi.max_value)) + 1
+    plane0 = np.asarray(rgb_i16)[:, :, 0]
+    sampled = hist_counts_from_plane0(plane0, n_bins)
+    block = None
+    if blockavg_rgb is not None:
+        block = hist_counts_from_plane0(
+            np.asarray(blockavg_rgb)[:, :, 0], n_bins
+        )
+    codes = image_percentile_codes_7b970(
+        sampled,
+        ext_shadow_percent=dpi.ext_shadow_percent,
+        shadow_percent=dpi.shadow_percent,
+        highlight_percent=dpi.highlight_percent,
+        ext_highlight_percent=dpi.ext_highlight_percent,
+        mid_lo=int(work.mid_lo),
+        code_white=int(work.code_white) if work.code_white else int(round(dpi.white)),
+        blockavg_counts=block,
+        highlight_diff_mult=dpi.highlight_diff_mult,
+        highlight_diff_limit=dpi.highlight_diff_limit,
+        code_values_per_button=dpi.code_values_per_button,
+    )
+    means = image_range_means_7b3c0(
+        rgb_i16,
+        codes.code_2ec,
+        codes.code_2f0,
+        use_white_pt=dpi.use_white_pt_compression,
+        white_sat_lower=dpi.white_sat_lower_limit,
+        white_sat_upper=dpi.white_sat_upper_limit,
+        code_values_per_button=dpi.code_values_per_button,
+    )
+    return seed_image_fields_7be10(work, codes, p340=means.p340)
+
+
+def tone_lut_work_from_dpi(
+    dpi: "ShastaDpi",
+    *,
+    mid_lo: int | None = None,
+    mid_hi: int | None = None,
+) -> ToneLutBuilderWork:
+    """Builder/935d0 work from shipped dpi. Mids default black/metricGray."""
+    start = int(round(dpi.metric_gray))
+    white = int(round(dpi.white))
+    lo = int(round(dpi.black)) if mid_lo is None else int(mid_lo)
+    hi = start if mid_hi is None else int(mid_hi)
+    return ToneLutBuilderWork(
+        code_start=start,
+        code_min=int(round(dpi.min_value)),
+        code_max=int(round(dpi.max_value)),
+        code_48=start + int(round(dpi.code_values_per_button)),
+        code_values_per_button=float(dpi.code_values_per_button),
+        mid_lo=lo,
+        mid_hi=hi,
+        code_white=white,
+        shadow_exp_blend=float(dpi.shadow_exp_blend),
+        highlight_exp_blend=float(dpi.highlight_exp_blend),
+        shadow_transition_ratio=float(dpi.shadow_transition_ratio),
+        highlight_transition_ratio=float(dpi.highlight_transition_ratio),
+        shadow_exp_sat_factor=float(dpi.shadow_exp_sat_factor),
+        shadow_comp_sat_factor=float(dpi.shadow_comp_sat_factor),
+        highlight_delta_gain=float(dpi.highlight_delta_gain),
+        black_noise_std_dev=float(dpi.black_noise_std_dev),
+        min_black_offset=float(dpi.min_black_offset),
+        max_white_offset=float(dpi.max_white_offset),
+        highlight_exp_scale=float(dpi.highlight_exp_scale),
+        shadow_max_exp_slope=float(dpi.shadow_max_exp_slope),
+        highlight_max_exp_slope=float(dpi.highlight_max_exp_slope),
+        shadow_comp_blend=float(dpi.shadow_comp_blend),
+        max_exp_delta=float(dpi.max_exp_delta),
+        max_comp_delta=float(dpi.max_comp_delta),
+        adj_clamp_lo_src=float(dpi.white_sat_lower_limit)
+        * float(dpi.code_values_per_button),
+        adj_clamp_hi_src=float(dpi.white_sat_upper_limit)
+        * float(dpi.code_values_per_button),
+    )
+
+
+def dpi_prep_inputs(dpi: "ShastaDpi") -> tuple[tuple[float, float], ...]:
+    """Five ``(buttons, aggr)`` pairs for ``0x1027b1c0``."""
+    return (
+        (dpi.shadow_buttons, dpi.shadow_aggr),
+        (dpi.ext_shadow_buttons, dpi.ext_shadow_aggr),
+        (dpi.black_buttons, dpi.black_aggr),
+        (dpi.highlight_buttons, dpi.highlight_aggr),
+        (dpi.ext_highlight_buttons, dpi.ext_highlight_aggr),
+    )
+
+
+def assemble_scene_tone_lut(
+    dpi: "ShastaDpi",
+    rgb_i16: np.ndarray,
+    *,
+    mid_lo: int | None = None,
+    mid_hi: int | None = None,
+    blockavg_rgb: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, ToneLutBuilderWork]:
+    """Preference-path assemble: live ``7b970``/``7b3c0`` → ``935d0`` → Cap."""
+    if not SHASTA_TONE_LUT_PORTED:
+        raise RuntimeError("SHASTA_TONE_LUT_PORTED is False")
+    work = tone_lut_work_from_dpi(dpi, mid_lo=mid_lo, mid_hi=mid_hi)
+    prep = dpi_prep_inputs(dpi)
+    apply_prep_7b1c0(work, prep)
+    seed_image_fields_from_analysis(
+        work, rgb_i16, dpi, blockavg_rgb=blockavg_rgb
+    )
+    tone, bn, cap = assemble_tone_lut(
+        work,
+        run_935d0=True,
+        scale_adjs=True,
+        run_prep=True,
+        prep_inputs=prep,
+    )
+    return tone, bn, cap, work
+
+
 def ima_shasta_apply_i16(
     plane: np.ndarray,
     tone_lut: np.ndarray,
@@ -1591,7 +1966,7 @@ def ima_shasta_apply_i16(
 
     ``out[i] = low16(toneLut[in[i]])`` with ``toneLut`` as int32[].
     No bounds clamp in the cited loop — caller must ensure indices are
-    valid. Does **not** wire the full ``ImaShastaOp`` aggregate.
+    valid.
     """
     if plane.dtype not in (np.int16, np.uint16):
         raise TypeError("I16 apply fragment expects int16/uint16 plane")
@@ -1618,6 +1993,37 @@ def ima_shasta_apply_f32(
     return tone_lut[idx].astype(np.float32)
 
 
+def ima_shasta_op_apply(
+    image: np.ndarray,
+    tone_lut: np.ndarray,
+) -> np.ndarray:
+    """``ImaShastaOp`` type dispatch ``0x1014de50`` (I16 path).
+
+    DLL supports I16 only (``0x1057c848``). ``image`` is HxW or HxWxC
+    int16; applies the cited in-place LUT-index loop per plane.
+    """
+    if not SHASTA_APPLY_PORTED:
+        raise RuntimeError("SHASTA_APPLY_PORTED is False")
+    if tone_lut.dtype != np.int32:
+        raise TypeError("toneLut must be int32")
+    img = np.asarray(image)
+    if img.dtype not in (np.int16, np.uint16):
+        raise TypeError(
+            "Only I16 data type is supported by ImaShastaOp (0x1057c848)"
+        )
+    n = len(tone_lut)
+    if img.ndim == 2:
+        plane = np.clip(img, 0, n - 1).astype(np.int16, copy=False)
+        return ima_shasta_apply_i16(plane, tone_lut)
+    if img.ndim != 3:
+        raise ValueError("ImaShastaOp expects HxW or HxWxC")
+    planes = []
+    for c in range(img.shape[2]):
+        plane = np.clip(img[:, :, c], 0, n - 1).astype(np.int16, copy=False)
+        planes.append(ima_shasta_apply_i16(plane, tone_lut))
+    return np.stack(planes, axis=-1)
+
+
 def empty_tone_lut(n: int = 4096) -> np.ndarray:
     """Allocate working toneLut storage (size typically 4096 / maxValue+1)."""
     return np.zeros(n, dtype=np.int32)
@@ -1642,10 +2048,40 @@ class ShastaDpi:
     highlight_percent: float = 99.0
     ext_shadow_percent: float = 0.1
     ext_highlight_percent: float = 99.9
+    highlight_diff_mult: float = 0.0
+    highlight_diff_limit: float = 0.0
     filter_policy: int = 3
     use_white_pt_compression: bool = True
+    white_sat_lower_limit: float = 0.33
+    white_sat_upper_limit: float = 0.8
     black_noise_supp_stops: float = 0.75
     black_noise_sigma_mult: float = 2.0
+    black_noise_std_dev: float = 1.0
+    min_black_offset: float = 0.62
+    max_white_offset: float = 3.0
+    shadow_exp_blend: float = 0.5
+    highlight_exp_blend: float = 0.5
+    shadow_transition_ratio: float = 0.5
+    highlight_transition_ratio: float = 0.5
+    shadow_exp_sat_factor: float = 0.25
+    shadow_comp_sat_factor: float = 0.0
+    highlight_delta_gain: float = 1.0
+    highlight_exp_scale: float = 0.5
+    shadow_max_exp_slope: float = 2.0
+    highlight_max_exp_slope: float = 2.0
+    shadow_comp_blend: float = 0.5
+    max_exp_delta: float = 4.0
+    max_comp_delta: float = 4.0
+    shadow_buttons: float = 6.67
+    shadow_aggr: float = 0.75
+    ext_shadow_buttons: float = 9.28
+    ext_shadow_aggr: float = 0.7
+    black_buttons: float = 10.466
+    black_aggr: float = 1.0
+    highlight_buttons: float = 3.67
+    highlight_aggr: float = 1.1
+    ext_highlight_buttons: float = 7.68
+    ext_highlight_aggr: float = 1.25
     row_portion: float = 0.875
     col_portion: float = 0.875
 
@@ -1667,12 +2103,42 @@ class ShastaDpi:
             highlight_percent=_num(d, "highlightPercent", 99.0),
             ext_shadow_percent=_num(d, "extShadowPercent", 0.1),
             ext_highlight_percent=_num(d, "extHighlightPercent", 99.9),
+            highlight_diff_mult=_num(d, "highlightDiffMult", 0.0),
+            highlight_diff_limit=_num(d, "highlightDiffLimit", 0.0),
             filter_policy=int(_num(d, "filterPolicy", 3)),
             use_white_pt_compression=_bool(d, "bUseWhitePtCompression", True),
+            white_sat_lower_limit=_num(d, "whiteSatLowerLimit", 0.33),
+            white_sat_upper_limit=_num(d, "whiteSatUpperLimit", 0.8),
             black_noise_supp_stops=_num(d, "blackNoiseSuppStops", 0.75),
             black_noise_sigma_mult=_num(
                 d, "blackNoiseSigmaMult", SHASTA_PARAMS_CTOR_BLACK_NOISE_SIGMA_MULT
             ),
+            black_noise_std_dev=_num(d, "blackNoiseStdDev", 1.0),
+            min_black_offset=_num(d, "minBlackOffset", 0.62),
+            max_white_offset=_num(d, "maxWhiteOffset", 3.0),
+            shadow_exp_blend=_num(d, "shadowExpBlend", 0.5),
+            highlight_exp_blend=_num(d, "highlightExpBlend", 0.5),
+            shadow_transition_ratio=_num(d, "shadowTransitionRatio", 0.5),
+            highlight_transition_ratio=_num(d, "highlightTransitionRatio", 0.5),
+            shadow_exp_sat_factor=_num(d, "shadowExpSatFactor", 0.25),
+            shadow_comp_sat_factor=_num(d, "shadowCompSatFactor", 0.0),
+            highlight_delta_gain=_num(d, "highlightDeltaGain", 1.0),
+            highlight_exp_scale=_num(d, "highlightExpScale", 0.5),
+            shadow_max_exp_slope=_num(d, "shadowMaxExpSlope", 2.0),
+            highlight_max_exp_slope=_num(d, "highlightMaxExpSlope", 2.0),
+            shadow_comp_blend=_num(d, "shadowCompBlend", 0.5),
+            max_exp_delta=_num(d, "maxExpDelta", 4.0),
+            max_comp_delta=_num(d, "maxCompDelta", 4.0),
+            shadow_buttons=_num(d, "shadowButtons", 6.67),
+            shadow_aggr=_num(d, "shadowAggr", 0.75),
+            ext_shadow_buttons=_num(d, "extShadowButtons", 9.28),
+            ext_shadow_aggr=_num(d, "extShadowAggr", 0.7),
+            black_buttons=_num(d, "blackButtons", 10.466),
+            black_aggr=_num(d, "blackAggr", 1.0),
+            highlight_buttons=_num(d, "highlightButtons", 3.67),
+            highlight_aggr=_num(d, "highlightAggr", 1.1),
+            ext_highlight_buttons=_num(d, "extHighlightButtons", 7.68),
+            ext_highlight_aggr=_num(d, "extHighlightAggr", 1.25),
             row_portion=_num(d, "rowPortion", 0.875),
             col_portion=_num(d, "colPortion", 0.875),
         )
@@ -1785,6 +2251,8 @@ def main() -> None:
         f"  SHASTA_TONE_LUT_PORTED={SHASTA_TONE_LUT_PORTED} "
         f"ANALYZE_PORTED={SHASTA_ANALYZE_PORTED} "
         f"APPLY_PORTED={SHASTA_APPLY_PORTED} "
+        f"7B970={SHASTA_IMAGE_PERCENTILE_7B970_PORTED} "
+        f"7B3C0={SHASTA_IMAGE_SAMPLE_7B3C0_PORTED} "
         f"FRAGMENTS={SHASTA_TONE_LUT_FRAGMENTS} "
         f"LOG_RATIO={SHASTA_CURVE_LOG_RATIO_PORTED} "
         f"EXP={SHASTA_CURVE_EXP_PORTED} "
@@ -1800,8 +2268,8 @@ def main() -> None:
         f"cb0(0.5,1)={curve_log_ratio_cb0(0.5, 1.0):.6g}"
     )
     print(
-        "  assemble golden (935d0+builder+Cap); live 0x1027b3c0 + "
-        "ImaShastaOp still WALL (ANALYZE/APPLY=False)"
+        "  assemble+sample+I16 Op ported (APPLY=True); "
+        "ANALYZE still WALL on live aim producers"
     )
 
 

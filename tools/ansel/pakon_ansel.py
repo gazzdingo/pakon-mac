@@ -5,14 +5,17 @@ Pakon (docs/11 §5, PakonIMAu strings): stage-2 RPD stays **I16** through
 Shasta/SBA (`Only I16 data type is supported by ImaShastaOp`), then
 Rpd2Pcs→Srgb.
 
-**Shasta** (``pakon_shasta.py``): dpi aims verified; scene ``toneLut`` from
-``AnsShastaCapabilityImpl::analyze`` is **not** ported.
+**Shasta** (``pakon_shasta.py``): dpi aims + toneLut assemble + live image
+sampling (``0x1027b970``/``0x1027b3c0``) + I16 ``ImaShastaOp`` apply are
+ported (`SHASTA_TONE_LUT_PORTED` / `SHASTA_APPLY_PORTED`). Full analyze
+aim producers still open (`SHASTA_ANALYZE_PORTED=False`; frame ``+0x6cac``
+/ Ane finalize WALL).
 
 **SRA** (``pakon_sra.py``): shipped ``common-sraFwdLut-metric-*.lut`` is
 ``AnsCommonSraFwdLutDPI`` — a real Pakon table, but **not** Shasta's
 ``toneLut``. Fallback path only (median balance) still uses it as a tone
-stand-in. On the CN Preference path we use **linked percentile tone**
-instead (from tag ``working-images-v1`` / ``c5f63c9``).
+stand-in. Preference path assembles ``engine.tone_lut`` from the scene
+image when flags allow; else linked-percentile STAND-IN.
 
 Also: FUGC **seed** lut from ``fugc-lutMap`` → ``fugc-generic*.lut``
 (``pakon_fugc.py``: real Pakon seed; host apply **without** ``setLutInfo``
@@ -24,9 +27,11 @@ analyze shift is a stand-in). SBA: Preference mode-``0x11`` fragment →
 Pipeline here (I16 0..4095 until ICC):
 
   Preference path (ports True):
-    RPD12 → setshifts_12(A,A)+apply → Shasta toneLut when
-          ``engine.tone_lut`` set (``SHASTA_TONE_LUT_PORTED``; I16
-          index loop), else linked percentile STAND-IN → Rpd2Pcs→Srgb
+    RPD12 → setshifts_12(A,A)+apply → assemble ``engine.tone_lut`` from
+          scene (``7b970``/``7b3c0``→``935d0``→builder→Cap) when
+          ``SHASTA_TONE_LUT_PORTED`` → ``ImaShastaOp`` I16 apply when
+          ``SHASTA_APPLY_PORTED``, else linked percentile STAND-IN →
+          Rpd2Pcs→Srgb
     No SRA, no FUGC, no ``aim_medians`` / per-channel re-equalize
     (those cancelled Preference OUT or crushed contrast on Gold 400).
 
@@ -482,20 +487,35 @@ class AnselEngine:
             x = sba_apply.apply_balance_shifts(
                 x.astype(np.int32), self.setshifts_out
             ).astype(np.float64)
-            # Shasta toneLut when assembled (935d0+builder+Cap publish
-            # golden; SHASTA_TONE_LUT_PORTED). Else linked-percentile
-            # STAND-IN from working-images-v1 / c5f63c9. Full ImaShastaOp
-            # aggregate still open (APPLY=False) — use cited I16 index loop.
+            # Assemble Cap toneLut from live image sampling when unset
+            # (7b970/7b3c0 → 935d0 → builder → setToneLut). Aim mids are
+            # dpi stand-ins until ANALYZE producers land.
+            if (
+                shasta_mod.SHASTA_TONE_LUT_PORTED
+                and self.tone_lut is None
+                and self.shasta.dpi is not None
+            ):
+                rgb16 = np.clip(x, 0, self.shasta.max_value).astype(np.int16)
+                tone, _bn, _cap, _w = shasta_mod.assemble_scene_tone_lut(
+                    self.shasta.dpi, rgb16
+                )
+                self.tone_lut = tone
             if (
                 shasta_mod.SHASTA_TONE_LUT_PORTED
                 and self.tone_lut is not None
             ):
                 lut = self.tone_lut
-                planes = []
-                for c in range(3):
-                    plane = np.clip(x[:, :, c], 0, len(lut) - 1).astype(np.int16)
-                    planes.append(shasta_mod.ima_shasta_apply_i16(plane, lut))
-                x = np.stack(planes, axis=-1).astype(np.float64)
+                img = np.clip(x, 0, len(lut) - 1).astype(np.int16)
+                if shasta_mod.SHASTA_APPLY_PORTED:
+                    x = shasta_mod.ima_shasta_op_apply(img, lut).astype(
+                        np.float64
+                    )
+                else:
+                    planes = [
+                        shasta_mod.ima_shasta_apply_i16(img[:, :, c], lut)
+                        for c in range(3)
+                    ]
+                    x = np.stack(planes, axis=-1).astype(np.float64)
             else:
                 x = linked_percentile_tone(
                     x,

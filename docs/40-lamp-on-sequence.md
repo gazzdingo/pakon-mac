@@ -163,3 +163,71 @@ The conclusion does not depend on it. The remaining evidence is strong:
 
 That third point is the strongest single piece of evidence in the whole
 analysis, and it is independent of any claim made inside this project.
+
+---
+
+## 8. Reconciled with the independent disk-image analysis
+
+Two analyses reached the same conclusions from different evidence: this one from
+a full disassembly of TLB.dll, the other from scanning the 11.8 GB VM image and
+its hives. They agree on every material point.
+
+| Claim | Disassembly | Disk image |
+|---|---|---|
+| `0x8E` gated on `UseTemperatureSetpoints`, flag=0 → never sent | `0x1002d343 je` | §6a field map ends at `+0xb4` |
+| Stability is not a host thermal comparison | `[driver+0x298]` write set has none | `FN_bLampTemperatureStable` polls a board-set flag |
+| No per-unit temperature calibration exists | ctor defaults only | **zero occurrences** of `LampTemp*`/`MotherBoardTemp*` in 11.8 GB |
+| `WaitForLamp` = 5.0 s | ctor `.rdata:0x1005d388` | hive value `"5.000000"` |
+| `LampTempWorking` | ctor 640 = 40.0 °C | clamped `[592,768]` = 37–48 °C |
+
+The clamp point is the decisive one: **a per-unit calibration would not be
+forced into a fixed window.** It is an operating limit, not a measurement. The
+host does not own the thermal loop — the light board regulates and the host
+waits.
+
+### Corrections that fell out
+
+* **`docs/36` was wrong** and it was mine: it listed `TempSetpoint`, `TempLB`,
+  `TempMB` as registry targets. They are **log column headers** — fields of the
+  light-stability log, in a tab-separated run inside a binary string table.
+  Telemetry names, never keys. That sent the first registry scan down a dead
+  end.
+* `WriteLightStabilityLog = 0`, so that log was never written — which is why no
+  `PakonLampLog.txt` exists anywhere on the disk. **That item is closed, not
+  outstanding.**
+* **`docs/15` §6a** infers the subkey as `Software\Pakon\TLB\Test`. It is
+  `HKLM\SOFTWARE\Pakon\TLB\Scan\Test`.
+* The temperature fields sit under `CiConfigTest` — the engineering/diagnostics
+  block (`DrawDxLines`, `LockSteppers`, `UsePpbDebugTraces`, `HighWaterTest`) —
+  because they are **service overrides for a loop the board runs itself**, not
+  calibration.
+
+## 9. Better first light: search from below instead of injecting values
+
+`FN_bCalibrateFindLedCurrent` re-derives the currents rather than reading them:
+
+```
+n = 1
+loop:  lamp on at n -> acquire a line -> take max pixel
+       if max >= target: stop
+       n += 1                        range [1, 24], one byte on the wire
+targets:  R 64000   G 64000   B 65500   Ir 40000
+```
+
+**This is a safer first light than sending 5/20/11/4 directly**, and it is what
+the vendor does:
+
+* it **starts at minimum current and steps up**, so it is safe from below —
+  overdrive is not reachable, the loop stops the moment it exceeds target;
+* it needs no trust in our recovered encoding before any current flows;
+* it **self-validates**: if a fresh search converges near 5/20/11/4 for
+  `ColNegIr`, the recovered calibration is confirmed against the physical unit,
+  and the serial question answers itself for free.
+
+It does require working CCD acquisition (`docs/38` §B/C), so it is gated behind
+that. Until acquisition works, the recovered values plus the §5 sequence remain
+the route — but if acquisition lands first, prefer the search.
+
+**Recommended order:** characterise EP 0x86 → get a line read → run the search
+from n=1 → compare against 5/20/11/4. That reaches first light without ever
+trusting a number we did not measure on this machine.

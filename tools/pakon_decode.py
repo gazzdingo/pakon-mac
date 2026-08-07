@@ -3,9 +3,13 @@
 
 Host-side pipeline (docs/11) — scanner sends raw; we render:
 
-  raw strip → sync/unpack → density LUT + 3×4 matrix → 12-bit RPD
-            → Ansel stand-in (tools/pakon_ansel.py):
+  raw strip → sync/unpack → unit dark×gain (calibration/) → 14-bit
+            → density LUT + 3×4 matrix → 12-bit RPD
+            → Ansel stand-in (tools/ansel/):
                  roll FPO → per-scene SBA/Shasta → FUGC lut → Rpd2Pcs→sRGB
+
+Per-pixel dark/gain is mandatory before colour (docs/46-handover-ansel.md).
+Tables are valid only for the locked exposure triad in calibration/README.json.
 
 DX / film via --dx. Ansel DPI/LUT files are chosen with the vendor ``.map``
 selectors (sba/shasta/fugc/profile) from path + DX + ISO + metric. Full
@@ -41,15 +45,21 @@ from pathlib import Path
 
 import numpy as np
 
-# Allow `import pakon_color` when run from repo root or tools/
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# tools/ for colour+filmstock; tools/ansel/ for Ansel/SBA host post-process
+_TOOLS = Path(__file__).resolve().parent
+sys.path.insert(0, str(_TOOLS))
+sys.path.insert(0, str(_TOOLS / "ansel"))
 import pakon_color as pc  # noqa: E402
 import pakon_filmstock as film  # noqa: E402
 import pakon_ansel as ansel  # noqa: E402
+import pakon_color_adjust as color_adjust  # noqa: E402
 
 WORDS_PER_LINE = 6000          # 2000 px × 3 channels — DpiBase16
 PIXELS_PER_LINE = 2000
 CHANNELS = 3
+RAW14_MAX = 16383
+_REPO_ROOT = _TOOLS.parent
+DEFAULT_CALIBRATION_DIR = _REPO_ROOT / "calibration"
 _FX35 = ("/Users/guy/Downloads/Pakon Update 2/fx35install/"
          "program files/Pakon/F-X35 COM SERVER")
 DEFAULT_DATA_DIR = f"{_FX35}/Config/ColorCorrection"
@@ -121,7 +131,7 @@ def to_rgb14(lines: np.ndarray) -> np.ndarray:
     v = (lines.astype(np.uint32) >> 2).astype(np.uint16)
     n = v.shape[0]
     rgb = v.reshape(n, PIXELS_PER_LINE, CHANNELS)
-    return np.clip(rgb, 0, 16383).astype(np.uint16)
+    return np.clip(rgb, 0, RAW14_MAX).astype(np.uint16)
 
 
 def average_profile(path: str | Path, max_lines: int = 64) -> np.ndarray:
@@ -134,13 +144,55 @@ def average_profile(path: str | Path, max_lines: int = 64) -> np.ndarray:
 
 def apply_flatfield(rgb: np.ndarray, dark: np.ndarray, empty: np.ndarray,
                     scale: float = 16000.0) -> np.ndarray:
-    """Per-column (raw - dark) / (empty - dark) * scale, matching the open-gate
-    calibration the vendor walks to ~64000 on the wire (→ 16000 in 14-bit).
+    """Legacy per-column (raw - dark) / (empty - dark) * scale.
+
+    Prefer ``apply_unit_calibration`` with committed ``calibration/*.npy``.
     """
     num = rgb.astype(np.float64) - dark
     den = np.maximum(empty - dark, 1.0)
     out = num / den * scale
-    return np.clip(out, 0, 16383).astype(np.uint16)
+    return np.clip(out, 0, RAW14_MAX).astype(np.uint16)
+
+
+def load_unit_calibration(
+    cal_dir: str | Path | None = None,
+) -> tuple[np.ndarray, np.ndarray, Path]:
+    """Load committed per-pixel dark/gain (14-bit domain).
+
+    Files: ``dark_2000x3.npy``, ``gain_2000x3.npy`` under ``calibration/``.
+    Valid only for the exposure triad in that directory's ``README.json``.
+    """
+    root = Path(cal_dir) if cal_dir is not None else DEFAULT_CALIBRATION_DIR
+    dark_p = root / "dark_2000x3.npy"
+    gain_p = root / "gain_2000x3.npy"
+    if not dark_p.is_file() or not gain_p.is_file():
+        raise FileNotFoundError(
+            f"unit calibration missing under {root} "
+            f"(need dark_2000x3.npy + gain_2000x3.npy)"
+        )
+    dark = np.load(dark_p)
+    gain = np.load(gain_p)
+    if dark.shape != (PIXELS_PER_LINE, CHANNELS):
+        raise ValueError(f"{dark_p}: expected {(PIXELS_PER_LINE, CHANNELS)}, "
+                         f"got {dark.shape}")
+    if gain.shape != (PIXELS_PER_LINE, CHANNELS):
+        raise ValueError(f"{gain_p}: expected {(PIXELS_PER_LINE, CHANNELS)}, "
+                         f"got {gain.shape}")
+    return dark.astype(np.float64, copy=False), gain.astype(np.float64, copy=False), root
+
+
+def apply_unit_calibration(
+    rgb: np.ndarray,
+    dark: np.ndarray,
+    gain: np.ndarray,
+) -> np.ndarray:
+    """``corrected = (raw - dark) * gain``, clamp to 14-bit.
+
+    ``raw`` / ``dark`` are in the post-``to_rgb14`` domain. Cite:
+    ``calibration/README.json``, ``docs/46-handover-ansel.md``.
+    """
+    out = (rgb.astype(np.float64) - dark) * gain
+    return np.clip(out, 0, RAW14_MAX).astype(np.uint16)
 
 
 # --------------------------------------------------------------------------
@@ -246,10 +298,10 @@ def roll_balance_rpd(rpd16: np.ndarray) -> np.ndarray:
     return np.clip(out, 0, 65535).astype(np.uint16)
 
 
+# BnW abstracts — selectors from PIColorAdjustPlanar (pakon_color_adjust)
 TONE_PROFILES = {
-    "cold": "cold_bw.pf",
-    "warm": "warm_bw_ld0_1_4-5.pf",
-    "sepia": "sepia_ld0_9_22.pf",
+    k: v for k, v in color_adjust.TONE_ALIAS.items()
+    if k in ("cold", "warm", "sepia")
 }
 
 
@@ -265,28 +317,11 @@ def toning_profile_for_path(path: str, tone: str | None) -> str | None:
 def apply_abstract_tone(srgb_u8: np.ndarray, data_dir: str,
                         abstract: str) -> np.ndarray:
     """Lab→Lab abstract (warm/cold/sepia) on 8-bit sRGB."""
-    from PIL import Image, ImageCms
-    abs_path = Path(data_dir) / abstract
-    if not abs_path.is_file():
-        raise SystemExit(f"missing abstract profile {abs_path}")
-    intent = ImageCms.Intent.PERCEPTUAL
-    lab_p = ImageCms.createProfile("LAB")
-    srgb_p = ImageCms.createProfile("sRGB")
-    abs_p = ImageCms.getOpenProfile(str(abs_path))
-    im = Image.fromarray(srgb_u8, mode="RGB")
-    to_lab = ImageCms.buildTransformFromOpenProfiles(
-        srgb_p, lab_p, "RGB", "LAB", renderingIntent=intent)
-    lab = ImageCms.applyTransform(im, to_lab)
     try:
-        ax = ImageCms.buildTransformFromOpenProfiles(
-            abs_p, abs_p, "LAB", "LAB", renderingIntent=intent)
-        lab = ImageCms.applyTransform(lab, ax)
-    except Exception as e:
-        print(f"  warning: abstract {abstract} failed ({e})")
-        return srgb_u8
-    back = ImageCms.buildTransformFromOpenProfiles(
-        lab_p, srgb_p, "LAB", "RGB", renderingIntent=intent)
-    return np.asarray(ImageCms.applyTransform(lab, back), dtype=np.uint8)
+        return color_adjust.apply_lab_abstract(
+            srgb_u8, Path(data_dir), abstract)
+    except FileNotFoundError as e:
+        raise SystemExit(str(e)) from e
 
 
 def raw14_preview_u8(rgb14: np.ndarray) -> np.ndarray:
@@ -412,8 +447,22 @@ def cmd_strip(args: argparse.Namespace) -> int:
     if args.dark and args.empty:
         dark = average_profile(args.dark)
         empty = average_profile(args.empty)
-        print(f"flat-field from {args.dark} / {args.empty}")
+        print(f"legacy flat-field from {args.dark} / {args.empty}")
         rgb = apply_flatfield(rgb, dark, empty)
+    elif not args.no_calibration:
+        try:
+            dark, gain, cal_root = load_unit_calibration(args.calibration)
+        except (FileNotFoundError, ValueError) as e:
+            print(f"warning: unit calibration skipped ({e})", file=sys.stderr)
+        else:
+            print(f"unit calibration {cal_root}  "
+                  f"(raw-dark)*gain → clamp {RAW14_MAX}")
+            rgb = apply_unit_calibration(rgb, dark, gain)
+            for c, name in enumerate("RGB"):
+                ch = rgb[:, :, c]
+                print(f"  {name} cal: mean={ch.mean():.0f}  "
+                      f"p01={np.percentile(ch, 1):.0f}  "
+                      f"p99={np.percentile(ch, 99):.0f}")
 
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
@@ -574,8 +623,17 @@ def main() -> int:
                    help="split strip into per-type frame files under frames/")
     s.add_argument("--tiff", action="store_true",
                    help="also write 16-bit TIFF (RPD / Ansel-toned RPD)")
-    s.add_argument("--dark", help="dark-frame capture for flat-field")
-    s.add_argument("--empty", help="open-gate capture for flat-field")
+    s.add_argument("--calibration", default=str(DEFAULT_CALIBRATION_DIR),
+                   help="dir with dark_2000x3.npy + gain_2000x3.npy "
+                        f"(default {DEFAULT_CALIBRATION_DIR})")
+    s.add_argument("--no-calibration", action="store_true",
+                   help="skip committed unit dark/gain tables")
+    s.add_argument("--dark",
+                   help="legacy: dark-frame capture (with --empty; overrides "
+                        "unit calibration)")
+    s.add_argument("--empty",
+                   help="legacy: open-gate capture (with --dark; overrides "
+                        "unit calibration)")
     s.add_argument("--max-lines", type=int, default=0)
     s.add_argument("--transport-scale", type=float, default=DEFAULT_TRANSPORT_SCALE,
                    help="resample transport axis for square pixels "

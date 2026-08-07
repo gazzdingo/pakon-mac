@@ -79,7 +79,8 @@ phase may ONLY change where the preceding gap was not 6000
   -- re-evaluating per line causes false channel rotations that paint a hard
      band across otherwise clean frames. This was a real bug, not a nicety.
 +3 line shift on channel 0                 measured by correlation; unconfirmed
-per-column flat field                      -> replace with the real gain table
+per-pixel dark×gain                        calibration/*.npy (default in
+                                           pakon_decode; --no-calibration to skip)
 per-frame percentile stretch               -> replace with density LUT + matrix
 frame pitch ~1460 lines                    measured from gap spacing
 ```

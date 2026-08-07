@@ -195,22 +195,50 @@ Curve helpers — status
 * ``0x10293330`` / ``0x10293410`` / dispatcher ``0x10293510``:
   **ported + Unicorn-golden** (``curve_newton_330`` / ``410`` /
   ``curve_dispatch_93510``). Seed ``1.1`` @ ``0x10579a80``,
-  tol ``0.1`` @ ``0x105a77a0``, ``edx=100``.
-* ``0x10293960`` (~994 B): setup **mapped** (Unicorn hooks) — not a
-  complete host fill:
+  tol ``0.1`` @ ``0x105a77a0``, ``edx=100``. Newton-330 damp on
+  ``r < 0`` is ``err_prev > tol`` (DLL ``0x102933b8…c2``; earlier host
+  ``<=`` was wrong at fill-scale args).
+* ``0x10293960`` (~994 B): **ported + Unicorn-golden**
+  (``tone_lut_fill_93960`` / ``SHASTA_CURVE_FILL_PORTED``). Still not a
+  full analyze→Cap toneLut (builder's 2nd segment + ``0x10293d50`` +
+  Cap ``+0x3e0`` path open) → ``SHASTA_TONE_LUT_PORTED=False``.
 
-  - ``this``/``eax`` = param struct filled by builder ``0x10293ee0``
-    from working object (``+0``←``+0x334``, ``+4``←``fist(+0x378)``,
-    ``+0x10``←``+0x128/+0x138``, ``+0x20``←``+0x148``,
-    ``+0x28``←``+0x338``, ``+0x2c``←``+0x300``, ``+0x30``←``+0x340``).
-  - Stack: ``[ebp+8]=start(+0x2b0)``, ``[ebp+0xc]=end``,
+  - ``this``/``eax`` = param struct from builder ``0x10293ee0``:
+
+    ==========  ==============================  ========================
+    param off   work field                      role
+    ==========  ==============================  ========================
+    ``+0``      ``+0x334`` (int)                span end code
+    ``+4``      ``fist(+0x378)`` (``0x104ffe44`` trunc)  adj
+    ``+0x10``   ``+0x128`` or ``+0x138``        ``u0`` blend weight
+    ``+0x20``   ``+0x148``                      ``p20`` → sub0 via
+                                                ``(1−p20)·d2c``
+    ``+0x28``   ``+0x338``                      → ``d28`` rel start
+    ``+0x2c``   ``+0x300``                      → ``d2c`` rel start
+    ``+0x30``   ``+0x340``                      ``p30`` alpha scale
+    ``+0x18``   written by fill                 ``p18`` slope
+    ``+0x38``   written by fill                 ``p38`` (side; loop
+                                                recomputes from leaves)
+    ==========  ==============================  ========================
+
+  - Stack: ``[ebp+8]=start`` (work ``+0x2b0`` / aim), ``[ebp+0xc]=end``,
     ``[ebp+0x10]=toneLut`` vector @ ``+0x3ac``.
-  - Setup: ``93510(span,span,adj)`` then ``93510(d28,d2c,d28)``;
-    log-ratio ``c50/cb0(span, u0)`` (arg order from hook — span first);
-    ``d80(d2c·0.75, lr, span, u0) / (d2c·0.75)`` → ``param+0x18``;
-    further ``d80`` → ``param+0x38``; then per-code LUT write loop.
-  - **Fill loop body + full builder wiring still open** →
-    ``SHASTA_TONE_LUT_PORTED=False``.
+  - Setup: ``93510(span,span,span−adj*)``; ``93510(d28,d2c,d28)``;
+    log-ratio ``c50/cb0(span, S1)`` (span≥0 → c50); ``p18 =
+    d80(d2c·0.75, lr, span, S1) / (d2c·0.75)``; ``sub0 =
+    (1−p20)·d2c`` (or ``d2c∓1`` at boundary); ``p38 =
+    (d80(d2c,d2c,d28,S2) − d80(sub0,lr,span,S1)) / (d2c−sub0)``.
+  - Loop ``i`` from ``start±1`` toward ``end±1``: ``α =
+    clamp01((i−start−sub0)/(d2c−sub0))·p30``; blend ``lo =
+    start+(i−start)·p18``, ``hi = d80(off,lr,span,S1)+start``, ``up =
+    d80(off,d2c,d28,S2)+start`` by ``u0`` / ``α``; store
+    ``ftol2(out+0.5)``.
+  - **Aim layout the fill needs from track A / analyze** (injected OK
+    for golden): work ``+0x2b0…+0x2bc`` as start/end pair args to the
+    two builder calls (``+0x2b0``→first start; ends from ``+0x64`` /
+    ``+0x330`` siblings — field←dpi beyond the param map above still
+    partial). Mid aims ``+0x2b4/+0x2b8`` feed ``0x10293d50``, not this
+    fill.
 * ``0x10293d50`` (~395 B): uses ``+0x1d0``, ``+0x2b4/+0x2b8``, toneLut
   ``+0x3b0``, ``+0x328``, arg ``[ebp+8]``; may touch ``+0x3c0`` via
   ``0x10246050``. Partial index arithmetic ported below; full body
@@ -244,16 +272,14 @@ UNKNOWN / blockers (honest)
   AddScene/ScpLut and dens floats from AneOrder ``getResults`` fill.
   Contrast (``0x10119060``) / float-table (``0x1004f7b0``) side paths
   open. ``ANALYZE`` stays False.
-* Full ``0x10293960`` LUT write loop + builder ``0x10293ee0`` field←dpi
-  map (setup call graph mapped; loop not host-ported) — **next VA**.
+* Builder ``0x10293ee0`` 2nd segment + ``0x10293d50`` + work-field←dpi
+  scalars beyond the param map above — next VA for full ``toneLut``.
 * Cap ``+0x3e0`` ← working ``+0x3b0`` automatic path.
 * Full ``ImaShastaOp`` / ``ShastaApply`` aggregate wiring.
 * Therefore ``SHASTA_ANALYZE_PORTED`` / ``SHASTA_TONE_LUT_PORTED = False``
   — host Preference path uses linked-percentile **STAND-IN**
   (``working-images-v1``); do **not** claim that stand-in is Shasta.
-
-Log-ratio + exp + Newton/dispatch leaves are Unicorn-golden but **not** a
-toneLut by themselves (fill still open; mid-aim maths closed, inputs not).
+  Fill leaf is golden (``SHASTA_CURVE_FILL_PORTED``) with injected aims.
 """
 from __future__ import annotations
 
@@ -281,8 +307,10 @@ SHASTA_AIM_INPUT_PATH_PORTED = True
 SHASTA_CURVE_LOG_RATIO_PORTED = True
 # Unicorn-golden 0x10292d30 / 0x10292d80.
 SHASTA_CURVE_EXP_PORTED = True
-# Unicorn-golden 0x10293510 + 0x10293330 / 0x10293410 (fill still open).
+# Unicorn-golden 0x10293510 + 0x10293330 / 0x10293410.
 SHASTA_CURVE_DISPATCH_PORTED = True
+# Unicorn-golden 0x10293960 fill (injected aims/param). Full toneLut still open.
+SHASTA_CURVE_FILL_PORTED = True
 
 # ShastaParams early scalars (ctor 0x100543b0 / dump 0x101280a0)
 SHASTA_PARAMS_METRIC_GRAY_OFF = 0x38
@@ -426,7 +454,8 @@ def curve_newton_330(
     Starts ``S = target``, factor ``x = 1.1``. Residual
     ``r = target − S·(1 − exp(−a/S))``. On ``r > 0`` multiply ``S`` by
     ``x``; else divide. Damp ``x ← (x+1)/2`` when
-    ``err_prev < −tol`` (``r ≥ 0`` path) or ``err_prev ≤ tol`` (``r < 0``).
+    ``err_prev < −tol`` (``r ≥ 0``) or ``err_prev > tol`` (``r < 0``;
+    cite ``0x102933b8…c2`` — not ``<=``).
     """
     if n <= 0:
         return target
@@ -443,7 +472,7 @@ def curve_newton_330(
         else:
             if -r <= tol:
                 return s
-            if err_prev <= tol:
+            if err_prev > tol:
                 x = (x + F64_1) * F64_HALF
         s = s * x if r > F64_0 else s / x
         err_prev = r
@@ -748,13 +777,127 @@ def aim_codes_from_dpi_ends(
 def tone_lut_seed_identity(lut: np.ndarray, code: int) -> None:
     """``0x102940d9``: ``toneLut[code] = code`` (int32 vector).
 
-    Does **not** run curve fill ``0x10293960`` — incomplete by design.
+    Builder seeds before ``0x10293960``; fill overwrites ``start±1…end``.
     """
     if lut.dtype != np.int32:
         raise TypeError("toneLut fragment expects int32")
     if not (0 <= code < len(lut)):
         raise ValueError(f"code {code} out of range for lut len {len(lut)}")
     lut[code] = np.int32(code)
+
+
+@dataclass
+class ToneLutFillParam:
+    """Param blob for ``0x10293960`` (builder ``0x10293ee0`` stack object).
+
+    Offsets match the DLL ``this``/``eax`` struct. Work-object sources are
+    documented on the type; dpi←field for ``+0x128/+0x148/+0x300…`` is only
+    partially mapped — inject cited or synthetic values for golden fills.
+    """
+
+    code_end: int  # +0 ← work +0x334
+    adj: int  # +4 ← ftol2(work +0x378)
+    u0: float  # +0x10 ← work +0x128 or +0x138
+    p20: float  # +0x20 ← work +0x148
+    code_28: int  # +0x28 ← work +0x338
+    code_2c: int  # +0x2c ← work +0x300
+    p30: float  # +0x30 ← work +0x340
+    p18: float = 0.0  # +0x18 written by fill
+    p38: float = 0.0  # +0x38 written by fill
+
+
+def _fill_sub0(d2c: float, p20: float, span: int) -> float:
+    """``0x10293a77…abc``: ``(1−p20)·d2c``, or ``d2c∓1`` at the boundary."""
+    raw = (F64_1 - float(p20)) * float(d2c)
+    if span >= 0:
+        return raw if raw < d2c else d2c - F64_1
+    return raw if raw > d2c else d2c + F64_1
+
+
+def tone_lut_fill_93960(
+    lut: np.ndarray,
+    start: int,
+    end: int,
+    param: ToneLutFillParam,
+) -> ToneLutFillParam:
+    """``0x10293960`` toneLut curve fill (Unicorn-golden vs PakonIMAu.dll).
+
+    Writes ``lut[start±1 … end]`` (inclusive end). Seeds ``lut[start]``
+    separately via ``tone_lut_seed_identity`` (builder ``0x102940d9``).
+    Returns ``param`` with ``p18`` / ``p38`` filled.
+
+    ``start`` is work ``+0x2b0`` (metricGray aim) on the first builder call.
+    Does **not** run ``0x10293d50`` or Cap export — ``SHASTA_TONE_LUT_PORTED``
+    stays False until those land.
+    """
+    if lut.dtype != np.int32:
+        raise TypeError("toneLut fill expects int32")
+    span = int(param.code_end) - int(start)
+    d2c = float(int(param.code_2c) - int(start))
+    d28 = float(int(param.code_28) - int(start))
+    adj = int(param.adj)
+    lim = ftol2_chop(float(span) * F64_0_95)
+    if span >= 0:
+        if adj > lim:
+            adj = lim
+        span_adj = span - adj
+    else:
+        lim = -lim
+        if adj > lim:
+            adj = lim
+        span_adj = adj + span
+    span_f = float(span)
+    s1 = curve_dispatch_93510(span_f, span_f, float(span_adj))
+    s2 = curve_dispatch_93510(d28, d2c, d28)
+    lr = (
+        curve_log_ratio_c50(span_f, s1)
+        if span >= 0
+        else curve_log_ratio_cb0(span_f, s1)
+    )
+    d75 = d2c * F64_0_75
+    sub0 = _fill_sub0(d2c, param.p20, span)
+    denom = d2c - sub0
+    r1 = curve_exp_d80(d75, lr, span_f, s1)
+    p18 = r1 / d75
+    r2 = curve_exp_d80(d2c, d2c, d28, s2)
+    r3 = curve_exp_d80(sub0, lr, span_f, s1)
+    p38 = (r2 - r3) / denom if denom != 0.0 else F64_0
+    param.p18 = p18
+    param.p38 = p38
+
+    if end >= start:
+        i, i_end, step = start + 1, end + 1, 1
+    else:
+        i, i_end, step = start - 1, end - 1, -1
+    u0 = float(param.u0)
+    p30 = float(param.p30)
+    while i != i_end:
+        if not (0 <= i < len(lut)):
+            i += step
+            continue
+        offset = float(i - start)
+        u = (offset - sub0) / denom if denom != 0.0 else F64_0
+        u = clamp01(u)
+        alpha = u * p30
+        lo = float(start) + offset * p18
+        hi = curve_exp_d80(offset, lr, span_f, s1) + float(start)
+        if alpha < F64_1:
+            if u0 == F64_0:
+                base = hi
+            elif u0 < F64_1:
+                base = (F64_1 - u0) * hi + u0 * lo
+            else:
+                base = lo
+            if alpha > F64_0:
+                up = curve_exp_d80(offset, d2c, d28, s2) + float(start)
+                out = alpha * up + (F64_1 - alpha) * base
+            else:
+                out = base
+        else:
+            out = curve_exp_d80(offset, d2c, d28, s2) + float(start)
+        lut[i] = np.int32(ftol2_chop(out + F64_HALF))
+        i += step
+    return param
 
 
 def curve_index_from_span(
@@ -938,7 +1081,24 @@ def main() -> None:
         f"4096→{master_lut_clip_i16(4096)} "
         f"ftol2(2.5*2)={ftol2_chop(5.0)}"
     )
-    # Apply fragment smoke (identity seed only)
+    # Synthetic fill demo (injected aims/param — not scene analyze).
+    end = int(round(dpi.white))
+    fill_param = ToneLutFillParam(
+        code_end=min(code + 450, end),
+        adj=50,
+        u0=0.5,
+        p20=0.25,
+        code_28=code + 250,
+        code_2c=code + 350,
+        p30=1.0,
+    )
+    tone_lut_fill_93960(lut, code, end, fill_param)
+    mid = (code + end) // 2
+    print(
+        f"  fill 0x10293960 (injected): p18={fill_param.p18:.6g} "
+        f"p38={fill_param.p38:.6g} lut[{mid}]={int(lut[mid])} "
+        f"FILL={SHASTA_CURVE_FILL_PORTED}"
+    )
     plane = np.array([code], dtype=np.int16)
     out = ima_shasta_apply_i16(plane, lut)
     print(f"  I16 apply fragment: in={code} out={int(out[0])}")
@@ -949,15 +1109,16 @@ def main() -> None:
         f"FRAGMENTS={SHASTA_TONE_LUT_FRAGMENTS} "
         f"LOG_RATIO={SHASTA_CURVE_LOG_RATIO_PORTED} "
         f"EXP={SHASTA_CURVE_EXP_PORTED} "
-        f"DISPATCH={SHASTA_CURVE_DISPATCH_PORTED}"
+        f"DISPATCH={SHASTA_CURVE_DISPATCH_PORTED} "
+        f"FILL={SHASTA_CURVE_FILL_PORTED}"
     )
     print(
         f"  log-ratio: c50(0.5,1)={curve_log_ratio_c50(0.5, 1.0):.6g} "
         f"cb0(0.5,1)={curve_log_ratio_cb0(0.5, 1.0):.6g}"
     )
     print(
-        "  mid-aim maths + input path ported; live dmin/getResults dens "
-        "+ 0x10293960 fill still WALL (toneLut STAND-IN; "
+        "  fill golden with injected aims; live dmin/getResults dens + "
+        "builder 2nd segment/0x10293d50 still WALL (toneLut STAND-IN; "
         "SHASTA_TONE_LUT_PORTED=False)"
     )
 

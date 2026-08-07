@@ -249,6 +249,12 @@ def aim_medians(rpd12: np.ndarray, aim: float) -> np.ndarray:
     return np.clip(x, 0, SHASTA_MAX)
 
 
+# Preference opening RGB source labels (docs/48). Host uses dpi fpo until a
+# cited FOS→nested-fpo writer exists; do not invent dens maths.
+OPENING_FPO_SOURCE_DPI = "dpi-fpo"
+OPENING_FPO_SOURCE_FOS = "fos-orderFpo"  # reserved; FOS_ANALYZE dens not ported
+
+
 @dataclass
 class AnselEngine:
     shasta: ShastaParams
@@ -266,23 +272,55 @@ class AnselEngine:
     sfs_rows: list[tuple[int, int, int, int]] = field(default_factory=list)
     band3_lut: scp_lut.ThreeBandLut | None = None
     setshifts_out: tuple[int, int, int] | None = None
+    preference_a: tuple[int, int, int] | None = None
+    opening_fpo: tuple[int, int, int] | None = None
+    opening_fpo_source: str = OPENING_FPO_SOURCE_DPI
     _icc_cache: object = field(default=None, repr=False)
 
     @classmethod
     def load(cls, ansel_root: Path | str = DEFAULT_ANSEL_ROOT,
              iso: int | None = None,
-             scene: SceneContext | None = None) -> "AnselEngine":
+             scene: SceneContext | None = None,
+             *,
+             sba_key_override: str | None = None,
+             opening_fpo_override: tuple[int, int, int] | None = None,
+             opening_fpo_source: str | None = None) -> "AnselEngine":
+        """Load map-selected Ansel tables for ``scene``.
+
+        Preference blob fields (``fpo``/``fpa``/``pcls``/NBP/…) come from the
+        **selected** ``sba-*.dpi`` (``sba.map`` or ``sba_key_override``), not a
+        hardcoded CN-default. Nested opening RGB for Preference is dpi
+        ``fpo`` (docs/48) unless ``opening_fpo_override`` is supplied — that
+        path is reserved for a future cited FOS ``orderFpo`` and is **not**
+        enabled by default (``FOS_ANALYZE_PORTED=False``).
+        """
         root = Path(ansel_root)
         if scene is None:
             scene = SceneContext(iso=iso)
         elif iso is not None and scene.iso is None:
             scene = replace(scene, iso=iso)
 
-        sel = maps.select_ansel_files(root, scene)
+        sel = maps.select_ansel_files(
+            root, scene, sba_key_override=sba_key_override
+        )
         shasta = ShastaParams.load(sel.shasta_dpi)
         sba = SbaParams.load(sel.sba_dpi)
         sra = load_sra_fwd_lut(sel.sra_lut)
         fugc = load_fugc_lut(sel.fugc_lut)
+
+        # Opening RGB: selected dpi fpo, unless an explicit override is given.
+        # FOS dens → orderFpo is not ported; do not invent a substitute.
+        if opening_fpo_override is not None:
+            fpo_i = (
+                int(opening_fpo_override[0]),
+                int(opening_fpo_override[1]),
+                int(opening_fpo_override[2]),
+            )
+            fpo_src = opening_fpo_source or OPENING_FPO_SOURCE_FOS
+            sba = replace(sba, fpo=(float(fpo_i[0]), float(fpo_i[1]), float(fpo_i[2])))
+        else:
+            fpo_i = sba_pref.opening_rgb_from_sba_fpo(sba.fpo)
+            fpo_src = OPENING_FPO_SOURCE_DPI
 
         pcode = None
         stage2 = None
@@ -297,6 +335,7 @@ class AnselEngine:
 
         band3 = None
         setshifts_out = None
+        preference_a = None
         lut_path = scp_lut.find_shipped_3band_lut(root)
         # Both fragments must be golden before Preference→(1,2)→apply is
         # the host default; either False falls back to median channel_balance.
@@ -306,8 +345,9 @@ class AnselEngine:
             and sba_pref.PREFERENCE_SHIFTS_PORTED
         ):
             band3 = scp_lut.load_3band_lut_ascii(lut_path)
-            setshifts_out = cn_setshifts_apply_words(
-                sba, band3.planar, band3.num_lut
+            preference_a = preference_shift_words(sba)
+            setshifts_out = sba_apply.setshifts_12(
+                preference_a, preference_a, band3.planar, band3.num_lut
             )
 
         print(
@@ -317,6 +357,10 @@ class AnselEngine:
             f"ISO={scene.iso} metric={scene.metric}"
         )
         print(
+            f"  SBA select: {sel.sba_selection_reason}  "
+            f"file={sel.sba_dpi.name}"
+        )
+        print(
             f"  Ansel(I16): SBA={sel.sba_key} ({sel.sba_dpi.name})  "
             f"Shasta={sel.shasta_key} ({sel.shasta_dpi.name})  "
             f"SRA={sel.sra_name}[200]={int(sra[200])}  "
@@ -324,6 +368,20 @@ class AnselEngine:
             f"profile={sel.profile_key}  "
             f"neutral={sba.neutral_balance_point:g}  "
             f"gray/white={shasta.metric_gray:g}/{shasta.white:g}"
+        )
+        stand_in = (
+            "STAND-IN" if fpo_src == OPENING_FPO_SOURCE_DPI
+            else "override"
+        )
+        print(
+            f"  Preference opening RGB: {fpo_src}={fpo_i} ({stand_in}; "
+            f"docs/48 — FOS→nested fpo not wired)  "
+            f"fpa={tuple(int(x) for x in sba.fpa)}  "
+            f"pcls={int(sba.pcls)}  "
+            f"NBP={sba.neutral_balance_point:g}  "
+            f"neuBtn={sba.neutral_button:g}  "
+            f"under/over={sba.neutral_under_constraint:g}/"
+            f"{sba.neutral_over_constraint:g}"
         )
         if pcode is not None and stage2 is not None:
             print(
@@ -338,10 +396,10 @@ class AnselEngine:
             )
         else:
             print(f"  SBA pcode: missing {pcode_path}")
-        if setshifts_out is not None and band3 is not None:
+        if setshifts_out is not None and band3 is not None and preference_a is not None:
             print(
-                f"  SBA setShifts(1,2): A≡B Preference fragment → OUT="
-                f"{setshifts_out}  lut={band3.name} "
+                f"  SBA Preference A (mode 0x11 / +0x3a38)={preference_a}  "
+                f"setShifts(1,2) OUT={setshifts_out}  lut={band3.name} "
                 f"(SETSHIFTS_12_PORTED={sba_apply.SETSHIFTS_12_PORTED})"
             )
         else:
@@ -365,6 +423,9 @@ class AnselEngine:
             sfs_rows=sfs_rows,
             band3_lut=band3,
             setshifts_out=setshifts_out,
+            preference_a=preference_a,
+            opening_fpo=fpo_i,
+            opening_fpo_source=fpo_src,
         )
 
     def render_scene(self, rpd12: np.ndarray,

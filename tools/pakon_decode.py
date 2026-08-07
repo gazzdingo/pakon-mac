@@ -11,16 +11,24 @@ Host-side pipeline (docs/11) — scanner sends raw; we render:
 Per-pixel dark/gain is mandatory before colour (docs/46-handover-ansel.md).
 Tables are valid only for the locked exposure triad in calibration/README.json.
 
-DX / film via --dx. Ansel DPI/LUT files are chosen with the vendor ``.map``
-selectors (sba/shasta/fugc/profile) from path + DX + ISO + metric. Full
-AnsOrder/pcode is NOT ported. ColorCorrection / anselinstalldir stay outside
-the repo — --data-dir / --ansel-root.
+Film / SBA dpi selection (required for ``--icc`` — no silent CN-default):
+
+  --dx PART1[-PART2]   DX → film-products.json → path/ISO → ``sba.map``
+  --film-path ColNeg|BnW|POSITIVE|IMPORTED   path only (CN-default unless DX)
+  --sba-key ansel-sba-78-13   bypass map for SBA dpi only
+  --sba-default              explicit opt-in to ``ansel-sba-CN-default``
+
+Ansel DPI/LUT files otherwise follow vendor ``.map`` selectors (shasta/fugc/
+profile) from path + DX + ISO + metric. Preference ``fpo``/``fpa``/… come from
+the **selected** ``sba-*.dpi``. Full AnsOrder/pcode is NOT ported.
+ColorCorrection / anselinstalldir stay outside the repo — --data-dir /
+--ansel-root.
 
 Usage:
   # Every product type (raw14, rpd, ansel_rpd, srgb, cc_srgb, tones) + frames:
-  ./pakon_decode.py strip captures/strip_cal.bin out/ --all
-  ./pakon_decode.py strip captures/strip_cal.bin out/ --color --icc --frames
-  ./pakon_decode.py strip captures/strip_cal.bin out/ --all --dx 78-13
+  ./pakon_decode.py strip captures/strip_cal.bin out/ --all --sba-default
+  ./pakon_decode.py strip captures/strip_cal.bin out/ --color --icc --frames --dx 78-13
+  ./pakon_decode.py strip captures/test_nofifo.bin out/ --color --icc --sba-default
   ./pakon_decode.py verify-lut
 
 Products (--all):
@@ -430,6 +438,20 @@ def cmd_strip(args: argparse.Namespace) -> int:
     want_frames = bool(args.frames or want_all)
     want_tiff = bool(args.tiff or want_all)
 
+    sba_key_override = getattr(args, "sba_key", None)
+    film_path = getattr(args, "film_path", None)
+    sba_default = bool(getattr(args, "sba_default", False))
+    if want_icc and not (
+        args.dx or film_path or sba_key_override or sba_default
+    ):
+        print(
+            "error: --icc requires an explicit film/SBA selection "
+            "(--dx, --film-path, --sba-key, or --sba-default). "
+            "Captures do not carry DX; do not silently assume CN-default.",
+            file=sys.stderr,
+        )
+        return 2
+
     words = load_u16(args.input)
     print(f"{args.input}: {words.size} words, "
           f"{100.0 * (words & 1).sum() / words.size:.3f}% sync")
@@ -477,7 +499,15 @@ def cmd_strip(args: argparse.Namespace) -> int:
         p1, p2 = film.parse_dx(args.dx)
         stock = film.lookup(p1, p2)
         print(f"film: {stock.name} ({stock.manufacturer})  "
-              f"path={stock.path}  ISO={stock.iso}  SBA={stock.sba_override}")
+              f"path={stock.path}  ISO={stock.iso}  SBA={stock.sba_override}  "
+              f"(from --dx {args.dx})")
+    elif film_path:
+        print(f"film: path={film_path} (from --film-path; no DX)")
+    elif sba_key_override:
+        print(f"film: SBA key override {sba_key_override} (from --sba-key)")
+    elif sba_default:
+        print("film: explicit --sba-default → ansel-sba-CN-default "
+              "(no DX / stock id)")
 
     # --- product: raw14 ---
     raw_u8 = raw14_preview_u8(rgb)
@@ -515,9 +545,22 @@ def cmd_strip(args: argparse.Namespace) -> int:
                 dx_part2=stock.dx_part2,
                 iso=stock.iso,
             )
+        elif film_path:
+            scene = ansel.scene_from_filmstock(path=film_path)
         else:
+            # --sba-default or --sba-key: CN-Premium / Neg35 scene for
+            # Shasta/FUGC maps; SBA dpi comes from override or CN-default key.
             scene = ansel.SceneContext()
-        engine = ansel.AnselEngine.load(args.ansel_root, scene=scene)
+        # --sba-default without an explicit key: force CN-default dpi via
+        # override so the log reason is unambiguous (not a silent map fallthrough).
+        force_key = sba_key_override
+        if sba_default and not force_key and not stock and not film_path:
+            force_key = "ansel-sba-CN-default"
+        engine = ansel.AnselEngine.load(
+            args.ansel_root,
+            scene=scene,
+            sba_key_override=force_key,
+        )
         print(f"  Ansel two-pass on {len(spans)} scenes "
               f"({rpd.shape[0]} lines) …")
         srgb, toned12 = engine.render_strip(rpd, spans, return_toned=True)
@@ -612,7 +655,21 @@ def main() -> int:
                    help="extra pre-Ansel channel balance on stage-2 RPD")
     s.add_argument("--dx", default=None,
                    help="DX film code PART1, PART1-PART2, or composite "
-                        "(selects ColNeg/BnW/POSITIVE path)")
+                        "(selects ColNeg/BnW/POSITIVE path + sba.map stock dpi)")
+    s.add_argument("--film-path",
+                   choices=("ColNeg", "BnW", "POSITIVE", "IMPORTED"),
+                   default=None,
+                   help="Ansel path without DX (sba.map → CN-default for "
+                        "Neg35 unless --sba-key). Required alternative to "
+                        "--dx for --icc when stock is unknown.")
+    s.add_argument("--sba-key", default=None,
+                   help="Force SBA dpi key (e.g. ansel-sba-78-13); bypasses "
+                        "sba.map for SBA only. Preference fpo/fpa/… from "
+                        "that dpi.")
+    s.add_argument("--sba-default", action="store_true",
+                   help="Explicit opt-in to ansel-sba-CN-default when DX/"
+                        "stock is unknown (required for --icc without "
+                        "--dx/--film-path/--sba-key)")
     s.add_argument("--tone", choices=("warm", "cold", "sepia", "none"),
                    default=None,
                    help="B&W toning abstract (with --all: all three tones)")

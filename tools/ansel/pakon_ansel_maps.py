@@ -344,13 +344,27 @@ class SelectedAnselFiles:
     fugc_name: str
     sra_name: str
     profile_key: str
+    # Why this SBA dpi was chosen (CLI / map / override) — host logging only.
+    sba_selection_reason: str = ""
 
 
 def select_ansel_files(
     root: Path,
     ctx: SceneContext,
+    *,
+    sba_key_override: str | None = None,
 ) -> SelectedAnselFiles:
-    """Run vendor maps and resolve dpi/lut paths under dataPathItems."""
+    """Run vendor maps and resolve dpi/lut paths under dataPathItems.
+
+    SBA selection (cite: ``sba/SbaDPI/sba.map`` AnsKeySelector):
+    ``_AnselPath_``, ``scannerName``, ``sourceType``, ``productCode``,
+    ``genCode``, ``_AnselImageSize_`` → ``ansel-sba-*`` key → dpi file.
+
+    Stock-specific shipped overrides (same ``fpo`` as CN-default for most;
+    different ``fpa``): ``78-13``, ``79-15``, ``96-*``, ``43-*``.
+    ``sba_key_override`` bypasses the map for SBA only (Shasta/FUGC still
+    follow ``ctx``).
+    """
     sba_map = parse_key_selector_map(root / "sba" / "SbaDPI" / "sba.map")
     shasta_map = parse_key_selector_map(root / "shasta" / "shasta.map")
     profile_map = parse_key_selector_map(root / "profile" / "profile.map")
@@ -366,7 +380,28 @@ def select_ansel_files(
     ])
 
     cdict = ctx.as_dict()
-    sba_key = sba_map.select(cdict) or "ansel-sba-CN-default"
+    if sba_key_override:
+        sba_key = sba_key_override
+        sba_reason = f"CLI --sba-key={sba_key_override}"
+    else:
+        mapped = sba_map.select(cdict)
+        if mapped:
+            sba_key = mapped
+            dx = ctx.product_code
+            gen = ctx.gen_code
+            dx_s = (
+                f"DX={dx}-{gen}" if dx is not None and gen is not None
+                else f"DX={dx}" if dx is not None else "DX=None"
+            )
+            sba_reason = (
+                f"sba.map match ({dx_s} src={ctx.source_type} "
+                f"path={ctx.ansel_path}) → {sba_key}"
+            )
+        else:
+            sba_key = "ansel-sba-CN-default"
+            sba_reason = (
+                "sba.map miss → fallback ansel-sba-CN-default"
+            )
     shasta_key = shasta_map.select(cdict) or "ansel-shasta-rpd"
     profile_key = profile_map.select(cdict) or "profile-Rpd2Srgb.dpi"
 
@@ -377,8 +412,13 @@ def select_ansel_files(
     profile_dpi = resolve_dpi_key(profile_key, index, root / "profile")
 
     if sba_dpi is None:
+        if sba_key_override:
+            raise FileNotFoundError(
+                f"SBA key {sba_key_override!r} not found under {root / 'sba' / 'SbaDPI'}"
+            )
         sba_dpi = root / "sba" / "SbaDPI" / "sba-CN-default.dpi"
         sba_key = "ansel-sba-CN-default"
+        sba_reason = "dpi resolve miss → sba-CN-default.dpi"
     if shasta_dpi is None:
         shasta_dpi = root / "shasta" / "shasta-rpd.dpi"
         shasta_key = "ansel-shasta-rpd"
@@ -410,4 +450,5 @@ def select_ansel_files(
         fugc_name=fugc_name,
         sra_name=sra_name,
         profile_key=profile_key,
+        sba_selection_reason=sba_reason,
     )

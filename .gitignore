@@ -14,5 +14,7 @@ research/sdk/*.iso
 MPLABXLog.xml
 tools/MPLABXLog.xml
 log.*
-captures/*.bin
-captures/*.ppm
+
+# Scan captures -- the owner's own photographs and raw sensor dumps.
+# NEVER commit anything from here. Personal image data, and large.
+captures/

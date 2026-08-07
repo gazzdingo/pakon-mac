@@ -96,11 +96,11 @@ import pakon_ansel as ansel     # noqa: E402
 # Where user corrections enter, and in what unit.
 #
 # They are applied to the *toned* RPD, after AnselEngine.render_scene and
-# before to_srgb. That is forced by the pipeline, not a preference:
-# render_scene ends in aim_medians(), which rescales each channel's median to
-# the SBA neutralBalancePoint (1550). Anything added upstream of that — for
-# instance in the 3x4 matrix offset column — is normalised straight back out,
-# and a density slider placed there measurably does nothing.
+# before to_srgb. On the median-balance fallback path, render_scene still
+# ends in aim_medians() (NBP=1550), which would cancel upstream offsets.
+# On the CN Preference→setShifts→apply path aim_medians is skipped (it
+# cancelled Preference OUT — Gold 400), so corrections remain post-render
+# for a single consistent hook before to_srgb.
 #
 # The unit is the vendor's own: codeValuesPerButton from the shipped Shasta
 # DPI file (75.0 for this stock; pakon_shasta.py:236 uses it as

@@ -23,8 +23,13 @@ analyze shift is a stand-in). SBA: Preference mode-``0x11`` fragment →
 Pipeline here (I16 0..4095 until ICC):
 
   RPD12 → setshifts_12(A,A)+apply (CN) → SRA fwd lut (Shasta stand-in)
-        → FUGC seed lut (stand-in; missing setLutInfo) →
-          median→neutralBalancePoint → Rpd2Pcs→Srgb
+        → FUGC seed lut (stand-in; missing setLutInfo) → Rpd2Pcs→Srgb
+
+  When Preference→setShifts apply is unavailable (port flags off), fallback
+  is median ``channel_balance`` then ``aim_medians(…, NBP)``. ``aim_medians``
+  is **not** run after CN Preference apply — it forces each channel median
+  to NBP (1550) and cancels Preference balance (Gold 400 A=(746,350,189),
+  OUT=(688,292,130)).
 
 See ``docs/46-ansel-parity-checklist.md``.
 """
@@ -434,7 +439,8 @@ class AnselEngine:
         x = rpd12.astype(np.float64)
         if roll_scale is not None:
             x = x * roll_scale.reshape(1, 1, 3)
-        if self.setshifts_out is not None:
+        preference_apply = self.setshifts_out is not None
+        if preference_apply:
             x = sba_apply.apply_balance_shifts(
                 x.astype(np.int32), self.setshifts_out
             ).astype(np.float64)
@@ -443,7 +449,13 @@ class AnselEngine:
         # SRA fwd lut = AnsCommonSraFwdLutDPI stand-in for Shasta toneLut
         x = apply_1d_lut(x, self.sra_lut)
         x = apply_1d_lut(x, self.fugc_lut)
-        x = aim_medians(x, self.sba.neutral_balance_point)
+        # Skip aim_medians on the CN Preference→setShifts→apply path.
+        # Diagnosis (Gold 400): Preference A=(746,350,189), setShifts OUT=
+        # (688,292,130) match DLL, but aim_medians(…, NBP=1550) then forces
+        # each channel median to 1550 and cancels that balance. Keep the
+        # stand-in only for the median channel_balance fallback.
+        if not preference_apply:
+            x = aim_medians(x, self.sba.neutral_balance_point)
         return np.clip(x, 0, SHASTA_MAX)
 
     def analyze_roll_scales(self, scenes: list[np.ndarray]) -> np.ndarray:

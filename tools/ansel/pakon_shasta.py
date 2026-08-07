@@ -71,20 +71,66 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
     style (const ``2.5`` @ ``0x105a5a20``) — image-derived side fields
     (``+0x2e4…+0x2f0``), **not** the four aim codes.
 
-* Aim-arg call chain (forwards only — no image maths in these frames):
+* Aim-arg call chain (cited):
 
-  ``analyzeWithShastaTriage`` (``shastaMethods.cpp``) →
-  ``0x10114a50`` @ ``0x101162d8`` / ``0x1011661d`` →
-  wrapper ``0x1010d8b0`` @ ``0x10114ade`` →
+  ``AnsCnPremiumPath::CnPremium_analyzeSceneSpecific`` ``0x10054800``
+  (2nd caller ``0x1006fa90``) → ``analyzeWithShastaTriage`` ``0x10116040``
+  @ ``0x10057111`` / ``0x100739a3`` → ``0x10114a50`` @ ``0x101162d8`` /
+  ``0x1011661d`` → wrapper ``0x1010d8b0`` @ ``0x10114ade`` →
   ``AnsShastaCapabilityImpl::analyze`` ``0x101e5250`` @ ``0x1010d941`` →
   ``0x1027be10`` store.
 
-* **WALL (next VA):** who fills ``analyzeWithShastaTriage``'s
-  ``[ebp+0x10/+0x14/+0x18/…]`` (and siblings) from the analysis image /
-  dpi results (``extShadowAim`` / ``cumExtShadowPt`` dump strings exist
-  @ ``0x10589630…``). ``0x1027be10`` does **not** invent the four codes
-  from the plane. Do **not** invent percentile tone from dpi
-  ``shadowPercent`` / ``highlightPercent``.
+* Triage stack args that become the four work codes (VA-proven):
+
+  - CnPremium builds ShastaParams @ ``ebp-0x3fc`` (ctor ``0x100543b0`` /
+    ``0x10054780``): ``+0x38=metricGray``, ``+0x3c=black``, ``+0x40=white``
+    (dump ``0x101280a0…``; ctor defaults ``1550/600/2358``; overwritten by
+    ``AnsShastaCapabilityImpl::selectParams`` ``0x101e4f50`` via
+    ``0x1008e970`` copy from dpi-selected params).
+  - Triage keeps a live ShastaParams @ ``ebp-0x4d8`` after its own
+    ``selectParams`` (``0x10116150``); ``0x10114a50`` reads
+    ``[params+0x38]`` → analyze → work ``+0x2b0``.
+  - CnPremium ``[ebp+0x10]`` / ``[ebp+0x14]`` to triage = ``avg2largest``
+    ``0x1004f690`` of two processed RGB int16 triples; those become
+    work ``+0x2b4`` / ``+0x2b8``.
+  - CnPremium pushes ``params+0x40`` (``white``) as triage ``[ebp+0x18]`` →
+    work ``+0x2bc``.
+
+  Store map (``0x1027be10``):
+
+  ==========  =========================  ==============================
+  work off    source                     cite
+  ==========  =========================  ==============================
+  ``+0x2b0``  ShastaParams ``metricGray``  triage local ``+0x38``
+  ``+0x2b4``  ``avg2largest(dmin RGB)``    triage ``[ebp+0x10]``
+  ``+0x2b8``  ``avg2largest(dmin+dens)``   triage ``[ebp+0x14]``
+  ``+0x2bc``  ShastaParams ``white``       triage ``[ebp+0x18]``
+  ==========  =========================  ==============================
+
+* RGB triple provenance before ``avg2largest`` (CnPremium ``0x10056663…``):
+
+  1. Seed all three channels from ``params+0x3c`` (``black``).
+  2. Named property fetch ``"dmin"`` via ``0x10022a40`` into
+     ``[ebp-0x34…]`` (6-byte RGB).
+  3. AneOrder dens floats @ result ``+0x4c`` (via ``0x10112980`` /
+     ``"aneOrder"``): second triple ``[ebp-0x2e…] = dmin +
+     fist(table[dmin]*scale)`` (scale ``[ebp-0x23c]``).
+  4. Add scene setShifts OUT ``+0x4b6/+0x4b8/+0x4ba``; remap through
+     master LUT ``[0x106b5f7c]``; optional contrast / scene``+0x30`` path;
+     float LUT index via ``0x1004f7b0`` + ``ftol2`` ``0x104ffe44``.
+  5. ``0x1004f690`` on each triple → triage aims.
+
+* Dump names ``extShadowAim`` / ``cumExtShadowPt`` @ ``0x10589630…`` are
+  **ShastaParams/Results fields** (``0x10128d20`` / ``0x10128033``), not
+  the triage stack slots themselves. Input codes are
+  ``metricGray`` / processed-dmin avgs / ``white``.
+
+* **WALL (next VA):** closed form for steps 2–4 (dmin getter, AneOrder
+  dens table, master/contrast LUT wiring) so ``+0x2b4/+0x2b8`` are host-
+  computable without inventing percentiles. ``metricGray``/``white`` and
+  ``avg2largest`` are cited fragments only — **not** a full analyze.
+  Do **not** invent percentile tone from dpi ``shadowPercent`` /
+  ``highlightPercent``.
 
 CapabilityImpl ``+0x3e0`` vs working ``+0x3b0`` (VERIFIED facts)
 ---------------------------------------------------------------
@@ -161,18 +207,20 @@ Relationship to SRA forward LUT
 
 UNKNOWN / blockers (honest)
 ---------------------------
-* Analysis-image → four analyze-arg codes (feeds ``+0x2b0…+0x2bc``) —
-  WALL at ``analyzeWithShastaTriage`` arg provenance (see above).
+* ``+0x2b4/+0x2b8`` RGB pipeline (dmin getter ``0x10022a40``, AneOrder
+  dens ``0x10112980``, master LUT ``0x106b5f7c``, contrast path) — WALL.
+  ``metricGray``/``white`` → ``+0x2b0/+0x2bc`` and ``avg2largest`` are
+  mapped/ported fragments only.
 * Full ``0x10293960`` LUT write loop + builder ``0x10293ee0`` field←dpi
   map (setup call graph mapped; loop not host-ported).
 * Cap ``+0x3e0`` ← working ``+0x3b0`` automatic path.
 * Full ``ImaShastaOp`` / ``ShastaApply`` aggregate wiring.
-* Therefore ``SHASTA_TONE_LUT_PORTED = False`` — host Preference path
-  uses linked-percentile **STAND-IN** (``working-images-v1``); do **not**
-  claim that stand-in is Shasta.
+* Therefore ``SHASTA_ANALYZE_PORTED`` / ``SHASTA_TONE_LUT_PORTED = False``
+  — host Preference path uses linked-percentile **STAND-IN**
+  (``working-images-v1``); do **not** claim that stand-in is Shasta.
 
 Log-ratio + exp + Newton/dispatch leaves are Unicorn-golden but **not** a
-toneLut by themselves (fill + aims still open).
+toneLut by themselves (fill + image-derived mid aims still open).
 """
 from __future__ import annotations
 
@@ -189,12 +237,24 @@ SHASTA_TONE_LUT_PORTED = False
 SHASTA_APPLY_PORTED = False
 # Fragments below are cited but insufficient for a scene toneLut.
 SHASTA_TONE_LUT_FRAGMENTS = True
+# avg2largest 0x1004f690 + dpi metricGray/white → +0x2b0/+0x2bc mapped;
+# +0x2b4/+0x2b8 RGB pipeline still WALL → ANALYZE stays False.
+SHASTA_AIM_AVG2_PORTED = True
 # Unicorn-golden closed forms for 0x10292c50 / 0x10292cb0 (not full curve).
 SHASTA_CURVE_LOG_RATIO_PORTED = True
 # Unicorn-golden 0x10292d30 / 0x10292d80.
 SHASTA_CURVE_EXP_PORTED = True
 # Unicorn-golden 0x10293510 + 0x10293330 / 0x10293410 (fill still open).
 SHASTA_CURVE_DISPATCH_PORTED = True
+
+# ShastaParams early scalars (ctor 0x100543b0 / dump 0x101280a0)
+SHASTA_PARAMS_METRIC_GRAY_OFF = 0x38
+SHASTA_PARAMS_BLACK_OFF = 0x3C
+SHASTA_PARAMS_WHITE_OFF = 0x40
+# Ctor defaults before selectParams (erimm-shaped: black=600, white=2358)
+SHASTA_PARAMS_CTOR_METRIC_GRAY = 0x60E  # 1550
+SHASTA_PARAMS_CTOR_BLACK = 0x258  # 600
+SHASTA_PARAMS_CTOR_WHITE = 0x936  # 2358
 
 # CapabilityImpl getToneLut / setToneLut (int32 toneLut)
 CAP_TONE_LUT_VEC_OFF = 0x3E0  # begin; end +0x3e4; int32 stride
@@ -439,6 +499,31 @@ def prep_breakpoint_pair(
     return a, ref_code - a
 
 
+def _sx16(x: int) -> int:
+    x = int(x) & 0xFFFF
+    return x - 0x10000 if x >= 0x8000 else x
+
+
+def _sar_div2(x: int) -> int:
+    """MSVC ``cdq; sub eax, edx; sar eax, 1`` on a signed 32-bit value."""
+    x = int(x)
+    if x < -0x80000000 or x > 0x7FFFFFFF:
+        x = ((x + 0x80000000) & 0xFFFFFFFF) - 0x80000000
+    edx = -1 if x < 0 else 0
+    return (x - edx) >> 1
+
+
+def avg2largest_i16(a: int, b: int, c: int) -> int:
+    """``0x1004f690`` — average of the two largest of three int16 codes.
+
+    ``(a + b + c − min(a,b,c)) / 2`` with MSVC signed ``sar`` rounding.
+    Used by ``CnPremium_analyzeSceneSpecific`` on the dmin RGB triple and
+    the dmin+dens triple before pushing triage ``[ebp+0x10/+0x14]``.
+    """
+    a16, b16, c16 = _sx16(a), _sx16(b), _sx16(c)
+    return _sar_div2(a16 + b16 + c16 - min(a16, b16, c16))
+
+
 def store_aim_codes(
     code_2b0: int,
     code_2b4: int,
@@ -447,9 +532,31 @@ def store_aim_codes(
 ) -> tuple[int, int, int, int]:
     """``0x1027be10`` store of analyze args → ``+0x2b0…+0x2bc``.
 
-    Does **not** derive codes from an image — that provenance is UNKNOWN.
+    Provenance (see module doc): ``metricGray``, ``avg2largest(dmin RGB)``,
+    ``avg2largest(dmin+dens)``, ``white``. Mid codes still require the
+    CnPremium RGB pipeline (WALL) — pass host-computed values only when
+    that path is cited.
     """
     return int(code_2b0), int(code_2b4), int(code_2b8), int(code_2bc)
+
+
+def aim_codes_from_dpi_ends(
+    dpi: "ShastaDpi",
+    avg_dmin_rgb: int,
+    avg_dmin_dens_rgb: int,
+) -> tuple[int, int, int, int]:
+    """Partial aim tuple: dpi ``metricGray``/``white`` + caller mid avgs.
+
+    Matches store map ``+0x2b0/+0x2bc`` ← ShastaParams (selectParams/dpi)
+    and ``+0x2b4/+0x2b8`` ← ``avg2largest`` results. Does **not** compute
+    the mid avgs from an image.
+    """
+    return store_aim_codes(
+        int(round(dpi.metric_gray)),
+        int(avg_dmin_rgb),
+        int(avg_dmin_dens_rgb),
+        int(round(dpi.white)),
+    )
 
 
 def tone_lut_seed_identity(lut: np.ndarray, code: int) -> None:
@@ -614,14 +721,24 @@ def main() -> None:
     print(f"  seed fragment: toneLut[{code}]={int(lut[code])} (identity only)")
     a, b = prep_breakpoint_pair(3.67, 1.1, dpi.code_values_per_button, code, code)
     print(f"  prep fragment example (highlightButtons*aggr): a={a} b={b}")
-    codes = store_aim_codes(code, code - 100, code + 100, code + 200)
-    print(f"  aim-code store fragment: {codes}")
+    mid_lo = avg2largest_i16(code, code, code)
+    mid_hi = avg2largest_i16(code, code + 50, code + 100)
+    codes = aim_codes_from_dpi_ends(dpi, mid_lo, mid_hi)
+    print(
+        f"  aim ends: metricGray→+0x2b0={codes[0]} white→+0x2bc={codes[3]} "
+        f"(mid avgs stand-in only: {codes[1]}, {codes[2]})"
+    )
+    print(
+        f"  avg2largest(1,2,3)={avg2largest_i16(1, 2, 3)} "
+        f"(0x1004f690; AIM_AVG2={SHASTA_AIM_AVG2_PORTED})"
+    )
     # Apply fragment smoke (identity seed only)
     plane = np.array([code], dtype=np.int16)
     out = ima_shasta_apply_i16(plane, lut)
     print(f"  I16 apply fragment: in={code} out={int(out[0])}")
     print(
         f"  SHASTA_TONE_LUT_PORTED={SHASTA_TONE_LUT_PORTED} "
+        f"ANALYZE_PORTED={SHASTA_ANALYZE_PORTED} "
         f"APPLY_PORTED={SHASTA_APPLY_PORTED} "
         f"FRAGMENTS={SHASTA_TONE_LUT_FRAGMENTS} "
         f"LOG_RATIO={SHASTA_CURVE_LOG_RATIO_PORTED} "
@@ -633,7 +750,7 @@ def main() -> None:
         f"cb0(0.5,1)={curve_log_ratio_cb0(0.5, 1.0):.6g}"
     )
     print(
-        "  0x10293960 fill loop + image→aims WALL still open "
+        "  +0x2b4/+0x2b8 RGB pipeline + 0x10293960 fill still WALL "
         "(toneLut STAND-IN on host; SHASTA_TONE_LUT_PORTED=False)"
     )
 

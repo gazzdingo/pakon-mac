@@ -1,0 +1,28 @@
+guest clock runs behind host-local by: 7:57:52
+
+scanner attached (host-local):
+   2025-07-23 12:04:22 -> 2025-07-23 12:44:15   (0:39:53)
+   2025-07-23 13:12:24 -> 2025-07-23 14:15:40   (1:03:16)
+   2025-07-27 20:22:57 -> 2025-07-27 20:42:44   (0:19:47)
+   2025-07-28 10:23:24 -> 2025-07-28 11:09:42   (0:46:18)
+
+calibration key            guest write          = host local         verdict
+--------------------------------------------------------------------------------------------
+DpiBase16_35\BnW           2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase16_35\BnWIr         2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase16_35\BnW_C41       2025-07-28 02:50:07  2025-07-28 10:47:59  ATTACHED -> ours
+DpiBase16_35\BnW_C41Ir     2025-07-23 04:28:32  2025-07-23 12:26:24  ATTACHED -> ours
+DpiBase16_35\ColNeg        2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase16_35\ColNegIr      2025-07-23 04:23:10  2025-07-23 12:21:02  ATTACHED -> ours
+DpiBase4_35\BnW            2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase4_35\BnWIr          2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase4_35\BnW_C41        2025-07-23 04:23:48  2025-07-23 12:21:40  ATTACHED -> ours
+DpiBase4_35\BnW_C41Ir      2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase4_35\ColNeg         2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase4_35\ColNegIr       2025-07-23 04:23:10  2025-07-23 12:21:02  ATTACHED -> ours
+DpiBase8_35\BnW            2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase8_35\BnWIr          2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase8_35\BnW_C41        2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase8_35\BnW_C41Ir      2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's
+DpiBase8_35\ColNeg         2022-11-10 21:11:25  2022-11-11 05:09:17  pre-dates this VM -> serial 16275's
+DpiBase8_35\ColNegIr       2022-11-10 21:13:56  2022-11-11 05:11:48  pre-dates this VM -> serial 16275's

@@ -3,8 +3,8 @@
 **Date: 2026-08-06. This supersedes the plan in `docs/36-windows-registry-extraction.md`.**
 
 If you are the agent picking this up: read this file first, then
-`vendor/windows-registry/NOTES.md` for the evidence, then
-`vendor/windows-registry/lamp-calibration.md` for all 18 keys in full.
+`research/windows-registry/NOTES.md` for the evidence, then
+`research/windows-registry/lamp-calibration.md` for all 18 keys in full.
 
 ## What happened
 
@@ -132,7 +132,7 @@ StepperLens 3133    StepperCCD 970
 ## Where everything is
 
 ```
-vendor/windows-registry/
+research/windows-registry/
     README.md                     folder index and how to reproduce
     NOTES.md                      verdict, provenance, trust tiers
     lamp-calibration.md           all 18 keys as tables
@@ -143,5 +143,5 @@ vendor/windows-registry/
 ```
 
 The single most useful file for checking this work is
-`vendor/windows-registry/evidence/usb-timeline-correlation.txt` — it shows, key
+`research/windows-registry/evidence/usb-timeline-correlation.txt` — it shows, key
 by key, which scanner each set of values belongs to and why.

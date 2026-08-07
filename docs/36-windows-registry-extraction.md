@@ -5,7 +5,7 @@
 > The calibration was recovered on the Mac instead, by carving the SOFTWARE hive
 > out of the VM's virtual disk. The VM was never booted — its Parallels licence
 > has expired. **Read `docs/37-calibration-recovered.md` first**, then
-> `vendor/windows-registry/NOTES.md`.
+> `research/windows-registry/NOTES.md`.
 >
 > Two premises below are wrong and were load-bearing: the Mac is **Intel**, not
 > Apple Silicon, and **USB passthrough did work** — our scanner attached to this
@@ -252,10 +252,10 @@ the binary ourselves.
 
 ### 5. Commit and push
 
-Put everything under `vendor/windows-registry/` in the repo on that machine:
+Put everything under `research/windows-registry/` in the repo on that machine:
 
 ```
-vendor/windows-registry/
+research/windows-registry/
     pakon_hklm.reg          (and whichever others exported)
     find_hklm.txt           the search output, even if empty
     pakon_files.txt
@@ -295,7 +295,7 @@ Then record, plainly:
 Then commit and push:
 
 ```cmd
-git add vendor/windows-registry
+git add research/windows-registry
 git commit -m "Windows registry export: Pakon lamp calibration search"
 git push
 ```

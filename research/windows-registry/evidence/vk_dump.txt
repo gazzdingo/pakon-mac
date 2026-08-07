@@ -1,0 +1,824 @@
+window 4731500000..4731610000 (107 KB)
+
+=== KEYS (nk) in window ===
+  4731500052   DA21CED3C025E974FAFD00AC04A86882   values=1    last-written=2017-02-12 01:32:18.962031
+  4731500228   FBF25E677DD8E5E4282A1C56616D11BC   values=1    last-written=2017-02-12 01:32:18.962031
+  4731500588   Scan                               values=8    last-written=2022-11-10 21:13:56.516998
+  4731500676   1c                                 values=4    last-written=2017-05-15 18:58:22.717745
+  4731500980   Test                               values=33   last-written=2022-11-10 21:08:22.296412
+  4731502300   8052F484C83F80240854D73D0C40D0CD   values=1    last-written=2017-02-12 01:32:18.982060
+  4731502660   7C61A2E64CD007041BB5F4FF33568A99   values=1    last-written=2017-02-12 01:32:18.992075
+  4731503028   FACEC2AE0DDA26C4EAE9F2E413EBB418   values=1    last-written=2017-02-12 01:32:18.992075
+  4731503388   51680C3D3CA5D1A48BD388967886E31F   values=1    last-written=2017-02-12 01:32:18.992075
+  4731503740   E72A9908C3C79FA458E2B3409478AFED   values=1    last-written=2017-02-12 01:32:18.992075
+  4731504124   2E85E1F7CFD11F74B9085DBC42191CD1   values=1    last-written=2017-02-12 01:32:18.992075
+  4731504492   8C75E6F2784E43A41AD17E452F6DDCD4   values=1    last-written=2017-02-12 01:32:18.992075
+  4731504884   ABB13AB824E83D14D8DC45150EC99E83   values=1    last-written=2017-02-12 01:32:18.992075
+  4731505268   ABD723C6C69C4824499CE74E3DCD291C   values=1    last-written=2017-02-12 01:32:18.992075
+  4731505660   EDA943E20DAAC9141B8E2D85F75E4CA7   values=1    last-written=2017-02-12 01:32:18.992075
+  4731506052   3A31F077D318F5444B6697AD742C0CA4   values=1    last-written=2017-02-12 01:32:18.992075
+  4731506428   D2D497C4547106D42A5D9084826212AE   values=1    last-written=2017-02-12 01:32:18.992075
+  4731506788   705B92EE2F815BA45A64821302A1EFDB   values=1    last-written=2017-02-12 01:32:18.992075
+  4731507148   38BFE9D071E1769489A92E77BEE6C6BE   values=1    last-written=2017-02-12 01:32:18.992075
+  4731507532   F62924941218B5044A22249FB83CC7FD   values=1    last-written=2017-02-12 01:32:18.992075
+  4731507892   F47796E6335FEB54B8B4C85C2B3190F5   values=1    last-written=2017-02-12 01:32:18.992075
+  4731508252   ABBCF110F8DEA9D499EB1ECA2A772304   values=1    last-written=2017-02-12 01:32:19.002089
+  4731508492   DpiBase16_35                       values=9    last-written=2022-11-10 21:13:56.516998
+  4731508788   InvertDependencies                 values=16   last-written=2017-05-21 09:53:53.974086
+  4731508940   ColNeg                             values=23   last-written=2022-11-10 21:13:56.516998
+  4731509732   6087e565                           values=0    last-written=2017-05-15 18:55:35.967971
+  4731509820   18                                 values=7    last-written=2017-05-15 18:55:35.967971
+  4731509948   16be2bc2                           values=0    last-written=2017-05-21 09:51:39.440636
+  4731510036   1f                                 values=7    last-written=2017-05-21 09:51:39.450651
+  4731510308   04BE7A619D81EE3428F525AF559F903B   values=1    last-written=2017-02-12 01:32:18.972046
+  4731510612   4D4D5A13AB781C047932EF85B35A38A7   values=1    last-written=2017-02-12 01:32:18.972046
+  4731510980   7A4035B10483B024588AF430FFCD7B1A   values=1    last-written=2017-02-12 01:32:18.982060
+  4731511348   874B89824AE3D5A4D82A1DF2037EBF81   values=1    last-written=2017-02-12 01:32:18.982060
+  4731511716   12BC82AD36265BB4F9ED464489B2E317   values=1    last-written=2017-02-12 01:32:18.982060
+  4731512092   E97749562035D7841A662A693E20738D   values=1    last-written=2017-02-12 01:32:18.982060
+  4731512452   8F88884057599E244B0D8AFC2E4C9A8A   values=1    last-written=2017-02-12 01:32:18.982060
+  4731514076   ColNegIr                           values=23   last-written=2025-07-23 04:23:10.390625
+  4731514172   2d7a8b89                           values=0    last-written=2017-05-21 09:51:37.618015
+  4731514404   142E7B72154DAF64F83419F9121DF6B1   values=1    last-written=2017-02-12 01:32:18.982060
+  4731514708   21AA7F08734CFCB48B118E15BCB43EEC   values=1    last-written=2017-02-12 01:32:18.982060
+  4731515076   25C6A81CAC7BBAD4A860252A54E12A30   values=1    last-written=2017-02-12 01:32:18.982060
+  4731515444   B8E798132635D7A4FBD72807984BA2BC   values=1    last-written=2017-02-12 01:32:18.982060
+  4731515828   8979884C886465447A58CD75A82E92AD   values=1    last-written=2017-02-12 01:32:18.982060
+  4731516204   D6FEADDE0973DD648B2AAA9D0F53F1FD   values=1    last-written=2017-02-12 01:32:18.982060
+  4731516564   FFEB5034711FC774990DB29BF7051653   values=1    last-written=2017-02-12 01:32:18.982060
+  4731517452   27e1f7e2                           values=0    last-written=2017-05-15 18:56:03.878104
+  4731518676   C0666CA38F02FC6458777A9C0B5D806A   values=1    last-written=2017-02-12 01:32:19.002089
+  4731518964   B79CD03B5FB0A184D9DBB3B456E647C0   values=1    last-written=2017-02-12 01:32:19.002089
+  4731519308   080663D264E6D7448A561CD13C28B05D   values=1    last-written=2017-02-12 01:32:19.002089
+  4731519652   65DFE708C156B2F46A2857D9CBB66D15   values=1    last-written=2017-02-12 01:32:19.002089
+  4731520020   C2E82B2790DD9134EB40DFDFB0807B49   values=1    last-written=2017-02-12 01:32:19.002089
+  4731520372   48E6957B699249E439E6AF505CD9892A   values=1    last-written=2017-02-12 01:32:19.002089
+  4731520724   819D3D6BD9123A24B834DF7656912B6D   values=1    last-written=2017-02-12 01:32:19.002089
+  4731521092   B10793860EFE6C14FB189347F6569AB4   values=1    last-written=2017-02-12 01:32:19.002089
+  4731521516   1C94A51AC684FDC4EADEB1E9E6B2E6FD   values=1    last-written=2017-02-12 01:32:19.002089
+  4731521916   1343ADF798E756F46869674FD457DD7A   values=1    last-written=2017-02-12 01:32:19.002089
+  4731522388   InvertDependencies                 values=5    last-written=2017-05-21 09:52:17.395212
+  4731522492   51a1b706                           values=0    last-written=2017-05-15 18:55:52.501745
+  4731522580   72447f8e                           values=0    last-written=2017-05-15 18:55:52.501745
+  4731522668   1a                                 values=4    last-written=2017-05-15 18:58:26.062555
+  4731523036   InvertDependencies                 values=2    last-written=2017-05-21 09:51:50.486519
+  4731523372   3aecd0a4                           values=0    last-written=2017-05-15 18:55:52.511760
+  4731523460   48c95a49                           values=0    last-written=2017-05-15 18:55:52.511760
+  4731523564   21                                 values=4    last-written=2017-05-15 18:58:26.713491
+  4731523980   InvertDependencies                 values=5    last-written=2017-05-21 09:52:17.395212
+  4731526548   78d3666c                           values=0    last-written=2017-05-15 18:55:52.501745
+  4731526820   46b91004                           values=0    last-written=2017-05-15 18:55:52.531788
+  4731526908   571609c                            values=0    last-written=2017-05-15 18:55:52.531788
+  4731526996   17                                 values=7    last-written=2017-05-15 18:55:52.541803
+  4731527596   2d                                 values=4    last-written=2017-05-21 09:51:37.628030
+  4731530252   InvertDependencies                 values=1    last-written=2017-05-15 18:55:52.531788
+  4731530644   1b                                 values=4    last-written=2017-05-15 18:58:24.049660
+  4731534380   BnW                                values=23   last-written=2022-11-10 21:13:56.516998
+  4731534580   InvertDependencies                 values=1    last-written=2017-05-21 09:51:37.628030
+  4731534740   3eb89e2a                           values=0    last-written=2017-05-15 18:55:52.501745
+  4731538476   50c7cc18                           values=0    last-written=2017-05-21 09:51:37.628030
+  4731538564   20                                 values=7    last-written=2017-05-21 09:51:37.628030
+  4731538980   bbbdef8                            values=0    last-written=2017-05-15 18:55:54.364424
+  4731539108   InvertDependencies                 values=1    last-written=2017-05-15 18:55:54.364424
+  4731542164   209ced07                           values=0    last-written=2017-05-15 18:55:54.364424
+  4731542252   2cd602a7                           values=0    last-written=2017-05-15 18:55:54.364424
+  4731542356   16                                 values=7    last-written=2017-05-15 18:55:54.374438
+  4731545100   BnWIr                              values=23   last-written=2022-11-10 21:13:56.516998
+  4731545932   109d7e79                           values=0    last-written=2017-05-21 09:51:37.628030
+  4731546020   27                                 values=4    last-written=2017-05-15 18:58:19.072504
+  4731546452   InvertDependencies                 values=12   last-written=2017-05-21 09:54:04.459163
+  4731546668   5d0933fc                           values=0    last-written=2017-05-15 18:56:03.888118
+  4731546756   a425901                            values=0    last-written=2017-05-15 18:56:03.888118
+  4731546860   26                                 values=4    last-written=2017-05-15 18:58:23.388710
+  4731547172   7e673d85                           values=0    last-written=2017-05-15 18:56:04.569097
+  4731547260   702ef3d0                           values=0    last-written=2017-05-15 18:56:04.569097
+  4731547684   BnW_C41                            values=23   last-written=2025-07-28 02:50:07.281250
+  4731548340   25                                 values=4    last-written=2017-05-15 18:58:19.773512
+  4731548740   InvertDependencies                 values=1    last-written=2017-05-15 18:56:04.569097
+  4731549052   1904b408                           values=0    last-written=2017-05-15 18:56:04.569097
+  4731549164   30c6fc2a                           values=0    last-written=2017-05-15 18:56:03.878104
+  4731549252   28                                 values=4    last-written=2017-05-15 18:58:16.899379
+  4731550252   BnW_C41Ir                          values=23   last-written=2025-07-23 04:28:32.015625
+  4731551348   InvertDependencies                 values=1    last-written=2017-05-15 18:56:03.888118
+  4731551588   61e7e666                           values=0    last-written=2017-05-15 18:56:03.898132
+  4731551676   27e1f7e2                           values=0    last-written=2017-05-15 18:56:03.898132
+  4731552340   15                                 values=7    last-written=2017-05-15 18:56:03.898132
+  4731553428   ColNegIr                           values=23   last-written=2022-11-10 21:13:56.516998
+  4731554836   7e673d85                           values=0    last-written=2017-05-15 18:56:04.569097
+  4731554924   14                                 values=7    last-written=2017-05-15 18:56:04.569097
+  4731558020   28CAA4D9EA8549E47BEE0520C7B9196B   values=1    last-written=2017-02-12 01:32:19.012103
+  4731558188   BnW                                values=23   last-written=2022-11-10 21:13:56.516998
+  4731559244   BnWIr                              values=23   last-written=2022-11-10 21:13:56.516998
+  4731559460   DpiBase8_35                        values=9    last-written=2022-11-10 21:13:56.516998
+  4731559556   ColNeg                             values=23   last-written=2022-11-10 21:11:25.189400
+  4731561004   4B37D7DEF4332A14CB8CEED24D6F9DFF   values=1    last-written=2017-02-12 01:32:19.012103
+  4731561308   BDDE53F961A72BE4C87657B29FE93AE4   values=1    last-written=2017-02-12 01:32:19.012103
+  4731561644   4C61651C191BF354B9B1CCD265E4A912   values=1    last-written=2017-02-12 01:32:19.012103
+  4731561812   C81432CC5C25B36498D8C274CE00E682   values=1    last-written=2017-02-12 01:32:19.012103
+  4731561956   Model                              values=0    last-written=2017-01-20 00:44:42.084873
+  4731562100   784BE98D9E2BB1747836B98EF2F09C0E   values=1    last-written=2017-02-12 01:32:19.012103
+  4731562268   InvertDependencies                 values=3    last-written=2017-05-21 09:52:00.350703
+  4731567652   23a76b5d                           values=0    last-written=2017-05-21 09:51:58.287737
+  4731567740   29                                 values=7    last-written=2017-05-21 09:51:58.297751
+  4731571148   BnW_C41Ir                          values=23   last-written=2022-11-10 21:13:56.516998
+  4731574116   DpiBase4_35                        values=9    last-written=2022-11-10 21:13:56.516998
+  4731574212   ColNeg                             values=23   last-written=2022-11-10 21:13:56.516998
+  4731575620   77a2835c                           values=0    last-written=2017-05-21 09:51:55.413604
+  4731576660   BnW_C41                            values=23   last-written=2022-11-10 21:13:56.516998
+  4731577500   74c9f6c5                           values=0    last-written=2017-05-21 09:51:52.369227
+  4731578252   8A5339AEDD3C4D7418B22967C72D1CBB   values=1    last-written=2017-02-12 01:32:19.012103
+  4731578588   F02A735FEB2704640AA6CF4DA07B675C   values=1    last-written=2017-02-12 01:32:19.012103
+  4731578772   WSpt                               values=1    last-written=2017-01-28 19:30:27.532532
+  4731579100   WRes                               values=1    last-written=2017-01-28 19:30:27.532532
+  4731579372   4A3955F9D6A7D3342AB25595F98A02AB   values=1    last-written=2017-02-12 01:32:19.012103
+  4731579484   WRtl                               values=1    last-written=2017-01-20 00:43:56.980016
+  4731581084   D6C8657BCFA6E5D45A5FCF83CF35C25E   values=1    last-written=2017-02-12 01:32:19.012103
+  4731581428   1ABDB71DB532D2B4DB4048A7E8F430E9   values=1    last-written=2017-02-12 01:32:19.012103
+  4731581852   A0A4E4430A6AE61439B142BA95A97619   values=1    last-written=2017-02-12 01:32:19.012103
+  4731582260   ColNegIr                           values=23   last-written=2025-07-23 04:23:10.390625
+  4731583540   BnW                                values=23   last-written=2022-11-10 21:13:56.516998
+  4731584036   1E9785ABCC257F541B06C633410EEEB0   values=1    last-written=2017-02-12 01:32:19.012103
+  4731585204   BnW_C41                            values=23   last-written=2025-07-23 04:23:48.734375
+  4731586900   BnW_C41Ir                          values=23   last-written=2022-11-10 21:13:56.516998
+  4731587556   27                                 values=7    last-written=2017-05-21 09:51:52.379241
+  4731588740   B169A5D187DB56748B1CC7405B5FF869   values=1    last-written=2017-02-12 01:32:19.022118
+  4731592932   447dbcd8                           values=0    last-written=2017-05-21 09:51:55.413604
+  4731593748   BnWIr                              values=23   last-written=2022-11-10 21:13:56.516998
+  4731594148   79EAFE0927DF01346A068A73BAFA0589   values=1    last-written=2017-02-12 01:32:19.022118
+  4731598628   ColorKodak                         values=65   last-written=2022-11-10 21:13:56.516998
+  4731599596   298818d6                           values=0    last-written=2017-05-21 09:51:53.090263
+  4731599716   19a3ab9                            values=0    last-written=2017-05-21 09:51:56.785577
+  4731599868   25                                 values=7    last-written=2017-05-21 09:51:55.413604
+  4731600156   3d37e654                           values=0    last-written=2017-05-21 09:51:53.090263
+  4731600244   26                                 values=7    last-written=2017-05-21 09:51:53.090263
+
+=== VALUES (vk) in window ===
+offset       name                     type         size     value
+4731500164   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       304      <not inline>
+4731500340   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       216      <not inline>
+4731500884   LastModTime              REG_BINARY   8        <not inline>
+4731501068   DrawDxLines              REG_DWORD    4        0
+4731501108   DxDesperation            REG_DWORD    4        0
+4731501148   LockSteppers             REG_DWORD    4        0
+4731501188   TlaControlLeds           REG_DWORD    4        1
+4731501228   HighWaterTest            REG_DWORD    4        0
+4731501268   UseFixedPatternCorrection REG_DWORD    4        1
+4731501332   IrCrossTalkFactor        REG_DWORD    4        10
+4731501380   UseTimeCriticalPriority  REG_DWORD    4        0
+4731501428   UsePpbDebugTraces        REG_DWORD    4        0
+4731501476   AnselOrientation         REG_DWORD    4        270
+4731501532   UseFPCAnalyze            REG_DWORD    4        0
+4731501572   StepperStartingLens      REG_DWORD    4        0
+4731501636   StepperStartingTransport REG_DWORD    4        0
+4731501684   FPCAnalyzeAvg            REG_DWORD    4        5
+4731501724   Gain_G                   REG_DWORD    4        13
+4731501756   DriverSimultaneousPackets REG_DWORD    4        1
+4731501812   FPCAnalyzeThreshold      REG_DWORD    4        75
+4731501860   Gain_B                   REG_DWORD    4        13
+4731501892   FPCAnalyzeSkip           REG_DWORD    4        15
+4731501932   DxCreateDebugFiles       REG_DWORD    4        0
+4731501980   DxCreateDebugFilesCommunication REG_DWORD    4        0
+4731502412   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       188      <not inline>
+4731502772   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       182      <not inline>
+4731503140   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       174      <not inline>
+4731503500   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       170      <not inline>
+4731503852   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       202      <not inline>
+4731504236   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       188      <not inline>
+4731504604   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       212      <not inline>
+4731504996   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       202      <not inline>
+4731505380   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       210      <not inline>
+4731505772   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       212      <not inline>
+4731506164   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       190      <not inline>
+4731506540   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       176      <not inline>
+4731506900   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       180      <not inline>
+4731507260   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       202      <not inline>
+4731507644   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       176      <not inline>
+4731508004   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       176      <not inline>
+4731508364   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       170      <not inline>
+4731508428   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       172      <not inline>
+4731508636   DetectWhite_G            REG_DWORD    4        61000
+4731508676   DetectFilm_G             REG_DWORD    4        54000
+4731508716   Current_G                REG_DWORD    4        1
+4731508892   6087e565\6f05f6e3\18     REG_SZ       2        0000
+4731509060   6087e565\6f05f6e3\18     REG_SZ       2        0000
+4731509108   6087e565\6f05f6e3\18     REG_SZ       2        0000
+4731509156   6087e565\6f05f6e3\18     REG_SZ       2        0000
+4731509204   WriteLightStabilityLog   REG_DWORD    4        0
+4731509252   WaitForLamp_G            REG_SZ       18       <not inline>
+4731509356   6087e565\6f05f6e3\18     REG_SZ       2        0000
+4731509404   6087e565\6f05f6e3\18     REG_SZ       2        0000
+4731509452   6087e565\6f05f6e3\18     REG_SZ       2        0000
+4731509500   WaitForLamp_B            REG_SZ       18       <not inline>
+4731509620   FPCCreateDebugFile       REG_DWORD    4        0
+4731509684   6087e565\6f05f6e3\18     REG_SZ       2        0000
+4731510124   DisplayName              REG_SZ       112      <not inline>
+4731510164   DxCalibrationFilmOffset  REG_DWORD    4        5
+4731510212   WaitForLamp_R            REG_SZ       18       <not inline>
+4731510724   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       192      <not inline>
+4731511092   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       186      <not inline>
+4731511460   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       188      <not inline>
+4731511828   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       194      <not inline>
+4731512204   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       180      <not inline>
+4731512564   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       180      <not inline>
+4731512812   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       180      <not inline>
+4731512868   WaitForLamp_Ir           REG_SZ       18       <not inline>
+4731512908   WriteEEPromDebugFile     REG_DWORD    4        0
+4731513324   DisplayName              REG_SZ       86       <not inline>
+4731513364   SIG                      REG_BINARY   36       <not inline>
+4731513404   46b91004\571609c\17      REG_SZ       2        0000
+4731513452   46b91004\571609c\17      REG_SZ       2        0000
+4731513500   46b91004\571609c\17      REG_SZ       2        0000
+4731513548   SIG                      REG_BINARY   36       <not inline>
+4731513580   DutyCycle_G              REG_SZ       18       <not inline>
+4731513636   DutyCycle_R              REG_SZ       18       <not inline>
+4731513676   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731513740   DutyCycle_B              REG_SZ       18       <not inline>
+4731513780   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731513852   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731513924   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731514004   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731514300   Status                   REG_DWORD    4        8194
+4731514340   Status                   REG_DWORD    4        8194
+4731514820   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       186      <not inline>
+4731515188   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       184      <not inline>
+4731515556   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       204      <not inline>
+4731515940   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       194      <not inline>
+4731516316   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       176      <not inline>
+4731516676   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       180      <not inline>
+4731516748   MVID                     REG_BINARY   16       <not inline>
+4731516916   UseTemperatureSetpoints  REG_DWORD    4        0
+4731516964   SpliceDarkness           REG_DWORD    4        237
+4731517044   RequireDxSensorsDuringLightCalibration REG_DWORD    4        1
+4731517204   ConfigString             REG_SZ       2        0000
+4731517332   ConfigMask               REG_DWORD    4        4361
+4731517372   ILDependencies           REG_BINARY   220      <not inline>
+4731517412   NIDependencies           REG_BINARY   120      <not inline>
+4731517588   Current_R                REG_DWORD    4        1
+4731517628   Current_Ir               REG_DWORD    4        1
+4731517676   Current_B                REG_DWORD    4        1
+4731517764   FullLightCorrections     REG_DWORD    4        0
+4731517908   SpliceDarkness           REG_DWORD    4        237
+4731517948   DetectWhite_G            REG_DWORD    4        61000
+4731517988   DetectFilm_G             REG_DWORD    4        54000
+4731518028   Current_G                REG_DWORD    4        20
+4731518068   Current_R                REG_DWORD    4        5
+4731518108   Current_Ir               REG_DWORD    4        4
+4731518156   Current_B                REG_DWORD    4        11
+4731518196   DutyCycle_G              REG_SZ       18       <not inline>
+4731518252   DutyCycle_R              REG_SZ       18       <not inline>
+4731518316   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731518404   DutyCycle_B              REG_SZ       18       <not inline>
+4731519076   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       168      <not inline>
+4731519420   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       170      <not inline>
+4731519764   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       194      <not inline>
+4731520132   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       180      <not inline>
+4731520484   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       174      <not inline>
+4731520836   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       182      <not inline>
+4731521204   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       244      <not inline>
+4731521628   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       216      <not inline>
+4731522028   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       228      <not inline>
+4731522324   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       230      <not inline>
+4731522756   DisplayName              REG_SZ       82       <not inline>
+4731522924   Status                   REG_DWORD    4        4098
+4731522956   LastModTime              REG_BINARY   8        <not inline>
+4731523156   MVID                     REG_BINARY   16       <not inline>
+4731523228   46b91004\571609c\17      REG_SZ       2        0000
+4731523276   46b91004\571609c\17      REG_SZ       2        0000
+4731523324   46b91004\571609c\17      REG_SZ       2        0000
+4731523668   DisplayName              REG_SZ       82       <not inline>
+4731523796   SIG                      REG_BINARY   36       <not inline>
+4731523868   Status                   REG_DWORD    4        4098
+4731523900   LastModTime              REG_BINARY   8        <not inline>
+4731524100   46b91004\571609c\17      REG_SZ       2        0000
+4731524148   46b91004\571609c\17      REG_SZ       2        0000
+4731524332   LastModTime              REG_BINARY   8        <not inline>
+4731524372   46b91004\571609c\17      REG_SZ       2        0000
+4731524436   SIG                      REG_BINARY   36       <not inline>
+4731526692   46b91004\571609c\17      REG_SZ       2        0000
+4731526740   DisplayName              REG_SZ       94       <not inline>
+4731526780   Status                   REG_DWORD    4        0
+4731527212   ConfigString             REG_SZ       2        0000
+4731527276   ConfigMask               REG_DWORD    4        4361
+4731527316   ILDependencies           REG_BINARY   500      <not inline>
+4731527388   NIDependencies           REG_BINARY   160      <not inline>
+4731529524   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731529596   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731529644   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731529692   SpliceDarkness           REG_DWORD    4        237
+4731529828   LastModTime              REG_BINARY   8        <not inline>
+4731529868   109d7e79\50c7cc18\20     REG_SZ       2        0000
+4731529916   DisplayName              REG_SZ       86       <not inline>
+4731530036   DisplayName              REG_SZ       84       <not inline>
+4731530108   46b91004\571609c\17      REG_SZ       2        0000
+4731530156   46b91004\571609c\17      REG_SZ       2        0000
+4731530204   46b91004\571609c\17      REG_SZ       2        0000
+4731530356   46b91004\571609c\17      REG_SZ       2        0000
+4731530404   46b91004\571609c\17      REG_SZ       2        0000
+4731530452   2a7f0223\16be2bc2\1f     REG_SZ       2        0000
+4731530500   46b91004\571609c\17      REG_SZ       2        0000
+4731530548   61e7e666\27e1f7e2\15     REG_SZ       2        0000
+4731534332   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731534468   FullLightCorrections     REG_DWORD    4        1668114895
+4731534516   SpliceDarkness           REG_DWORD    4        237
+4731534684   109d7e79\50c7cc18\20     REG_SZ       2        0000
+4731537708   Current_G                REG_DWORD    4        1
+4731537748   Current_R                REG_DWORD    4        1
+4731537788   Current_Ir               REG_DWORD    4        1
+4731537836   Current_B                REG_DWORD    4        1
+4731537876   DutyCycle_G              REG_SZ       18       <not inline>
+4731537932   DutyCycle_R              REG_SZ       18       <not inline>
+4731537972   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731538060   DutyCycle_B              REG_SZ       18       <not inline>
+4731538124   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731538196   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731538292   FullLightCorrections     REG_DWORD    4        0
+4731538348   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731538420   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731538748   MVID                     REG_BINARY   16       <not inline>
+4731538804   ConfigString             REG_SZ       2        0000
+4731538844   ConfigMask               REG_DWORD    4        4361
+4731538884   ILDependencies           REG_BINARY   60       <not inline>
+4731539228   209ced07\2cd602a7\16     REG_SZ       2        0000
+4731539276   209ced07\2cd602a7\16     REG_SZ       2        0000
+4731539324   209ced07\2cd602a7\16     REG_SZ       2        0000
+4731539372   209ced07\2cd602a7\16     REG_SZ       2        0000
+4731539444   209ced07\2cd602a7\16     REG_SZ       2        0000
+4731539492   DetectWhite_G            REG_DWORD    4        63500
+4731539532   DisplayName              REG_SZ       86       <not inline>
+4731539612   LastModTime              REG_BINARY   8        <not inline>
+4731542460   DisplayName              REG_SZ       86       <not inline>
+4731542596   Status                   REG_DWORD    4        0
+4731542628   MVID                     REG_BINARY   16       <not inline>
+4731542684   ConfigString             REG_SZ       2        0000
+4731542748   ConfigMask               REG_DWORD    4        4361
+4731542788   ILDependencies           REG_BINARY   60       <not inline>
+4731542924   NIDependencies           REG_BINARY   120      <not inline>
+4731542964   109d7e79\50c7cc18\20     REG_SZ       2        0000
+4731543012   Status                   REG_DWORD    4        0
+4731545284   SpliceDarkness           REG_DWORD    4        237
+4731545324   DetectWhite_G            REG_DWORD    4        63500
+4731545364   DetectFilm_G             REG_DWORD    4        61500
+4731545404   Current_G                REG_DWORD    4        1
+4731545444   Current_R                REG_DWORD    4        1
+4731545484   Current_Ir               REG_DWORD    4        1
+4731545532   Current_B                REG_DWORD    4        1
+4731545628   DutyCycle_R              REG_SZ       18       <not inline>
+4731545692   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731545756   DutyCycle_G              REG_SZ       18       <not inline>
+4731546124   DisplayName              REG_SZ       94       <not inline>
+4731546268   SIG                      REG_BINARY   36       <not inline>
+4731546340   Status                   REG_DWORD    4        4098
+4731546372   LastModTime              REG_BINARY   8        <not inline>
+4731546572   61e7e666\27e1f7e2\15     REG_SZ       2        0000
+4731546620   61e7e666\27e1f7e2\15     REG_SZ       2        0000
+4731546964   DisplayName              REG_SZ       142      <not inline>
+4731547004   SIG                      REG_BINARY   36       <not inline>
+4731547076   Status                   REG_DWORD    4        4098
+4731547348   DutyCycle_B              REG_SZ       18       <not inline>
+4731547388   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731547460   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731547532   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731547612   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731547772   FullLightCorrections     REG_DWORD    4        0
+4731547980   DetectWhite_G            REG_DWORD    4        61000
+4731548020   DetectFilm_G             REG_DWORD    4        54000
+4731548060   Current_G                REG_DWORD    4        7
+4731548100   Current_R                REG_DWORD    4        3
+4731548140   Current_Ir               REG_DWORD    4        1
+4731548188   Current_B                REG_DWORD    4        3
+4731548228   DutyCycle_G              REG_SZ       18       <not inline>
+4731548428   DisplayName              REG_SZ       120      <not inline>
+4731548596   SIG                      REG_BINARY   36       <not inline>
+4731548668   Status                   REG_DWORD    4        4098
+4731548700   LastModTime              REG_BINARY   8        <not inline>
+4731548860   1904b408\7e673d85\14     REG_SZ       2        0000
+4731548908   1904b408\7e673d85\14     REG_SZ       2        0000
+4731548956   1904b408\7e673d85\14     REG_SZ       2        0000
+4731549004   1904b408\7e673d85\14     REG_SZ       2        0000
+4731549356   DetectFilm_G             REG_DWORD    4        61500
+4731549500   SIG                      REG_BINARY   36       <not inline>
+4731549532   DutyCycle_R              REG_SZ       18       <not inline>
+4731549572   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731549660   DutyCycle_B              REG_SZ       18       <not inline>
+4731549724   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731549796   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731549868   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731549948   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731550020   SpliceDarkness           REG_DWORD    4        237
+4731550060   DetectWhite_G            REG_DWORD    4        61000
+4731550108   FullLightCorrections     REG_DWORD    4        1753667580
+4731550348   DetectFilm_G             REG_DWORD    4        54000
+4731550388   Current_G                REG_DWORD    4        13
+4731550428   Current_R                REG_DWORD    4        5
+4731550468   Current_Ir               REG_DWORD    4        5
+4731550516   Current_B                REG_DWORD    4        4
+4731550556   DutyCycle_G              REG_SZ       18       <not inline>
+4731550612   DutyCycle_R              REG_SZ       18       <not inline>
+4731550676   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731550764   DutyCycle_B              REG_SZ       18       <not inline>
+4731550828   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731550900   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731550972   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731551052   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731551124   MotorAdjust              REG_DWORD    4        1000
+4731551204   Status                   REG_DWORD    4        4098
+4731551452   61e7e666\27e1f7e2\15     REG_SZ       2        0000
+4731551548   DisplayName              REG_SZ       98       <not inline>
+4731551764   MVID                     REG_BINARY   16       <not inline>
+4731551836   LastModTime              REG_BINARY   8        <not inline>
+4731551876   61e7e666\27e1f7e2\15     REG_SZ       2        0000
+4731551924   MotorAdjust_Ir           REG_DWORD    4        1000
+4731551964   MotorAdjustDrag          REG_DWORD    4        1008
+4731552012   FullLightCorrections     REG_DWORD    4        1753243550
+4731552156   MotorAdjustDrag_Ir       REG_DWORD    4        1008
+4731552204   MotorSpeedPlus           REG_DWORD    4        5917
+4731552244   MotorSpeedPlus_Ir        REG_DWORD    4        4850
+4731552532   ConfigString             REG_SZ       2        0000
+4731552572   ConfigMask               REG_DWORD    4        4361
+4731552612   ILDependencies           REG_BINARY   260      <not inline>
+4731552948   NIDependencies           REG_BINARY   120      <not inline>
+4731553140   ConfigString             REG_SZ       2        0000
+4731553380   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731553516   FullLightCorrections     REG_DWORD    4        1668114685
+4731553660   SpliceDarkness           REG_DWORD    4        237
+4731553700   DetectWhite_G            REG_DWORD    4        61000
+4731553740   DetectFilm_G             REG_DWORD    4        54000
+4731553780   Current_G                REG_DWORD    4        23
+4731553820   Current_R                REG_DWORD    4        6
+4731553860   Current_Ir               REG_DWORD    4        5
+4731553908   Current_B                REG_DWORD    4        14
+4731553948   DutyCycle_G              REG_SZ       18       <not inline>
+4731554004   DutyCycle_R              REG_SZ       18       <not inline>
+4731554068   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731554156   DutyCycle_B              REG_SZ       18       <not inline>
+4731554220   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731554292   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731554364   FullLightCorrections     REG_DWORD    4        0
+4731554444   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731554516   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731554588   2a7f0223\16be2bc2\1f     REG_SZ       2        0000
+4731554636   2a7f0223\16be2bc2\1f     REG_SZ       2        0000
+4731554684   Status                   REG_DWORD    4        0
+4731554716   MVID                     REG_BINARY   16       <not inline>
+4731554756   NIDependencies           REG_BINARY   40       <not inline>
+4731554796   MVID                     REG_BINARY   16       <not inline>
+4731555028   DisplayName              REG_SZ       120      <not inline>
+4731555196   Status                   REG_DWORD    4        0
+4731555228   MVID                     REG_BINARY   16       <not inline>
+4731555284   ConfigString             REG_SZ       2        0000
+4731557412   ConfigMask               REG_DWORD    4        4361
+4731557452   ILDependencies           REG_BINARY   20       <not inline>
+4731557548   NIDependencies           REG_BINARY   120      <not inline>
+4731557748   NIDependencies           REG_BINARY   80       <not inline>
+4731558132   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       182      <not inline>
+4731558372   SpliceDarkness           REG_DWORD    4        237
+4731558412   SpliceDarkness           REG_DWORD    4        237
+4731558452   DetectWhite_G            REG_DWORD    4        63500
+4731558492   DetectFilm_G             REG_DWORD    4        61500
+4731558532   Current_G                REG_DWORD    4        1
+4731558572   Current_R                REG_DWORD    4        1
+4731558612   Current_Ir               REG_DWORD    4        1
+4731558660   Current_B                REG_DWORD    4        1
+4731558700   DutyCycle_G              REG_SZ       18       <not inline>
+4731558756   DutyCycle_R              REG_SZ       18       <not inline>
+4731558796   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731558884   DutyCycle_B              REG_SZ       18       <not inline>
+4731558948   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731559020   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731559116   FullLightCorrections     REG_DWORD    4        0
+4731559172   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731559332   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731559644   SpliceDarkness           REG_DWORD    4        237
+4731559684   DetectWhite_G            REG_DWORD    4        61000
+4731559724   DetectFilm_G             REG_DWORD    4        54000
+4731559764   Current_G                REG_DWORD    4        18
+4731559804   Current_R                REG_DWORD    4        4
+4731559844   Current_Ir               REG_DWORD    4        1
+4731559892   Current_B                REG_DWORD    4        10
+4731559932   DutyCycle_G              REG_SZ       18       <not inline>
+4731559988   DutyCycle_R              REG_SZ       18       <not inline>
+4731560028   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731560116   DutyCycle_B              REG_SZ       18       <not inline>
+4731560180   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731560252   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731560324   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731560540   Status                   REG_DWORD    4        0
+4731561420   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       162      <not inline>
+4731561756   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       164      <not inline>
+4731562068   NICType                  REG_DWORD    4        4
+4731562212   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       182      <not inline>
+4731562372   61e7e666\27e1f7e2\15     REG_SZ       2        0000
+4731562420   61e7e666\27e1f7e2\15     REG_SZ       2        0000
+4731562468   61e7e666\27e1f7e2\15     REG_SZ       2        0000
+4731562516   61e7e666\27e1f7e2\15     REG_SZ       2        0000
+4731562564   61e7e666\27e1f7e2\15     REG_SZ       2        0000
+4731567492   ConfigString             REG_SZ       2        0000
+4731567532   ConfigMask               REG_DWORD    4        4361
+4731567572   ILDependencies           REG_BINARY   340      <not inline>
+4731567940   Status                   REG_DWORD    4        0
+4731570556   DutyCycle_B              REG_SZ       18       <not inline>
+4731570620   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731570692   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731570764   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731570844   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731570916   SpliceDarkness           REG_DWORD    4        237
+4731570956   DetectWhite_G            REG_DWORD    4        61000
+4731571004   FullLightCorrections     REG_DWORD    4        0
+4731571244   DetectFilm_G             REG_DWORD    4        54000
+4731571284   Gain_R                   REG_DWORD    4        13
+4731571316   Gain_G                   REG_DWORD    4        13
+4731571348   Gain_B                   REG_DWORD    4        13
+4731571380   Offset_B                 REG_DWORD    4        0
+4731571412   Offset_R                 REG_DWORD    4        0
+4731571444   Offset_G                 REG_DWORD    4        0
+4731571476   Current_G                REG_DWORD    4        1
+4731571516   Current_R                REG_DWORD    4        1
+4731571556   Current_Ir               REG_DWORD    4        1
+4731571604   Current_B                REG_DWORD    4        1
+4731571644   DutyCycle_G              REG_SZ       18       <not inline>
+4731571700   DutyCycle_R              REG_SZ       18       <not inline>
+4731571764   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731571852   DutyCycle_B              REG_SZ       18       <not inline>
+4731571916   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731571988   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731572060   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731572140   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731572212   Offset                   REG_DWORD    4        54
+4731572244   MotorAdjust              REG_DWORD    4        1000
+4731572300   FullLightCorrections     REG_DWORD    4        0
+4731572348   MotorAdjust_Ir           REG_DWORD    4        1000
+4731572388   MotorAdjustDrag          REG_DWORD    4        1008
+4731572436   ConfigMask               REG_DWORD    4        4361
+4731573500   77a2835c\447dbcd8\25     REG_SZ       2        0000
+4731573548   ConfigString             REG_SZ       2        0000
+4731573620   NIDependencies           REG_BINARY   80       <not inline>
+4731573948   MotorAdjustDrag_Ir       REG_DWORD    4        1008
+4731573996   MotorSpeedPlus           REG_DWORD    4        11467
+4731574036   Max_Ir                   REG_DWORD    4        0
+4731574068   MotorSpeedPlus_Ir        REG_DWORD    4        7580
+4731574300   SpliceDarkness           REG_DWORD    4        237
+4731574340   DetectWhite_G            REG_DWORD    4        61000
+4731574380   DetectFilm_G             REG_DWORD    4        54000
+4731574420   Gain_R                   REG_DWORD    4        13
+4731574452   Gain_G                   REG_DWORD    4        13
+4731574484   Gain_B                   REG_DWORD    4        13
+4731574516   Offset_B                 REG_DWORD    4        0
+4731574548   Offset_R                 REG_DWORD    4        0
+4731574580   Offset_G                 REG_DWORD    4        0
+4731574612   Current_G                REG_DWORD    4        1
+4731574652   Current_R                REG_DWORD    4        1
+4731574692   Current_Ir               REG_DWORD    4        1
+4731574740   Current_B                REG_DWORD    4        1
+4731574780   DutyCycle_G              REG_SZ       18       <not inline>
+4731574836   DutyCycle_R              REG_SZ       18       <not inline>
+4731574900   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731574988   DutyCycle_B              REG_SZ       18       <not inline>
+4731575380   77a2835c\447dbcd8\25     REG_SZ       2        0000
+4731575508   77a2835c\447dbcd8\25     REG_SZ       2        0000
+4731575556   Status                   REG_DWORD    4        0
+4731575708   MVID                     REG_BINARY   16       <not inline>
+4731575764   ILDependencies           REG_BINARY   60       <not inline>
+4731575844   DetectFilm_G             REG_DWORD    4        61500
+4731575884   Current_G                REG_DWORD    4        1
+4731575924   Current_R                REG_DWORD    4        1
+4731575964   Current_Ir               REG_DWORD    4        1
+4731576012   Current_B                REG_DWORD    4        1
+4731576052   DutyCycle_G              REG_SZ       18       <not inline>
+4731576108   DutyCycle_R              REG_SZ       18       <not inline>
+4731576148   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731576236   DutyCycle_B              REG_SZ       18       <not inline>
+4731576300   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731576372   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731576444   NIDependencies           REG_BINARY   120      <not inline>
+4731576508   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731576588   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731576748   FullLightCorrections     REG_DWORD    4        0
+4731576956   DetectWhite_G            REG_DWORD    4        61000
+4731576996   DetectFilm_G             REG_DWORD    4        54000
+4731577036   Offset_B                 REG_DWORD    4        0
+4731577068   Offset_R                 REG_DWORD    4        0
+4731577100   Offset_G                 REG_DWORD    4        0
+4731577132   Current_G                REG_DWORD    4        1
+4731577172   Current_R                REG_DWORD    4        1
+4731577212   Current_Ir               REG_DWORD    4        1
+4731577260   Current_B                REG_DWORD    4        1
+4731577300   DutyCycle_G              REG_SZ       18       <not inline>
+4731577356   DutyCycle_R              REG_SZ       18       <not inline>
+4731577420   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731577588   DisplayName              REG_SZ       80       <not inline>
+4731577756   SpliceDarkness           REG_DWORD    4        237
+4731577796   DetectWhite_G            REG_DWORD    4        63500
+4731577852   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       182      <not inline>
+4731577908   ConfigMask               REG_DWORD    4        4361
+4731578020   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       166      <not inline>
+4731578364   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       160      <not inline>
+4731578700   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       178      <not inline>
+4731578860   Path                     REG_SZ       148      <not inline>
+4731579044   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       156      <not inline>
+4731579188   Path                     REG_SZ       148      <not inline>
+4731579572   Path                     REG_SZ       148      <not inline>
+4731580108   ILDependencies           REG_BINARY   300      <not inline>
+4731581196   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       172      <not inline>
+4731581540   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       184      <not inline>
+4731581788   44ec6d48\74c9f6c5\27     REG_SZ       2        0000
+4731581964   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731582036   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731582108   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731582188   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731582348   FullLightCorrections     REG_DWORD    4        0
+4731582492   SpliceDarkness           REG_DWORD    4        237
+4731582532   DetectWhite_G            REG_DWORD    4        61000
+4731582572   DetectFilm_G             REG_DWORD    4        54000
+4731582612   Gain_R                   REG_DWORD    4        13
+4731582644   Gain_G                   REG_DWORD    4        13
+4731582676   Gain_B                   REG_DWORD    4        13
+4731582708   Offset_B                 REG_DWORD    4        4294967277
+4731582740   Offset_R                 REG_DWORD    4        4294967279
+4731582772   Offset_G                 REG_DWORD    4        4294967271
+4731582804   Current_G                REG_DWORD    4        20
+4731582844   Current_R                REG_DWORD    4        5
+4731582884   Current_Ir               REG_DWORD    4        4
+4731582932   Current_B                REG_DWORD    4        11
+4731582972   DutyCycle_G              REG_SZ       18       <not inline>
+4731583028   DutyCycle_R              REG_SZ       18       <not inline>
+4731583092   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731583180   DutyCycle_B              REG_SZ       18       <not inline>
+4731583244   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731583316   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731583388   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731583468   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731583628   FullLightCorrections     REG_DWORD    4        1668115286
+4731583772   SpliceDarkness           REG_DWORD    4        237
+4731583812   SpliceDarkness           REG_DWORD    4        237
+4731583852   DetectWhite_G            REG_DWORD    4        63500
+4731583892   DetectFilm_G             REG_DWORD    4        61500
+4731583932   Gain_R                   REG_DWORD    4        13
+4731583964   Gain_G                   REG_DWORD    4        13
+4731584148   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       134      <not inline>
+4731584228   DetectWhite_G            REG_DWORD    4        63500
+4731584268   DetectFilm_G             REG_DWORD    4        61500
+4731584308   Gain_G                   REG_DWORD    4        13
+4731584340   Gain_B                   REG_DWORD    4        13
+4731584372   Offset_B                 REG_DWORD    4        0
+4731584404   Offset_R                 REG_DWORD    4        0
+4731584436   Offset_G                 REG_DWORD    4        0
+4731584468   Current_G                REG_DWORD    4        1
+4731584508   Current_R                REG_DWORD    4        1
+4731584548   Current_Ir               REG_DWORD    4        1
+4731584596   Current_B                REG_DWORD    4        1
+4731584636   DutyCycle_G              REG_SZ       18       <not inline>
+4731584692   DutyCycle_R              REG_SZ       18       <not inline>
+4731584756   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731584844   DutyCycle_B              REG_SZ       18       <not inline>
+4731584908   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731584980   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731585052   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731585132   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731585292   FullLightCorrections     REG_DWORD    4        0
+4731585660   DetectWhite_G            REG_DWORD    4        61000
+4731585700   DetectFilm_G             REG_DWORD    4        54000
+4731585740   Gain_R                   REG_DWORD    4        13
+4731585772   Gain_G                   REG_DWORD    4        13
+4731585804   Gain_B                   REG_DWORD    4        13
+4731585836   Offset_B                 REG_DWORD    4        4294967277
+4731585868   Offset_R                 REG_DWORD    4        4294967279
+4731585900   Offset_G                 REG_DWORD    4        4294967271
+4731585932   Current_G                REG_DWORD    4        7
+4731585972   Current_R                REG_DWORD    4        3
+4731586012   Current_Ir               REG_DWORD    4        1
+4731586060   Current_B                REG_DWORD    4        3
+4731586100   DutyCycle_G              REG_SZ       18       <not inline>
+4731586156   DutyCycle_R              REG_SZ       18       <not inline>
+4731586220   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731586308   DutyCycle_B              REG_SZ       18       <not inline>
+4731586372   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731586444   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731586516   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731586596   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731586668   SpliceDarkness           REG_DWORD    4        237
+4731586708   DetectWhite_G            REG_DWORD    4        61000
+4731586756   FullLightCorrections     REG_DWORD    4        1753244628
+4731586996   DetectFilm_G             REG_DWORD    4        54000
+4731587036   Gain_R                   REG_DWORD    4        13
+4731587772   ConfigString             REG_SZ       2        0000
+4731587812   ConfigMask               REG_DWORD    4        4361
+4731587852   ILDependencies           REG_BINARY   100      <not inline>
+4731587996   NIDependencies           REG_BINARY   120      <not inline>
+4731588036   19a3ab9\9adbb50\23       REG_SZ       2        0000
+4731588084   53e01c0b\3aecd0a4\38     REG_SZ       2        0000
+4731588276   19a3ab9\9adbb50\23       REG_SZ       2        0000
+4731588324   Status                   REG_DWORD    4        0
+4731588356   77a2835c\447dbcd8\25     REG_SZ       2        0000
+4731588404   77a2835c\447dbcd8\25     REG_SZ       2        0000
+4731588452   77a2835c\447dbcd8\25     REG_SZ       2        0000
+4731588500   19a3ab9\9adbb50\23       REG_SZ       2        0000
+4731588548   77a2835c\447dbcd8\25     REG_SZ       2        0000
+4731588852   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       132      <not inline>
+4731589044   DisplayIcon              REG_SZ       104      <not inline>
+4731589196   DisplayName              REG_SZ       2        0000
+4731589236   UninstallString          REG_SZ       242      <not inline>
+4731589524   InstallLocation          REG_SZ       80       <not inline>
+4731589676   68C6A176DD359AB41A7164AB0C51DB98 REG_SZ       140      <not inline>
+4731589860   NegMatrix1               REG_SZ       18       <not inline>
+4731589924   NegMatrix2               REG_SZ       20       <not inline>
+4731589988   NegMatrix5               REG_SZ       20       <not inline>
+4731590028   NegMatrix3               REG_SZ       20       <not inline>
+4731590068   NegMatrix4               REG_SZ       20       <not inline>
+4731590132   NegMatrix7               REG_SZ       20       <not inline>
+4731590204   NegMatrix6               REG_SZ       18       <not inline>
+4731590268   NegMatrix9               REG_SZ       22       <not inline>
+4731590348   NegMatrix8               REG_SZ       18       <not inline>
+4731590412   NegMatrix11              REG_SZ       18       <not inline>
+4731590500   NegMatrix10              REG_SZ       18       <not inline>
+4731590564   NegMatrix13              REG_SZ       18       <not inline>
+4731590636   NegMatrix12              REG_SZ       20       <not inline>
+4731590700   NegMatrix15              REG_SZ       18       <not inline>
+4731590780   NegMatrix14              REG_SZ       18       <not inline>
+4731590844   NegMatrix17              REG_SZ       20       <not inline>
+4731590932   NegMatrix16              REG_SZ       20       <not inline>
+4731590996   NegMatrix19              REG_SZ       22       <not inline>
+4731591092   NegMatrix18              REG_SZ       18       <not inline>
+4731591132   NegMatrix21              REG_SZ       18       <not inline>
+4731591196   NegMatrix22              REG_SZ       18       <not inline>
+4731591236   NegMatrix20              REG_SZ       18       <not inline>
+4731591276   NegMatrix23              REG_SZ       20       <not inline>
+4731591340   NegMatrix24              REG_SZ       18       <not inline>
+4731591412   NegMatrix25              REG_SZ       18       <not inline>
+4731591476   NegMatrix26              REG_SZ       20       <not inline>
+4731591580   NegMatrix29              REG_SZ       22       <not inline>
+4731591644   PosMatrix0               REG_SZ       18       <not inline>
+4731591732   PosMatrix1               REG_SZ       18       <not inline>
+4731591796   PosMatrix2               REG_SZ       18       <not inline>
+4731591844   NegMatrix27              REG_SZ       18       <not inline>
+4731591908   NegMatrix28              REG_SZ       20       <not inline>
+4731592116   ConfigString             REG_SZ       2        0000
+4731592156   Status                   REG_DWORD    4        0
+4731592732   19a3ab9\9adbb50\23       REG_SZ       2        0000
+4731592780   19a3ab9\9adbb50\23       REG_SZ       2        0000
+4731592828   19a3ab9\9adbb50\23       REG_SZ       2        0000
+4731592876   MVID                     REG_BINARY   16       <not inline>
+4731593020   Status                   REG_DWORD    4        0
+4731593052   Current_G                REG_DWORD    4        1
+4731593092   Current_Ir               REG_DWORD    4        1
+4731593140   Current_B                REG_DWORD    4        1
+4731593180   DutyCycle_G              REG_SZ       18       <not inline>
+4731593236   DutyCycle_R              REG_SZ       18       <not inline>
+4731593300   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731593388   DutyCycle_B              REG_SZ       18       <not inline>
+4731593452   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731593524   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731593596   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731593676   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731593836   FullLightCorrections     REG_DWORD    4        0
+4731593980   SpliceDarkness           REG_DWORD    4        237
+4731594020   Gain_R                   REG_DWORD    4        13
+4731594052   MVID                     REG_BINARY   16       <not inline>
+4731594084   Offset_G                 REG_DWORD    4        0
+4731594116   Offset_B                 REG_DWORD    4        0
+4731597276   Gain_G                   REG_DWORD    4        13
+4731597308   Gain_B                   REG_DWORD    4        13
+4731597340   Offset_B                 REG_DWORD    4        0
+4731597372   Offset_R                 REG_DWORD    4        0
+4731597404   Offset_G                 REG_DWORD    4        0
+4731597436   Current_G                REG_DWORD    4        1
+4731597476   Current_R                REG_DWORD    4        1
+4731597516   Current_Ir               REG_DWORD    4        1
+4731597564   Current_B                REG_DWORD    4        1
+4731597604   DutyCycle_G              REG_SZ       18       <not inline>
+4731597660   DutyCycle_R              REG_SZ       18       <not inline>
+4731597700   DutyCycle_Ir             REG_SZ       18       <not inline>
+4731597788   DutyCycle_B              REG_SZ       18       <not inline>
+4731597852   DutyCycleOpenGate_G      REG_SZ       18       <not inline>
+4731597924   DutyCycleOpenGate_R      REG_SZ       18       <not inline>
+4731597996   DutyCycleOpenGate_Ir     REG_SZ       18       <not inline>
+4731598076   DutyCycleOpenGate_B      REG_SZ       18       <not inline>
+4731598148   Offset                   REG_DWORD    4        27
+4731598180   MotorAdjust              REG_DWORD    4        1000
+4731598236   FullLightCorrections     REG_DWORD    4        0
+4731598380   MotorAdjust_Ir           REG_DWORD    4        1000
+4731598420   MotorAdjustDrag          REG_DWORD    4        1008
+4731598460   MotorAdjustDrag_Ir       REG_DWORD    4        1008
+4731598508   MotorSpeedPlus           REG_DWORD    4        25802
+4731598580   MotorSpeedPlus_Ir        REG_DWORD    4        19335
+4731598724   CRInputProfileFile       REG_SZ       64       <not inline>
+4731598844   InputProfileFile         REG_SZ       62       <not inline>
+4731598956   OutputProfileFile        REG_SZ       64       <not inline>
+4731599076   ColRevLut1File           REG_SZ       76       <not inline>
+4731599196   ColRevLutS6              REG_SZ       80       <not inline>
+4731599236   NegMatrix0               REG_SZ       18       <not inline>
+4731599308   4f1555b2\4383b32f\24     REG_SZ       2        0000
+4731599356   ConfigMask               REG_DWORD    4        4361
+4731599396   298818d6\3d37e654\26     REG_SZ       2        0000
+4731599444   298818d6\3d37e654\26     REG_SZ       2        0000
+4731599508   Current_R                REG_DWORD    4        1
+4731599548   298818d6\3d37e654\26     REG_SZ       2        0000
+4731599684   Gain_B                   REG_DWORD    4        13
+4731599804   ConfigString             REG_SZ       2        0000
+4731600076   ConfigMask               REG_DWORD    4        4361
+4731600116   Offset_R                 REG_DWORD    4        0
+4731600332   DisplayName              REG_SZ       84       <not inline>
+4731608452   ILDependencies           REG_BINARY   180      <not inline>
+4731608492   NIDependencies           REG_BINARY   120      <not inline>
+4731608532   6eae2d34\566d82b2\22     REG_SZ       2        0000
+
+total values printed: 666

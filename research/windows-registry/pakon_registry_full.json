@@ -1,0 +1,8991 @@
+[
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Kodak",
+  "last_written": "2022-11-10 21:08:22.897276",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Kodak\\IniFileMapping",
+  "last_written": "2022-11-10 21:08:22.897276",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Kodak\\IniFileMapping\\kpcms.ini",
+  "last_written": "2022-11-10 21:08:22.897276",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Kodak\\IniFileMapping\\kpcms.ini\\KCP",
+  "last_written": "2022-11-10 21:08:22.897276",
+  "values": [
+   {
+    "name": "KPCP_MP",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon",
+  "last_written": "2017-02-09 07:29:22.478330",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\FirmwareLoader",
+  "last_written": "2017-04-19 19:20:46.725862",
+  "values": [
+   {
+    "name": "ProgramPath",
+    "type": "REG_SZ",
+    "size": 76,
+    "value": "C:\\Program Files\\Pakon\\FirmwareLoader"
+   },
+   {
+    "name": "UseF135",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseF335",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Version",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II",
+  "last_written": "2017-02-14 07:07:31.290120",
+  "values": [
+   {
+    "name": "VersionMS",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 196608
+   },
+   {
+    "name": "VersionLS",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 196634
+   },
+   {
+    "name": "SourceDir",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "C:\\IQueue II"
+   },
+   {
+    "name": "ExtrasDir",
+    "type": "REG_SZ",
+    "size": 60,
+    "value": "C:\\Program Files\\Pakon\\Extras"
+   },
+   {
+    "name": "ProgramPath",
+    "type": "REG_SZ",
+    "size": 54,
+    "value": "C:\\Program Files\\Pakon\\IQ\\"
+   },
+   {
+    "name": "CdrSpeed",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "NumberOfBurners",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "CdrCacheMegabytes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "ScsiAdapter",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "ScsiId",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -1
+   },
+   {
+    "name": "EjectCdAfterBurn",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "ProductId",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   },
+   {
+    "name": "GretagSharpening",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 900
+   },
+   {
+    "name": "GroupProducts",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "AudioWarningEnabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "DivertControlFiles",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "DivertControlFileDir",
+    "type": "REG_SZ",
+    "size": 44,
+    "value": "C:\\IQueue II\\Control2"
+   },
+   {
+    "name": "DivertName",
+    "type": "REG_SZ",
+    "size": 24,
+    "value": "Net Printer"
+   },
+   {
+    "name": "Version",
+    "type": "REG_SZ",
+    "size": 24,
+    "value": "3, 0, 3, 26"
+   },
+   {
+    "name": "NumberOfPendingJobs",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 25
+   },
+   {
+    "name": "CdDriveLetter",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   },
+   {
+    "name": "BravoDiscPublisher",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "CDPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "AvailableCDBurners2",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "CdrPauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "InetPauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "RunLMService",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\DLSQueue",
+  "last_written": "2016-06-22 00:53:17.584136",
+  "values": [
+   {
+    "name": "DeviceControlKPCD",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4198656
+   },
+   {
+    "name": "PrintSelectionKPCD",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1048576
+   },
+   {
+    "name": "DeviceControlPakonCD",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4202504
+   },
+   {
+    "name": "PrintSelectionPakonCD",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1048576
+   },
+   {
+    "name": "MakeSearchString",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "Noritsu"
+   },
+   {
+    "name": "ModelSearchString",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "Scanner"
+   },
+   {
+    "name": "RunDLSQueue",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "LoggingOn",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "DLS2.2ExportFolder_PCD",
+    "type": "REG_SZ",
+    "size": 52,
+    "value": "C:\\IQueue II\\DLS_2.2\\PCD\\"
+   },
+   {
+    "name": "DLS2.2ExportFolder_KPCD",
+    "type": "REG_SZ",
+    "size": 54,
+    "value": "C:\\IQueue II\\DLS_2.2\\KPCD\\"
+   },
+   {
+    "name": "DLS2.2ExportFolder_FOLIO",
+    "type": "REG_SZ",
+    "size": 56,
+    "value": "C:\\IQueue II\\DLS_2.2\\FOLIO\\"
+   },
+   {
+    "name": "DLS2.2ExportFolder_PCD_FOLIO",
+    "type": "REG_SZ",
+    "size": 64,
+    "value": "C:\\IQueue II\\DLS_2.2\\PCD_FOLIO\\"
+   },
+   {
+    "name": "DLS2.2ExportFolder_KPCD_FOLIO",
+    "type": "REG_SZ",
+    "size": 66,
+    "value": "C:\\IQueue II\\DLS_2.2\\KPCD_FOLIO\\"
+   },
+   {
+    "name": "DLS2.2ExportFolder_EZPRINTS",
+    "type": "REG_SZ",
+    "size": 62,
+    "value": "C:\\IQueue II\\DLS_2.2\\EZPRINTS\\"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print",
+  "last_written": "2016-06-22 00:57:31.709550",
+  "values": [
+   {
+    "name": "Noritsu2611VfpSizeInches",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "KPCDVolume",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8
+   },
+   {
+    "name": "KPCDIssue",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\CdJewel",
+  "last_written": "2017-01-19 19:42:49.863185",
+  "values": [
+   {
+    "name": "Background",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 12632256
+   },
+   {
+    "name": "PrintIndexNumbers",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "NumeralRatio",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 100
+   },
+   {
+    "name": "NumeralLoLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 20
+   },
+   {
+    "name": "NumeralHiLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "MinRowSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 625
+   },
+   {
+    "name": "MinColSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 625
+   },
+   {
+    "name": "PrintToFile",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "KodakPictureCdBackground",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "0 0 0 0"
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\CdJewel\\Printer",
+  "last_written": "2017-01-19 17:17:35.123432",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4000
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 6725
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\CdJewel\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.584136",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "CD_Jewel"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\CdLabel",
+  "last_written": "2016-06-22 00:57:31.719564",
+  "values": [
+   {
+    "name": "Background",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16777215
+   },
+   {
+    "name": "PrintIndexNumbers",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "NumeralRatio",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 100
+   },
+   {
+    "name": "NumeralLoLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 20
+   },
+   {
+    "name": "NumeralHiLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "MinRowSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 625
+   },
+   {
+    "name": "MinColSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 625
+   },
+   {
+    "name": "PrintToFile",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "KodakPictureCdBackground",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "0 0 0 0"
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\CdLabel\\Printer",
+  "last_written": "2017-01-19 17:17:35.123432",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 447
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 575
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3430
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5500
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\CdLabel\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.584136",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "CD_Label"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Contact",
+  "last_written": "2017-01-19 19:42:49.863185",
+  "values": [
+   {
+    "name": "Background",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16777215
+   },
+   {
+    "name": "PrintIndexNumbers",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "NumeralRatio",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 100
+   },
+   {
+    "name": "NumeralLoLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 20
+   },
+   {
+    "name": "NumeralHiLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "MinRowSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "MinColSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "PrintToFile",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Number Across",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 6
+   },
+   {
+    "name": "Unit Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13000
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Contact\\Printer",
+  "last_written": "2017-01-19 17:17:35.123432",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 650
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1100
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 550
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 460
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Contact\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.584136",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "Contact"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Index",
+  "last_written": "2016-06-22 00:57:31.719564",
+  "values": [
+   {
+    "name": "Background",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16777215
+   },
+   {
+    "name": "PrintIndexNumbers",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "NumeralRatio",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 100
+   },
+   {
+    "name": "NumeralLoLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 20
+   },
+   {
+    "name": "NumeralHiLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "MinRowSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 625
+   },
+   {
+    "name": "MinColSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 625
+   },
+   {
+    "name": "PrintToFile",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PrintMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Index Style",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Allow Rotation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Index\\Printer",
+  "last_written": "2017-01-20 00:53:55.029969",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 11000
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8500
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4750
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5550
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 253
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 116
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 246
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 198
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 253
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 56,
+    "value": "Canon MG7100 series Printer"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Index\\Printer_2",
+  "last_written": "2017-01-19 17:17:35.123432",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4750
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5550
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Index\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.594150",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 12,
+    "value": "Index"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Internet",
+  "last_written": "2016-06-22 00:57:31.719564",
+  "values": [
+   {
+    "name": "Background",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16777215
+   },
+   {
+    "name": "PrintIndexNumbers",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "NumeralRatio",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 100
+   },
+   {
+    "name": "NumeralLoLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 20
+   },
+   {
+    "name": "NumeralHiLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "MinRowSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 300
+   },
+   {
+    "name": "MinColSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 300
+   },
+   {
+    "name": "PrintToFile",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PrintMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Index Style",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Allow Rotation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Internet\\Printer",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1750
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Internet\\Printer_2",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1750
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Internet\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.594150",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "Internet"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single1",
+  "last_written": "2017-01-20 00:54:16.280526",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 24,
+    "value": "Print 4 x 6"
+   },
+   {
+    "name": "PrintMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "WaitAfterCompletionOdd",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "WaitAfterCompletionEven",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "AvailablePaperTypes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -1
+   },
+   {
+    "name": "Noritsu2611PaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Sharpening",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 900
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitHeight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PaperAdvance",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 30
+   },
+   {
+    "name": "PrintSeparator",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPresent",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Present",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single1\\Printer_1",
+  "last_written": "2017-01-20 00:50:46.318616",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8500
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 11000
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 251
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4550
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 251
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 116
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 248
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 198
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 56,
+    "value": "Canon MG7100 series Printer"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single1\\Printer_2",
+  "last_written": "2017-01-20 00:51:18.094307",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8500
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 11000
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 251
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4550
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 251
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 116
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 248
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 198
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 56,
+    "value": "Canon MG7100 series Printer"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single1\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.554092",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "Single1"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single2",
+  "last_written": "2017-01-20 00:54:16.280526",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 24,
+    "value": "Print 5 x 7"
+   },
+   {
+    "name": "PrintMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "WaitAfterCompletionOdd",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "WaitAfterCompletionEven",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "AvailablePaperTypes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -1
+   },
+   {
+    "name": "Noritsu2611PaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Sharpening",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 900
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitHeight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PaperAdvance",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 30
+   },
+   {
+    "name": "PrintSeparator",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPresent",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Present",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single2\\Printer_1",
+  "last_written": "2017-01-20 00:52:22.887475",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8500
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 11000
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 251
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3550
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 251
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 116
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 248
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 198
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 56,
+    "value": "Canon MG7100 series Printer"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single2\\Printer_2",
+  "last_written": "2017-01-19 17:17:35.123432",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3550
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single2\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.554092",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "Single2"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single3",
+  "last_written": "2017-01-20 00:54:16.280526",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "Print 8 x 10"
+   },
+   {
+    "name": "PrintMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "WaitAfterCompletionOdd",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "WaitAfterCompletionEven",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "AvailablePaperTypes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -1
+   },
+   {
+    "name": "Noritsu2611PaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Sharpening",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 900
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitHeight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PaperAdvance",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 30
+   },
+   {
+    "name": "PrintSeparator",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPresent",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Present",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single3\\Printer_1",
+  "last_written": "2017-01-20 00:52:38.750284",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8500
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 11000
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 251
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1750
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 251
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 116
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 248
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 198
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 56,
+    "value": "Canon MG7100 series Printer"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single3\\Printer_2",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1750
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single3\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.564107",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "Single3"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single4",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 28,
+    "value": "Print 3.5 x 5"
+   },
+   {
+    "name": "PrintMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "WaitAfterCompletionOdd",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "WaitAfterCompletionEven",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "AvailablePaperTypes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -1
+   },
+   {
+    "name": "Noritsu2611PaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Sharpening",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 900
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitHeight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PaperAdvance",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 30
+   },
+   {
+    "name": "PrintSeparator",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPresent",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Present",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single4\\Printer_1",
+  "last_written": "2017-01-20 00:53:09.023816",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8500
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 11000
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 251
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4750
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5550
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 251
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 116
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 248
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 198
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 56,
+    "value": "Canon MG7100 series Printer"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single4\\Printer_2",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4750
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5550
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single4\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.574121",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "Single4"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single5",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 24,
+    "value": "Print 4 x 7"
+   },
+   {
+    "name": "PrintMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "WaitAfterCompletionOdd",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "WaitAfterCompletionEven",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "AvailablePaperTypes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -1
+   },
+   {
+    "name": "Noritsu2611PaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Sharpening",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 900
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitHeight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PaperAdvance",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 30
+   },
+   {
+    "name": "PrintSeparator",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPresent",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Present",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single5\\Printer_1",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3550
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single5\\Printer_2",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3550
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single5\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.574121",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "Single5"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single6",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 24,
+    "value": "Print 5 x 9"
+   },
+   {
+    "name": "PrintMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "WaitAfterCompletionOdd",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "WaitAfterCompletionEven",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "AvailablePaperTypes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -1
+   },
+   {
+    "name": "Noritsu2611PaperIndex",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Sharpening",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 900
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitWidth",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611OffsetPortraitHeight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611PaperAdvance",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 30
+   },
+   {
+    "name": "PrintSeparator",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "GretagPresent",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Noritsu2611Present",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single6\\Printer_1",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1550
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single6\\Printer_2",
+  "last_written": "2017-01-19 17:17:35.133447",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3250
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1550
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Single6\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.574121",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "Single6"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Sleeve",
+  "last_written": "2017-01-19 19:42:49.863185",
+  "values": [
+   {
+    "name": "Background",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16777215
+   },
+   {
+    "name": "PrintIndexNumbers",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "NumeralRatio",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 100
+   },
+   {
+    "name": "NumeralLoLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 20
+   },
+   {
+    "name": "NumeralHiLimit",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "MinRowSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "MinColSpacing",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "PrintToFile",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Number Across",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "Unit Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13000
+   },
+   {
+    "name": "Start At Roll End",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "NumberAcross",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "CustomTextSetSelected",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "KodakFolio",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PaperPrompt",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "PauseCompletedJob",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Sleeve\\Printer",
+  "last_written": "2017-01-19 17:17:35.123432",
+  "values": [
+   {
+    "name": "Initialized",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_LocaleUnits",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "P_Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 250
+   },
+   {
+    "name": "P_MarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 400
+   },
+   {
+    "name": "P_MarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1750
+   },
+   {
+    "name": "P_MarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginLeft",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginTop",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginRight",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_MinMarginBottom",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "P_PrinterName",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "EMPTY_STRING"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\Sleeve\\PrintToFile",
+  "last_written": "2016-06-22 00:53:17.594150",
+  "values": [
+   {
+    "name": "Orientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1667
+   },
+   {
+    "name": "Xdpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Ydpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 360
+   },
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "Sharpen",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Filename",
+    "type": "REG_SZ",
+    "size": 14,
+    "value": "Sleeve"
+   },
+   {
+    "name": "FileFormat",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\IQueue II\\Print\\SleeveTextSets",
+  "last_written": "2016-06-22 00:57:31.709550",
+  "values": [
+   {
+    "name": "CustomTextSetsNumber",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "CustomTextSetsName0",
+    "type": "REG_SZ",
+    "size": 32,
+    "value": "Factory Default"
+   },
+   {
+    "name": "CustomText00",
+    "type": "REG_SZ",
+    "size": 220,
+    "value": "REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10"
+   },
+   {
+    "name": "CustomTextColor00",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16711680
+   },
+   {
+    "name": "CustomTextSize00",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8
+   },
+   {
+    "name": "CustomTextStyle00",
+    "type": "REG_SZ",
+    "size": 12,
+    "value": "Arial"
+   },
+   {
+    "name": "CustomTextType00",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1024
+   },
+   {
+    "name": "CustomText01",
+    "type": "REG_SZ",
+    "size": 220,
+    "value": "REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10"
+   },
+   {
+    "name": "CustomTextColor01",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16711680
+   },
+   {
+    "name": "CustomTextSize01",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8
+   },
+   {
+    "name": "CustomTextStyle01",
+    "type": "REG_SZ",
+    "size": 12,
+    "value": "Arial"
+   },
+   {
+    "name": "CustomTextType01",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1024
+   },
+   {
+    "name": "CustomText02",
+    "type": "REG_SZ",
+    "size": 220,
+    "value": "REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10"
+   },
+   {
+    "name": "CustomTextColor02",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16711680
+   },
+   {
+    "name": "CustomTextSize02",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8
+   },
+   {
+    "name": "CustomTextStyle02",
+    "type": "REG_SZ",
+    "size": 12,
+    "value": "Arial"
+   },
+   {
+    "name": "CustomTextType02",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1024
+   },
+   {
+    "name": "CustomText03",
+    "type": "REG_SZ",
+    "size": 220,
+    "value": "REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10"
+   },
+   {
+    "name": "CustomTextColor03",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16711680
+   },
+   {
+    "name": "CustomTextSize03",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8
+   },
+   {
+    "name": "CustomTextStyle03",
+    "type": "REG_SZ",
+    "size": 12,
+    "value": "Arial"
+   },
+   {
+    "name": "CustomTextType03",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1024
+   },
+   {
+    "name": "CustomText04",
+    "type": "REG_SZ",
+    "size": 220,
+    "value": "REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10"
+   },
+   {
+    "name": "CustomTextColor04",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16711680
+   },
+   {
+    "name": "CustomTextSize04",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8
+   },
+   {
+    "name": "CustomTextStyle04",
+    "type": "REG_SZ",
+    "size": 12,
+    "value": "Arial"
+   },
+   {
+    "name": "CustomTextType04",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1024
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI",
+  "last_written": "2025-07-23 06:48:50.671875",
+  "values": [
+   {
+    "name": "About",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "3.0.3.26"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Classic View",
+  "last_written": "2022-11-10 21:09:01.042126",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\ColorPreferences",
+  "last_written": "2016-06-22 00:53:15.681400",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\ColorPreferences\\BnW",
+  "last_written": "2016-06-22 00:54:47.273102",
+  "values": [
+   {
+    "name": "Red",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Green",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Blue",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Brightness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Contrast",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Sharpness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseColorSceneBalanceDigital",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\ColorPreferences\\ColNeg",
+  "last_written": "2016-06-22 00:54:47.273102",
+  "values": [
+   {
+    "name": "Red",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Green",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Blue",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Brightness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Contrast",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Sharpness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseColorSceneBalanceDigital",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\ColorPreferences\\ColRev",
+  "last_written": "2016-06-22 00:54:47.273102",
+  "values": [
+   {
+    "name": "Red",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Green",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Blue",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Brightness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Contrast",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Sharpness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseColorSceneBalanceDigital",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\ColorPreferences\\File",
+  "last_written": "2016-06-22 00:54:47.273102",
+  "values": [
+   {
+    "name": "Red",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Green",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Blue",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Brightness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Contrast",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Sharpness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseColorSceneBalanceDigital",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\ColorPreferences\\SavedSetting2",
+  "last_written": "2016-06-22 00:54:47.273102",
+  "values": [
+   {
+    "name": "Red",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Green",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Blue",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Brightness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Contrast",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Sharpness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseColorSceneBalanceDigital",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\DialogPositions",
+  "last_written": "2025-07-23 06:49:46.453125",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\DialogPositions\\BnWEffectDialog",
+  "last_written": "2025-07-23 06:48:59.328125",
+  "values": [
+   {
+    "name": "Placement_top",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 50
+   },
+   {
+    "name": "Placement_left",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\DialogPositions\\ColorDialog",
+  "last_written": "2025-07-23 06:49:47.984375",
+  "values": [
+   {
+    "name": "Placement_top",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 50
+   },
+   {
+    "name": "Placement_left",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\IQueue II",
+  "last_written": "2016-06-22 02:31:42.353478",
+  "values": [
+   {
+    "name": "StartIQueue",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseRollId",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "IQueueDestDir",
+    "type": "REG_SZ",
+    "size": 26,
+    "value": "C:\\IQueue II"
+   },
+   {
+    "name": "ExtrasDir",
+    "type": "REG_SZ",
+    "size": 60,
+    "value": "C:\\Program Files\\Pakon\\Extras"
+   },
+   {
+    "name": "MegabytesMax",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1000
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\IQueue II\\HiResExport",
+  "last_written": "2016-06-22 00:54:47.062800",
+  "values": [
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 100
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1024
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1536
+   },
+   {
+    "name": "Dpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 300
+   },
+   {
+    "name": "SaveOptions",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 244
+   },
+   {
+    "name": "EnableFullControl",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "FileType",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\IQueue II\\LoResExport",
+  "last_written": "2016-06-22 00:54:47.062800",
+  "values": [
+   {
+    "name": "Quality",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 90
+   },
+   {
+    "name": "Height",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Width",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Dpi",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 300
+   },
+   {
+    "name": "SaveOptions",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 252
+   },
+   {
+    "name": "EnableFullControl",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "FileType",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order",
+  "last_written": "2025-07-28 02:10:51.312500",
+  "values": [
+   {
+    "name": "Order ID",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1000000049
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "35mmNeg",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "FramesPerStrip",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "SkipPreview",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "StripMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "ScanningResolution",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "ScratchRemovalOptional",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "PremiumColorPathOptional",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "StripModeFramesPerStrip",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "JobPackage",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "JobSourceMedia",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "JobResolution",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "JobScratchRemoval",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "JobPremiumColorPath",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Password",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "35mm Visible",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Archive Visible",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Browse Visible",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Browse Directory",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\temp"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media05",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media06",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 24,
+    "value": "Camera Card"
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 19
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 32,
+    "value": "E:\\;F:\\;G:\\;D:\\"
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media07",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 22,
+    "value": "Picture CD"
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 24,
+    "value": "R:\\PICTURES"
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media08",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 22,
+    "value": "Generic CD"
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 6
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 8,
+    "value": "R:\\"
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media09",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media10",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media11",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media12",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media13",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media14",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Order Form Mode\\Source Media\\Media15",
+  "last_written": "2016-06-22 00:54:47.192987",
+  "values": [
+   {
+    "name": "Name",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Icon",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Directory",
+    "type": "REG_SZ",
+    "size": 2,
+    "value": ""
+   },
+   {
+    "name": "Recursive",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\RollID",
+  "last_written": "2025-07-28 02:16:44.328125",
+  "values": [
+   {
+    "name": "RollID",
+    "type": "REG_SZ",
+    "size": 4,
+    "value": "0"
+   },
+   {
+    "name": "AutoIncrement",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Numeric Only",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2147483647
+   },
+   {
+    "name": "Min",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 100000
+   },
+   {
+    "name": "Max Length",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 20
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Scanner Settings",
+  "last_written": "2025-07-23 04:56:59.578125",
+  "values": [
+   {
+    "name": "DriverRingTailBytes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 25165824
+   },
+   {
+    "name": "DriverTriggerBytes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1048576
+   },
+   {
+    "name": "ProcessedRingTailBytes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 25165824
+   },
+   {
+    "name": "ProcessedTriggerBytes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1048576
+   },
+   {
+    "name": "FeedMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "NormalRollMaxFilmLength_mm",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1670
+   },
+   {
+    "name": "LongRollMaxFilmLength_mm",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3340
+   },
+   {
+    "name": "DarkPointCorrectIntervalMinutes",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 120
+   },
+   {
+    "name": "ColorPortraitMode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "ColorPortraitModeRotation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "ScanPacketReadyTimeOut",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3000
+   },
+   {
+    "name": "NoFilmTimeOut",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 120
+   },
+   {
+    "name": "LampSaverSec",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "StartupCalibrationSelection",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16
+   },
+   {
+    "name": "Serial Number",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16275
+   },
+   {
+    "name": "Scanner Model",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "F135_PLUS"
+   },
+   {
+    "name": "File Open Filter",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "File Open Path",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "C:\\Temp"
+   },
+   {
+    "name": "Film Format",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Film Color",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 8
+   },
+   {
+    "name": "Resolution",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2
+   },
+   {
+    "name": "AggressiveFraming",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "FramesPerStrip",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "MultipleStrips",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "ScratchRemoval",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PremiumColorPath",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Auto Run",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Auto Scan",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "LoadFirmwareAtStartup",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "SpliceAdvance",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 750
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Scanner Settings\\Framing",
+  "last_written": "2016-06-22 00:54:31.039760",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Scanner Settings\\Framing\\24mm",
+  "last_written": "2022-11-10 21:13:56.707272",
+  "values": [
+   {
+    "name": "Crop24mm",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 200
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Scanner Settings\\Framing\\35mm",
+  "last_written": "2022-11-10 21:13:56.707272",
+  "values": [
+   {
+    "name": "Crop35mm",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 200
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI\\Setup",
+  "last_written": "2022-11-10 21:13:56.717286",
+  "values": [
+   {
+    "name": "ContactEnabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "SleeveEnabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "ProgramPath",
+    "type": "REG_SZ",
+    "size": 54,
+    "value": "C:\\Program Files\\Pakon\\PSI"
+   },
+   {
+    "name": "InternetEnabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "CurrentLanguage",
+    "type": "REG_SZ",
+    "size": 16,
+    "value": "English"
+   },
+   {
+    "name": "SleepEnabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "SleepWait",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 30
+   },
+   {
+    "name": "StandbyWait",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 15
+   },
+   {
+    "name": "KPCDEnabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "PakonCDEnabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "IndexEnabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "SaveAsEnabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Single1Enabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Single2Enabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Single3Enabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Single4Enabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Single5Enabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Single6Enabled",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "KpcdAccessCode",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -1
+   },
+   {
+    "name": "LabID",
+    "type": "REG_SZ",
+    "size": 4,
+    "value": "1"
+   },
+   {
+    "name": "IRetailer",
+    "type": "REG_SZ",
+    "size": 10,
+    "value": "NONE"
+   },
+   {
+    "name": "Interface",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PictureColorDescriptorShow",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "PictureBackgroundColor",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16777215
+   },
+   {
+    "name": "PictureSelectionColor",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 255
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI F235",
+  "last_written": "2016-06-22 00:57:31.719564",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\PSI F235\\Setup",
+  "last_written": "2016-06-22 00:57:31.719564",
+  "values": [
+   {
+    "name": "About",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "3.0.3.26"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLA",
+  "last_written": "2017-02-09 07:29:22.478330",
+  "values": [
+   {
+    "name": "ProgramPath",
+    "type": "REG_SZ",
+    "size": 80,
+    "value": "C:\\Program Files\\Pakon\\F-X35 COM Server"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLA\\Scan",
+  "last_written": "2016-06-21 18:41:53.725358",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLA\\Scan\\Test",
+  "last_written": "2017-02-09 07:29:22.478330",
+  "values": [
+   {
+    "name": "IrChannelSavedInPlanarFile",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "LampWarmUpSlope",
+    "type": "REG_SZ",
+    "size": 10,
+    "value": "-.22"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB",
+  "last_written": "2022-11-10 21:08:22.396556",
+  "values": [
+   {
+    "name": "ProgramPath",
+    "type": "REG_SZ",
+    "size": 80,
+    "value": "C:\\Program Files\\Pakon\\F-X35 COM Server"
+   },
+   {
+    "name": "Version",
+    "type": "REG_SZ",
+    "size": 24,
+    "value": "3, 1, 0, 28"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\ColorKodak",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "CRInputProfileFile",
+    "type": "REG_SZ",
+    "size": 64,
+    "value": "\\Config\\ColorCorrection\\romm.pf"
+   },
+   {
+    "name": "InputProfileFile",
+    "type": "REG_SZ",
+    "size": 62,
+    "value": "\\Config\\ColorCorrection\\rpd.pf"
+   },
+   {
+    "name": "OutputProfileFile",
+    "type": "REG_SZ",
+    "size": 64,
+    "value": "\\Config\\ColorCorrection\\srgb.pf"
+   },
+   {
+    "name": "ColRevLut1File",
+    "type": "REG_SZ",
+    "size": 76,
+    "value": "\\Config\\ColorCorrection\\ColRevLut1.pf"
+   },
+   {
+    "name": "ColRevLutS6",
+    "type": "REG_SZ",
+    "size": 80,
+    "value": "\\Config\\ColorCorrection\\ColRevLutS6.lut"
+   },
+   {
+    "name": "NegMatrix0",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.289202"
+   },
+   {
+    "name": "NegMatrix1",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.002207"
+   },
+   {
+    "name": "NegMatrix2",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.001277"
+   },
+   {
+    "name": "NegMatrix3",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.000001"
+   },
+   {
+    "name": "NegMatrix4",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.000002"
+   },
+   {
+    "name": "NegMatrix5",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.000001"
+   },
+   {
+    "name": "NegMatrix6",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "NegMatrix7",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.000001"
+   },
+   {
+    "name": "NegMatrix8",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000004"
+   },
+   {
+    "name": "NegMatrix9",
+    "type": "REG_SZ",
+    "size": 22,
+    "value": "159.593735"
+   },
+   {
+    "name": "NegMatrix10",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000253"
+   },
+   {
+    "name": "NegMatrix11",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.275831"
+   },
+   {
+    "name": "NegMatrix12",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.007042"
+   },
+   {
+    "name": "NegMatrix13",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000001"
+   },
+   {
+    "name": "NegMatrix14",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000004"
+   },
+   {
+    "name": "NegMatrix15",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000001"
+   },
+   {
+    "name": "NegMatrix16",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.000004"
+   },
+   {
+    "name": "NegMatrix17",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.000000"
+   },
+   {
+    "name": "NegMatrix18",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000002"
+   },
+   {
+    "name": "NegMatrix19",
+    "type": "REG_SZ",
+    "size": 22,
+    "value": "444.749695"
+   },
+   {
+    "name": "NegMatrix20",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000739"
+   },
+   {
+    "name": "NegMatrix21",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.010163"
+   },
+   {
+    "name": "NegMatrix22",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.278237"
+   },
+   {
+    "name": "NegMatrix23",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.000000"
+   },
+   {
+    "name": "NegMatrix24",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000008"
+   },
+   {
+    "name": "NegMatrix25",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000008"
+   },
+   {
+    "name": "NegMatrix26",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.000001"
+   },
+   {
+    "name": "NegMatrix27",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000001"
+   },
+   {
+    "name": "NegMatrix28",
+    "type": "REG_SZ",
+    "size": 20,
+    "value": "-0.000018"
+   },
+   {
+    "name": "NegMatrix29",
+    "type": "REG_SZ",
+    "size": 22,
+    "value": "635.535217"
+   },
+   {
+    "name": "PosMatrix0",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.250000"
+   },
+   {
+    "name": "PosMatrix1",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix2",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix3",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix4",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix5",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix6",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix7",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix8",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix9",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix10",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix11",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.250000"
+   },
+   {
+    "name": "PosMatrix12",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix13",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix14",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix15",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix16",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix17",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix18",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix19",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix20",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix21",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix22",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.250000"
+   },
+   {
+    "name": "PosMatrix23",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix24",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix25",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix26",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix27",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix28",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "PosMatrix29",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "ScannerType",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1351
+   },
+   {
+    "name": "ScannerVersionHw",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 400
+   },
+   {
+    "name": "ScannerSerialNumber",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 16275
+   },
+   {
+    "name": "FirmwareLoadRetry",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "FirmwareLoadRetrySerial",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "HiResPath",
+    "type": "REG_SZ",
+    "size": 6,
+    "value": "C:"
+   },
+   {
+    "name": "HiResMegabytesTotal",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4800
+   },
+   {
+    "name": "HiResMegabytesRoll",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 2400
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase16_35",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "Offset",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 55
+   },
+   {
+    "name": "MotorAdjust",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1000
+   },
+   {
+    "name": "MotorAdjust_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1000
+   },
+   {
+    "name": "MotorAdjustDrag",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1008
+   },
+   {
+    "name": "MotorAdjustDrag_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1008
+   },
+   {
+    "name": "MotorSpeedPlus",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5917
+   },
+   {
+    "name": "MotorSpeedPlus_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4850
+   },
+   {
+    "name": "StepperLens",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3133
+   },
+   {
+    "name": "StepperCCD",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 970
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase16_35\\BnW",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 63500
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61500
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase16_35\\BnWIr",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 63500
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61500
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase16_35\\BnW_C41",
+  "last_written": "2025-07-28 02:50:07.281250",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -19
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -26
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -20
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 7
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.853484"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.897672"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.617586"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.500000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.677946"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.504798"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.347294"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.415882"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1753667580
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase16_35\\BnW_C41Ir",
+  "last_written": "2025-07-23 04:28:32.015625",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -19
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -26
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -20
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.820907"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.970009"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.773802"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.866253"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.652069"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.545476"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.435141"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.720518"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1753243550
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase16_35\\ColNeg",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase16_35\\ColNegIr",
+  "last_written": "2025-07-23 04:23:10.390625",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -18
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -26
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -20
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 20
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 11
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.917161"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.955468"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.865802"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.887000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.658333"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.380378"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.166885"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.887000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1668114895
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase4_35",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "Offset",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 27
+   },
+   {
+    "name": "MotorAdjust",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1000
+   },
+   {
+    "name": "MotorAdjust_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1000
+   },
+   {
+    "name": "MotorAdjustDrag",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1008
+   },
+   {
+    "name": "MotorAdjustDrag_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1008
+   },
+   {
+    "name": "MotorSpeedPlus",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 25802
+   },
+   {
+    "name": "MotorSpeedPlus_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 19335
+   },
+   {
+    "name": "StepperLens",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3133
+   },
+   {
+    "name": "StepperCCD",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 970
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase4_35\\BnW",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 63500
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61500
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase4_35\\BnWIr",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 63500
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61500
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase4_35\\BnW_C41",
+  "last_written": "2025-07-23 04:23:48.734375",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -17
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -25
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -19
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 7
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.924671"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.980369"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.684175"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.500000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.734492"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.551302"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.384740"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.415882"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1753244628
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase4_35\\BnW_C41Ir",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase4_35\\ColNeg",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase4_35\\ColNegIr",
+  "last_written": "2025-07-23 04:23:10.390625",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -17
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -25
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -19
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 20
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 11
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.916904"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.951920"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.862093"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.881640"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.658148"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.378966"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.166171"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.881640"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1668115286
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase8_35",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "Offset",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54
+   },
+   {
+    "name": "MotorAdjust",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1000
+   },
+   {
+    "name": "MotorAdjust_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1000
+   },
+   {
+    "name": "MotorAdjustDrag",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1008
+   },
+   {
+    "name": "MotorAdjustDrag_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1008
+   },
+   {
+    "name": "MotorSpeedPlus",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 11467
+   },
+   {
+    "name": "MotorSpeedPlus_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 7580
+   },
+   {
+    "name": "StepperLens",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 3133
+   },
+   {
+    "name": "StepperCCD",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 970
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase8_35\\BnW",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 63500
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61500
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase8_35\\BnWIr",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 63500
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61500
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase8_35\\BnW_C41",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase8_35\\BnW_C41Ir",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.000000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase8_35\\ColNeg",
+  "last_written": "2022-11-10 21:11:25.189400",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 15
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -19
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -26
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -20
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 4
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 18
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 10
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.996500"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.949083"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.836299"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.500000"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.715282"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.377837"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.161199"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.500000"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1668114685
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\DpiBase8_35\\ColNegIr",
+  "last_written": "2022-11-10 21:13:56.516998",
+  "values": [
+   {
+    "name": "SpliceDarkness",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 237
+   },
+   {
+    "name": "DetectWhite_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 61000
+   },
+   {
+    "name": "DetectFilm_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 54000
+   },
+   {
+    "name": "Gain_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Gain_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 13
+   },
+   {
+    "name": "Offset_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -18
+   },
+   {
+    "name": "Offset_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -26
+   },
+   {
+    "name": "Offset_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": -20
+   },
+   {
+    "name": "Current_R",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 6
+   },
+   {
+    "name": "Current_G",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 23
+   },
+   {
+    "name": "Current_B",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 14
+   },
+   {
+    "name": "Current_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5
+   },
+   {
+    "name": "DutyCycle_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.906337"
+   },
+   {
+    "name": "DutyCycle_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.978982"
+   },
+   {
+    "name": "DutyCycle_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.809069"
+   },
+   {
+    "name": "DutyCycle_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.845659"
+   },
+   {
+    "name": "DutyCycleOpenGate_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.650564"
+   },
+   {
+    "name": "DutyCycleOpenGate_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.389740"
+   },
+   {
+    "name": "DutyCycleOpenGate_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.155950"
+   },
+   {
+    "name": "DutyCycleOpenGate_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "0.845659"
+   },
+   {
+    "name": "FullLightCorrections",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Max_Ir",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLB\\Scan\\Test",
+  "last_written": "2022-11-10 21:08:22.296412",
+  "values": [
+   {
+    "name": "IrChannelSavedInPlanarFile",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "PlanarFileHeaderVersion",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "SenseFilm",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DrawDxLines",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "DxDesperation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "LockSteppers",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "TlaControlLeds",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "Version",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseFixedPatternCorrection",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "IrCrossTalkFactor",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 10
+   },
+   {
+    "name": "UsePpbDebugTraces",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "HighWaterTest",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseTimeCriticalPriority",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseFPCAnalyze",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "AnselOrientation",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 270
+   },
+   {
+    "name": "StepperStartingTransport",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "StepperStartingLens",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "DriverSimultaneousPackets",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "FPCAnalyzeAvg",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5
+   },
+   {
+    "name": "FPCAnalyzeSkip",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 15
+   },
+   {
+    "name": "FPCAnalyzeThreshold",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 75
+   },
+   {
+    "name": "FPCCreateDebugFile",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "DxCreateDebugFiles",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "DxCreateDebugFilesCommunication",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "RequireDxSensorsDuringLightCalibration",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 1
+   },
+   {
+    "name": "DxCalibrationFilmOffset",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 5
+   },
+   {
+    "name": "WriteLightStabilityLog",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "WaitForLamp_R",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "5.000000"
+   },
+   {
+    "name": "WaitForLamp_G",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "5.000000"
+   },
+   {
+    "name": "WaitForLamp_B",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "5.000000"
+   },
+   {
+    "name": "WaitForLamp_Ir",
+    "type": "REG_SZ",
+    "size": 18,
+    "value": "5.000000"
+   },
+   {
+    "name": "WriteEEPromDebugFile",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "UseTemperatureSetpoints",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLC",
+  "last_written": "2017-02-09 07:29:22.478330",
+  "values": [
+   {
+    "name": "ProgramPath",
+    "type": "REG_SZ",
+    "size": 80,
+    "value": "C:\\Program Files\\Pakon\\F-X35 COM Server"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLX",
+  "last_written": "2017-02-09 07:29:22.478330",
+  "values": [
+   {
+    "name": "SimulatorPresent",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "Version",
+    "type": "REG_SZ",
+    "size": 24,
+    "value": "3, 1, 0, 28"
+   },
+   {
+    "name": "ProgramPath",
+    "type": "REG_SZ",
+    "size": 80,
+    "value": "C:\\Program Files\\Pakon\\F-X35 COM Server"
+   }
+  ]
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLXClientDemo",
+  "last_written": "2016-06-25 10:19:30.237633",
+  "values": []
+ },
+ {
+  "path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Pakon\\TLXClientDemo\\General",
+  "last_written": "2016-06-25 10:19:30.237633",
+  "values": [
+   {
+    "name": "LoadFirmwareAtStartup",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   },
+   {
+    "name": "MotorSelfTestAtStartup",
+    "type": "REG_DWORD",
+    "size": 4,
+    "value": 0
+   }
+  ]
+ }
+]

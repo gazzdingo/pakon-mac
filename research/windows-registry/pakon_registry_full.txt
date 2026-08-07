@@ -1,0 +1,1747 @@
+Full registry extraction from the PakonScanXP-F135 virtual disk
+Source hive: HKLM\SOFTWARE  (regf at image offset 0x118bcbe00)
+Extracted offline from the .hds image; the VM was never booted.
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Kodak]
+; last written 2022-11-10 21:08:22.897276   (0 values, 1 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Kodak\IniFileMapping]
+; last written 2022-11-10 21:08:22.897276   (0 values, 1 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Kodak\IniFileMapping\kpcms.ini]
+; last written 2022-11-10 21:08:22.897276   (0 values, 1 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Kodak\IniFileMapping\kpcms.ini\KCP]
+; last written 2022-11-10 21:08:22.897276   (1 values, 0 subkeys)
+"KPCP_MP"=REG_SZ:
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon]
+; last written 2017-02-09 07:29:22.478330   (0 values, 9 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\FirmwareLoader]
+; last written 2017-04-19 19:20:46.725862   (4 values, 0 subkeys)
+"ProgramPath"=REG_SZ:C:\Program Files\Pakon\FirmwareLoader
+"UseF135"=REG_DWORD:0
+"UseF335"=REG_DWORD:0
+"Version"=REG_SZ:
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II]
+; last written 2017-02-14 07:07:31.290120   (27 values, 2 subkeys)
+"VersionMS"=REG_DWORD:196608
+"VersionLS"=REG_DWORD:196634
+"SourceDir"=REG_SZ:C:\IQueue II
+"ExtrasDir"=REG_SZ:C:\Program Files\Pakon\Extras
+"ProgramPath"=REG_SZ:C:\Program Files\Pakon\IQ\
+"CdrSpeed"=REG_DWORD:0
+"NumberOfBurners"=REG_DWORD:1
+"CdrCacheMegabytes"=REG_DWORD:4
+"ScsiAdapter"=REG_DWORD:0
+"ScsiId"=REG_DWORD:-1
+"EjectCdAfterBurn"=REG_DWORD:0
+"ProductId"=REG_SZ:EMPTY_STRING
+"GretagSharpening"=REG_DWORD:900
+"GroupProducts"=REG_DWORD:0
+"AudioWarningEnabled"=REG_DWORD:0
+"DivertControlFiles"=REG_DWORD:0
+"DivertControlFileDir"=REG_SZ:C:\IQueue II\Control2
+"DivertName"=REG_SZ:Net Printer
+"Version"=REG_SZ:3, 0, 3, 26
+"NumberOfPendingJobs"=REG_DWORD:25
+"CdDriveLetter"=REG_SZ:EMPTY_STRING
+"BravoDiscPublisher"=REG_DWORD:0
+"CDPrompt"=REG_DWORD:1
+"AvailableCDBurners2"=REG_DWORD:0
+"CdrPauseCompletedJob"=REG_DWORD:0
+"InetPauseCompletedJob"=REG_DWORD:0
+"RunLMService"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\DLSQueue]
+; last written 2016-06-22 00:53:17.584136   (14 values, 0 subkeys)
+"DeviceControlKPCD"=REG_DWORD:4198656
+"PrintSelectionKPCD"=REG_DWORD:1048576
+"DeviceControlPakonCD"=REG_DWORD:4202504
+"PrintSelectionPakonCD"=REG_DWORD:1048576
+"MakeSearchString"=REG_SZ:Noritsu
+"ModelSearchString"=REG_SZ:Scanner
+"RunDLSQueue"=REG_DWORD:0
+"LoggingOn"=REG_DWORD:0
+"DLS2.2ExportFolder_PCD"=REG_SZ:C:\IQueue II\DLS_2.2\PCD\
+"DLS2.2ExportFolder_KPCD"=REG_SZ:C:\IQueue II\DLS_2.2\KPCD\
+"DLS2.2ExportFolder_FOLIO"=REG_SZ:C:\IQueue II\DLS_2.2\FOLIO\
+"DLS2.2ExportFolder_PCD_FOLIO"=REG_SZ:C:\IQueue II\DLS_2.2\PCD_FOLIO\
+"DLS2.2ExportFolder_KPCD_FOLIO"=REG_SZ:C:\IQueue II\DLS_2.2\KPCD_FOLIO\
+"DLS2.2ExportFolder_EZPRINTS"=REG_SZ:C:\IQueue II\DLS_2.2\EZPRINTS\
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print]
+; last written 2016-06-22 00:57:31.709550   (3 values, 13 subkeys)
+"Noritsu2611VfpSizeInches"=REG_DWORD:4
+"KPCDVolume"=REG_DWORD:8
+"KPCDIssue"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\CdJewel]
+; last written 2017-01-19 19:42:49.863185   (11 values, 2 subkeys)
+"Background"=REG_DWORD:12632256
+"PrintIndexNumbers"=REG_DWORD:0
+"NumeralRatio"=REG_DWORD:100
+"NumeralLoLimit"=REG_DWORD:20
+"NumeralHiLimit"=REG_DWORD:250
+"MinRowSpacing"=REG_DWORD:625
+"MinColSpacing"=REG_DWORD:625
+"PrintToFile"=REG_DWORD:0
+"KodakPictureCdBackground"=REG_SZ:0 0 0 0
+"PaperPrompt"=REG_DWORD:1
+"PauseCompletedJob"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\CdJewel\Printer]
+; last written 2017-01-19 17:17:35.123432   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:4000
+"P_MarginBottom"=REG_DWORD:6725
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\CdJewel\PrintToFile]
+; last written 2016-06-22 00:53:17.584136   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:CD_Jewel
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\CdLabel]
+; last written 2016-06-22 00:57:31.719564   (11 values, 2 subkeys)
+"Background"=REG_DWORD:16777215
+"PrintIndexNumbers"=REG_DWORD:0
+"NumeralRatio"=REG_DWORD:100
+"NumeralLoLimit"=REG_DWORD:20
+"NumeralHiLimit"=REG_DWORD:250
+"MinRowSpacing"=REG_DWORD:625
+"MinColSpacing"=REG_DWORD:625
+"PrintToFile"=REG_DWORD:0
+"KodakPictureCdBackground"=REG_SZ:0 0 0 0
+"PaperPrompt"=REG_DWORD:1
+"PauseCompletedJob"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\CdLabel\Printer]
+; last written 2017-01-19 17:17:35.123432   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:447
+"P_MarginTop"=REG_DWORD:575
+"P_MarginRight"=REG_DWORD:3430
+"P_MarginBottom"=REG_DWORD:5500
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\CdLabel\PrintToFile]
+; last written 2016-06-22 00:53:17.584136   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:CD_Label
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Contact]
+; last written 2017-01-19 19:42:49.863185   (12 values, 2 subkeys)
+"Background"=REG_DWORD:16777215
+"PrintIndexNumbers"=REG_DWORD:1
+"NumeralRatio"=REG_DWORD:100
+"NumeralLoLimit"=REG_DWORD:20
+"NumeralHiLimit"=REG_DWORD:250
+"MinRowSpacing"=REG_DWORD:237
+"MinColSpacing"=REG_DWORD:237
+"PrintToFile"=REG_DWORD:0
+"Number Across"=REG_DWORD:6
+"Unit Height"=REG_DWORD:13000
+"PaperPrompt"=REG_DWORD:1
+"PauseCompletedJob"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Contact\Printer]
+; last written 2017-01-19 17:17:35.123432   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:650
+"P_MarginTop"=REG_DWORD:1100
+"P_MarginRight"=REG_DWORD:550
+"P_MarginBottom"=REG_DWORD:460
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Contact\PrintToFile]
+; last written 2016-06-22 00:53:17.584136   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:Contact
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Index]
+; last written 2016-06-22 00:57:31.719564   (13 values, 3 subkeys)
+"Background"=REG_DWORD:16777215
+"PrintIndexNumbers"=REG_DWORD:0
+"NumeralRatio"=REG_DWORD:100
+"NumeralLoLimit"=REG_DWORD:20
+"NumeralHiLimit"=REG_DWORD:250
+"MinRowSpacing"=REG_DWORD:625
+"MinColSpacing"=REG_DWORD:625
+"PrintToFile"=REG_DWORD:0
+"PrintMode"=REG_DWORD:1
+"Index Style"=REG_DWORD:2
+"Allow Rotation"=REG_DWORD:0
+"PaperPrompt"=REG_DWORD:1
+"PauseCompletedJob"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Index\Printer]
+; last written 2017-01-20 00:53:55.029969   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:1
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:11000
+"P_Height"=REG_DWORD:8500
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:4750
+"P_MarginRight"=REG_DWORD:5550
+"P_MarginBottom"=REG_DWORD:253
+"P_MinMarginLeft"=REG_DWORD:116
+"P_MinMarginTop"=REG_DWORD:246
+"P_MinMarginRight"=REG_DWORD:198
+"P_MinMarginBottom"=REG_DWORD:253
+"P_PrinterName"=REG_SZ:Canon MG7100 series Printer
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Index\Printer_2]
+; last written 2017-01-19 17:17:35.123432   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:4750
+"P_MarginRight"=REG_DWORD:5550
+"P_MarginBottom"=REG_DWORD:250
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Index\PrintToFile]
+; last written 2016-06-22 00:53:17.594150   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:Index
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Internet]
+; last written 2016-06-22 00:57:31.719564   (13 values, 3 subkeys)
+"Background"=REG_DWORD:16777215
+"PrintIndexNumbers"=REG_DWORD:0
+"NumeralRatio"=REG_DWORD:100
+"NumeralLoLimit"=REG_DWORD:20
+"NumeralHiLimit"=REG_DWORD:250
+"MinRowSpacing"=REG_DWORD:300
+"MinColSpacing"=REG_DWORD:300
+"PrintToFile"=REG_DWORD:0
+"PrintMode"=REG_DWORD:1
+"Index Style"=REG_DWORD:2
+"Allow Rotation"=REG_DWORD:0
+"PaperPrompt"=REG_DWORD:1
+"PauseCompletedJob"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Internet\Printer]
+; last written 2017-01-19 17:17:35.133447   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:250
+"P_MarginBottom"=REG_DWORD:1750
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Internet\Printer_2]
+; last written 2017-01-19 17:17:35.133447   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:250
+"P_MarginBottom"=REG_DWORD:1750
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Internet\PrintToFile]
+; last written 2016-06-22 00:53:17.594150   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:Internet
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single1]
+; last written 2017-01-20 00:54:16.280526   (17 values, 3 subkeys)
+"Name"=REG_SZ:Print 4 x 6
+"PrintMode"=REG_DWORD:1
+"WaitAfterCompletionOdd"=REG_DWORD:0
+"WaitAfterCompletionEven"=REG_DWORD:0
+"PaperPrompt"=REG_DWORD:0
+"AvailablePaperTypes"=REG_DWORD:0
+"GretagPaperIndex"=REG_DWORD:-1
+"Noritsu2611PaperIndex"=REG_DWORD:0
+"Noritsu2611Sharpening"=REG_DWORD:0
+"Noritsu2611PortraitWidth"=REG_DWORD:900
+"Noritsu2611OffsetPortraitWidth"=REG_DWORD:0
+"Noritsu2611OffsetPortraitHeight"=REG_DWORD:0
+"Noritsu2611PaperAdvance"=REG_DWORD:30
+"PrintSeparator"=REG_DWORD:0
+"PauseCompletedJob"=REG_DWORD:0
+"GretagPresent"=REG_DWORD:0
+"Noritsu2611Present"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single1\Printer_1]
+; last written 2017-01-20 00:50:46.318616   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:1
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:8500
+"P_Height"=REG_DWORD:11000
+"P_MarginLeft"=REG_DWORD:251
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:4250
+"P_MarginBottom"=REG_DWORD:4550
+"P_MinMarginLeft"=REG_DWORD:251
+"P_MinMarginTop"=REG_DWORD:116
+"P_MinMarginRight"=REG_DWORD:248
+"P_MinMarginBottom"=REG_DWORD:198
+"P_PrinterName"=REG_SZ:Canon MG7100 series Printer
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single1\Printer_2]
+; last written 2017-01-20 00:51:18.094307   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:1
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:8500
+"P_Height"=REG_DWORD:11000
+"P_MarginLeft"=REG_DWORD:251
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:4250
+"P_MarginBottom"=REG_DWORD:4550
+"P_MinMarginLeft"=REG_DWORD:251
+"P_MinMarginTop"=REG_DWORD:116
+"P_MinMarginRight"=REG_DWORD:248
+"P_MinMarginBottom"=REG_DWORD:198
+"P_PrinterName"=REG_SZ:Canon MG7100 series Printer
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single1\PrintToFile]
+; last written 2016-06-22 00:53:17.554092   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:Single1
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single2]
+; last written 2017-01-20 00:54:16.280526   (17 values, 3 subkeys)
+"Name"=REG_SZ:Print 5 x 7
+"PrintMode"=REG_DWORD:1
+"WaitAfterCompletionOdd"=REG_DWORD:0
+"WaitAfterCompletionEven"=REG_DWORD:0
+"PaperPrompt"=REG_DWORD:0
+"AvailablePaperTypes"=REG_DWORD:0
+"GretagPaperIndex"=REG_DWORD:-1
+"Noritsu2611PaperIndex"=REG_DWORD:0
+"Noritsu2611Sharpening"=REG_DWORD:0
+"Noritsu2611PortraitWidth"=REG_DWORD:900
+"Noritsu2611OffsetPortraitWidth"=REG_DWORD:0
+"Noritsu2611OffsetPortraitHeight"=REG_DWORD:0
+"Noritsu2611PaperAdvance"=REG_DWORD:30
+"PrintSeparator"=REG_DWORD:0
+"PauseCompletedJob"=REG_DWORD:0
+"GretagPresent"=REG_DWORD:0
+"Noritsu2611Present"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single2\Printer_1]
+; last written 2017-01-20 00:52:22.887475   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:1
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:8500
+"P_Height"=REG_DWORD:11000
+"P_MarginLeft"=REG_DWORD:251
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:3250
+"P_MarginBottom"=REG_DWORD:3550
+"P_MinMarginLeft"=REG_DWORD:251
+"P_MinMarginTop"=REG_DWORD:116
+"P_MinMarginRight"=REG_DWORD:248
+"P_MinMarginBottom"=REG_DWORD:198
+"P_PrinterName"=REG_SZ:Canon MG7100 series Printer
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single2\Printer_2]
+; last written 2017-01-19 17:17:35.123432   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:3250
+"P_MarginBottom"=REG_DWORD:3550
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single2\PrintToFile]
+; last written 2016-06-22 00:53:17.554092   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:Single2
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single3]
+; last written 2017-01-20 00:54:16.280526   (17 values, 3 subkeys)
+"Name"=REG_SZ:Print 8 x 10
+"PrintMode"=REG_DWORD:1
+"WaitAfterCompletionOdd"=REG_DWORD:0
+"WaitAfterCompletionEven"=REG_DWORD:0
+"PaperPrompt"=REG_DWORD:0
+"AvailablePaperTypes"=REG_DWORD:0
+"GretagPaperIndex"=REG_DWORD:-1
+"Noritsu2611PaperIndex"=REG_DWORD:0
+"Noritsu2611Sharpening"=REG_DWORD:0
+"Noritsu2611PortraitWidth"=REG_DWORD:900
+"Noritsu2611OffsetPortraitWidth"=REG_DWORD:0
+"Noritsu2611OffsetPortraitHeight"=REG_DWORD:0
+"Noritsu2611PaperAdvance"=REG_DWORD:30
+"PrintSeparator"=REG_DWORD:0
+"PauseCompletedJob"=REG_DWORD:0
+"GretagPresent"=REG_DWORD:0
+"Noritsu2611Present"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single3\Printer_1]
+; last written 2017-01-20 00:52:38.750284   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:1
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:8500
+"P_Height"=REG_DWORD:11000
+"P_MarginLeft"=REG_DWORD:251
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:250
+"P_MarginBottom"=REG_DWORD:1750
+"P_MinMarginLeft"=REG_DWORD:251
+"P_MinMarginTop"=REG_DWORD:116
+"P_MinMarginRight"=REG_DWORD:248
+"P_MinMarginBottom"=REG_DWORD:198
+"P_PrinterName"=REG_SZ:Canon MG7100 series Printer
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single3\Printer_2]
+; last written 2017-01-19 17:17:35.133447   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:250
+"P_MarginBottom"=REG_DWORD:1750
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single3\PrintToFile]
+; last written 2016-06-22 00:53:17.564107   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:Single3
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single4]
+; last written 2017-01-19 17:17:35.133447   (17 values, 3 subkeys)
+"Name"=REG_SZ:Print 3.5 x 5
+"PrintMode"=REG_DWORD:1
+"WaitAfterCompletionOdd"=REG_DWORD:0
+"WaitAfterCompletionEven"=REG_DWORD:0
+"PaperPrompt"=REG_DWORD:0
+"AvailablePaperTypes"=REG_DWORD:0
+"GretagPaperIndex"=REG_DWORD:-1
+"Noritsu2611PaperIndex"=REG_DWORD:0
+"Noritsu2611Sharpening"=REG_DWORD:0
+"Noritsu2611PortraitWidth"=REG_DWORD:900
+"Noritsu2611OffsetPortraitWidth"=REG_DWORD:0
+"Noritsu2611OffsetPortraitHeight"=REG_DWORD:0
+"Noritsu2611PaperAdvance"=REG_DWORD:30
+"PrintSeparator"=REG_DWORD:0
+"PauseCompletedJob"=REG_DWORD:0
+"GretagPresent"=REG_DWORD:0
+"Noritsu2611Present"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single4\Printer_1]
+; last written 2017-01-20 00:53:09.023816   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:1
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:8500
+"P_Height"=REG_DWORD:11000
+"P_MarginLeft"=REG_DWORD:251
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:4750
+"P_MarginBottom"=REG_DWORD:5550
+"P_MinMarginLeft"=REG_DWORD:251
+"P_MinMarginTop"=REG_DWORD:116
+"P_MinMarginRight"=REG_DWORD:248
+"P_MinMarginBottom"=REG_DWORD:198
+"P_PrinterName"=REG_SZ:Canon MG7100 series Printer
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single4\Printer_2]
+; last written 2017-01-19 17:17:35.133447   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:4750
+"P_MarginBottom"=REG_DWORD:5550
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single4\PrintToFile]
+; last written 2016-06-22 00:53:17.574121   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:Single4
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single5]
+; last written 2017-01-19 17:17:35.133447   (17 values, 3 subkeys)
+"Name"=REG_SZ:Print 4 x 7
+"PrintMode"=REG_DWORD:1
+"WaitAfterCompletionOdd"=REG_DWORD:0
+"WaitAfterCompletionEven"=REG_DWORD:0
+"PaperPrompt"=REG_DWORD:0
+"AvailablePaperTypes"=REG_DWORD:0
+"GretagPaperIndex"=REG_DWORD:-1
+"Noritsu2611PaperIndex"=REG_DWORD:0
+"Noritsu2611Sharpening"=REG_DWORD:0
+"Noritsu2611PortraitWidth"=REG_DWORD:900
+"Noritsu2611OffsetPortraitWidth"=REG_DWORD:0
+"Noritsu2611OffsetPortraitHeight"=REG_DWORD:0
+"Noritsu2611PaperAdvance"=REG_DWORD:30
+"PrintSeparator"=REG_DWORD:0
+"PauseCompletedJob"=REG_DWORD:0
+"GretagPresent"=REG_DWORD:0
+"Noritsu2611Present"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single5\Printer_1]
+; last written 2017-01-19 17:17:35.133447   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:4250
+"P_MarginBottom"=REG_DWORD:3550
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single5\Printer_2]
+; last written 2017-01-19 17:17:35.133447   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:4250
+"P_MarginBottom"=REG_DWORD:3550
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single5\PrintToFile]
+; last written 2016-06-22 00:53:17.574121   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:Single5
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single6]
+; last written 2017-01-19 17:17:35.133447   (17 values, 3 subkeys)
+"Name"=REG_SZ:Print 5 x 9
+"PrintMode"=REG_DWORD:1
+"WaitAfterCompletionOdd"=REG_DWORD:0
+"WaitAfterCompletionEven"=REG_DWORD:0
+"PaperPrompt"=REG_DWORD:0
+"AvailablePaperTypes"=REG_DWORD:0
+"GretagPaperIndex"=REG_DWORD:-1
+"Noritsu2611PaperIndex"=REG_DWORD:0
+"Noritsu2611Sharpening"=REG_DWORD:0
+"Noritsu2611PortraitWidth"=REG_DWORD:900
+"Noritsu2611OffsetPortraitWidth"=REG_DWORD:0
+"Noritsu2611OffsetPortraitHeight"=REG_DWORD:0
+"Noritsu2611PaperAdvance"=REG_DWORD:30
+"PrintSeparator"=REG_DWORD:0
+"PauseCompletedJob"=REG_DWORD:0
+"GretagPresent"=REG_DWORD:0
+"Noritsu2611Present"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single6\Printer_1]
+; last written 2017-01-19 17:17:35.133447   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:3250
+"P_MarginBottom"=REG_DWORD:1550
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single6\Printer_2]
+; last written 2017-01-19 17:17:35.133447   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:250
+"P_MarginRight"=REG_DWORD:3250
+"P_MarginBottom"=REG_DWORD:1550
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Single6\PrintToFile]
+; last written 2016-06-22 00:53:17.574121   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:Single6
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Sleeve]
+; last written 2017-01-19 19:42:49.863185   (16 values, 2 subkeys)
+"Background"=REG_DWORD:16777215
+"PrintIndexNumbers"=REG_DWORD:1
+"NumeralRatio"=REG_DWORD:100
+"NumeralLoLimit"=REG_DWORD:20
+"NumeralHiLimit"=REG_DWORD:250
+"MinRowSpacing"=REG_DWORD:237
+"MinColSpacing"=REG_DWORD:237
+"PrintToFile"=REG_DWORD:0
+"Number Across"=REG_DWORD:4
+"Unit Height"=REG_DWORD:13000
+"Start At Roll End"=REG_DWORD:1
+"NumberAcross"=REG_DWORD:4
+"CustomTextSetSelected"=REG_DWORD:0
+"KodakFolio"=REG_DWORD:0
+"PaperPrompt"=REG_DWORD:1
+"PauseCompletedJob"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Sleeve\Printer]
+; last written 2017-01-19 17:17:35.123432   (13 values, 0 subkeys)
+"Initialized"=REG_DWORD:0
+"P_LocaleUnits"=REG_DWORD:4
+"P_Width"=REG_DWORD:0
+"P_Height"=REG_DWORD:0
+"P_MarginLeft"=REG_DWORD:250
+"P_MarginTop"=REG_DWORD:400
+"P_MarginRight"=REG_DWORD:1750
+"P_MarginBottom"=REG_DWORD:0
+"P_MinMarginLeft"=REG_DWORD:0
+"P_MinMarginTop"=REG_DWORD:0
+"P_MinMarginRight"=REG_DWORD:0
+"P_MinMarginBottom"=REG_DWORD:0
+"P_PrinterName"=REG_SZ:EMPTY_STRING
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\Sleeve\PrintToFile]
+; last written 2016-06-22 00:53:17.594150   (10 values, 0 subkeys)
+"Orientation"=REG_DWORD:0
+"Width"=REG_DWORD:1667
+"Height"=REG_DWORD:1667
+"Xdpi"=REG_DWORD:360
+"Ydpi"=REG_DWORD:360
+"Quality"=REG_DWORD:2
+"Sharpen"=REG_DWORD:0
+"Directory"=REG_SZ:C:\Temp
+"Filename"=REG_SZ:Sleeve
+"FileFormat"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\IQueue II\Print\SleeveTextSets]
+; last written 2016-06-22 00:57:31.709550   (27 values, 0 subkeys)
+"CustomTextSetsNumber"=REG_DWORD:1
+"CustomTextSetsName0"=REG_SZ:Factory Default
+"CustomText00"=REG_SZ:REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10
+"CustomTextColor00"=REG_DWORD:16711680
+"CustomTextSize00"=REG_DWORD:8
+"CustomTextStyle00"=REG_SZ:Arial
+"CustomTextType00"=REG_DWORD:1024
+"CustomText01"=REG_SZ:REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10
+"CustomTextColor01"=REG_DWORD:16711680
+"CustomTextSize01"=REG_DWORD:8
+"CustomTextStyle01"=REG_SZ:Arial
+"CustomTextType01"=REG_DWORD:1024
+"CustomText02"=REG_SZ:REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10
+"CustomTextColor02"=REG_DWORD:16711680
+"CustomTextSize02"=REG_DWORD:8
+"CustomTextStyle02"=REG_SZ:Arial
+"CustomTextType02"=REG_DWORD:1024
+"CustomText03"=REG_SZ:REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10
+"CustomTextColor03"=REG_DWORD:16711680
+"CustomTextSize03"=REG_DWORD:8
+"CustomTextStyle03"=REG_SZ:Arial
+"CustomTextType03"=REG_DWORD:1024
+"CustomText04"=REG_SZ:REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10       REPRINT    5X7    8X10
+"CustomTextColor04"=REG_DWORD:16711680
+"CustomTextSize04"=REG_DWORD:8
+"CustomTextStyle04"=REG_SZ:Arial
+"CustomTextType04"=REG_DWORD:1024
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI]
+; last written 2025-07-23 06:48:50.671875   (1 values, 9 subkeys)
+"About"=REG_SZ:3.0.3.26
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Classic View]
+; last written 2022-11-10 21:09:01.042126   (0 values, 0 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\ColorPreferences]
+; last written 2016-06-22 00:53:15.681400   (0 values, 5 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\ColorPreferences\BnW]
+; last written 2016-06-22 00:54:47.273102   (7 values, 0 subkeys)
+"Red"=REG_DWORD:0
+"Green"=REG_DWORD:0
+"Blue"=REG_DWORD:0
+"Brightness"=REG_DWORD:0
+"Contrast"=REG_DWORD:0
+"Sharpness"=REG_DWORD:0
+"UseColorSceneBalanceDigital"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\ColorPreferences\ColNeg]
+; last written 2016-06-22 00:54:47.273102   (7 values, 0 subkeys)
+"Red"=REG_DWORD:0
+"Green"=REG_DWORD:0
+"Blue"=REG_DWORD:0
+"Brightness"=REG_DWORD:0
+"Contrast"=REG_DWORD:0
+"Sharpness"=REG_DWORD:0
+"UseColorSceneBalanceDigital"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\ColorPreferences\ColRev]
+; last written 2016-06-22 00:54:47.273102   (7 values, 0 subkeys)
+"Red"=REG_DWORD:0
+"Green"=REG_DWORD:0
+"Blue"=REG_DWORD:0
+"Brightness"=REG_DWORD:0
+"Contrast"=REG_DWORD:0
+"Sharpness"=REG_DWORD:0
+"UseColorSceneBalanceDigital"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\ColorPreferences\File]
+; last written 2016-06-22 00:54:47.273102   (7 values, 0 subkeys)
+"Red"=REG_DWORD:0
+"Green"=REG_DWORD:0
+"Blue"=REG_DWORD:0
+"Brightness"=REG_DWORD:0
+"Contrast"=REG_DWORD:0
+"Sharpness"=REG_DWORD:0
+"UseColorSceneBalanceDigital"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\ColorPreferences\SavedSetting2]
+; last written 2016-06-22 00:54:47.273102   (7 values, 0 subkeys)
+"Red"=REG_DWORD:0
+"Green"=REG_DWORD:0
+"Blue"=REG_DWORD:0
+"Brightness"=REG_DWORD:0
+"Contrast"=REG_DWORD:0
+"Sharpness"=REG_DWORD:0
+"UseColorSceneBalanceDigital"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\DialogPositions]
+; last written 2025-07-23 06:49:46.453125   (0 values, 2 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\DialogPositions\BnWEffectDialog]
+; last written 2025-07-23 06:48:59.328125   (2 values, 0 subkeys)
+"Placement_top"=REG_DWORD:50
+"Placement_left"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\DialogPositions\ColorDialog]
+; last written 2025-07-23 06:49:47.984375   (2 values, 0 subkeys)
+"Placement_top"=REG_DWORD:50
+"Placement_left"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\IQueue II]
+; last written 2016-06-22 02:31:42.353478   (5 values, 2 subkeys)
+"StartIQueue"=REG_DWORD:0
+"UseRollId"=REG_DWORD:0
+"IQueueDestDir"=REG_SZ:C:\IQueue II
+"ExtrasDir"=REG_SZ:C:\Program Files\Pakon\Extras
+"MegabytesMax"=REG_DWORD:1000
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\IQueue II\HiResExport]
+; last written 2016-06-22 00:54:47.062800   (7 values, 0 subkeys)
+"Quality"=REG_DWORD:100
+"Height"=REG_DWORD:1024
+"Width"=REG_DWORD:1536
+"Dpi"=REG_DWORD:300
+"SaveOptions"=REG_DWORD:244
+"EnableFullControl"=REG_DWORD:0
+"FileType"=REG_DWORD:3
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\IQueue II\LoResExport]
+; last written 2016-06-22 00:54:47.062800   (7 values, 0 subkeys)
+"Quality"=REG_DWORD:90
+"Height"=REG_DWORD:0
+"Width"=REG_DWORD:0
+"Dpi"=REG_DWORD:300
+"SaveOptions"=REG_DWORD:252
+"EnableFullControl"=REG_DWORD:0
+"FileType"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order]
+; last written 2025-07-28 02:10:51.312500   (1 values, 0 subkeys)
+"Order ID"=REG_DWORD:1000000049
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode]
+; last written 2016-06-22 00:54:47.192987   (14 values, 1 subkeys)
+"35mmNeg"=REG_DWORD:1
+"FramesPerStrip"=REG_DWORD:4
+"SkipPreview"=REG_DWORD:0
+"StripMode"=REG_DWORD:1
+"ScanningResolution"=REG_DWORD:1
+"ScratchRemovalOptional"=REG_DWORD:1
+"PremiumColorPathOptional"=REG_DWORD:1
+"StripModeFramesPerStrip"=REG_DWORD:0
+"JobPackage"=REG_DWORD:0
+"JobSourceMedia"=REG_DWORD:0
+"JobResolution"=REG_DWORD:0
+"JobScratchRemoval"=REG_DWORD:0
+"JobPremiumColorPath"=REG_DWORD:0
+"Password"=REG_SZ:
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media]
+; last written 2016-06-22 00:54:47.192987   (4 values, 11 subkeys)
+"35mm Visible"=REG_DWORD:1
+"Archive Visible"=REG_DWORD:1
+"Browse Visible"=REG_DWORD:1
+"Browse Directory"=REG_SZ:C:\temp
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media05]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:
+"Icon"=REG_DWORD:0
+"Directory"=REG_SZ:
+"Recursive"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media06]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:Camera Card
+"Icon"=REG_DWORD:19
+"Directory"=REG_SZ:E:\;F:\;G:\;D:\
+"Recursive"=REG_DWORD:1
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media07]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:Picture CD
+"Icon"=REG_DWORD:16
+"Directory"=REG_SZ:R:\PICTURES
+"Recursive"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media08]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:Generic CD
+"Icon"=REG_DWORD:6
+"Directory"=REG_SZ:R:\
+"Recursive"=REG_DWORD:1
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media09]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:
+"Icon"=REG_DWORD:0
+"Directory"=REG_SZ:
+"Recursive"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media10]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:
+"Icon"=REG_DWORD:0
+"Directory"=REG_SZ:
+"Recursive"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media11]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:
+"Icon"=REG_DWORD:0
+"Directory"=REG_SZ:
+"Recursive"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media12]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:
+"Icon"=REG_DWORD:0
+"Directory"=REG_SZ:
+"Recursive"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media13]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:
+"Icon"=REG_DWORD:0
+"Directory"=REG_SZ:
+"Recursive"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media14]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:
+"Icon"=REG_DWORD:0
+"Directory"=REG_SZ:
+"Recursive"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Order Form Mode\Source Media\Media15]
+; last written 2016-06-22 00:54:47.192987   (4 values, 0 subkeys)
+"Name"=REG_SZ:
+"Icon"=REG_DWORD:0
+"Directory"=REG_SZ:
+"Recursive"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\RollID]
+; last written 2025-07-28 02:16:44.328125   (6 values, 0 subkeys)
+"RollID"=REG_SZ:0
+"AutoIncrement"=REG_DWORD:0
+"Numeric Only"=REG_DWORD:0
+"Max"=REG_DWORD:2147483647
+"Min"=REG_DWORD:100000
+"Max Length"=REG_DWORD:20
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Scanner Settings]
+; last written 2025-07-23 04:56:59.578125   (30 values, 1 subkeys)
+"DriverRingTailBytes"=REG_DWORD:25165824
+"DriverTriggerBytes"=REG_DWORD:1048576
+"ProcessedRingTailBytes"=REG_DWORD:25165824
+"ProcessedTriggerBytes"=REG_DWORD:1048576
+"FeedMode"=REG_DWORD:0
+"NormalRollMaxFilmLength_mm"=REG_DWORD:1670
+"LongRollMaxFilmLength_mm"=REG_DWORD:3340
+"DarkPointCorrectIntervalMinutes"=REG_DWORD:120
+"ColorPortraitMode"=REG_DWORD:0
+"ColorPortraitModeRotation"=REG_DWORD:0
+"ScanPacketReadyTimeOut"=REG_DWORD:3000
+"NoFilmTimeOut"=REG_DWORD:120
+"LampSaverSec"=REG_DWORD:0
+"StartupCalibrationSelection"=REG_DWORD:16
+"Serial Number"=REG_DWORD:16275
+"Scanner Model"=REG_SZ:F135_PLUS
+"File Open Filter"=REG_DWORD:0
+"File Open Path"=REG_SZ:C:\Temp
+"Film Format"=REG_DWORD:1
+"Film Color"=REG_DWORD:8
+"Resolution"=REG_DWORD:2
+"AggressiveFraming"=REG_DWORD:0
+"FramesPerStrip"=REG_DWORD:4
+"MultipleStrips"=REG_DWORD:0
+"ScratchRemoval"=REG_DWORD:0
+"PremiumColorPath"=REG_DWORD:0
+"Auto Run"=REG_DWORD:0
+"Auto Scan"=REG_DWORD:0
+"LoadFirmwareAtStartup"=REG_DWORD:0
+"SpliceAdvance"=REG_DWORD:750
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Scanner Settings\Framing]
+; last written 2016-06-22 00:54:31.039760   (0 values, 2 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Scanner Settings\Framing\24mm]
+; last written 2022-11-10 21:13:56.707272   (1 values, 0 subkeys)
+"Crop24mm"=REG_DWORD:200
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Scanner Settings\Framing\35mm]
+; last written 2022-11-10 21:13:56.707272   (1 values, 0 subkeys)
+"Crop35mm"=REG_DWORD:200
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI\Setup]
+; last written 2022-11-10 21:13:56.717286   (25 values, 0 subkeys)
+"ContactEnabled"=REG_DWORD:0
+"SleeveEnabled"=REG_DWORD:0
+"ProgramPath"=REG_SZ:C:\Program Files\Pakon\PSI
+"InternetEnabled"=REG_DWORD:0
+"CurrentLanguage"=REG_SZ:English
+"SleepEnabled"=REG_DWORD:1
+"SleepWait"=REG_DWORD:30
+"StandbyWait"=REG_DWORD:15
+"KPCDEnabled"=REG_DWORD:1
+"PakonCDEnabled"=REG_DWORD:1
+"IndexEnabled"=REG_DWORD:1
+"SaveAsEnabled"=REG_DWORD:1
+"Single1Enabled"=REG_DWORD:1
+"Single2Enabled"=REG_DWORD:1
+"Single3Enabled"=REG_DWORD:1
+"Single4Enabled"=REG_DWORD:1
+"Single5Enabled"=REG_DWORD:1
+"Single6Enabled"=REG_DWORD:1
+"KpcdAccessCode"=REG_DWORD:-1
+"LabID"=REG_SZ:1
+"IRetailer"=REG_SZ:NONE
+"Interface"=REG_DWORD:0
+"PictureColorDescriptorShow"=REG_DWORD:1
+"PictureBackgroundColor"=REG_DWORD:16777215
+"PictureSelectionColor"=REG_DWORD:255
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI F235]
+; last written 2016-06-22 00:57:31.719564   (0 values, 1 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\PSI F235\Setup]
+; last written 2016-06-22 00:57:31.719564   (1 values, 0 subkeys)
+"About"=REG_SZ:3.0.3.26
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLA]
+; last written 2017-02-09 07:29:22.478330   (1 values, 1 subkeys)
+"ProgramPath"=REG_SZ:C:\Program Files\Pakon\F-X35 COM Server
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLA\Scan]
+; last written 2016-06-21 18:41:53.725358   (0 values, 1 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLA\Scan\Test]
+; last written 2017-02-09 07:29:22.478330   (2 values, 0 subkeys)
+"IrChannelSavedInPlanarFile"=REG_DWORD:0
+"LampWarmUpSlope"=REG_SZ:-.22
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB]
+; last written 2022-11-10 21:08:22.396556   (2 values, 2 subkeys)
+"ProgramPath"=REG_SZ:C:\Program Files\Pakon\F-X35 COM Server
+"Version"=REG_SZ:3, 1, 0, 28
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\ColorKodak]
+; last written 2022-11-10 21:13:56.516998   (65 values, 0 subkeys)
+"CRInputProfileFile"=REG_SZ:\Config\ColorCorrection\romm.pf
+"InputProfileFile"=REG_SZ:\Config\ColorCorrection\rpd.pf
+"OutputProfileFile"=REG_SZ:\Config\ColorCorrection\srgb.pf
+"ColRevLut1File"=REG_SZ:\Config\ColorCorrection\ColRevLut1.pf
+"ColRevLutS6"=REG_SZ:\Config\ColorCorrection\ColRevLutS6.lut
+"NegMatrix0"=REG_SZ:0.289202
+"NegMatrix1"=REG_SZ:0.002207
+"NegMatrix2"=REG_SZ:-0.001277
+"NegMatrix3"=REG_SZ:-0.000001
+"NegMatrix4"=REG_SZ:-0.000002
+"NegMatrix5"=REG_SZ:-0.000001
+"NegMatrix6"=REG_SZ:0.000000
+"NegMatrix7"=REG_SZ:-0.000001
+"NegMatrix8"=REG_SZ:0.000004
+"NegMatrix9"=REG_SZ:159.593735
+"NegMatrix10"=REG_SZ:0.000253
+"NegMatrix11"=REG_SZ:0.275831
+"NegMatrix12"=REG_SZ:-0.007042
+"NegMatrix13"=REG_SZ:0.000001
+"NegMatrix14"=REG_SZ:0.000004
+"NegMatrix15"=REG_SZ:0.000001
+"NegMatrix16"=REG_SZ:-0.000004
+"NegMatrix17"=REG_SZ:-0.000000
+"NegMatrix18"=REG_SZ:0.000002
+"NegMatrix19"=REG_SZ:444.749695
+"NegMatrix20"=REG_SZ:0.000739
+"NegMatrix21"=REG_SZ:0.010163
+"NegMatrix22"=REG_SZ:0.278237
+"NegMatrix23"=REG_SZ:-0.000000
+"NegMatrix24"=REG_SZ:0.000008
+"NegMatrix25"=REG_SZ:0.000008
+"NegMatrix26"=REG_SZ:-0.000001
+"NegMatrix27"=REG_SZ:0.000001
+"NegMatrix28"=REG_SZ:-0.000018
+"NegMatrix29"=REG_SZ:635.535217
+"PosMatrix0"=REG_SZ:0.250000
+"PosMatrix1"=REG_SZ:0.000000
+"PosMatrix2"=REG_SZ:0.000000
+"PosMatrix3"=REG_SZ:0.000000
+"PosMatrix4"=REG_SZ:0.000000
+"PosMatrix5"=REG_SZ:0.000000
+"PosMatrix6"=REG_SZ:0.000000
+"PosMatrix7"=REG_SZ:0.000000
+"PosMatrix8"=REG_SZ:0.000000
+"PosMatrix9"=REG_SZ:0.000000
+"PosMatrix10"=REG_SZ:0.000000
+"PosMatrix11"=REG_SZ:0.250000
+"PosMatrix12"=REG_SZ:0.000000
+"PosMatrix13"=REG_SZ:0.000000
+"PosMatrix14"=REG_SZ:0.000000
+"PosMatrix15"=REG_SZ:0.000000
+"PosMatrix16"=REG_SZ:0.000000
+"PosMatrix17"=REG_SZ:0.000000
+"PosMatrix18"=REG_SZ:0.000000
+"PosMatrix19"=REG_SZ:0.000000
+"PosMatrix20"=REG_SZ:0.000000
+"PosMatrix21"=REG_SZ:0.000000
+"PosMatrix22"=REG_SZ:0.250000
+"PosMatrix23"=REG_SZ:0.000000
+"PosMatrix24"=REG_SZ:0.000000
+"PosMatrix25"=REG_SZ:0.000000
+"PosMatrix26"=REG_SZ:0.000000
+"PosMatrix27"=REG_SZ:0.000000
+"PosMatrix28"=REG_SZ:0.000000
+"PosMatrix29"=REG_SZ:0.000000
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan]
+; last written 2022-11-10 21:13:56.516998   (8 values, 4 subkeys)
+"ScannerType"=REG_DWORD:1351
+"ScannerVersionHw"=REG_DWORD:400
+"ScannerSerialNumber"=REG_DWORD:16275
+"FirmwareLoadRetry"=REG_DWORD:0
+"FirmwareLoadRetrySerial"=REG_DWORD:0
+"HiResPath"=REG_SZ:C:
+"HiResMegabytesTotal"=REG_DWORD:4800
+"HiResMegabytesRoll"=REG_DWORD:2400
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase16_35]
+; last written 2022-11-10 21:13:56.516998   (9 values, 6 subkeys)
+"Offset"=REG_DWORD:55
+"MotorAdjust"=REG_DWORD:1000
+"MotorAdjust_Ir"=REG_DWORD:1000
+"MotorAdjustDrag"=REG_DWORD:1008
+"MotorAdjustDrag_Ir"=REG_DWORD:1008
+"MotorSpeedPlus"=REG_DWORD:5917
+"MotorSpeedPlus_Ir"=REG_DWORD:4850
+"StepperLens"=REG_DWORD:3133
+"StepperCCD"=REG_DWORD:970
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase16_35\BnW]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:63500
+"DetectFilm_G"=REG_DWORD:61500
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase16_35\BnWIr]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:63500
+"DetectFilm_G"=REG_DWORD:61500
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase16_35\BnW_C41]
+; last written 2025-07-28 02:50:07.281250   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:-19
+"Offset_G"=REG_DWORD:-26
+"Offset_B"=REG_DWORD:-20
+"Current_R"=REG_DWORD:3
+"Current_G"=REG_DWORD:7
+"Current_B"=REG_DWORD:3
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.853484
+"DutyCycle_G"=REG_SZ:0.897672
+"DutyCycle_B"=REG_SZ:0.617586
+"DutyCycle_Ir"=REG_SZ:0.500000
+"DutyCycleOpenGate_R"=REG_SZ:0.677946
+"DutyCycleOpenGate_G"=REG_SZ:0.504798
+"DutyCycleOpenGate_B"=REG_SZ:0.347294
+"DutyCycleOpenGate_Ir"=REG_SZ:0.415882
+"FullLightCorrections"=REG_DWORD:1753667580
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase16_35\BnW_C41Ir]
+; last written 2025-07-23 04:28:32.015625   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:-19
+"Offset_G"=REG_DWORD:-26
+"Offset_B"=REG_DWORD:-20
+"Current_R"=REG_DWORD:5
+"Current_G"=REG_DWORD:13
+"Current_B"=REG_DWORD:4
+"Current_Ir"=REG_DWORD:5
+"DutyCycle_R"=REG_SZ:0.820907
+"DutyCycle_G"=REG_SZ:0.970009
+"DutyCycle_B"=REG_SZ:0.773802
+"DutyCycle_Ir"=REG_SZ:0.866253
+"DutyCycleOpenGate_R"=REG_SZ:0.652069
+"DutyCycleOpenGate_G"=REG_SZ:0.545476
+"DutyCycleOpenGate_B"=REG_SZ:0.435141
+"DutyCycleOpenGate_Ir"=REG_SZ:0.720518
+"FullLightCorrections"=REG_DWORD:1753243550
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase16_35\ColNeg]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase16_35\ColNegIr]
+; last written 2025-07-23 04:23:10.390625   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:-18
+"Offset_G"=REG_DWORD:-26
+"Offset_B"=REG_DWORD:-20
+"Current_R"=REG_DWORD:5
+"Current_G"=REG_DWORD:20
+"Current_B"=REG_DWORD:11
+"Current_Ir"=REG_DWORD:4
+"DutyCycle_R"=REG_SZ:0.917161
+"DutyCycle_G"=REG_SZ:0.955468
+"DutyCycle_B"=REG_SZ:0.865802
+"DutyCycle_Ir"=REG_SZ:0.887000
+"DutyCycleOpenGate_R"=REG_SZ:0.658333
+"DutyCycleOpenGate_G"=REG_SZ:0.380378
+"DutyCycleOpenGate_B"=REG_SZ:0.166885
+"DutyCycleOpenGate_Ir"=REG_SZ:0.887000
+"FullLightCorrections"=REG_DWORD:1668114895
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase4_35]
+; last written 2022-11-10 21:13:56.516998   (9 values, 6 subkeys)
+"Offset"=REG_DWORD:27
+"MotorAdjust"=REG_DWORD:1000
+"MotorAdjust_Ir"=REG_DWORD:1000
+"MotorAdjustDrag"=REG_DWORD:1008
+"MotorAdjustDrag_Ir"=REG_DWORD:1008
+"MotorSpeedPlus"=REG_DWORD:25802
+"MotorSpeedPlus_Ir"=REG_DWORD:19335
+"StepperLens"=REG_DWORD:3133
+"StepperCCD"=REG_DWORD:970
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase4_35\BnW]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:63500
+"DetectFilm_G"=REG_DWORD:61500
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase4_35\BnWIr]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:63500
+"DetectFilm_G"=REG_DWORD:61500
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase4_35\BnW_C41]
+; last written 2025-07-23 04:23:48.734375   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:-17
+"Offset_G"=REG_DWORD:-25
+"Offset_B"=REG_DWORD:-19
+"Current_R"=REG_DWORD:3
+"Current_G"=REG_DWORD:7
+"Current_B"=REG_DWORD:3
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.924671
+"DutyCycle_G"=REG_SZ:0.980369
+"DutyCycle_B"=REG_SZ:0.684175
+"DutyCycle_Ir"=REG_SZ:0.500000
+"DutyCycleOpenGate_R"=REG_SZ:0.734492
+"DutyCycleOpenGate_G"=REG_SZ:0.551302
+"DutyCycleOpenGate_B"=REG_SZ:0.384740
+"DutyCycleOpenGate_Ir"=REG_SZ:0.415882
+"FullLightCorrections"=REG_DWORD:1753244628
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase4_35\BnW_C41Ir]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase4_35\ColNeg]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase4_35\ColNegIr]
+; last written 2025-07-23 04:23:10.390625   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:-17
+"Offset_G"=REG_DWORD:-25
+"Offset_B"=REG_DWORD:-19
+"Current_R"=REG_DWORD:5
+"Current_G"=REG_DWORD:20
+"Current_B"=REG_DWORD:11
+"Current_Ir"=REG_DWORD:4
+"DutyCycle_R"=REG_SZ:0.916904
+"DutyCycle_G"=REG_SZ:0.951920
+"DutyCycle_B"=REG_SZ:0.862093
+"DutyCycle_Ir"=REG_SZ:0.881640
+"DutyCycleOpenGate_R"=REG_SZ:0.658148
+"DutyCycleOpenGate_G"=REG_SZ:0.378966
+"DutyCycleOpenGate_B"=REG_SZ:0.166171
+"DutyCycleOpenGate_Ir"=REG_SZ:0.881640
+"FullLightCorrections"=REG_DWORD:1668115286
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase8_35]
+; last written 2022-11-10 21:13:56.516998   (9 values, 6 subkeys)
+"Offset"=REG_DWORD:54
+"MotorAdjust"=REG_DWORD:1000
+"MotorAdjust_Ir"=REG_DWORD:1000
+"MotorAdjustDrag"=REG_DWORD:1008
+"MotorAdjustDrag_Ir"=REG_DWORD:1008
+"MotorSpeedPlus"=REG_DWORD:11467
+"MotorSpeedPlus_Ir"=REG_DWORD:7580
+"StepperLens"=REG_DWORD:3133
+"StepperCCD"=REG_DWORD:970
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase8_35\BnW]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:63500
+"DetectFilm_G"=REG_DWORD:61500
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase8_35\BnWIr]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:63500
+"DetectFilm_G"=REG_DWORD:61500
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase8_35\BnW_C41]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase8_35\BnW_C41Ir]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:0
+"Offset_G"=REG_DWORD:0
+"Offset_B"=REG_DWORD:0
+"Current_R"=REG_DWORD:1
+"Current_G"=REG_DWORD:1
+"Current_B"=REG_DWORD:1
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.000000
+"DutyCycle_G"=REG_SZ:0.000000
+"DutyCycle_B"=REG_SZ:0.000000
+"DutyCycle_Ir"=REG_SZ:0.000000
+"DutyCycleOpenGate_R"=REG_SZ:0.000000
+"DutyCycleOpenGate_G"=REG_SZ:0.000000
+"DutyCycleOpenGate_B"=REG_SZ:0.000000
+"DutyCycleOpenGate_Ir"=REG_SZ:0.000000
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase8_35\ColNeg]
+; last written 2022-11-10 21:11:25.189400   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:15
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:-19
+"Offset_G"=REG_DWORD:-26
+"Offset_B"=REG_DWORD:-20
+"Current_R"=REG_DWORD:4
+"Current_G"=REG_DWORD:18
+"Current_B"=REG_DWORD:10
+"Current_Ir"=REG_DWORD:1
+"DutyCycle_R"=REG_SZ:0.996500
+"DutyCycle_G"=REG_SZ:0.949083
+"DutyCycle_B"=REG_SZ:0.836299
+"DutyCycle_Ir"=REG_SZ:0.500000
+"DutyCycleOpenGate_R"=REG_SZ:0.715282
+"DutyCycleOpenGate_G"=REG_SZ:0.377837
+"DutyCycleOpenGate_B"=REG_SZ:0.161199
+"DutyCycleOpenGate_Ir"=REG_SZ:0.500000
+"FullLightCorrections"=REG_DWORD:1668114685
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\DpiBase8_35\ColNegIr]
+; last written 2022-11-10 21:13:56.516998   (23 values, 0 subkeys)
+"SpliceDarkness"=REG_DWORD:237
+"DetectWhite_G"=REG_DWORD:61000
+"DetectFilm_G"=REG_DWORD:54000
+"Gain_R"=REG_DWORD:13
+"Gain_G"=REG_DWORD:13
+"Gain_B"=REG_DWORD:13
+"Offset_R"=REG_DWORD:-18
+"Offset_G"=REG_DWORD:-26
+"Offset_B"=REG_DWORD:-20
+"Current_R"=REG_DWORD:6
+"Current_G"=REG_DWORD:23
+"Current_B"=REG_DWORD:14
+"Current_Ir"=REG_DWORD:5
+"DutyCycle_R"=REG_SZ:0.906337
+"DutyCycle_G"=REG_SZ:0.978982
+"DutyCycle_B"=REG_SZ:0.809069
+"DutyCycle_Ir"=REG_SZ:0.845659
+"DutyCycleOpenGate_R"=REG_SZ:0.650564
+"DutyCycleOpenGate_G"=REG_SZ:0.389740
+"DutyCycleOpenGate_B"=REG_SZ:0.155950
+"DutyCycleOpenGate_Ir"=REG_SZ:0.845659
+"FullLightCorrections"=REG_DWORD:0
+"Max_Ir"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLB\Scan\Test]
+; last written 2022-11-10 21:08:22.296412   (33 values, 0 subkeys)
+"IrChannelSavedInPlanarFile"=REG_DWORD:0
+"PlanarFileHeaderVersion"=REG_DWORD:0
+"SenseFilm"=REG_DWORD:1
+"DrawDxLines"=REG_DWORD:0
+"DxDesperation"=REG_DWORD:0
+"LockSteppers"=REG_DWORD:0
+"TlaControlLeds"=REG_DWORD:1
+"Version"=REG_DWORD:0
+"UseFixedPatternCorrection"=REG_DWORD:1
+"IrCrossTalkFactor"=REG_DWORD:10
+"UsePpbDebugTraces"=REG_DWORD:0
+"HighWaterTest"=REG_DWORD:0
+"UseTimeCriticalPriority"=REG_DWORD:0
+"UseFPCAnalyze"=REG_DWORD:0
+"AnselOrientation"=REG_DWORD:270
+"StepperStartingTransport"=REG_DWORD:0
+"StepperStartingLens"=REG_DWORD:0
+"DriverSimultaneousPackets"=REG_DWORD:1
+"FPCAnalyzeAvg"=REG_DWORD:5
+"FPCAnalyzeSkip"=REG_DWORD:15
+"FPCAnalyzeThreshold"=REG_DWORD:75
+"FPCCreateDebugFile"=REG_DWORD:0
+"DxCreateDebugFiles"=REG_DWORD:0
+"DxCreateDebugFilesCommunication"=REG_DWORD:0
+"RequireDxSensorsDuringLightCalibration"=REG_DWORD:1
+"DxCalibrationFilmOffset"=REG_DWORD:5
+"WriteLightStabilityLog"=REG_DWORD:0
+"WaitForLamp_R"=REG_SZ:5.000000
+"WaitForLamp_G"=REG_SZ:5.000000
+"WaitForLamp_B"=REG_SZ:5.000000
+"WaitForLamp_Ir"=REG_SZ:5.000000
+"WriteEEPromDebugFile"=REG_DWORD:0
+"UseTemperatureSetpoints"=REG_DWORD:0
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLC]
+; last written 2017-02-09 07:29:22.478330   (1 values, 0 subkeys)
+"ProgramPath"=REG_SZ:C:\Program Files\Pakon\F-X35 COM Server
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLX]
+; last written 2017-02-09 07:29:22.478330   (3 values, 0 subkeys)
+"SimulatorPresent"=REG_DWORD:0
+"Version"=REG_SZ:3, 1, 0, 28
+"ProgramPath"=REG_SZ:C:\Program Files\Pakon\F-X35 COM Server
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLXClientDemo]
+; last written 2016-06-25 10:19:30.237633   (0 values, 1 subkeys)
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Pakon\TLXClientDemo\General]
+; last written 2016-06-25 10:19:30.237633   (2 values, 0 subkeys)
+"LoadFirmwareAtStartup"=REG_DWORD:0
+"MotorSelfTestAtStartup"=REG_DWORD:0

@@ -1,0 +1,37 @@
+USB events for the F-135 scanner (VID 0f05 PID f135) from parallels.log
+Host-local timestamps. 'ConnectToBus: result: 0' = successful attach to the guest.
+The -2147483647 results are redundant *manual* re-attach attempts on an
+already-connected device, not failures.
+
+07-23 12:04:18.218 F /vm:35569:f1661/ vmEvtHwChanged() dev_type = 15, dev_state = 1, dev_path = 14310000|0f05|f135|high|--|010-203-04, dev_frName = F135-USB Film Scanner
+07-23 12:04:18.218 F /USB:35569:f1661/ [USB] ConnectToBus: reason: auto, device: 14310000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner) type: PUDT_OTHER
+07-23 12:04:21.000 F /USB:35569:f1661/ EjectUsbMedia: 'F135-USB Film Scanner':'14310000|0f05|f135|high|--|010-203-04' is not a media device
+07-23 12:04:22.986 F /USB:35569:f1661/ [USB] ConnectToBus: result: 0, port: 02000000, reason: auto, device: 14310000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner)
+07-23 12:04:22.987 F /USB:35569:f1661/ [USB] ConnectToBus: reason: manual, device: 14310000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner) type: PUDT_OTHER
+07-23 12:04:22.987 F /USB:35569:f1661/ [USB] ConnectToBus: result: -2147483647, port: 02000000, reason: manual, device: 14310000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner)
+07-23 12:44:15.908 F /vm:35569:f1661/ vmEvtHwChanged() dev_type = 15, dev_state = 0, dev_path = 14310000|0f05|f135|high|--|010-203-04, dev_frName = F135-USB Film Scanner
+07-23 12:44:15.908 F /USB:35569:f1661/ DisconnectFromBus: reason 1, port 02000000, dev <14310000|0f05|f135|high|--|010-203-04><F135-USB Film Scanner>
+07-23 12:44:15.909 F /USB:35569:f1661/ DisconnectFromBus: result 0, reason 1, Port 02000000, dev <14310000|0f05|f135|high|--|010-203-04><F135-USB Film Scanner>
+07-23 13:12:19.890 F /vm:35569:f1661/ vmEvtHwChanged() dev_type = 15, dev_state = 1, dev_path = 14110000|0f05|f135|high|--|010-203-04, dev_frName = F135-USB Film Scanner
+07-23 13:12:19.892 F /USB:35569:f1661/ [USB] ConnectToBus: reason: auto, device: 14110000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner) type: PUDT_OTHER
+07-23 13:12:22.862 F /USB:35569:f1661/ EjectUsbMedia: 'F135-USB Film Scanner':'14110000|0f05|f135|high|--|010-203-04' is not a media device
+07-23 13:12:24.204 F /USB:35569:f1661/ [USB] ConnectToBus: result: 0, port: 02050000, reason: auto, device: 14110000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner)
+07-23 13:12:24.205 F /USB:35569:f1661/ [USB] ConnectToBus: reason: manual, device: 14110000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner) type: PUDT_OTHER
+07-23 13:12:24.206 F /USB:35569:f1661/ [USB] ConnectToBus: result: -2147483647, port: 02050000, reason: manual, device: 14110000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner)
+07-23 14:15:40.121 F /vm:35569:f1661/ vmEvtHwChanged() dev_type = 15, dev_state = 0, dev_path = 14110000|0f05|f135|high|--|010-203-04, dev_frName = F135-USB Film Scanner
+07-23 14:15:40.122 F /USB:35569:f1661/ DisconnectFromBus: reason 1, port 02050000, dev <14110000|0f05|f135|high|--|010-203-04><F135-USB Film Scanner>
+07-23 14:15:40.125 F /USB:35569:f1661/ DisconnectFromBus: result 0, reason 1, Port 02050000, dev <14110000|0f05|f135|high|--|010-203-04><F135-USB Film Scanner>
+07-27 20:22:55.498 F /vm:35569:f1661/ vmEvtHwChanged() dev_type = 15, dev_state = 1, dev_path = 14310000|0f05|f135|high|--|010-203-04, dev_frName = F135-USB Film Scanner
+07-27 20:22:55.499 F /USB:35569:f1661/ [USB] ConnectToBus: reason: auto, device: 14310000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner) type: PUDT_OTHER
+07-27 20:22:55.500 F /USB:35569:f1661/ EjectUsbMedia: 'F135-USB Film Scanner':'14310000|0f05|f135|high|--|010-203-04' is not a media device
+07-27 20:22:57.474 F /USB:35569:f1661/ [USB] ConnectToBus: result: 0, port: 02000000, reason: auto, device: 14310000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner)
+07-27 20:42:44.129 F /vm:35569:f1661/ vmEvtHwChanged() dev_type = 15, dev_state = 0, dev_path = 14310000|0f05|f135|high|--|010-203-04, dev_frName = F135-USB Film Scanner
+07-27 20:42:44.129 F /USB:35569:f1661/ DisconnectFromBus: reason 1, port 02000000, dev <14310000|0f05|f135|high|--|010-203-04><F135-USB Film Scanner>
+07-27 20:42:44.130 F /USB:35569:f1661/ DisconnectFromBus: result 0, reason 1, Port 02000000, dev <14310000|0f05|f135|high|--|010-203-04><F135-USB Film Scanner>
+07-28 10:23:22.989 F /vm:35569:f1661/ vmEvtHwChanged() dev_type = 15, dev_state = 1, dev_path = 14110000|0f05|f135|high|--|010-203-04, dev_frName = F135-USB Film Scanner
+07-28 10:23:22.990 F /USB:35569:f1661/ [USB] ConnectToBus: reason: auto, device: 14110000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner) type: PUDT_OTHER
+07-28 10:23:22.990 F /USB:35569:f1661/ EjectUsbMedia: 'F135-USB Film Scanner':'14110000|0f05|f135|high|--|010-203-04' is not a media device
+07-28 10:23:24.993 F /USB:35569:f1661/ [USB] ConnectToBus: result: 0, port: 02050000, reason: auto, device: 14110000|0f05|f135|high|--|010-203-04 (F135-USB Film Scanner)
+07-28 11:09:42.786 F /vm:35569:f1661/ vmEvtHwChanged() dev_type = 15, dev_state = 0, dev_path = 14110000|0f05|f135|high|--|010-203-04, dev_frName = F135-USB Film Scanner
+07-28 11:09:42.787 F /USB:35569:f1661/ DisconnectFromBus: reason 1, port 02050000, dev <14110000|0f05|f135|high|--|010-203-04><F135-USB Film Scanner>
+07-28 11:09:42.793 F /USB:35569:f1661/ DisconnectFromBus: result 0, reason 1, Port 02050000, dev <14110000|0f05|f135|high|--|010-203-04><F135-USB Film Scanner>

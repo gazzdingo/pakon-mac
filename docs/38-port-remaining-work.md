@@ -170,3 +170,74 @@ more than a few buffers in a row.
 The vendor `.pf` colour profiles are standard ICC v2 (Kodak KCMS), so
 **ColorSync consumes them directly** (`tools/pakon_profile.py`). Rendering can
 hand off to the system colour engine rather than reimplementing it.
+
+---
+
+## EP 0x86 CHARACTERISED — 2026-08-06, read-only
+
+Ran `tools/characterise_stream.py` against the repaired scanner. No writes, no
+acquisition started, no lamp.
+
+```
+mean 1421.4   sd 122.3   min 1082   max 1656
+three captures, spread across captures 1.2   -- very stable
+```
+
+### 1. The stream is 3-channel interleaved, confirmed from the data
+
+Correctly normalised autocorrelation:
+
+```
+lag 3, 6, 9, 12, 15, 18, 21, 27  ->  r = +0.987
+lag 1, 2, 5, 10, 50, 100         ->  r = -0.22
+```
+
+A clean period of **exactly 3 samples = 6 bytes**. `docs/06` asserted "3-channel
+16-bit"; this confirms it directly and fixes the layout: **R/G/B interleaved per
+pixel, 16-bit little-endian each, 6 bytes per pixel.**
+
+Per-channel DC levels differ, which is what produces the strong period-3
+correlation and the negative r between unlike channels:
+
+```
+channel 0  mean 1338.0  sd 53.3
+channel 1  mean 1349.7  sd 68.7
+channel 2  mean 1575.3  sd 40.9
+```
+
+### 2. Line length: 2151 pixels (strong candidate)
+
+Per-channel autocorrelation peaks land at **exact integer multiples of 2151**:
+
+```
+2151 x2 = 4302    x4 = 8604     x5 = 10755
+         x6 = 12906   x8 = 17208    x9 = 19359
+```
+
+Drift gives a smooth monotonic decline; discrete harmonically-related peaks do
+not come from drift. So **line length ≈ 2151 px = 12,906 bytes/line** at
+3 channels x 16-bit.
+
+**Caveat:** r sits ~0.96 across all of these, a narrow range, so some
+low-frequency component is present too. Treat 2151 as a strong candidate to be
+confirmed — ideally against a line whose content changes, i.e. with the lamp on
+or the transport moving.
+
+### 3. A methodological warning worth keeping
+
+The first version of the autocorrelation divided by the full-length sum of
+squares while sub-sampling with a stride. It returned **r = +1.681** — impossible
+for a normalised autocorrelation — and printed "STRUCTURED: strong period at 66
+samples", which was false; adjacent lags 66/69/72/75/78 all scored identically,
+the signature of drift. **If |r| > 1 the normalisation is wrong.** Fixed in the
+tool, with the trap documented in its docstring.
+
+### What this means for the roadmap
+
+Stage 5 was "THE BLOCKER — EP 0x86 does not respond to light". The stream is
+demonstrably **structured and stable**, and its pixel format and probable line
+length are now known — all without writing a single register. That is most of
+step D (scan-line framing) obtained for free.
+
+Still open: does it respond to illumination? That needs the lamp, or a torch at
+the gate, and is the one part of the light-meter test not yet re-run.

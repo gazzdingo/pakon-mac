@@ -147,3 +147,70 @@ See `README.md` for the full folder index. In short:
 | `extract_hive.py` | the extractor |
 | `tools/` | the seven-step pipeline, including `07_correlate_usb_timeline.py` which produced the attach-window correlation above |
 | `evidence/` | raw scan offsets, the `0f05:f135` USB log lines, the correlation output, and the wide 5 MB carve |
+
+---
+
+## Independent verification from the Mac side — 2026-08-06
+
+Re-parsed `pakon_registry_full.json` without reference to the summary. The
+date-based split holds exactly:
+
+```
+18 keys carry Current_R
+  2025-07-23 / 07-28 :  5 keys   OURS
+  2022-11-10         : 13 keys   community image (serial 16275)
+                                 of which 11 are placeholders
+                                 (Current_*=1, DutyCycle_*=0.000000)
+```
+
+Our five, verified:
+
+| key | Current R/G/B/Ir | DutyCycle_R |
+|---|---|---|
+| `DpiBase16_35\ColNegIr` | 5 / 20 / 11 / 4 | 0.917161 |
+| `DpiBase4_35\ColNegIr` | 5 / 20 / 11 / 4 | 0.916904 |
+| `DpiBase16_35\BnW_C41Ir` | 5 / 13 / 4 / 5 | 0.820907 |
+| `DpiBase16_35\BnW_C41` | 3 / 7 / 3 / 1 | 0.853484 |
+| `DpiBase4_35\BnW_C41` | 3 / 7 / 3 / 1 | 0.924671 |
+
+**Internal consistency is good**, which is corroboration the summary did not
+claim: `ColNegIr` reads 5/20/11/4 at *both* base 4 and base 16, and `BnW_C41`
+reads 3/7/3/1 at both. Same currents across DPI bases is what you would expect
+from a real calibration of one illuminant.
+
+### One correction to the summary
+
+It states the two sets "disagree for the same film mode — ours 5/20/11/4 vs
+theirs 6/23/14/5". They are **not** the same mode: ours is `ColNegIr` at
+DpiBase16/DpiBase4, theirs is `ColNegIr` at **DpiBase8**. The two sets do not
+overlap in any mode at all.
+
+That does not weaken the "don't mix them" conclusion — it strengthens it. There
+is no shared mode, so 16275's numbers cannot even be used to sanity-check ours,
+and any fallback between them would be substituting a different unit's
+illuminant for a different scan resolution.
+
+### The finding that may unblock the lamp
+
+```
+TLB\Scan\Test  UseTemperatureSetpoints = 0        [2022-11-10]
+TLA\Scan\Test  LampWarmUpSlope         = -.22     [2017-02-09]
+```
+
+and **no `TempSetpoint` / `TempLB` / `TempMB` value exists anywhere in the
+hive** — those strings appear only in TLB.dll.
+
+`docs/14-lamp-decoded.md` concluded the lamp never lit here because the
+setpoint blocks `0x8B`–`0x8F` were never programmed. If the vendor software
+itself runs with `UseTemperatureSetpoints = 0`, then programming them may not be
+required at all, and the real gate is the LED levels and duty cycles — **which
+we now have for this unit.**
+
+**Do not act on that yet.** It is an inference from a config flag, not from
+code. The check that settles it: does `FN_bDrvInitLampTemperatures`
+(`fcn.1002d190`) read this flag and skip the `0x8B`–`0x8F` writes when it is 0?
+That is a static question about TLB.dll, answerable offline, with no hardware
+risk. Do it before any lamp attempt.
+
+Caveat worth carrying: this flag is stamped 2022-11-10, so it belongs to the
+community image's configuration rather than to our 2025 calibration session.

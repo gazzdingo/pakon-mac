@@ -65,6 +65,10 @@ __all__ = [
     "lamp_temp_working", "lamp_temp_latch",
     "CMD_LIGHT_FIFO_RESET", "CMD_LIGHT_DX_STOP",
     "dx_stop",
+    # DX board (docs/53-edge-data.md)
+    "REG_LIGHT_INTERRUPT_STATUS", "REG_LIGHT_DX_CODE", "DX_RESPONSE_LEN",
+    "DX_GATE_DX", "DX_GATE_LAMP", "DX_FORMAT_DEFAULT",
+    "read_interrupt_status", "read_dx_code", "dx_start",
     # motor board
     "REG_MOTOR_SPEED", "CMD_MOTOR_FORWARD", "CMD_MOTOR_REVERSE", "CMD_MOTOR_STOP",
     "MOTOR_SPEED_MIN_PLUS", "MOTOR_SPEED_MAX_PLUS",
@@ -291,6 +295,7 @@ def write_ccd_register(register: int, index: int, value: int,
 # ==========================================================================
 
 REG_LIGHT_ADDRESS_PTR = 0x01    # 3 B, 24-bit block-read pointer
+REG_LIGHT_INTERRUPT_STATUS = 0x02  # 1 B, read-only "what needs servicing" byte
 REG_LIGHT_LAMP_ENABLE = 0x80    # 1 B, lamp on/off bitmask   <-- THE LAMP
 REG_LIGHT_LED_LEVELS = 0x81     # 5 B, LED level / current array
 REG_LIGHT_LED_DUTY = 0x82       # 12 B, LED duty cycles
@@ -300,6 +305,7 @@ REG_LIGHT_TEMP_SET_8B = 0x8B    # 4 B  temperature setpoints
 REG_LIGHT_TEMP_SET_8C = 0x8C    # 4 B
 REG_LIGHT_TEMP_SET_8D = 0x8D    # 4 B
 REG_LIGHT_TEMP_SET_8F = 0x8F    # 4 B
+REG_LIGHT_DX_CODE = 0x90        # 30 B, read-only DX event stream
 REG_LIGHT_DX_START = 0x91       # 3 B, DX start
 REG_LIGHT_FW_GATE = 0x97        # 1 B, firmware-update gate -- do not poke
 REG_LIGHT_TEMP_D0 = 0xD0        # 1 B, := 0 at temperature init
@@ -673,6 +679,78 @@ def lamp_temp_latch(address: int = AD_LIGHT) -> list:
 def dx_stop(address: int = AD_LIGHT) -> bytes:
     """Stop the DX reader. ``04 03 40 00 92``."""
     return command(address, CMD_LIGHT_DX_STOP)
+
+
+# --- the DX read path -----------------------------------------------------
+# The DX board is not a separate packet address: it is the light board, and its
+# code words come back from ordinary register reads. Both halves were read out
+# of TLB.dll rather than guessed:
+#
+#   FN_bDrvGetPpbInterruptStatus (fcn.1000bdd0) calls fcn.10009700 at
+#   0x1000bed8 with register = 2 and count = 1 (`push 2` at 0x1000bed2), and
+#   fcn.10009700 hands that straight to the packet builder fcn.10009410, which
+#   lays out `01 03 <addr> <count> <reg>` at 0x10009428-0x1000943a. Then
+#   0x1000bf80 `test byte [esp+0x24], 0xa4` gates the DX read and 0x1000bfe6
+#   `test byte [esp+0x24], 0x5b` gates the lamp/temperature read -- the same
+#   byte, so one register-2 read services both.
+#
+#   FN_bDrvGetHardwareStatusDx (fcn.10009790) calls the same builder with
+#   register 0x90 (`push 0x90` at 0x100097d0) and count 0x1e (`push 0x1e` at
+#   0x100097c9), i.e. `01 03 40 1E 90` -> `01 20 40 <status> <30 bytes>`.
+#
+# The payload decoder for those 30 bytes is tools/dx_decode.py; the poller is
+# tools/dx_read.py. docs/53-edge-data.md has the evidence in full.
+
+#: Bytes of DX hardware status returned by :func:`read_dx_code`.
+DX_RESPONSE_LEN = 0x1E
+
+#: Bits of :data:`REG_LIGHT_INTERRUPT_STATUS` that mean "DX events waiting".
+#: 0x1000bf80. Poll ``0x90`` only when one of these is set.
+DX_GATE_DX = 0xA4
+#: Bits that mean "lamp status / temperature waiting". 0x1000bfe6.
+DX_GATE_LAMP = 0x5B
+
+#: ``format`` byte of :func:`dx_start`. TLB reads it from ``*(byte*)[drv+0x10]``
+#: (fcn.1000a7b0 @ 0x1000a7c6); the value 35 mm uses is UNKNOWN from the
+#: binary. 0 is what the one recorded live sequence used -- docs/06 line 172,
+#: ``02 06 40 03 91 01 00 00``.
+DX_FORMAT_DEFAULT = 0
+
+
+def read_interrupt_status(address: int = AD_LIGHT) -> bytes:
+    """Read the 1-byte interrupt-status byte. ``01 03 40 01 02``. Safe.
+
+    Test it against :data:`DX_GATE_DX` before reading :func:`read_dx_code`,
+    and against :data:`DX_GATE_LAMP` before reading lamp status.
+    """
+    return read_register(address, REG_LIGHT_INTERRUPT_STATUS, 1)
+
+
+def read_dx_code(address: int = AD_LIGHT) -> bytes:
+    """Read the 30-byte DX event packet. ``01 03 40 1E 90``. Safe.
+
+    A read, so it changes nothing -- but the DX board's event queue is drained
+    by it, and the packet holds at most five events, so poll faster than events
+    arrive or code words are lost. See docs/53 s1.1.1.
+    """
+    return read_register(address, REG_LIGHT_DX_CODE, DX_RESPONSE_LEN)
+
+
+def dx_start(speed: int, film_format: int = DX_FORMAT_DEFAULT,
+             address: int = AD_LIGHT) -> bytes:
+    """Start the DX reader. ``02 06 40 03 91 <speed lo> <speed hi> <format>``.
+
+    fcn.1000a7b0: speed is the 16 bits of ``[drv+0x58]`` (0x1000a7b4 /
+    0x1000a7d5) and format the byte at ``*[drv+0x10]`` (0x1000a7c6). The same
+    three bytes are appended to the CCD-acquire packet by
+    FN_bDrvCcdAcquireAndDxStart (fcn.10009bf0, 0x10009c77-0x10009cb8).
+    """
+    if not 0 <= speed <= 0xFFFF:
+        raise ValueError(f"DX speed must fit in 16 bits, got {speed}")
+    _check_u8("film_format", film_format)
+    return write_register(address, REG_LIGHT_DX_START,
+                          int(speed).to_bytes(2, "little")
+                          + bytes((film_format,)))
 
 
 def light_fifo_reset(address: int = AD_LIGHT) -> bytes:

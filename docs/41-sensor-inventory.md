@@ -141,3 +141,38 @@ This table's write column is a **lower bound**. It was built from a fixed list o
 accessor functions; `fcn.10009ee0` was not among them, so register `0x96` was
 missed entirely. Any register reached only through an unlisted accessor is
 absent here.
+
+---
+
+## `0x93` probed on hardware — 2026-08-06
+
+Polled at ~1.4 s while film was fed through the gate, 40 s, lamp off,
+acquisition idle. Also polled `0xEF` on board `0x44` (which `FN_bInit3` reads
+for film home) and the CCD mean.
+
+```
+distinct 0x93 values:  a8 f1 b3 f8 | a9 f1 b3 f8 | a8 f1 b2 f8 | 4f f1 b3 f8
+distinct 0xEF values:  81   (constant throughout)
+CCD mean:              1235.7 - 1237.0, flat
+```
+
+**Bytes 1 and 3 are constant (`f1`, `f8`). Bytes 0 and 2 vary.** Byte 0 sits at
+`a8`/`a9` (168/169) and byte 2 at `b2`/`b3` (178/179) — ±1 jitter, which reads
+as **analog sensor values, not digital flags**. One outlier: byte 0 dropped to
+`4f` (79) at t+7.1 s, a large excursion.
+
+**Inconclusive for `FilmPresent`.** No clean two-state transition appeared. Two
+readings are possible and this run does not separate them: either `0x93` carries
+analogue levels that need thresholding (the config does carry `DetectFilm_G` /
+`DetectWhite_G` thresholds), or the film never reached whatever it senses.
+
+`0xEF` did not move at all, so it is not a film-present flag — or film never
+reached its sensor either.
+
+Worth re-running with: a slower poll, film held stationary in the gate rather
+than fed through, and a before/after comparison rather than a rolling log.
+
+**Note on the log format used:** the `CHANGED` flag latched permanently after
+the first difference, so it fired on every subsequent row including pure noise.
+That made the output look far more eventful than it was. Compare against a
+baseline, not against "has anything ever differed".

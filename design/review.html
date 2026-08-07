@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review — Pakon F-135 Plus</title>
+<style>
+  :root{
+    --void:#0B0B0B; --plate:#141414; --plate2:#1A1A1A; --rule:#2E2E2E;
+    --ink:#E8E8E8; --mute:#8C8C8C; --filament:#C9A227; --halt:#B5484D; --pass:#5E8C61;
+    --sans:"Avenir Next","Segoe UI Variable Text","Segoe UI",Verdana,sans-serif;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --mono:"SF Mono","Cascadia Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+    --gate:cubic-bezier(0.55,0.05,0.20,1.0);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--void);color:var(--ink);font:14px/1.45 var(--sans);overflow:hidden}
+  a{color:inherit;text-decoration:none}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums lining-nums}
+  .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+  .app{display:flex;flex-direction:column;height:100%}
+
+  .top{display:flex;align-items:stretch;height:44px;background:var(--plate);
+       border-bottom:1px solid var(--rule);flex:none}
+  .brand{display:flex;flex-direction:column;justify-content:center;padding:0 16px;
+         border-right:1px solid var(--rule)}
+  .brand b{font-size:12px;letter-spacing:.18em;font-weight:600}
+  .brand span{font-size:9px;letter-spacing:.14em;color:var(--mute)}
+  .modes{display:flex;align-items:stretch}
+  .mode{display:flex;align-items:center;padding:0 18px;font-size:11px;
+        letter-spacing:.14em;color:var(--mute);border-right:1px solid var(--rule)}
+  .mode:hover{color:var(--ink);background:var(--plate2)}
+  .mode.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+  .film-readout{display:flex;align-items:center;gap:10px;margin-left:auto;
+                padding:0 16px;border-left:1px solid var(--rule)}
+  .film-readout .stock{font-family:var(--serif);font-size:14px;font-style:italic}
+  .chips{display:flex;align-items:center;gap:8px;padding:0 16px;border-left:1px solid var(--rule)}
+  .chip{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.12em;
+        text-transform:uppercase;color:var(--mute)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--rule);flex:none}
+  .dot.ok{background:var(--pass)} .dot.live{background:var(--filament)}
+
+  .row{display:flex;flex:1;min-height:0}
+  .rail{width:232px;flex:none;background:var(--plate);border-right:1px solid var(--rule);
+        display:flex;flex-direction:column;overflow-y:auto}
+  .rail section{padding:14px 16px;border-bottom:1px solid var(--rule)}
+  .rail h2,.inspector h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+        color:var(--mute);font-weight:600;margin-bottom:10px}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:12px}
+  .kv dt{color:var(--mute)}
+  .kv dd{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  .rolllist{display:flex;flex-direction:column;gap:2px}
+  .rollrow{display:flex;justify-content:space-between;align-items:baseline;
+           padding:7px 8px;font-size:12px;border:1px solid transparent}
+  .rollrow.on{background:var(--plate2);border-color:var(--rule)}
+  .rollrow em{font-family:var(--serif);font-style:italic}
+  .rollrow span{color:var(--mute);font-size:11px}
+  .badge{display:inline-block;padding:1px 6px;font-size:9px;letter-spacing:.1em;
+         text-transform:uppercase;border:1px solid var(--rule);color:var(--mute)}
+  .badge.warn{border-color:var(--filament);color:var(--filament)}
+
+  .stage{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--void)}
+  .stagehead{display:flex;align-items:baseline;gap:14px;padding:12px 20px 6px}
+  .stagehead .roll{font-family:var(--serif);font-size:19px;font-style:italic}
+  .stagehead .meta{margin-left:auto;color:var(--mute);font-size:12px}
+
+  .preview{flex:1;display:flex;align-items:center;justify-content:center;
+           min-height:0;padding:8px 20px}
+  .print{position:relative;width:min(92%,760px);aspect-ratio:3/2;
+         border:1px solid var(--rule);
+         background:
+           radial-gradient(ellipse at 62% 38%,rgba(255,244,214,.16),transparent 55%),
+           linear-gradient(160deg,#3a4a56 0%,#607686 55%,#22262b 100%)}
+  .print figcaption{position:absolute;left:0;right:0;bottom:-26px;display:flex;
+           gap:18px;font-size:11px;color:var(--mute)}
+  .print figcaption b{color:var(--ink);font-weight:500}
+
+  .framebar{display:flex;gap:10px;align-items:center;padding:34px 20px 12px}
+  .fbtn{padding:7px 14px;border:1px solid var(--rule);background:var(--plate2);
+        font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .fbtn:hover{border-color:var(--mute)}
+  .fbtn.quiet{background:none}
+  .spacer{flex:1}
+
+  .inspector{width:320px;flex:none;background:var(--plate);border-left:1px solid var(--rule);
+             display:flex;flex-direction:column;overflow-y:auto}
+  .inspector section{padding:14px 16px;border-bottom:1px solid var(--rule)}
+
+  /* parameter rows: auto value + user offset */
+  .param{display:grid;grid-template-columns:1fr 64px 56px;gap:6px;align-items:center;
+         font-size:12px;padding:5px 0}
+  .param .name{color:var(--ink)}
+  .param .name small{display:block;color:var(--mute);font-size:10px}
+  .param .auto{font-family:var(--mono);font-variant-numeric:tabular-nums;
+               color:var(--mute);text-align:right;font-size:11px}
+  .param .off{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;
+              border:1px solid var(--rule);background:var(--void);padding:3px 6px;font-size:12px}
+  .param .off.touched{border-color:var(--mute);color:var(--ink)}
+  .phead{display:grid;grid-template-columns:1fr 64px 56px;gap:6px;font-size:9px;
+         letter-spacing:.12em;text-transform:uppercase;color:var(--mute);padding-bottom:4px}
+  .phead :nth-child(2),.phead :nth-child(3){text-align:right}
+
+  .rerender{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--filament);
+            padding:6px 0}
+  .ring{width:12px;height:12px;border:2px solid var(--rule);border-top-color:var(--filament);
+        border-radius:50%;flex:none}
+  @media (prefers-reduced-motion:no-preference){.ring{animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}}
+
+  .btn{display:block;width:100%;padding:9px;border:1px solid var(--rule);
+       background:var(--plate2);text-align:center;font-size:11px;letter-spacing:.1em;
+       text-transform:uppercase}
+  .btn:hover{border-color:var(--mute)}
+  button:focus-visible,a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+  /* ── boundary editor lane ── */
+  .boundlane{border-top:1px solid var(--rule);background:var(--plate);padding:10px 16px 12px}
+  .boundhead{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}
+  .boundhead .lbl{color:var(--ink)}
+  .boundhead .note{font-size:11px;color:var(--filament)}
+  .boundstrip{position:relative;height:64px;border:1px solid var(--rule);
+              background:#161006;overflow:hidden}
+  .bs-neg{position:absolute;top:8px;bottom:8px}
+  .bound{position:absolute;top:0;bottom:0;width:10px;margin-left:-5px;cursor:col-resize}
+  .bound::before{content:"";position:absolute;top:0;bottom:0;left:4px;width:2px;background:var(--ink);opacity:.7}
+  .bound.warn::before{background:var(--filament);opacity:1}
+  .bound i{position:absolute;top:2px;left:7px;font:9px var(--mono);color:var(--mute);font-style:normal}
+  .boundtools{display:flex;gap:8px;margin-top:8px;align-items:center}
+  .boundtools .hint{font-size:11px;color:var(--mute);margin-left:auto}
+
+  /* bottom strip */
+  .bottom{flex:none;border-top:1px solid var(--rule);background:var(--plate)}
+  .thumbs{display:flex;gap:6px;padding:10px 16px 4px;overflow-x:auto}
+  .th{width:76px;height:52px;flex:none;position:relative;border:1px solid var(--rule);
+      overflow:hidden;cursor:pointer}
+  .th i{position:absolute;left:3px;bottom:2px;font:9px var(--mono);
+        color:rgba(232,232,232,.75);font-style:normal}
+  .th.sel{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+  .th .edited{position:absolute;top:2px;right:3px;width:5px;height:5px;background:var(--mute)}
+  .th .render{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+              background:rgba(11,11,11,.55)}
+  .th .reject{position:absolute;inset:0;background:
+       repeating-linear-gradient(45deg,transparent 0 6px,rgba(11,11,11,.6) 6px 9px)}
+  .trace{display:block;width:100%;height:34px;padding:0 16px 8px}
+  .trace svg{width:100%;height:100%;display:block}
+  .statusline{display:flex;gap:24px;align-items:center;height:26px;padding:0 16px;
+              border-top:1px solid var(--rule);font:11px var(--mono);color:var(--mute)}
+  .statusline .fill{flex:1}
+
+  .g1{background:linear-gradient(115deg,#5a4a2e,#7e6a3a 45%,#33302a)}
+  .g2{background:linear-gradient(160deg,#3a4a56,#607686 55%,#22262b)}
+  .g3{background:linear-gradient(200deg,#6e5844,#93765a 40%,#403026)}
+  .g4{background:linear-gradient(140deg,#48504a,#6d7a6e 50%,#272b27)}
+  .g5{background:linear-gradient(100deg,#5e4a52,#83687a 45%,#302830)}
+  .g6{background:linear-gradient(185deg,#4a5666,#8494ac 60%,#242a34)}
+  .g7{background:linear-gradient(125deg,#66573b,#8f7c50 50%,#37301f)}
+  .n1{background:linear-gradient(115deg,#8a6b3a,#5e4520 45%,#a8854a)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <a class="brand" href="index.html" title="Mockup index">
+      <b>PAKON&nbsp;F-135&nbsp;PLUS</b><span>film scanner</span>
+    </a>
+    <nav class="modes">
+      <a class="mode" href="scan.html">Scan</a>
+      <a class="mode on" href="review.html" aria-current="page">Review</a>
+      <a class="mode" href="export.html">Export</a>
+      <a class="mode" href="calibration.html">Calibrate</a>
+      <a class="mode" href="diagnostics.html">Diagnostics</a>
+    </nav>
+    <div class="film-readout">
+      <span class="lbl">DX 78-2</span>
+      <span class="stock">Kodak Gold 200</span>
+      <span class="lbl">ISO 200 · C-41</span>
+    </div>
+    <div class="chips">
+      <span class="chip"><i class="dot ok"></i>Scanner</span>
+      <span class="chip"><i class="dot"></i>Lamp standby</span>
+      <span class="chip"><i class="dot"></i>Workspace <span class="num">2.8&nbsp;GB</span></span>
+    </div>
+  </header>
+
+  <div class="row">
+
+    <!-- ═════════ LEFT RAIL — rolls in workspace ═════════ -->
+    <aside class="rail">
+      <section>
+        <h2>Rolls in workspace</h2>
+        <div class="rolllist">
+          <div class="rollrow on">
+            <em>2026-08-07 A</em><span class="num">37 frames</span>
+          </div>
+          <div class="rollrow">
+            <em>2026-08-07 B</em><span class="num">24 frames</span>
+          </div>
+          <div class="rollrow">
+            <em>HP5 test strip</em><span class="num">6 frames</span>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--mute);margin-top:10px">
+          A roll is one capture plus its settings. Frames are rendered from
+          the capture on demand — nothing is written to disk until you export.
+        </p>
+      </section>
+      <section>
+        <h2>This roll</h2>
+        <dl class="kv">
+          <dt>Frames</dt><dd>37</dd>
+          <dt>Adjusted</dt><dd>3</dd>
+          <dt>Rejected</dt><dd>2</dd>
+          <dt>Exported</dt><dd>0</dd>
+          <dt>Capture</dt><dd>694.8 MB</dd>
+          <dt>Settings</dt><dd>4.2 kB</dd>
+        </dl>
+        <p style="font-size:11px;color:var(--mute);margin-top:10px">
+          Settings persist with the roll — reopen the capture and every
+          adjustment comes back.
+        </p>
+      </section>
+      <section>
+        <h2>Selection</h2>
+        <button class="btn" style="margin-bottom:6px">Select all</button>
+        <button class="btn" style="margin-bottom:6px">Reject frame (⌫)</button>
+        <button class="btn">Restore rejected (⏎)</button>
+        <p style="font-size:11px;color:var(--mute);margin-top:10px">
+          Rejected frames stay in the roll, marked, and are skipped at export.
+        </p>
+      </section>
+    </aside>
+
+    <!-- ═════════ CENTER — one image per frame ═════════ -->
+    <main class="stage">
+      <div class="stagehead">
+        <span class="roll">Roll 2026-08-07 A</span>
+        <span class="lbl" style="color:var(--ink)">Frame 20 of 37</span>
+        <span class="meta">2000 × 3000 · rendered from capture + settings</span>
+      </div>
+
+      <div class="preview">
+        <figure class="print" role="img" aria-label="Selected frame preview (placeholder gradient)">
+          <figcaption>
+            <span>Density <b class="num">+0.00</b></span>
+            <span>Balance <b class="num">R +2 · G 0 · B −1</b></span>
+            <span>Rotation <b class="num">0°</b></span>
+            <span>Crop <b class="num">full frame</b></span>
+            <span style="margin-left:auto">auto scene balance · roll pass 2 of 2</span>
+          </figcaption>
+        </figure>
+      </div>
+
+      <div class="framebar">
+        <button class="fbtn">Open in frame editor ⏎</button>
+        <a class="fbtn quiet" href="frame.html">↳ frame.html</a>
+        <span class="spacer"></span>
+        <button class="fbtn quiet">◂ Prev</button>
+        <button class="fbtn quiet">Next ▸</button>
+      </div>
+
+      <!-- ── frame boundary lane: the honest line-scan model ── -->
+      <div class="boundlane">
+        <div class="boundhead">
+          <span class="lbl">Frame boundaries on the strip</span>
+          <span class="note">▲ boundary 27/28 looks wrong — dense frame edge, low confidence</span>
+        </div>
+        <div class="boundstrip" role="img"
+             aria-label="Continuous scanned strip with draggable frame boundaries. Boundary between frames 27 and 28 is flagged low-confidence.">
+          <div class="bs-neg n1" style="left:0;width:14%"></div>
+          <div class="bs-neg g3" style="left:14.6%;width:14%"></div>
+          <div class="bs-neg g6" style="left:29.2%;width:14%"></div>
+          <div class="bs-neg g4" style="left:43.8%;width:14%"></div>
+          <div class="bs-neg g5" style="left:58.4%;width:20.5%"></div>
+          <div class="bs-neg g7" style="left:79.5%;width:20.5%"></div>
+          <div class="bound" style="left:14.3%"><i>24|25</i></div>
+          <div class="bound" style="left:28.9%"><i>25|26</i></div>
+          <div class="bound" style="left:43.5%"><i>26|27</i></div>
+          <div class="bound warn" style="left:58.1%"><i>27|28</i></div>
+          <div class="bound" style="left:79.2%"><i>28|29</i></div>
+        </div>
+        <div class="boundtools">
+          <button class="fbtn">Split at cursor</button>
+          <button class="fbtn">Merge with next</button>
+          <button class="fbtn">Re-detect this span</button>
+          <span class="hint">Drag a boundary to move it — the two frames re-render as you release.</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- ═════════ RIGHT INSPECTOR — parameters, not files ═════════ -->
+    <aside class="inspector">
+      <section>
+        <h2>Frame 20 — adjustments</h2>
+        <div class="phead"><span>Parameter</span><span>Auto</span><span>Offset</span></div>
+        <div class="param">
+          <span class="name">Density<small>overall exposure</small></span>
+          <span class="auto num">2.41 D̄</span>
+          <span class="off num">0.00</span>
+        </div>
+        <div class="param">
+          <span class="name">Red – Cyan</span>
+          <span class="auto num">−82.6</span>
+          <span class="off num touched">+2</span>
+        </div>
+        <div class="param">
+          <span class="name">Green – Magenta</span>
+          <span class="auto num">−586.9</span>
+          <span class="off num">0</span>
+        </div>
+        <div class="param">
+          <span class="name">Blue – Yellow</span>
+          <span class="auto num">−707.8</span>
+          <span class="off num touched">−1</span>
+        </div>
+        <div class="param">
+          <span class="name">Contrast<small>tone curve</small></span>
+          <span class="auto num">auto</span>
+          <span class="off num">0</span>
+        </div>
+        <div class="param">
+          <span class="name">Sharpening</span>
+          <span class="auto num">1.0×</span>
+          <span class="off num">0</span>
+        </div>
+        <p style="font-size:11px;color:var(--mute);margin-top:8px">
+          Auto is the roll-level scene balance — the same maths the vendor
+          used. Your changes are offsets on top of it; auto stays live
+          underneath.
+        </p>
+      </section>
+
+      <section>
+        <div class="rerender"><span class="ring" aria-hidden="true"></span>
+          Re-rendering frame 20 — preview 0.4 s, full quality at export</div>
+        <button class="btn" style="margin-bottom:6px">Reset frame to auto</button>
+        <button class="btn" style="margin-bottom:6px">Apply this frame’s offsets to roll…</button>
+        <button class="btn">Copy offsets (C) · Paste (V)</button>
+      </section>
+
+      <section>
+        <h2>Frame metadata</h2>
+        <dl class="kv">
+          <dt>Strip position</dt><dd>lines 29 214 – 33 380</dd>
+          <dt>Boundary confidence</dt><dd>good</dd>
+          <dt>DX frame no.</dt><dd>20</dd>
+          <dt>Dmin (R·G·B)</dt><dd>612 · 1088 · 1298</dd>
+          <dt>IR plane</dt><dd>captured</dd>
+        </dl>
+      </section>
+
+      <section style="margin-top:auto">
+        <h2>Roll status</h2>
+        <p style="font-size:12px;color:var(--mute)">
+          <span class="badge warn">3 frames adjusted · 0 exported</span>
+        </p>
+        <p style="font-size:11px;color:var(--mute);margin-top:8px">
+          Export writes files; until then this roll lives only in the
+          workspace. <a href="export.html" style="text-decoration:underline">Go to Export</a>
+        </p>
+      </section>
+    </aside>
+  </div>
+
+  <!-- ═════════ BOTTOM — the roll ═════════ -->
+  <footer class="bottom">
+    <div class="thumbs">
+      <div class="th g3"><i>16</i></div>
+      <div class="th g4"><i>17</i></div>
+      <div class="th g5"><i>18</i><span class="edited" title="adjusted"></span></div>
+      <div class="th g7"><i>19</i></div>
+      <div class="th sel g2"><i>20</i><span class="edited" title="adjusted"></span></div>
+      <div class="th g6"><i>21</i></div>
+      <div class="th g1"><i>22</i><div class="render"><span class="ring"></span></div></div>
+      <div class="th g4"><i>23</i></div>
+      <div class="th g3"><i>24</i><div class="reject" title="rejected"></div></div>
+      <div class="th g5"><i>25</i></div>
+      <div class="th g7"><i>26</i></div>
+      <div class="th g2"><i>27</i></div>
+    </div>
+    <div class="trace" title="Per-frame mean density; cursor marks the selected frame">
+      <svg viewBox="0 0 900 34" preserveAspectRatio="none" aria-label="Density trace of the roll">
+        <line x1="0" y1="17" x2="900" y2="17" stroke="#2E2E2E" stroke-width="1"/>
+        <polyline fill="none" stroke="#8C8C8C" stroke-width="1.25"
+          points="0,22 36,20 72,24 108,14 144,12 180,18 216,9 252,11 288,16 324,22 360,25 396,19 432,13 468,10 504,15 540,21 576,17 612,12 648,9 684,14 720,18 756,20 792,15 828,11 864,16 900,19"/>
+        <line x1="360" y1="2" x2="360" y2="32" stroke="#E8E8E8" stroke-width="1"/>
+      </svg>
+    </div>
+    <div class="statusline">
+      <span>REVIEW</span>
+      <span>roll 2026-08-07 A · 37 frames · 2 rejected</span>
+      <span class="fill"></span>
+      <span>settings autosaved to roll sidecar · capture temporary</span>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

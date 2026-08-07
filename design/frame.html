@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame editor — Pakon F-135 Plus</title>
+<style>
+  :root{
+    --void:#0B0B0B; --plate:#141414; --plate2:#1A1A1A; --rule:#2E2E2E;
+    --ink:#E8E8E8; --mute:#8C8C8C; --filament:#C9A227; --halt:#B5484D; --pass:#5E8C61;
+    --sans:"Avenir Next","Segoe UI Variable Text","Segoe UI",Verdana,sans-serif;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --mono:"SF Mono","Cascadia Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--void);color:var(--ink);font:14px/1.45 var(--sans);overflow:hidden}
+  a{color:inherit;text-decoration:none}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums lining-nums}
+  .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+  .app{display:flex;flex-direction:column;height:100%}
+
+  .top{display:flex;align-items:stretch;height:44px;background:var(--plate);
+       border-bottom:1px solid var(--rule);flex:none}
+  .brand{display:flex;flex-direction:column;justify-content:center;padding:0 16px;
+         border-right:1px solid var(--rule)}
+  .brand b{font-size:12px;letter-spacing:.18em;font-weight:600}
+  .brand span{font-size:9px;letter-spacing:.14em;color:var(--mute)}
+  .modes{display:flex;align-items:stretch}
+  .mode{display:flex;align-items:center;padding:0 18px;font-size:11px;
+        letter-spacing:.14em;color:var(--mute);border-right:1px solid var(--rule)}
+  .mode:hover{color:var(--ink);background:var(--plate2)}
+  .mode.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+  .film-readout{display:flex;align-items:center;gap:10px;margin-left:auto;
+                padding:0 16px;border-left:1px solid var(--rule)}
+  .film-readout .stock{font-family:var(--serif);font-size:14px;font-style:italic}
+  .chips{display:flex;align-items:center;gap:8px;padding:0 16px;border-left:1px solid var(--rule)}
+  .chip{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.12em;
+        text-transform:uppercase;color:var(--mute)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--rule);flex:none}
+  .dot.ok{background:var(--pass)}
+
+  .row{display:flex;flex:1;min-height:0}
+  .stage{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--void)}
+  .stagehead{display:flex;align-items:baseline;gap:14px;padding:12px 20px 6px}
+  .stagehead .back{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+  .stagehead .back:hover{color:var(--ink)}
+  .stagehead .roll{font-family:var(--serif);font-size:19px;font-style:italic}
+  .stagehead .meta{margin-left:auto;color:var(--mute);font-size:12px}
+
+  .canvas{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:10px 24px}
+  .frame{position:relative;width:min(88%,780px);aspect-ratio:3/2;
+         background:
+           radial-gradient(ellipse at 62% 38%,rgba(255,244,214,.16),transparent 55%),
+           linear-gradient(160deg,#3a4a56 0%,#607686 55%,#22262b 100%)}
+  /* crop overlay */
+  .shade{position:absolute;background:rgba(11,11,11,.62)}
+  .shade.l{left:0;top:0;bottom:0;width:6%}
+  .shade.r{right:0;top:0;bottom:0;width:4%}
+  .shade.t{left:6%;right:4%;top:0;height:5%}
+  .shade.b{left:6%;right:4%;bottom:0;height:7%}
+  .marquee{position:absolute;left:6%;top:5%;right:4%;bottom:7%;
+           border:1px solid var(--ink);
+           background:
+             linear-gradient(to right,transparent calc(33.33% - .5px),rgba(232,232,232,.28) 33.33%,transparent calc(33.33% + .5px)),
+             linear-gradient(to right,transparent calc(66.66% - .5px),rgba(232,232,232,.28) 66.66%,transparent calc(66.66% + .5px)),
+             linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(232,232,232,.28) 33.33%,transparent calc(33.33% + .5px)),
+             linear-gradient(to bottom,transparent calc(66.66% - .5px),rgba(232,232,232,.28) 66.66%,transparent calc(66.66% + .5px))}
+  .h{position:absolute;width:9px;height:9px;background:var(--ink)}
+  .h.tl{top:-5px;left:-5px}.h.tr{top:-5px;right:-5px}
+  .h.bl{bottom:-5px;left:-5px}.h.br{bottom:-5px;right:-5px}
+  .h.tm{top:-5px;left:calc(50% - 4px)}.h.bm{bottom:-5px;left:calc(50% - 4px)}
+  .h.ml{left:-5px;top:calc(50% - 4px)}.h.mr{right:-5px;top:calc(50% - 4px)}
+
+  .undercanvas{display:flex;gap:24px;align-items:center;padding:8px 24px 14px;
+               font-size:12px;color:var(--mute)}
+  .undercanvas b{color:var(--ink);font-weight:500}
+  .keys{margin-left:auto;font:11px var(--mono);color:var(--mute)}
+  .keys kbd{border:1px solid var(--rule);padding:1px 5px;font:inherit;color:var(--ink)}
+
+  .inspector{width:340px;flex:none;background:var(--plate);border-left:1px solid var(--rule);
+             display:flex;flex-direction:column;overflow-y:auto}
+  .inspector section{padding:14px 16px;border-bottom:1px solid var(--rule)}
+  .inspector h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+                color:var(--mute);font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between}
+  .inspector h2 button{font-size:9px;letter-spacing:.1em;color:var(--mute);text-transform:uppercase}
+  .inspector h2 button:hover{color:var(--ink)}
+
+  .rowset{display:flex;gap:8px}
+  .tbtn{flex:1;padding:8px 4px;border:1px solid var(--rule);background:var(--plate2);
+        font-size:11px;text-align:center;letter-spacing:.06em}
+  .tbtn:hover{border-color:var(--mute)}
+  .tbtn.on{background:var(--ink);color:var(--void);border-color:var(--ink)}
+
+  .slider{display:grid;grid-template-columns:88px 1fr 52px;gap:10px;align-items:center;
+          font-size:12px;padding:6px 0}
+  .slider .name small{display:block;color:var(--mute);font-size:10px}
+  .track{position:relative;height:2px;background:var(--rule)}
+  .track .zero{position:absolute;top:-3px;left:50%;width:1px;height:8px;background:var(--mute)}
+  .track .knob{position:absolute;top:-4px;width:10px;height:10px;background:var(--ink);margin-left:-5px}
+  .track .autotick{position:absolute;top:-3px;width:1px;height:8px;background:var(--filament)}
+  .val{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+  .val.touched{color:var(--ink)} .val.zero{color:var(--mute)}
+
+  .histo{display:block;width:100%;height:64px;border:1px solid var(--rule);background:var(--void)}
+
+  .btn{display:block;width:100%;padding:9px;border:1px solid var(--rule);
+       background:var(--plate2);text-align:center;font-size:11px;letter-spacing:.1em;
+       text-transform:uppercase}
+  .btn:hover{border-color:var(--mute)}
+  button:focus-visible,a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+  .bottom{flex:none;border-top:1px solid var(--rule);background:var(--plate)}
+  .thumbs{display:flex;gap:6px;padding:8px 16px;overflow-x:auto}
+  .th{width:64px;height:44px;flex:none;position:relative;border:1px solid var(--rule);overflow:hidden}
+  .th i{position:absolute;left:3px;bottom:1px;font:9px var(--mono);
+        color:rgba(232,232,232,.75);font-style:normal}
+  .th.sel{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+  .statusline{display:flex;gap:24px;align-items:center;height:26px;padding:0 16px;
+              border-top:1px solid var(--rule);font:11px var(--mono);color:var(--mute)}
+  .statusline .fill{flex:1}
+
+  .g1{background:linear-gradient(115deg,#5a4a2e,#7e6a3a 45%,#33302a)}
+  .g2{background:linear-gradient(160deg,#3a4a56,#607686 55%,#22262b)}
+  .g3{background:linear-gradient(200deg,#6e5844,#93765a 40%,#403026)}
+  .g4{background:linear-gradient(140deg,#48504a,#6d7a6e 50%,#272b27)}
+  .g5{background:linear-gradient(100deg,#5e4a52,#83687a 45%,#302830)}
+  .g6{background:linear-gradient(185deg,#4a5666,#8494ac 60%,#242a34)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <a class="brand" href="index.html" title="Mockup index">
+      <b>PAKON&nbsp;F-135&nbsp;PLUS</b><span>film scanner</span>
+    </a>
+    <nav class="modes">
+      <a class="mode" href="scan.html">Scan</a>
+      <a class="mode on" href="review.html">Review · Frame 20</a>
+      <a class="mode" href="export.html">Export</a>
+      <a class="mode" href="calibration.html">Calibrate</a>
+      <a class="mode" href="diagnostics.html">Diagnostics</a>
+    </nav>
+    <div class="film-readout">
+      <span class="lbl">DX 78-2</span>
+      <span class="stock">Kodak Gold 200</span>
+      <span class="lbl">ISO 200 · C-41</span>
+    </div>
+    <div class="chips">
+      <span class="chip"><i class="dot ok"></i>Scanner</span>
+      <span class="chip"><i class="dot"></i>Lamp standby</span>
+    </div>
+  </header>
+
+  <div class="row">
+
+    <!-- ═════════ CANVAS with crop overlay ═════════ -->
+    <main class="stage">
+      <div class="stagehead">
+        <a class="back" href="review.html">◂ Back to roll</a>
+        <span class="roll">Frame 20</span>
+        <span class="meta">crop 2 812 × 1 875 px of 3 000 × 2 000 · one image, re-rendered on change</span>
+      </div>
+
+      <div class="canvas">
+        <div class="frame" role="img" aria-label="Frame 20 with crop marquee (placeholder gradient preview)">
+          <div class="shade l"></div><div class="shade r"></div>
+          <div class="shade t"></div><div class="shade b"></div>
+          <div class="marquee" aria-hidden="true">
+            <span class="h tl"></span><span class="h tm"></span><span class="h tr"></span>
+            <span class="h ml"></span><span class="h mr"></span>
+            <span class="h bl"></span><span class="h bm"></span><span class="h br"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="undercanvas">
+        <span>Preview <b>fast (¼ res)</b> — full quality applied at export</span>
+        <span>Corner handles keep 3:2 · edge handles free the ratio</span>
+        <span class="keys">
+          <kbd>R</kbd><kbd>G</kbd><kbd>B</kbd><kbd>D</kbd> select channel ·
+          <kbd>−</kbd><kbd>+</kbd> adjust · <kbd>0</kbd> neutral ·
+          <kbd>C</kbd>/<kbd>V</kbd> copy/paste
+        </span>
+      </div>
+    </main>
+
+    <!-- ═════════ INSPECTOR ═════════ -->
+    <aside class="inspector">
+      <section>
+        <h2>Geometry <button>Reset</button></h2>
+        <div class="rowset" style="margin-bottom:8px">
+          <button class="tbtn">⟲ 90°</button>
+          <button class="tbtn">⟳ 90°</button>
+          <button class="tbtn">180°</button>
+          <button class="tbtn">Flip H</button>
+          <button class="tbtn">Flip V</button>
+        </div>
+        <div class="rowset">
+          <button class="tbtn on">Crop 3:2</button>
+          <button class="tbtn">1:1</button>
+          <button class="tbtn">4:5</button>
+          <button class="tbtn">Free</button>
+          <button class="tbtn">Full</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Tone <button>Reset</button></h2>
+        <div class="slider">
+          <span class="name">Density<small>exposure, D-units</small></span>
+          <span class="track"><span class="zero"></span><span class="autotick" style="left:50%"></span><span class="knob" style="left:56%"></span></span>
+          <span class="val touched">+0.12</span>
+        </div>
+        <div class="slider">
+          <span class="name">Contrast</span>
+          <span class="track"><span class="zero"></span><span class="autotick" style="left:50%"></span><span class="knob" style="left:50%"></span></span>
+          <span class="val zero">0</span>
+        </div>
+        <div class="slider">
+          <span class="name">Saturation</span>
+          <span class="track"><span class="zero"></span><span class="autotick" style="left:50%"></span><span class="knob" style="left:50%"></span></span>
+          <span class="val zero">0</span>
+        </div>
+        <div class="slider">
+          <span class="name">Sharpening</span>
+          <span class="track"><span class="zero"></span><span class="autotick" style="left:50%"></span><span class="knob" style="left:50%"></span></span>
+          <span class="val zero">1.0×</span>
+        </div>
+      </section>
+
+      <section>
+        <h2>Colour balance <button>Reset</button></h2>
+        <div class="slider">
+          <span class="name">Red – Cyan</span>
+          <span class="track"><span class="zero"></span><span class="autotick" style="left:50%"></span><span class="knob" style="left:54%"></span></span>
+          <span class="val touched">+2</span>
+        </div>
+        <div class="slider">
+          <span class="name">Green – Magenta</span>
+          <span class="track"><span class="zero"></span><span class="autotick" style="left:50%"></span><span class="knob" style="left:50%"></span></span>
+          <span class="val zero">0</span>
+        </div>
+        <div class="slider">
+          <span class="name">Blue – Yellow</span>
+          <span class="track"><span class="zero"></span><span class="autotick" style="left:50%"></span><span class="knob" style="left:47%"></span></span>
+          <span class="val touched">−1</span>
+        </div>
+        <p style="font-size:11px;color:var(--mute);margin-top:6px">
+          Offsets sit on top of the roll scene balance
+          (<span class="num" style="font-size:10px">gold tick = auto</span>).
+          Zero everything and the frame is exactly the automatic result.
+        </p>
+      </section>
+
+      <section>
+        <h2>Histogram · 14-bit source</h2>
+        <svg class="histo" viewBox="0 0 300 64" preserveAspectRatio="none"
+             aria-label="RGB histogram of the corrected frame">
+          <polyline fill="none" stroke="#B5484D" stroke-width="1" opacity=".8"
+            points="0,62 20,58 40,50 60,36 80,24 100,20 120,26 140,34 160,40 180,38 200,42 220,50 240,56 260,60 280,62 300,63"/>
+          <polyline fill="none" stroke="#5E8C61" stroke-width="1" opacity=".8"
+            points="0,63 20,60 40,54 60,42 80,30 100,22 120,22 140,30 160,36 180,34 200,40 220,48 240,54 260,59 280,61 300,62"/>
+          <polyline fill="none" stroke="#5A7EA6" stroke-width="1" opacity=".8"
+            points="0,62 20,59 40,55 60,46 80,36 100,28 120,24 140,28 160,34 180,38 200,44 220,52 240,57 260,60 280,62 300,63"/>
+        </svg>
+        <dl style="display:grid;grid-template-columns:1fr auto;gap:3px 12px;font-size:11px;margin-top:8px">
+          <dt style="color:var(--mute)">Film base Dmin (R·G·B)</dt><dd class="num" style="text-align:right">612 · 1088 · 1298</dd>
+          <dt style="color:var(--mute)">Clipped highlights</dt><dd class="num" style="text-align:right">0.02 %</dd>
+          <dt style="color:var(--mute)">IR dust coverage</dt><dd class="num" style="text-align:right">0.4 % healed</dd>
+        </dl>
+      </section>
+
+      <section style="margin-top:auto">
+        <button class="btn" style="margin-bottom:6px">Reset frame to auto</button>
+        <button class="btn" style="margin-bottom:6px">Apply offsets to whole roll…</button>
+        <button class="btn">Done — back to roll ⏎</button>
+      </section>
+    </aside>
+  </div>
+
+  <!-- ═════════ BOTTOM — roll context ═════════ -->
+  <footer class="bottom">
+    <div class="thumbs">
+      <div class="th g3"><i>17</i></div>
+      <div class="th g5"><i>18</i></div>
+      <div class="th g1"><i>19</i></div>
+      <div class="th sel g2"><i>20</i></div>
+      <div class="th g6"><i>21</i></div>
+      <div class="th g4"><i>22</i></div>
+      <div class="th g3"><i>23</i></div>
+      <div class="th g5"><i>24</i></div>
+      <div class="th g1"><i>25</i></div>
+      <div class="th g6"><i>26</i></div>
+    </div>
+    <div class="statusline">
+      <span>FRAME EDITOR</span>
+      <span>frame 20 · 3 offsets from auto</span>
+      <span class="fill"></span>
+      <span>changes re-render this frame only · nothing written until export</span>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

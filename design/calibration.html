@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calibrate — Pakon F-135 Plus</title>
+<style>
+  :root{
+    --void:#0B0B0B; --plate:#141414; --plate2:#1A1A1A; --rule:#2E2E2E;
+    --ink:#E8E8E8; --mute:#8C8C8C; --filament:#C9A227; --halt:#B5484D; --pass:#5E8C61;
+    --sans:"Avenir Next","Segoe UI Variable Text","Segoe UI",Verdana,sans-serif;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --mono:"SF Mono","Cascadia Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--void);color:var(--ink);font:14px/1.45 var(--sans);overflow:hidden}
+  a{color:inherit;text-decoration:none}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums lining-nums}
+  .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+  .app{display:flex;flex-direction:column;height:100%}
+
+  .top{display:flex;align-items:stretch;height:44px;background:var(--plate);
+       border-bottom:1px solid var(--rule);flex:none}
+  .brand{display:flex;flex-direction:column;justify-content:center;padding:0 16px;
+         border-right:1px solid var(--rule)}
+  .brand b{font-size:12px;letter-spacing:.18em;font-weight:600}
+  .brand span{font-size:9px;letter-spacing:.14em;color:var(--mute)}
+  .modes{display:flex;align-items:stretch}
+  .mode{display:flex;align-items:center;padding:0 18px;font-size:11px;
+        letter-spacing:.14em;color:var(--mute);border-right:1px solid var(--rule)}
+  .mode:hover{color:var(--ink);background:var(--plate2)}
+  .mode.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+  .chips{display:flex;align-items:center;gap:8px;margin-left:auto;
+         padding:0 16px;border-left:1px solid var(--rule)}
+  .chip{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.12em;
+        text-transform:uppercase;color:var(--mute)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--rule);flex:none}
+  .dot.ok{background:var(--pass)} .dot.live{background:var(--filament)}
+
+  .row{display:flex;flex:1;min-height:0}
+  .rail{width:232px;flex:none;background:var(--plate);border-right:1px solid var(--rule);
+        display:flex;flex-direction:column;overflow-y:auto}
+  .rail section{padding:14px 16px;border-bottom:1px solid var(--rule)}
+  .rail h2,.inspector h2,.card h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+        color:var(--mute);font-weight:600;margin-bottom:10px}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:12px}
+  .kv dt{color:var(--mute)}
+  .kv dd{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  .stage{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--void);
+         overflow-y:auto}
+  .stagehead{display:flex;align-items:baseline;gap:14px;padding:14px 20px 4px}
+  .stagehead .title{font-family:var(--serif);font-size:19px;font-style:italic}
+  .stagehead .meta{margin-left:auto;color:var(--mute);font-size:12px}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:12px 20px 20px}
+  .card{border:1px solid var(--rule);background:var(--plate);padding:14px 16px}
+  .card.wide{grid-column:1 / -1}
+  .card h2{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .state{margin-left:auto;font-size:9px;letter-spacing:.12em;padding:2px 7px;border:1px solid}
+  .state.ok{color:var(--pass);border-color:var(--pass)}
+  .state.warn{color:var(--filament);border-color:var(--filament)}
+  .chanbar{display:grid;grid-template-columns:14px 1fr 62px;gap:8px;align-items:center;
+           font-size:11px;padding:3px 0}
+  .chanbar .c{font-family:var(--mono);color:var(--mute)}
+  .meter{position:relative;height:4px;background:var(--rule)}
+  .meter i{position:absolute;left:0;top:0;bottom:0}
+  .meter .target{position:absolute;top:-3px;width:1px;height:10px;background:var(--mute)}
+  .chanbar .v{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;color:var(--mute)}
+  .cfg{font:11px var(--mono);color:var(--mute);border-top:1px solid var(--rule);
+       margin-top:10px;padding-top:8px;line-height:1.7}
+  .cfg b{color:var(--ink);font-weight:500}
+  .btn{display:inline-block;padding:8px 14px;border:1px solid var(--rule);
+       background:var(--plate2);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .btn:hover{border-color:var(--mute)}
+  .btn.primary{background:var(--ink);color:var(--void);border-color:var(--ink);font-weight:600}
+  button:focus-visible,a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .cardfoot{display:flex;gap:8px;margin-top:12px;align-items:center}
+  .cardfoot .hint{font-size:11px;color:var(--mute);margin-left:auto;text-align:right}
+
+  .inspector{width:320px;flex:none;background:var(--plate);border-left:1px solid var(--rule);
+             display:flex;flex-direction:column;overflow-y:auto}
+  .inspector section{padding:14px 16px;border-bottom:1px solid var(--rule)}
+
+  .hist{display:flex;flex-direction:column;gap:6px;font-size:11px}
+  .hist .h{display:grid;grid-template-columns:78px 1fr;gap:10px}
+  .hist .h .t{font-family:var(--mono);color:var(--mute)}
+
+  .statusline{flex:none;display:flex;gap:24px;align-items:center;height:26px;padding:0 16px;
+              border-top:1px solid var(--rule);background:var(--plate);
+              font:11px var(--mono);color:var(--mute)}
+  .statusline .fill{flex:1}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <a class="brand" href="index.html" title="Mockup index">
+      <b>PAKON&nbsp;F-135&nbsp;PLUS</b><span>film scanner</span>
+    </a>
+    <nav class="modes">
+      <a class="mode" href="scan.html">Scan</a>
+      <a class="mode" href="review.html">Review</a>
+      <a class="mode" href="export.html">Export</a>
+      <a class="mode on" href="calibration.html" aria-current="page">Calibrate</a>
+      <a class="mode" href="diagnostics.html">Diagnostics</a>
+    </nav>
+    <div class="chips">
+      <span class="chip"><i class="dot ok"></i>Scanner</span>
+      <span class="chip"><i class="dot ok"></i>Calibration valid</span>
+      <span class="chip"><i class="dot"></i>Film gate empty</span>
+    </div>
+  </header>
+
+  <div class="row">
+
+    <!-- ═════════ LEFT RAIL ═════════ -->
+    <aside class="rail">
+      <section>
+        <h2>Unit</h2>
+        <dl class="kv">
+          <dt>Model</dt><dd>F-135 Plus</dd>
+          <dt>Serial</dt><dd>16275</dd>
+          <dt>Lamp board</dt><dd>hw 05 · fw 0A</dd>
+          <dt>CCD board</dt><dd>hw 05 · fw 06</dd>
+        </dl>
+      </section>
+      <section>
+        <h2>Last run</h2>
+        <dl class="kv">
+          <dt>Dark field</dt><dd>today 08:41</dd>
+          <dt>Flat field</dt><dd>today 08:52</dd>
+          <dt>Lamp targets</dt><dd>today 08:52</dd>
+          <dt>EEPROM backup</dt><dd>2026-08-06</dd>
+        </dl>
+      </section>
+      <section>
+        <h2>When to recalibrate</h2>
+        <p style="font-size:11px;color:var(--mute);line-height:1.6">
+          References are tied to one scanner configuration. Change
+          resolution, integration time or lamp drive and they stop applying —
+          the affected cards below turn amber and scanning will offer to
+          re-run them. Banding or colour casts in scans are the classic
+          symptom of a stale flat field.
+        </p>
+      </section>
+    </aside>
+
+    <!-- ═════════ CENTER — calibration state cards ═════════ -->
+    <main class="stage">
+      <div class="stagehead">
+        <span class="title">Calibration</span>
+        <span class="meta">references are per-unit and per-configuration · stored with the app, backed up on disk</span>
+      </div>
+
+      <div class="cards">
+
+        <div class="card">
+          <h2>Dark field <span class="state ok">valid</span></h2>
+          <p style="font-size:12px;color:var(--mute);margin-bottom:10px">
+            Per-pixel sensor black level, captured with the lamp off.
+            Subtracted from every scan line.
+          </p>
+          <div class="chanbar"><span class="c">R</span>
+            <span class="meter"><i style="width:8%;background:#7d4a4a"></i></span>
+            <span class="v">1120.5</span></div>
+          <div class="chanbar"><span class="c">G</span>
+            <span class="meter"><i style="width:10%;background:#4a6d4d"></i></span>
+            <span class="v">1443.0</span></div>
+          <div class="chanbar"><span class="c">B</span>
+            <span class="meter"><i style="width:8.5%;background:#4a5a7d"></i></span>
+            <span class="v">1160.9</span></div>
+          <div class="cfg">
+            captured <b>2026-08-07 08:41</b> · <b>14 482</b> lines · <b>0</b> losses<br>
+            valid for <b>Base 16 · 35 mm</b> · integration <b>4093</b> · line rate <b>60</b>
+          </div>
+          <div class="cardfoot">
+            <button class="btn">Re-capture dark</button>
+            <span class="hint">lamp off · ~15 s · no film</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Flat field / gain <span class="state ok">valid</span></h2>
+          <p style="font-size:12px;color:var(--mute);margin-bottom:10px">
+            Per-pixel illumination and sensor response, captured on an empty
+            gate at working brightness. Divides every scan line — removes
+            banding and lamp falloff.
+          </p>
+          <div class="chanbar"><span class="c">R</span>
+            <span class="meter"><i style="width:77%;background:#7d4a4a"></i><span class="target" style="left:76.6%"></span></span>
+            <span class="v">50 204.6</span></div>
+          <div class="chanbar"><span class="c">G</span>
+            <span class="meter"><i style="width:76%;background:#4a6d4d"></i><span class="target" style="left:76.6%"></span></span>
+            <span class="v">49 962.2</span></div>
+          <div class="chanbar"><span class="c">B</span>
+            <span class="meter"><i style="width:76%;background:#4a5a7d"></i><span class="target" style="left:76.6%"></span></span>
+            <span class="v">49 916.2</span></div>
+          <div class="cfg">
+            captured <b>2026-08-07 08:52</b> · <b>7 626</b> lines · <b>0</b> losses<br>
+            target <b>≈ 50 000 / 65 534</b> — headroom kept so no channel clips
+          </div>
+          <div class="cardfoot">
+            <button class="btn">Re-capture flat</button>
+            <span class="hint">lamp on · empty gate · ~10 s</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Lamp drive <span class="state ok">on target</span></h2>
+          <p style="font-size:12px;color:var(--mute);margin-bottom:10px">
+            LED currents and duty cycles per channel, from this unit’s
+            recovered factory calibration. The search re-tunes them if the
+            flat field drifts off target.
+          </p>
+          <div class="chanbar"><span class="c">R</span>
+            <span class="meter"><i style="width:49%;background:#7d4a4a"></i></span>
+            <span class="v">on 492</span></div>
+          <div class="chanbar"><span class="c">G</span>
+            <span class="meter"><i style="width:24%;background:#4a6d4d"></i></span>
+            <span class="v">on 239</span></div>
+          <div class="chanbar"><span class="c">B</span>
+            <span class="meter"><i style="width:10%;background:#4a5a7d"></i></span>
+            <span class="v">on 104</span></div>
+          <div class="chanbar"><span class="c">Ir</span>
+            <span class="meter"><i style="width:0%;background:#6d5a4a"></i></span>
+            <span class="v">off</span></div>
+          <div class="cfg">
+            levels <b>R 4 · G 20 · B 11 · Ir 0</b> · PWM period <b>982</b><br>
+            AFE gains <b>13 · 13 · 13</b> · offsets <b>−18 · −26 · −20</b>
+          </div>
+          <div class="cardfoot">
+            <button class="btn">Re-tune lamp targets</button>
+            <span class="hint">vendor search: converge each channel into window</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Factory calibration <span class="state ok">backed up</span></h2>
+          <p style="font-size:12px;color:var(--mute);margin-bottom:10px">
+            The scanner’s EEPROM holds per-unit data that exists nowhere
+            else — colour matrix, motor and stepper constants. Read-only
+            here; a copy lives with the app.
+          </p>
+          <dl class="kv">
+            <dt>EEPROM image</dt><dd>backed up 2026-08-06</dd>
+            <dt>Colour matrix</dt><dd>3×4 · from unit</dd>
+            <dt>Motor constants</dt><dd>recovered</dd>
+            <dt>Writes</dt><dd style="color:var(--pass)">locked</dd>
+          </dl>
+          <div class="cardfoot">
+            <button class="btn">Export backup…</button>
+            <span class="hint">writes to scanner stay locked — by design</span>
+          </div>
+        </div>
+
+        <div class="card wide">
+          <h2>Configurations <span class="state warn">1 of 3 calibrated</span></h2>
+          <p style="font-size:12px;color:var(--mute);margin-bottom:10px">
+            Each resolution needs its own reference pair. You scan at Base 16;
+            the other bases are calibrated on first use.
+          </p>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+            <div style="border:1px solid var(--rule);padding:10px 12px">
+              <div class="lbl" style="color:var(--ink)">Base 16 · 35 mm</div>
+              <div style="font:11px var(--mono);color:var(--pass);margin-top:6px">dark ✓ · flat ✓ · today</div>
+            </div>
+            <div style="border:1px solid var(--rule);padding:10px 12px">
+              <div class="lbl">Base 8 · 35 mm</div>
+              <div style="font:11px var(--mono);color:var(--mute);margin-top:6px">not calibrated — will run on first use</div>
+            </div>
+            <div style="border:1px solid var(--rule);padding:10px 12px">
+              <div class="lbl">Base 4 · 35 mm</div>
+              <div style="font:11px var(--mono);color:var(--mute);margin-top:6px">not calibrated — will run on first use</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- ═════════ RIGHT INSPECTOR — run panel + history ═════════ -->
+    <aside class="inspector">
+      <section>
+        <h2>Run calibration</h2>
+        <p style="font-size:12px;color:var(--mute);margin-bottom:10px">
+          Runs dark, then flat, then verifies lamp targets — about 40 s.
+          The gate must be empty; the app checks before starting.
+        </p>
+        <button class="btn primary" style="display:block;width:100%;margin-bottom:6px">
+          Calibrate now (gate empty)
+        </button>
+        <button class="btn" style="display:block;width:100%">Verify only — no changes</button>
+      </section>
+
+      <section>
+        <h2>History</h2>
+        <div class="hist">
+          <div class="h"><span class="t">08-07 08:52</span><span>Flat field captured — 7 626 lines, 0 losses</span></div>
+          <div class="h"><span class="t">08-07 08:41</span><span>Dark field captured — 14 482 lines, 0 losses</span></div>
+          <div class="h"><span class="t">08-06 21:04</span><span>EEPROM read and backed up</span></div>
+          <div class="h"><span class="t">08-06 19:30</span><span>Lamp targets loaded from unit registry (SN 16275)</span></div>
+          <div class="h"><span class="t">08-06 18:12</span><span>Motor board repaired — transport verified</span></div>
+        </div>
+      </section>
+
+      <section style="margin-top:auto">
+        <h2>Why this matters</h2>
+        <p style="font-size:11px;color:var(--mute);line-height:1.6">
+          Every pixel you see is
+          <span class="num" style="font-size:10px">(raw − dark) × gain</span>
+          before any colour work. Good references are the difference between
+          a clean scan and one with banding baked into every frame.
+        </p>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="statusline">
+    <span>CALIBRATE</span>
+    <span>references valid for current configuration</span>
+    <span class="fill"></span>
+    <span>unit SN 16275 · references stored per configuration</span>
+  </footer>
+</div>
+</body>
+</html>

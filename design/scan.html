@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scan — Pakon F-135 Plus</title>
+<style>
+  :root{
+    --void:#0B0B0B; --plate:#141414; --plate2:#1A1A1A; --rule:#2E2E2E;
+    --ink:#E8E8E8; --mute:#8C8C8C; --filament:#C9A227; --halt:#B5484D; --pass:#5E8C61;
+    --sans:"Avenir Next","Segoe UI Variable Text","Segoe UI",Verdana,sans-serif;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --mono:"SF Mono","Cascadia Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+    --gate:cubic-bezier(0.55,0.05,0.20,1.0);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--void);color:var(--ink);font:14px/1.45 var(--sans);overflow:hidden}
+  a{color:inherit;text-decoration:none}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums lining-nums}
+  .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+
+  .app{display:flex;flex-direction:column;height:100%}
+
+  /* ── top bar ─────────────────────────────────────────── */
+  .top{display:flex;align-items:stretch;height:44px;background:var(--plate);
+       border-bottom:1px solid var(--rule);flex:none}
+  .brand{display:flex;flex-direction:column;justify-content:center;padding:0 16px;
+         border-right:1px solid var(--rule)}
+  .brand b{font-size:12px;letter-spacing:.18em;font-weight:600}
+  .brand span{font-size:9px;letter-spacing:.14em;color:var(--mute)}
+  .modes{display:flex;align-items:stretch}
+  .mode{display:flex;align-items:center;padding:0 18px;font-size:11px;
+        letter-spacing:.14em;color:var(--mute);border-right:1px solid var(--rule)}
+  .mode:hover{color:var(--ink);background:var(--plate2)}
+  .mode.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+  .film-readout{display:flex;align-items:center;gap:10px;margin-left:auto;
+                padding:0 16px;border-left:1px solid var(--rule)}
+  .film-readout .stock{font-family:var(--serif);font-size:14px;font-style:italic}
+  .chips{display:flex;align-items:center;gap:8px;padding:0 16px;border-left:1px solid var(--rule)}
+  .chip{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.12em;
+        text-transform:uppercase;color:var(--mute)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--rule);flex:none}
+  .dot.live{background:var(--filament)}
+  .dot.ok{background:var(--pass)}
+  @media (prefers-reduced-motion:no-preference){
+    .dot.pulse{animation:pulse 1.6s var(--gate) infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  }
+
+  /* ── main row ────────────────────────────────────────── */
+  .row{display:flex;flex:1;min-height:0}
+  .rail{width:232px;flex:none;background:var(--plate);border-right:1px solid var(--rule);
+        display:flex;flex-direction:column;overflow-y:auto}
+  .rail section{padding:14px 16px;border-bottom:1px solid var(--rule)}
+  .rail h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+           color:var(--mute);font-weight:600;margin-bottom:10px}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:12px}
+  .kv dt{color:var(--mute)}
+  .kv dd{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .statchain{display:flex;flex-direction:column;gap:7px;font-size:12px}
+  .statchain .step{display:flex;align-items:center;gap:9px}
+  .statchain .step .num{margin-left:auto;color:var(--mute);font-size:11px}
+
+  .stage{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--void)}
+
+  .inspector{width:320px;flex:none;background:var(--plate);border-left:1px solid var(--rule);
+             display:flex;flex-direction:column;overflow-y:auto}
+  .inspector section{padding:14px 16px;border-bottom:1px solid var(--rule)}
+  .inspector h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+                color:var(--mute);font-weight:600;margin-bottom:10px}
+
+  /* controls */
+  .seg{display:flex;border:1px solid var(--rule)}
+  .seg button{flex:1;padding:7px 4px;font-size:12px;color:var(--mute);
+              border-right:1px solid var(--rule);text-align:center}
+  .seg button:last-child{border-right:none}
+  .seg button.on{background:var(--plate2);color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+  .seg button small{display:block;font-size:9px;letter-spacing:.06em;color:var(--mute);margin-top:2px}
+  .toggle{display:flex;align-items:center;justify-content:space-between;font-size:13px;padding:6px 0}
+  .toggle .sw{width:30px;height:16px;border:1px solid var(--rule);position:relative;flex:none}
+  .toggle .sw i{position:absolute;top:2px;left:2px;width:10px;height:10px;background:var(--mute)}
+  .toggle.on .sw i{left:auto;right:2px;background:var(--ink)}
+  .toggle small{display:block;color:var(--mute);font-size:11px;margin-top:1px}
+  .btn{display:block;width:100%;padding:10px;border:1px solid var(--rule);
+       background:var(--plate2);text-align:center;font-size:12px;letter-spacing:.1em;
+       text-transform:uppercase}
+  .btn:hover{border-color:var(--mute)}
+  .btn.primary{background:var(--ink);color:var(--void);font-weight:600;border-color:var(--ink)}
+  .btn.stop{border-color:var(--filament);color:var(--filament);background:none}
+  button:focus-visible,a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+  /* ── live strip build ────────────────────────────────── */
+  .stagehead{display:flex;align-items:baseline;gap:16px;padding:14px 20px 6px}
+  .stagehead .roll{font-family:var(--serif);font-size:19px;font-style:italic}
+  .stagehead .state{color:var(--filament);font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+  .stagehead .meta{margin-left:auto;color:var(--mute);font-size:12px}
+
+  .stripwrap{flex:1;display:flex;flex-direction:column;justify-content:center;
+             gap:4px;padding:8px 20px;min-height:0}
+  .strip{position:relative;border:1px solid var(--rule);background:#161006;
+         height:min(30vh,248px);overflow:hidden}
+  .sprockets{position:absolute;left:0;right:0;height:12px;
+             background:repeating-linear-gradient(90deg,transparent 0 14px,#000 14px 22px,transparent 22px 36px);
+             opacity:.85}
+  .sprockets.t{top:6px}.sprockets.b{bottom:6px}
+  .frames{position:absolute;top:24px;bottom:24px;left:0;display:flex;gap:10px;padding-left:12px}
+  .neg{width:300px;flex:none;position:relative;overflow:hidden;background:#2a1a08}
+  .neg::after{content:"";position:absolute;inset:0;background:inherit}
+  .neg span{position:absolute;bottom:4px;left:6px;font:10px var(--mono);color:#7a5a2a;z-index:2}
+  .scanhead{position:absolute;top:0;bottom:0;width:2px;background:var(--filament);left:74%;z-index:3}
+  .scanhead::before{content:"LINE 41 388";position:absolute;top:-1px;left:8px;
+                    font:9px/1.6 var(--mono);letter-spacing:.08em;color:var(--filament);white-space:pre}
+  .fresh{position:absolute;top:24px;bottom:24px;left:74%;right:0;
+         background:repeating-linear-gradient(90deg,#120b04 0 3px,#170e05 3px 6px)}
+
+  .buildmeta{display:flex;gap:28px;padding:10px 2px 0;font-size:12px;color:var(--mute)}
+  .buildmeta b{display:block;font-family:var(--mono);font-variant-numeric:tabular-nums;
+               font-size:15px;color:var(--ink);font-weight:500}
+  .buildmeta .warn b{color:var(--pass)}
+
+  /* ── bottom filmstrip + trace ────────────────────────── */
+  .bottom{flex:none;border-top:1px solid var(--rule);background:var(--plate)}
+  .thumbs{display:flex;gap:6px;padding:10px 16px 4px;overflow-x:auto}
+  .th{width:76px;height:52px;flex:none;position:relative;border:1px solid var(--rule);overflow:hidden}
+  .th i{position:absolute;left:3px;bottom:2px;font:9px var(--mono);color:rgba(232,232,232,.75);font-style:normal}
+  .th.pending{border-style:dashed;opacity:.45}
+  .trace{display:block;width:100%;height:34px;padding:0 16px 8px}
+  .trace svg{width:100%;height:100%;display:block}
+
+  .statusline{display:flex;gap:24px;align-items:center;height:26px;padding:0 16px;
+              border-top:1px solid var(--rule);font:11px var(--mono);color:var(--mute)}
+  .statusline .fill{flex:1}
+  .statusline .accent{color:var(--filament)}
+
+  /* frame gradients — placeholder previews (no real photographs in mockups) */
+  .g1{background:linear-gradient(115deg,#5a4a2e 0%,#7e6a3a 45%,#33302a 100%)}
+  .g2{background:linear-gradient(160deg,#3a4a56 0%,#607686 55%,#22262b 100%)}
+  .g3{background:linear-gradient(200deg,#6e5844 0%,#93765a 40%,#403026 100%)}
+  .g4{background:linear-gradient(140deg,#48504a 0%,#6d7a6e 50%,#272b27 100%)}
+  .g5{background:linear-gradient(100deg,#5e4a52 0%,#83687a 45%,#302830 100%)}
+  .g6{background:linear-gradient(185deg,#4a5666 0%,#8494ac 60%,#242a34 100%)}
+  .g7{background:linear-gradient(125deg,#66573b 0%,#8f7c50 50%,#37301f 100%)}
+  .n1{background:linear-gradient(115deg,#8a6b3a 0%,#5e4520 45%,#a8854a 100%)}
+  .n2{background:linear-gradient(160deg,#96703c 0%,#6a4c22 55%,#b08a4e 100%)}
+  .n3{background:linear-gradient(200deg,#8e6a36 0%,#5a441e 40%,#a5824a 100%)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ═════════ TOP BAR ═════════ -->
+  <header class="top">
+    <a class="brand" href="index.html" title="Mockup index">
+      <b>PAKON&nbsp;F-135&nbsp;PLUS</b><span>film scanner</span>
+    </a>
+    <nav class="modes">
+      <a class="mode on" href="scan.html" aria-current="page">Scan</a>
+      <a class="mode" href="review.html">Review</a>
+      <a class="mode" href="export.html">Export</a>
+      <a class="mode" href="calibration.html">Calibrate</a>
+      <a class="mode" href="diagnostics.html">Diagnostics</a>
+    </nav>
+    <div class="film-readout">
+      <span class="lbl">DX 78-2</span>
+      <span class="stock">Kodak Gold 200</span>
+      <span class="lbl">ISO 200 · C-41</span>
+    </div>
+    <div class="chips">
+      <span class="chip"><i class="dot ok"></i>Scanner</span>
+      <span class="chip"><i class="dot live pulse"></i>Lamp</span>
+      <span class="chip"><i class="dot live pulse"></i>Transport</span>
+      <span class="chip"><i class="dot"></i>Workspace <span class="num">2.1&nbsp;GB</span></span>
+    </div>
+  </header>
+
+  <div class="row">
+
+    <!-- ═════════ LEFT RAIL — device & session ═════════ -->
+    <aside class="rail">
+      <section>
+        <h2>Device</h2>
+        <div class="statchain">
+          <div class="step"><i class="dot ok"></i>USB attached <span class="num">0F05:F135</span></div>
+          <div class="step"><i class="dot ok"></i>Firmware loaded <span class="num">2-stage</span></div>
+          <div class="step"><i class="dot ok"></i>Calibration valid <span class="num">today</span></div>
+          <div class="step"><i class="dot live pulse"></i>Lamp on <span class="num">R 492 · G 239 · B 104</span></div>
+          <div class="step"><i class="dot live pulse"></i>Transport feeding <span class="num">fwd</span></div>
+          <div class="step"><i class="dot live pulse"></i>CCD acquiring <span class="num">2000 px</span></div>
+        </div>
+      </section>
+      <section>
+        <h2>Roll</h2>
+        <dl class="kv">
+          <dt>Name</dt><dd>2026-08-07 A</dd>
+          <dt>Film</dt><dd>Gold 200</dd>
+          <dt>Path</dt><dd>Colour neg</dd>
+          <dt>Frames so far</dt><dd>27</dd>
+          <dt>Est. length</dt><dd>36 exp</dd>
+        </dl>
+      </section>
+      <section>
+        <h2>This session</h2>
+        <dl class="kv">
+          <dt>Rolls scanned</dt><dd>2</dd>
+          <dt>Workspace used</dt><dd>2.1 GB</dd>
+          <dt>Free disk</dt><dd>418 GB</dd>
+        </dl>
+        <p style="font-size:11px;color:var(--mute);margin-top:10px">
+          Captures live in the workspace and are removed when you quit.
+          Only exported files are kept. <a href="housekeeping.html" style="text-decoration:underline">Workspace…</a>
+        </p>
+      </section>
+    </aside>
+
+    <!-- ═════════ CENTER STAGE — the strip building live ═════════ -->
+    <main class="stage">
+      <div class="stagehead">
+        <span class="roll">Roll 2026-08-07 A</span>
+        <span class="state">Scanning — strip feeding</span>
+        <span class="meta">frame 27 emerging · keep hands clear of film exit</span>
+      </div>
+
+      <div class="stripwrap">
+        <div class="strip" role="img"
+             aria-label="Live view of the film strip as it is scanned, right to left. 27 frames captured, scan line advancing.">
+          <div class="sprockets t"></div>
+          <div class="sprockets b"></div>
+          <div class="frames">
+            <div class="neg n1"><span>24</span></div>
+            <div class="neg n2"><span>25</span></div>
+            <div class="neg n3"><span>26</span></div>
+            <div class="neg n1" style="width:150px"><span>27</span></div>
+          </div>
+          <div class="fresh"></div>
+          <div class="scanhead"></div>
+        </div>
+
+      <div class="buildmeta">
+        <div><span class="lbl">Lines</span><b class="num">41 388</b></div>
+        <div><span class="lbl">Rate</span><b class="num">11.6 MiB/s</b></div>
+        <div class="warn"><span class="lbl">Sync losses</span><b class="num">0</b></div>
+        <div><span class="lbl">Intact</span><b class="num">100.00 %</b></div>
+        <div><span class="lbl">Elapsed</span><b class="num">01:12</b></div>
+        <div><span class="lbl">Capture size</span><b class="num">486 MB</b></div>
+      </div>
+      </div>
+    </main>
+
+    <!-- ═════════ RIGHT INSPECTOR — scan setup ═════════ -->
+    <aside class="inspector">
+      <section>
+        <h2>Film type</h2>
+        <p style="font-size:12px;color:var(--mute);margin-bottom:8px">
+          Read from the DX code on the strip. Change it only if the read is wrong.
+        </p>
+        <dl class="kv" style="margin-bottom:10px">
+          <dt>Detected</dt><dd>DX 78-2</dd>
+          <dt>Stock</dt><dd style="font-family:var(--serif);font-style:italic">Kodak Gold 200</dd>
+          <dt>Process</dt><dd>C-41 neg</dd>
+        </dl>
+        <button class="btn">Override film type…</button>
+      </section>
+
+      <section>
+        <h2>Resolution</h2>
+        <div class="seg" role="radiogroup" aria-label="Scan resolution">
+          <button>Base 4<small>1000 × 1500</small></button>
+          <button>Base 8<small>1400 × 2100</small></button>
+          <button class="on" aria-checked="true">Base 16<small>2000 × 3000</small></button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Options</h2>
+        <div class="toggle on">
+          <span>Infrared channel<small>captured with RGB; drives dust removal in decode</small></span>
+          <span class="sw"><i></i></span>
+        </div>
+        <div class="toggle on">
+          <span>Cut strips<small>prompt after each strip; 4–6 frames per strip</small></span>
+          <span class="sw"><i></i></span>
+        </div>
+        <div class="toggle">
+          <span>Scan again, same settings<small>skip this panel for the next strip (⇧⌘S)</small></span>
+          <span class="sw"><i></i></span>
+        </div>
+      </section>
+
+      <section>
+        <h2>Transport</h2>
+        <div style="display:flex;gap:8px">
+          <button class="btn" style="flex:1">◂ Reverse</button>
+          <button class="btn" style="flex:1">Advance ▸</button>
+        </div>
+        <p style="font-size:11px;color:var(--mute);margin-top:8px">
+          Never pull film by hand — use the transport. The scanner asks for
+          film when it is ready and releases it at the exit.
+        </p>
+      </section>
+
+      <section style="margin-top:auto">
+        <button class="btn stop">■ Stop scan</button>
+        <p style="font-size:11px;color:var(--mute);margin-top:8px">
+          Frames already captured stay in the roll. Stopping mid-frame keeps
+          the partial capture for review.
+        </p>
+      </section>
+    </aside>
+  </div>
+
+  <!-- ═════════ BOTTOM — filmstrip of detected frames + density trace ═════════ -->
+  <footer class="bottom">
+    <div class="thumbs">
+      <div class="th g1"><i>19</i></div>
+      <div class="th g2"><i>20</i></div>
+      <div class="th g3"><i>21</i></div>
+      <div class="th g4"><i>22</i></div>
+      <div class="th g5"><i>23</i></div>
+      <div class="th g6"><i>24</i></div>
+      <div class="th g7"><i>25</i></div>
+      <div class="th g2"><i>26</i></div>
+      <div class="th pending"><i>27</i></div>
+    </div>
+    <div class="trace" title="Per-frame mean density — drawn as frames land">
+      <svg viewBox="0 0 900 34" preserveAspectRatio="none" aria-label="Density trace of the roll">
+        <line x1="0" y1="17" x2="900" y2="17" stroke="#2E2E2E" stroke-width="1"/>
+        <polyline fill="none" stroke="#8C8C8C" stroke-width="1.25"
+          points="0,22 40,20 80,24 120,14 160,12 200,18 240,9 280,11 320,16 360,22 400,25 440,19 480,13 520,10 560,15 600,21 640,17 680,12 720,9 760,14 800,18 830,16"/>
+        <circle cx="830" cy="16" r="2.5" fill="#C9A227"/>
+      </svg>
+    </div>
+    <div class="statusline">
+      <span class="accent">SCANNING</span>
+      <span>EP 0x86 streaming</span>
+      <span>line 41 388 · 6 000 words/line</span>
+      <span class="fill"></span>
+      <span>capture → workspace/2026-08-07A.raw (temporary)</span>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

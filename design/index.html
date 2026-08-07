@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pakon Scan — design mockups</title>
+<style>
+  :root{
+    --void:#0B0B0B; --plate:#141414; --plate2:#1A1A1A; --rule:#2E2E2E;
+    --ink:#E8E8E8; --mute:#8C8C8C; --filament:#C9A227; --halt:#B5484D; --pass:#5E8C61;
+    --sans:"Avenir Next","Segoe UI Variable Text","Segoe UI",Verdana,sans-serif;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --mono:"SF Mono","Cascadia Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--void);color:var(--ink);font:15px/1.55 var(--sans);padding-bottom:80px}
+  a{color:inherit}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .wrap{max-width:880px;margin:0 auto;padding:48px 24px 0}
+
+  .kicker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--filament);
+          margin-bottom:14px}
+  h1{font-family:var(--serif);font-style:italic;font-weight:500;font-size:38px;
+     line-height:1.15;text-wrap:balance;margin-bottom:14px}
+  .lede{color:var(--mute);font-size:16px;max-width:62ch;margin-bottom:40px}
+  .lede b{color:var(--ink);font-weight:500}
+
+  h2{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute);
+     font-weight:600;margin:44px 0 16px;padding-top:18px;border-top:1px solid var(--rule)}
+  p{max-width:68ch;margin-bottom:12px}
+  p.note{font-size:13px;color:var(--mute)}
+
+  .screens{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+  .scr{display:block;border:1px solid var(--rule);background:var(--plate);
+       padding:16px 18px;text-decoration:none}
+  .scr:hover{border-color:var(--mute);background:var(--plate2)}
+  .scr b{display:block;font-size:15px;font-weight:600;margin-bottom:4px}
+  .scr span{font-size:12px;color:var(--mute);line-height:1.5;display:block}
+  .scr .file{font:10px var(--mono);color:var(--filament);margin-top:10px;display:block}
+
+  .pal{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin:8px 0 4px}
+  .swatch{border:1px solid var(--rule)}
+  .swatch .c{height:52px}
+  .swatch figcaption{padding:7px 9px;font-size:11px;background:var(--plate)}
+  .swatch figcaption b{display:block;font-weight:600}
+  .swatch figcaption span{font-family:var(--mono);color:var(--mute);font-size:10px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0 4px}
+  th{text-align:left;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+     color:var(--mute);font-weight:600;padding:6px 10px;border-bottom:1px solid var(--rule)}
+  td{padding:7px 10px;border-bottom:1px solid #1c1c1c;vertical-align:top}
+  td:first-child{white-space:nowrap;font-weight:500}
+  td .why{color:var(--mute)}
+  .tscroll{overflow-x:auto}
+
+  ul{max-width:68ch;margin:0 0 12px 20px}
+  li{margin-bottom:7px}
+  li::marker{color:var(--mute)}
+  .serif{font-family:var(--serif);font-style:italic}
+  code{font:12px var(--mono);background:var(--plate);border:1px solid var(--rule);
+       padding:1px 5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Design mockups · Pakon F-135 Plus for macOS</div>
+  <h1>The scanner is a darkroom instrument.<br>The software should behave like one.</h1>
+  <p class="lede">
+    Static HTML mockups for the replacement of the vendor's 2002 PSI
+    application — grounded in what was actually extracted from
+    <code>PSI.exe</code>, <code>TLXClientDemo.exe</code>, <code>PTS.exe</code>
+    and the shipped manual (see <b>docs/51-vendor-gui.md</b>), and in what
+    this repo's driver and colour pipeline can really do today. Same
+    capabilities, different century.
+  </p>
+
+  <h2>Screens</h2>
+  <div class="screens">
+    <a class="scr" href="scan.html">
+      <b>Scan</b>
+      <span>Device status chain, DX-detected film type with override,
+      resolution, IR toggle — and the strip building live with line count,
+      throughput and sync-loss meters.</span>
+      <span class="file">scan.html</span>
+    </a>
+    <a class="scr" href="review.html">
+      <b>Review</b>
+      <span>The roll as one set of frames, one image per frame. Auto values
+      with user offsets, in-place re-render, and the frame-boundary lane for
+      when detection gets a split wrong.</span>
+      <span class="file">review.html</span>
+    </a>
+    <a class="scr" href="frame.html">
+      <b>Frame editor</b>
+      <span>Crop with honest aspect behaviour, rotate/flip, density and
+      colour offsets over the roll balance, histogram from the 14-bit
+      source, keyboard grammar.</span>
+      <span class="file">frame.html</span>
+    </a>
+    <a class="scr" href="export.html">
+      <b>Export</b>
+      <span>The only moment files are written: format, bit depth, colour
+      space, naming template with live preview, destination, and a per-frame
+      batch queue.</span>
+      <span class="file">export.html</span>
+    </a>
+    <a class="scr" href="calibration.html">
+      <b>Calibration</b>
+      <span>Dark and flat field as state cards bound to a configuration,
+      lamp drive vs targets, EEPROM backup, per-resolution coverage, run
+      history.</span>
+      <span class="file">calibration.html</span>
+    </a>
+    <a class="scr" href="diagnostics.html">
+      <b>Diagnostics</b>
+      <span>Capture integrity (sync-marker losses), temperatures, USB
+      stream facts, register readbacks, self test, event log. Technical
+      output lives here, not among photographs.</span>
+      <span class="file">diagnostics.html</span>
+    </a>
+    <a class="scr" href="housekeeping.html">
+      <b>Housekeeping</b>
+      <span>The storage contract as UI: startup cleanup prompt, the
+      quit-with-unexported-work dialog, and the always-visible workspace
+      panel.</span>
+      <span class="file">housekeeping.html</span>
+    </a>
+  </div>
+
+  <h2>Design plan</h2>
+  <p>Extends the direction already accepted in <code>docs/50-ui-milestone-0-plan.md</code>
+     (palette, hairline layout, density-trace signature). Equal-RGB neutrals only;
+     one accent, reserved.</p>
+  <div class="pal">
+    <figure class="swatch"><div class="c" style="background:#0B0B0B"></div>
+      <figcaption><b>Void</b><span>#0B0B0B · image surround</span></figcaption></figure>
+    <figure class="swatch"><div class="c" style="background:#141414"></div>
+      <figcaption><b>Plate</b><span>#141414 · chrome</span></figcaption></figure>
+    <figure class="swatch"><div class="c" style="background:#2E2E2E"></div>
+      <figcaption><b>Rule</b><span>#2E2E2E · hairlines</span></figcaption></figure>
+    <figure class="swatch"><div class="c" style="background:#E8E8E8"></div>
+      <figcaption><b>Ink</b><span>#E8E8E8 · text, primary</span></figcaption></figure>
+    <figure class="swatch"><div class="c" style="background:#8C8C8C"></div>
+      <figcaption><b>Mute</b><span>#8C8C8C · secondary</span></figcaption></figure>
+    <figure class="swatch"><div class="c" style="background:#C9A227"></div>
+      <figcaption><b>Filament</b><span>#C9A227 · machine state only</span></figcaption></figure>
+    <figure class="swatch"><div class="c" style="background:#5E8C61"></div>
+      <figcaption><b>Pass</b><span>#5E8C61 · semantic ok</span></figcaption></figure>
+    <figure class="swatch"><div class="c" style="background:#B5484D"></div>
+      <figcaption><b>Halt</b><span>#B5484D · semantic fault</span></figcaption></figure>
+  </div>
+  <p class="note">
+    Filament never paints ordinary buttons. If gold is on screen, the machine
+    is doing something — lamp warming, transport feeding, a frame rendering,
+    a reference going stale.
+  </p>
+  <ul>
+    <li><b>Type</b> — three voices. Chrome and controls:
+      <span style="letter-spacing:.08em">AVENIR NEXT / SEGOE UI</span> with
+      letterspaced uppercase labels. Roll names and film stocks:
+      <span class="serif">Iowan Old Style / Palatino</span> — the ledger voice, because rolls
+      are things you write on boxes. Every changing number:
+      <code>SF Mono / IBM Plex Mono</code> with tabular figures. System stacks
+      because mockups are self-contained (no font CDNs); the build can ship
+      licensed faces per docs/50.</li>
+    <li><b>Layout</b> — one shell for every mode: 44&nbsp;px top bar (brand ·
+      modes · film readout · state chips), session rail left, image stage on
+      Void in the centre, one inspector right, and the filmstrip with its
+      <b>density trace</b> across the bottom. 4&nbsp;px grid, radius 0, no
+      shadows; depth is hairlines on Plate.</li>
+    <li><b>Dark only, deliberately</b> — the surround a print is judged
+      against must contribute no hue and no glare; a light theme would be a
+      different room, not a different skin. This is a committed choice, not
+      an omission (docs/50 §B1).</li>
+    <li><b>Motion</b> — one curve (<code>cubic-bezier(.55,.05,.2,1)</code>),
+      three uses: strip advance, trace draw, state pulse on Filament dots.
+      All behind <code>prefers-reduced-motion</code>.</li>
+  </ul>
+
+  <h2>What we kept from the vendor</h2>
+  <div class="tscroll">
+  <table>
+    <tr><th>Vendor behaviour</th><th>Where it went</th></tr>
+    <tr><td>Continuous strip, frames found afterwards</td>
+        <td>Scan shows a strip building, never a per-frame "flatbed preview"; Review exposes the boundary lane over the real strip — the machine's actual model, made visible. <span class="why">(docs/47 §6)</span></td></tr>
+    <tr><td>Scan-ahead with two independent status lanes</td>
+        <td>Scan and Export are separate modes with separate progress; exporting never blocks scanning. <span class="why">(PSI dual progress bars, dialog 128)</span></td></tr>
+    <tr><td>Ctrl-Shift-S — rescan with same settings, no dialog</td>
+        <td>"Scan again, same settings" toggle (⇧⌘S); settings persist per session. <span class="why">(How_to_Scan.htm)</span></td></tr>
+    <tr><td>Corrections always visible beside every frame</td>
+        <td>Per-frame offsets shown in Review's inspector and on thumbnail markers; footers state offsets numerically. <span class="why">(per-thumb badge stack, image9.jpg)</span></td></tr>
+    <tr><td>Keyboard colour grammar (E/R/T/A + S/F/D, c/v)</td>
+        <td>R/G/B/D channel select, −/+/0, C/V copy-paste — same philosophy, saner keys. <span class="why">(Color.htm)</span></td></tr>
+    <tr><td>Roll-level scene balance first, per-frame offsets second</td>
+        <td>The auto column in every parameter row; offsets never replace auto. <span class="why">(docs/11 §5 — per-frame-only balancing breaks the look)</span></td></tr>
+    <tr><td>Film LED contract — machine prompts for film</td>
+        <td>Transport prompts in Scan's stage header and status line; never "pull the film". <span class="why">(LED legend, How_to_Scan.htm)</span></td></tr>
+    <tr><td>Accept/Reject that excludes from export but keeps the frame</td>
+        <td>Reject in Review; struck-through, skipped rows in the Export queue. <span class="why">(Picture_Menu.htm)</span></td></tr>
+    <tr><td>Warnings that don't abort (emulsion side, tail-first)</td>
+        <td>Boundary-confidence and film-handling notes are amber annotations, not modals. <span class="why">(strings 36/37/39)</span></td></tr>
+    <tr><td>"Save As Raw" escape hatch</td>
+        <td>Export → Colour → "Linear, scanner profile embedded". <span class="why">(Save_As.htm)</span></td></tr>
+    <tr><td>Calibration as named, per-purpose tests with progress</td>
+        <td>Dark/flat/lamp as separate cards with per-step status and history. <span class="why">(Calibration_Wizard.htm; PSI dialogs 1008–1026)</span></td></tr>
+    <tr><td>About box = full hardware manifest</td>
+        <td>Diagnostics rail: every board, firmware, serial — one "Copy manifest" button. <span class="why">(PSI dialog 100)</span></td></tr>
+  </table>
+  </div>
+
+  <h2>What we dropped, and why</h2>
+  <div class="tscroll">
+  <table>
+    <tr><th>Vendor behaviour</th><th>Why it's gone</th></tr>
+    <tr><td>Orders, products, packages, IQueue, CDs, kiosks</td>
+        <td class="why">Lab economics. The unit of work here is the roll; the only product is files.</td></tr>
+    <tr><td>EasyOrder giant-button wizard</td>
+        <td class="why">It deskilled minilab clerks. Its real lesson — good defaults, few decisions — survives as DX auto-detection and "scan again, same settings".</td></tr>
+    <tr><td>Modal editing dialogs; fixed 3-column thumbnail-only review</td>
+        <td class="why">The image is the interface: one large preview, inspector at the side, edits render in place without blocking the app.</td></tr>
+    <tr><td>CMY printer-channel vocabulary</td>
+        <td class="why">Kept the R/G/B/density semantics (they map to the pipeline), renamed to photographer terms with D-units for exposure.</td></tr>
+    <tr><td>8-bit-only export</td>
+        <td class="why">The pipeline is 16-bit planar end-to-end; 16-bit TIFF is the default export, not an engineering backdoor.</td></tr>
+    <tr><td>A pile of intermediate files per decode</td>
+        <td class="why">Owner's rule: one image per frame, parameters not products. Renders are cache; only Export writes files; the workspace is temporary and cleaned on quit — with the sole real tension (unexported edits vs delete-on-close) handled explicitly in housekeeping.html.</td></tr>
+    <tr><td>Hidden technician settings ("do not change unless directed")</td>
+        <td class="why">Replaced by a read-only Diagnostics mode with real telemetry. Nothing is secret; writes stay locked.</td></tr>
+    <tr><td>2002 visual style (MFC chrome, royal-blue panels, bevelled bitmaps)</td>
+        <td class="why">Reproduced the capabilities, not the look. Dark neutral ground, hairlines, one reserved accent.</td></tr>
+  </table>
+  </div>
+
+  <h2>Honesty notes</h2>
+  <ul>
+    <li>Frame "photographs" in these mockups are gradient placeholders — the
+      owner's captures are private and no real image ships in a mockup.</li>
+    <li>All device numbers are real values from this unit and repo
+      (11.6&nbsp;MiB/s sustained, 57 900 lines / 0 losses,
+      dark means 1120.5 · 1443.0 · 1160.9, LED on-counts 492/239/104,
+      AFE 13/13/13 · −18/−26/−20, FPGA <code>0x0061</code>) — except the
+      temperatures in °C, which are illustrative: the sensor scale is only
+      partly decoded (docs/38–39), and the panel says so.</li>
+    <li>Serial 16275 is the registry-recovered serial; reading it from the
+      physical unit is still an open task (docs/42-port §gaps).</li>
+    <li>The keyboard map and boundary-editing interactions are proposals;
+      everything else mirrors capabilities the tools already have or the
+      vendor demonstrably shipped.</li>
+  </ul>
+
+  <p class="note" style="margin-top:28px">
+    Part 1 evidence: <code>docs/51-vendor-gui.md</code> · mockups:
+    <code>design/*.html</code> · self-contained, no external assets, dark-only
+    by design.
+  </p>
+</div>
+</body>
+</html>

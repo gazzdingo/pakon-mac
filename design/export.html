@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Export — Pakon F-135 Plus</title>
+<style>
+  :root{
+    --void:#0B0B0B; --plate:#141414; --plate2:#1A1A1A; --rule:#2E2E2E;
+    --ink:#E8E8E8; --mute:#8C8C8C; --filament:#C9A227; --halt:#B5484D; --pass:#5E8C61;
+    --sans:"Avenir Next","Segoe UI Variable Text","Segoe UI",Verdana,sans-serif;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --mono:"SF Mono","Cascadia Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+    --gate:cubic-bezier(0.55,0.05,0.20,1.0);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--void);color:var(--ink);font:14px/1.45 var(--sans);overflow:hidden}
+  a{color:inherit;text-decoration:none}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums lining-nums}
+  .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+  .app{display:flex;flex-direction:column;height:100%}
+
+  .top{display:flex;align-items:stretch;height:44px;background:var(--plate);
+       border-bottom:1px solid var(--rule);flex:none}
+  .brand{display:flex;flex-direction:column;justify-content:center;padding:0 16px;
+         border-right:1px solid var(--rule)}
+  .brand b{font-size:12px;letter-spacing:.18em;font-weight:600}
+  .brand span{font-size:9px;letter-spacing:.14em;color:var(--mute)}
+  .modes{display:flex;align-items:stretch}
+  .mode{display:flex;align-items:center;padding:0 18px;font-size:11px;
+        letter-spacing:.14em;color:var(--mute);border-right:1px solid var(--rule)}
+  .mode:hover{color:var(--ink);background:var(--plate2)}
+  .mode.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+  .film-readout{display:flex;align-items:center;gap:10px;margin-left:auto;
+                padding:0 16px;border-left:1px solid var(--rule)}
+  .film-readout .stock{font-family:var(--serif);font-size:14px;font-style:italic}
+  .chips{display:flex;align-items:center;gap:8px;padding:0 16px;border-left:1px solid var(--rule)}
+  .chip{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.12em;
+        text-transform:uppercase;color:var(--mute)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--rule);flex:none}
+  .dot.ok{background:var(--pass)} .dot.live{background:var(--filament)}
+  @media (prefers-reduced-motion:no-preference){
+    .dot.pulse{animation:pulse 1.6s var(--gate) infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  }
+
+  .row{display:flex;flex:1;min-height:0}
+  .rail{width:232px;flex:none;background:var(--plate);border-right:1px solid var(--rule);
+        display:flex;flex-direction:column;overflow-y:auto}
+  .rail section{padding:14px 16px;border-bottom:1px solid var(--rule)}
+  .rail h2,.inspector h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+     color:var(--mute);font-weight:600;margin-bottom:10px}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:12px}
+  .kv dt{color:var(--mute)}
+  .kv dd{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .rolllist{display:flex;flex-direction:column;gap:2px}
+  .rollrow{display:flex;justify-content:space-between;align-items:baseline;
+           padding:7px 8px;font-size:12px;border:1px solid transparent}
+  .rollrow.on{background:var(--plate2);border-color:var(--rule)}
+  .rollrow em{font-family:var(--serif);font-style:italic}
+  .rollrow span{color:var(--mute);font-size:11px}
+
+  .stage{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--void)}
+  .stagehead{display:flex;align-items:baseline;gap:14px;padding:12px 20px 10px}
+  .stagehead .roll{font-family:var(--serif);font-size:19px;font-style:italic}
+  .stagehead .meta{margin-left:auto;color:var(--mute);font-size:12px}
+
+  .queuewrap{flex:1;min-height:0;overflow-y:auto;padding:0 20px 16px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead th{position:sticky;top:0;background:var(--void);text-align:left;font-size:9px;
+           letter-spacing:.12em;text-transform:uppercase;color:var(--mute);
+           font-weight:600;padding:6px 10px;border-bottom:1px solid var(--rule)}
+  tbody td{padding:6px 10px;border-bottom:1px solid #1c1c1c;vertical-align:middle}
+  tbody tr:hover{background:var(--plate)}
+  td.mono,th.r{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  td.r,th.r{text-align:right}
+  .swatch{width:34px;height:23px;border:1px solid var(--rule);display:inline-block;vertical-align:middle}
+  .st{display:inline-flex;align-items:center;gap:6px;font-size:10px;
+      letter-spacing:.1em;text-transform:uppercase}
+  .st.done{color:var(--pass)} .st.run{color:var(--filament)} .st.wait{color:var(--mute)}
+  .st.skip{color:var(--mute);opacity:.6}
+  .bar{position:relative;width:110px;height:3px;background:var(--rule);display:inline-block;
+       vertical-align:middle}
+  .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--filament)}
+
+  .g1{background:linear-gradient(115deg,#5a4a2e,#7e6a3a 45%,#33302a)}
+  .g2{background:linear-gradient(160deg,#3a4a56,#607686 55%,#22262b)}
+  .g3{background:linear-gradient(200deg,#6e5844,#93765a 40%,#403026)}
+  .g4{background:linear-gradient(140deg,#48504a,#6d7a6e 50%,#272b27)}
+  .g5{background:linear-gradient(100deg,#5e4a52,#83687a 45%,#302830)}
+  .g6{background:linear-gradient(185deg,#4a5666,#8494ac 60%,#242a34)}
+
+  .inspector{width:340px;flex:none;background:var(--plate);border-left:1px solid var(--rule);
+             display:flex;flex-direction:column;overflow-y:auto}
+  .inspector section{padding:14px 16px;border-bottom:1px solid var(--rule)}
+  .seg{display:flex;border:1px solid var(--rule)}
+  .seg button{flex:1;padding:7px 4px;font-size:11px;color:var(--mute);
+              border-right:1px solid var(--rule);text-align:center}
+  .seg button:last-child{border-right:none}
+  .seg button.on{background:var(--plate2);color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+  .seg button small{display:block;font-size:9px;color:var(--mute);margin-top:2px}
+  .field{margin-bottom:10px}
+  .field label{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+               color:var(--mute);margin-bottom:5px}
+  .field input{width:100%;padding:7px 9px;border:1px solid var(--rule);background:var(--void);
+               color:var(--ink);font:12px var(--mono)}
+  input[type="checkbox"]{accent-color:var(--mute)}
+  .tokens{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .tok{font:10px var(--mono);border:1px solid var(--rule);padding:2px 6px;color:var(--mute)}
+  .tok:hover{color:var(--ink);border-color:var(--mute);cursor:pointer}
+  .preview-name{font:11px var(--mono);color:var(--pass);margin-top:8px;word-break:break-all}
+  .btn{display:block;width:100%;padding:10px;border:1px solid var(--rule);
+       background:var(--plate2);text-align:center;font-size:11px;letter-spacing:.1em;
+       text-transform:uppercase}
+  .btn:hover{border-color:var(--mute)}
+  .btn.primary{background:var(--ink);color:var(--void);border-color:var(--ink);font-weight:600}
+  button:focus-visible,a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+  .statusline{flex:none;display:flex;gap:24px;align-items:center;height:26px;padding:0 16px;
+              border-top:1px solid var(--rule);background:var(--plate);
+              font:11px var(--mono);color:var(--mute)}
+  .statusline .fill{flex:1}
+  .statusline .accent{color:var(--filament)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <a class="brand" href="index.html" title="Mockup index">
+      <b>PAKON&nbsp;F-135&nbsp;PLUS</b><span>film scanner</span>
+    </a>
+    <nav class="modes">
+      <a class="mode" href="scan.html">Scan</a>
+      <a class="mode" href="review.html">Review</a>
+      <a class="mode on" href="export.html" aria-current="page">Export</a>
+      <a class="mode" href="calibration.html">Calibrate</a>
+      <a class="mode" href="diagnostics.html">Diagnostics</a>
+    </nav>
+    <div class="film-readout">
+      <span class="lbl">DX 78-2</span>
+      <span class="stock">Kodak Gold 200</span>
+      <span class="lbl">ISO 200 · C-41</span>
+    </div>
+    <div class="chips">
+      <span class="chip"><i class="dot ok"></i>Scanner</span>
+      <span class="chip"><i class="dot live pulse"></i>Exporting</span>
+      <span class="chip"><i class="dot"></i>Workspace <span class="num">2.8&nbsp;GB</span></span>
+    </div>
+  </header>
+
+  <div class="row">
+
+    <!-- ═════════ LEFT RAIL ═════════ -->
+    <aside class="rail">
+      <section>
+        <h2>Rolls</h2>
+        <div class="rolllist">
+          <div class="rollrow on"><em>2026-08-07 A</em><span class="num">12 / 35 done</span></div>
+          <div class="rollrow"><em>2026-08-07 B</em><span class="num">not exported</span></div>
+          <div class="rollrow"><em>HP5 test strip</em><span class="num">exported ✓</span></div>
+        </div>
+      </section>
+      <section>
+        <h2>This export</h2>
+        <dl class="kv">
+          <dt>Frames queued</dt><dd>35</dd>
+          <dt>Skipped (rejected)</dt><dd>2</dd>
+          <dt>Done</dt><dd>12</dd>
+          <dt>Est. total size</dt><dd>1.26 GB</dd>
+          <dt>Elapsed</dt><dd>00:41</dd>
+          <dt>Remaining</dt><dd>~01:22</dd>
+        </dl>
+      </section>
+      <section>
+        <h2>Where files go</h2>
+        <p style="font-size:11px;color:var(--mute)">
+          Exports are the only files this app leaves on disk. The workspace
+          (raw captures, previews) is cleared when you quit —
+          <a href="housekeeping.html" style="text-decoration:underline">workspace &amp; cleanup</a>.
+        </p>
+      </section>
+    </aside>
+
+    <!-- ═════════ CENTER — the batch queue ═════════ -->
+    <main class="stage">
+      <div class="stagehead">
+        <span class="roll">Roll 2026-08-07 A</span>
+        <span class="lbl" style="color:var(--filament)">Exporting — 12 of 35</span>
+        <span class="meta">full-quality render per frame · capture + settings → file</span>
+      </div>
+
+      <div class="queuewrap">
+        <table aria-label="Export queue">
+          <thead>
+            <tr>
+              <th></th><th>Frame</th><th>File name</th>
+              <th class="r">Size</th><th>Adjustments</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="swatch g3"></span></td>
+              <td class="mono">16</td>
+              <td class="mono">2026-08-07A_16_gold200.tif</td>
+              <td class="mono r">34.4 MB</td>
+              <td class="mono" style="color:var(--mute)">auto</td>
+              <td><span class="st done">● written</span></td>
+            </tr>
+            <tr>
+              <td><span class="swatch g4"></span></td>
+              <td class="mono">17</td>
+              <td class="mono">2026-08-07A_17_gold200.tif</td>
+              <td class="mono r">34.4 MB</td>
+              <td class="mono" style="color:var(--mute)">auto</td>
+              <td><span class="st done">● written</span></td>
+            </tr>
+            <tr>
+              <td><span class="swatch g5"></span></td>
+              <td class="mono">18</td>
+              <td class="mono">2026-08-07A_18_gold200.tif</td>
+              <td class="mono r">34.4 MB</td>
+              <td class="mono">density +0.08</td>
+              <td><span class="st done">● written</span></td>
+            </tr>
+            <tr>
+              <td><span class="swatch g2"></span></td>
+              <td class="mono">20</td>
+              <td class="mono">2026-08-07A_20_gold200.tif</td>
+              <td class="mono r">34.4 MB</td>
+              <td class="mono">R +2 · B −1</td>
+              <td><span class="st run">◐ rendering</span> <span class="bar"><i style="width:62%"></i></span></td>
+            </tr>
+            <tr>
+              <td><span class="swatch g6"></span></td>
+              <td class="mono">21</td>
+              <td class="mono">2026-08-07A_21_gold200.tif</td>
+              <td class="mono r">—</td>
+              <td class="mono" style="color:var(--mute)">auto</td>
+              <td><span class="st wait">○ queued</span></td>
+            </tr>
+            <tr>
+              <td><span class="swatch g1"></span></td>
+              <td class="mono">22</td>
+              <td class="mono">2026-08-07A_22_gold200.tif</td>
+              <td class="mono r">—</td>
+              <td class="mono">crop 2812×1875</td>
+              <td><span class="st wait">○ queued</span></td>
+            </tr>
+            <tr style="opacity:.55">
+              <td><span class="swatch g3"></span></td>
+              <td class="mono">24</td>
+              <td class="mono" style="text-decoration:line-through">rejected in review</td>
+              <td class="mono r">—</td>
+              <td class="mono">—</td>
+              <td><span class="st skip">× skipped</span></td>
+            </tr>
+            <tr>
+              <td><span class="swatch g5"></span></td>
+              <td class="mono">25</td>
+              <td class="mono">2026-08-07A_25_gold200.tif</td>
+              <td class="mono r">—</td>
+              <td class="mono" style="color:var(--mute)">auto</td>
+              <td><span class="st wait">○ queued</span></td>
+            </tr>
+            <tr>
+              <td><span class="swatch g6"></span></td>
+              <td class="mono">26</td>
+              <td class="mono">2026-08-07A_26_gold200.tif</td>
+              <td class="mono r">—</td>
+              <td class="mono" style="color:var(--mute)">auto</td>
+              <td><span class="st wait">○ queued</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <!-- ═════════ RIGHT INSPECTOR — export recipe ═════════ -->
+    <aside class="inspector">
+      <section>
+        <h2>Format</h2>
+        <div class="seg" role="radiogroup" aria-label="File format" style="margin-bottom:8px">
+          <button class="on">TIFF<small>archival</small></button>
+          <button>JPEG<small>share</small></button>
+          <button>PNG<small>lossless 8/16</small></button>
+        </div>
+        <div class="seg" role="radiogroup" aria-label="Bit depth">
+          <button class="on">16-bit<small>full pipeline depth</small></button>
+          <button>8-bit<small>smaller files</small></button>
+        </div>
+        <p style="font-size:11px;color:var(--mute);margin-top:8px">
+          The scanner delivers 14 bits per channel; the pipeline stays 16-bit
+          planar throughout. 16-bit TIFF keeps all of it.
+        </p>
+      </section>
+
+      <section>
+        <h2>Colour</h2>
+        <div class="seg" role="radiogroup" aria-label="Colour space">
+          <button class="on">sRGB<small>display-ready</small></button>
+          <button>Linear<small>scanner RPD + ICC</small></button>
+        </div>
+        <p style="font-size:11px;color:var(--mute);margin-top:8px">
+          Linear embeds the scanner profile — the escape hatch for grading
+          elsewhere (the vendor called this “Save As Raw”).
+        </p>
+      </section>
+
+      <section>
+        <h2>Naming</h2>
+        <div class="field">
+          <label for="tpl">Template</label>
+          <input id="tpl" value="{roll}_{frame:02}_{stock}" spellcheck="false">
+          <div class="tokens">
+            <span class="tok">{roll}</span><span class="tok">{frame:02}</span>
+            <span class="tok">{stock}</span><span class="tok">{date}</span>
+            <span class="tok">{iso}</span><span class="tok">{count}</span>
+          </div>
+          <div class="preview-name">→ 2026-08-07A_20_gold200.tif</div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Destination</h2>
+        <div class="field">
+          <label for="dest">Folder</label>
+          <input id="dest" value="~/Pictures/Film/2026-08-07 A/" spellcheck="false">
+        </div>
+        <label style="display:flex;gap:8px;font-size:12px;align-items:center">
+          <input type="checkbox" checked style="width:auto"> Subfolder per roll
+        </label>
+      </section>
+
+      <section style="margin-top:auto">
+        <button class="btn primary" style="margin-bottom:6px">Export 35 frames</button>
+        <button class="btn">Pause queue</button>
+        <p style="font-size:11px;color:var(--mute);margin-top:8px">
+          Each frame renders once at full quality from the capture and your
+          settings, writes its file, then frees memory. Cancel keeps the
+          files already written.
+        </p>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="statusline">
+    <span class="accent">EXPORTING</span>
+    <span>frame 20 · full-res decode → colour → 16-bit TIFF</span>
+    <span class="fill"></span>
+    <span>413 MB written · destination has 418 GB free</span>
+  </footer>
+</div>
+</body>
+</html>

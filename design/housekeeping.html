@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Housekeeping — Pakon F-135 Plus</title>
+<style>
+  :root{
+    --void:#0B0B0B; --plate:#141414; --plate2:#1A1A1A; --rule:#2E2E2E;
+    --ink:#E8E8E8; --mute:#8C8C8C; --filament:#C9A227; --halt:#B5484D; --pass:#5E8C61;
+    --sans:"Avenir Next","Segoe UI Variable Text","Segoe UI",Verdana,sans-serif;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --mono:"SF Mono","Cascadia Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--void);color:var(--ink);font:14px/1.45 var(--sans);
+       min-height:100vh;padding:0 0 60px}
+  a{color:inherit;text-decoration:none}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums lining-nums}
+  .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+
+  .top{display:flex;align-items:stretch;height:44px;background:var(--plate);
+       border-bottom:1px solid var(--rule)}
+  .brand{display:flex;flex-direction:column;justify-content:center;padding:0 16px;
+         border-right:1px solid var(--rule)}
+  .brand b{font-size:12px;letter-spacing:.18em;font-weight:600}
+  .brand span{font-size:9px;letter-spacing:.14em;color:var(--mute)}
+  .modes{display:flex;align-items:stretch}
+  .mode{display:flex;align-items:center;padding:0 18px;font-size:11px;
+        letter-spacing:.14em;color:var(--mute);border-right:1px solid var(--rule)}
+  .mode:hover{color:var(--ink);background:var(--plate2)}
+
+  .wrap{max-width:1060px;margin:0 auto;padding:28px 24px}
+  .pagetitle{font-family:var(--serif);font-size:24px;font-style:italic;margin-bottom:6px}
+  .pagesub{color:var(--mute);font-size:13px;max-width:64ch;margin-bottom:30px}
+
+  .statelabel{font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+              color:var(--filament);margin:34px 0 12px}
+  .statelabel:first-of-type{margin-top:0}
+
+  .dialogscene{position:relative;border:1px solid var(--rule);background:
+      repeating-linear-gradient(45deg,#0e0e0e 0 12px,#101010 12px 24px);
+      padding:44px 20px;display:flex;justify-content:center}
+  .dialog{width:min(560px,100%);background:var(--plate);border:1px solid var(--mute);
+          padding:22px 24px}
+  .dialog h2{font-size:15px;font-weight:600;margin-bottom:4px}
+  .dialog .sub{font-size:12px;color:var(--mute);margin-bottom:16px}
+  .rows{border:1px solid var(--rule);margin-bottom:14px}
+  .rrow{display:grid;grid-template-columns:22px 1fr auto auto;gap:12px;align-items:center;
+        padding:9px 12px;border-bottom:1px solid var(--rule);font-size:12px}
+  .rrow:last-child{border-bottom:none}
+  .rrow em{font-family:var(--serif);font-style:italic}
+  .rrow .when,.rrow .size{font-family:var(--mono);font-variant-numeric:tabular-nums;
+        color:var(--mute);font-size:11px;text-align:right}
+  .rrow .warnnote{grid-column:2 / -1;font-size:11px;color:var(--filament)}
+  .total{display:flex;justify-content:space-between;font-size:12px;color:var(--mute);
+         padding:2px 2px 14px}
+  .total b{font-family:var(--mono);color:var(--ink);font-weight:500}
+  .dbtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+  .btn{padding:9px 16px;border:1px solid var(--rule);background:var(--plate2);
+       font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .btn:hover{border-color:var(--mute)}
+  .btn.primary{background:var(--ink);color:var(--void);border-color:var(--ink);font-weight:600}
+  .btn.danger{border-color:var(--halt);color:var(--halt);background:none}
+  button:focus-visible,a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+  .cardgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .card{border:1px solid var(--rule);background:var(--plate);padding:16px 18px}
+  .card h3{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+           color:var(--mute);font-weight:600;margin-bottom:12px}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:5px 12px;font-size:12px}
+  .kv dt{color:var(--mute)}
+  .kv dd{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .field{margin:10px 0}
+  .field label{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+               color:var(--mute);margin-bottom:5px}
+  .field input{width:100%;padding:7px 9px;border:1px solid var(--rule);background:var(--void);
+               color:var(--ink);font:12px var(--mono)}
+  input[type="checkbox"]{accent-color:var(--mute)}
+  .diskbar{position:relative;height:6px;background:var(--rule);margin:10px 0 6px}
+  .diskbar i{position:absolute;left:0;top:0;bottom:0;background:var(--mute)}
+  .diskbar i.ws{background:var(--filament)}
+  .legend{display:flex;gap:18px;font-size:11px;color:var(--mute)}
+  .legend b{color:var(--ink);font-family:var(--mono);font-weight:500}
+  .sq{display:inline-block;width:8px;height:8px;margin-right:5px;vertical-align:baseline}
+
+  @media (max-width:860px){.cardgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="index.html"><b>PAKON&nbsp;F-135&nbsp;PLUS</b><span>film scanner</span></a>
+  <nav class="modes">
+    <a class="mode" href="scan.html">Scan</a>
+    <a class="mode" href="review.html">Review</a>
+    <a class="mode" href="export.html">Export</a>
+    <a class="mode" href="calibration.html">Calibrate</a>
+    <a class="mode" href="diagnostics.html">Diagnostics</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <div class="pagetitle">Workspace &amp; housekeeping</div>
+  <p class="pagesub">
+    Raw captures are huge and personal. They live in one temporary workspace,
+    are never scattered around the disk, and are removed when the app closes.
+    Frame settings are tiny and survive; exported files are yours and are
+    never touched. These are the three states where the app handles that
+    contract with the user.
+  </p>
+
+  <!-- ── STATE A ─────────────────────────────────────────── -->
+  <div class="statelabel">State A — startup, previous session found</div>
+  <div class="dialogscene">
+    <div class="dialog" role="dialog" aria-label="Previous session found">
+      <h2>Scans from a previous session are still here</h2>
+      <p class="sub">The app didn’t get to clean up last time (it may have
+        been force-quit). Keep the scans to continue working with them, or
+        delete them now.</p>
+      <div class="rows">
+        <div class="rrow">
+          <input type="checkbox" checked aria-label="Select roll 2026-08-05 A">
+          <em>2026-08-05 A · Gold 200 · 37 frames</em>
+          <span class="when">Aug 5, 21:14</span><span class="size">694.8 MB</span>
+        </div>
+        <div class="rrow">
+          <input type="checkbox" checked aria-label="Select roll 2026-08-05 B">
+          <em>2026-08-05 B · Portra 160 · 24 frames</em>
+          <span class="when">Aug 5, 22:03</span><span class="size">449.1 MB</span>
+          <span class="warnnote">▲ 6 frames adjusted, never exported — deleting loses those edits’ source</span>
+        </div>
+        <div class="rrow">
+          <input type="checkbox" aria-label="Select roll HP5 test">
+          <em>HP5 test strip · 6 frames</em>
+          <span class="when">Aug 4, 18:40</span><span class="size">112.4 MB</span>
+        </div>
+      </div>
+      <div class="total"><span>Selected</span><b>2 rolls · 1.14 GB</b></div>
+      <div class="dbtns">
+        <button class="btn danger">Delete selected</button>
+        <button class="btn">Delete all (1.26 GB)</button>
+        <button class="btn primary">Keep — reopen rolls</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STATE B ─────────────────────────────────────────── -->
+  <div class="statelabel">State B — quitting with unexported work</div>
+  <div class="dialogscene">
+    <div class="dialog" role="dialog" aria-label="Quit confirmation">
+      <h2>3 frames adjusted, none exported</h2>
+      <p class="sub">Quitting clears the workspace: the raw captures
+        (<span class="num">2.8 GB</span>) are deleted. Your adjustments
+        (<span class="num">4.2 kB</span>) are kept with each roll’s record and
+        will re-apply if you scan or reopen the same capture — but the
+        rendered frames themselves exist only after export.</p>
+      <div class="rows">
+        <div class="rrow" style="grid-template-columns:1fr auto">
+          <em>2026-08-07 A — frames 18, 20, 22 adjusted</em>
+          <span class="size">not exported</span>
+        </div>
+        <div class="rrow" style="grid-template-columns:1fr auto">
+          <em>2026-08-07 B — untouched</em>
+          <span class="size">not exported</span>
+        </div>
+      </div>
+      <div class="dbtns">
+        <button class="btn danger">Quit and delete workspace</button>
+        <button class="btn">Quit, keep workspace this once</button>
+        <button class="btn primary">Export first…</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STATE C ─────────────────────────────────────────── -->
+  <div class="statelabel">State C — workspace settings (always visible, never hidden)</div>
+  <div class="cardgrid">
+    <div class="card">
+      <h3>Workspace location</h3>
+      <div class="field">
+        <label for="ws">Folder — captures and render cache</label>
+        <input id="ws" value="~/Library/Caches/PakonScan/workspace/" spellcheck="false">
+      </div>
+      <div class="dbtns" style="justify-content:flex-start">
+        <button class="btn">Change…</button>
+        <button class="btn">Reveal in Finder</button>
+        <button class="btn">Empty now</button>
+      </div>
+      <p style="font-size:11px;color:var(--mute);margin-top:12px;line-height:1.6">
+        A 36-exposure roll at Base 16 is ~700 MB of raw capture. Keep the
+        workspace on a fast internal disk. It is emptied on quit; roll
+        settings and calibration references are stored separately and kept.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Disk</h3>
+      <div class="diskbar">
+        <i style="width:54%"></i><i class="ws" style="left:54%;width:0.6%"></i>
+      </div>
+      <div class="legend">
+        <span><span class="sq" style="background:var(--mute)"></span>Other <b>270 GB</b></span>
+        <span><span class="sq" style="background:var(--filament)"></span>Workspace <b>2.8 GB</b></span>
+        <span>Free <b>418 GB</b></span>
+      </div>
+      <dl class="kv" style="margin-top:14px">
+        <dt>Rolls in workspace</dt><dd>2</dd>
+        <dt>Captures</dt><dd>2.79 GB</dd>
+        <dt>Render cache</dt><dd>41 MB</dd>
+        <dt>Roll settings (kept)</dt><dd>9.1 kB</dd>
+        <dt>Calibration refs (kept)</dt><dd>68 MB</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+</body>
+</html>

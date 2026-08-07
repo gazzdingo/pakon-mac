@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnostics — Pakon F-135 Plus</title>
+<style>
+  :root{
+    --void:#0B0B0B; --plate:#141414; --plate2:#1A1A1A; --rule:#2E2E2E;
+    --ink:#E8E8E8; --mute:#8C8C8C; --filament:#C9A227; --halt:#B5484D; --pass:#5E8C61;
+    --sans:"Avenir Next","Segoe UI Variable Text","Segoe UI",Verdana,sans-serif;
+    --serif:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --mono:"SF Mono","Cascadia Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--void);color:var(--ink);font:14px/1.45 var(--sans);overflow:hidden}
+  a{color:inherit;text-decoration:none}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums lining-nums}
+  .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+  .app{display:flex;flex-direction:column;height:100%}
+
+  .top{display:flex;align-items:stretch;height:44px;background:var(--plate);
+       border-bottom:1px solid var(--rule);flex:none}
+  .brand{display:flex;flex-direction:column;justify-content:center;padding:0 16px;
+         border-right:1px solid var(--rule)}
+  .brand b{font-size:12px;letter-spacing:.18em;font-weight:600}
+  .brand span{font-size:9px;letter-spacing:.14em;color:var(--mute)}
+  .modes{display:flex;align-items:stretch}
+  .mode{display:flex;align-items:center;padding:0 18px;font-size:11px;
+        letter-spacing:.14em;color:var(--mute);border-right:1px solid var(--rule)}
+  .mode:hover{color:var(--ink);background:var(--plate2)}
+  .mode.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+  .chips{display:flex;align-items:center;gap:8px;margin-left:auto;
+         padding:0 16px;border-left:1px solid var(--rule)}
+  .chip{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.12em;
+        text-transform:uppercase;color:var(--mute)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--rule);flex:none}
+  .dot.ok{background:var(--pass)}
+
+  .row{display:flex;flex:1;min-height:0}
+  .rail{width:248px;flex:none;background:var(--plate);border-right:1px solid var(--rule);
+        display:flex;flex-direction:column;overflow-y:auto}
+  .rail section{padding:14px 16px;border-bottom:1px solid var(--rule)}
+  .rail h2,.panel h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+        color:var(--mute);font-weight:600;margin-bottom:10px}
+  .kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:12px}
+  .kv dt{color:var(--mute)}
+  .kv dd{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  .stage{flex:1;min-width:0;overflow-y:auto;background:var(--void)}
+  .stagehead{display:flex;align-items:baseline;gap:14px;padding:14px 20px 4px}
+  .stagehead .title{font-family:var(--serif);font-size:19px;font-style:italic}
+  .stagehead .meta{margin-left:auto;color:var(--mute);font-size:12px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:12px 20px 20px}
+  .panel{border:1px solid var(--rule);background:var(--plate);padding:14px 16px;min-width:0}
+  .panel.wide{grid-column:1 / -1}
+  .panel h2{display:flex;gap:8px}
+  .panel h2 .state{margin-left:auto;font-size:9px;letter-spacing:.12em;padding:2px 7px;border:1px solid}
+  .state.ok{color:var(--pass);border-color:var(--pass)}
+
+  .bignums{display:flex;gap:28px;flex-wrap:wrap}
+  .bignums div b{display:block;font:500 20px/1.3 var(--mono);font-variant-numeric:tabular-nums}
+  .bignums div b.good{color:var(--pass)}
+  .spark{display:block;width:100%;height:44px;margin-top:10px;border:1px solid var(--rule);
+         background:var(--void)}
+
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th{text-align:left;font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+     color:var(--mute);font-weight:600;padding:4px 8px;border-bottom:1px solid var(--rule)}
+  td{padding:4px 8px;border-bottom:1px solid #1c1c1c;font-family:var(--mono);
+     font-variant-numeric:tabular-nums;vertical-align:top}
+  td.d{font-family:var(--sans);color:var(--mute)}
+  td.r,th.r{text-align:right}
+  .scroller{overflow-x:auto}
+
+  .temp{display:grid;grid-template-columns:110px 1fr 58px;gap:10px;align-items:center;
+        font-size:12px;padding:5px 0}
+  .temp .name{color:var(--mute)}
+  .meter{position:relative;height:4px;background:var(--rule)}
+  .meter i{position:absolute;left:0;top:0;bottom:0;background:var(--pass)}
+  .meter .lim{position:absolute;top:-3px;width:1px;height:10px;background:var(--halt)}
+  .temp .v{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+
+  .bist{display:grid;grid-template-columns:1fr 1fr;gap:2px 18px;font-size:11px}
+  .bist div{display:flex;justify-content:space-between;gap:10px;padding:3px 0;
+            border-bottom:1px solid #1c1c1c}
+  .bist span{color:var(--mute)}
+  .bist b{font-family:var(--mono);font-weight:500;color:var(--pass)}
+
+  .log{font:11px/1.7 var(--mono);color:var(--mute);white-space:pre;overflow-x:auto}
+  .log em{color:var(--ink);font-style:normal}
+  .log .t{color:#5a5a5a}
+
+  .btn{display:inline-block;padding:8px 14px;border:1px solid var(--rule);
+       background:var(--plate2);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .btn:hover{border-color:var(--mute)}
+  button:focus-visible,a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+  .statusline{flex:none;display:flex;gap:24px;align-items:center;height:26px;padding:0 16px;
+              border-top:1px solid var(--rule);background:var(--plate);
+              font:11px var(--mono);color:var(--mute)}
+  .statusline .fill{flex:1}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <a class="brand" href="index.html" title="Mockup index">
+      <b>PAKON&nbsp;F-135&nbsp;PLUS</b><span>film scanner</span>
+    </a>
+    <nav class="modes">
+      <a class="mode" href="scan.html">Scan</a>
+      <a class="mode" href="review.html">Review</a>
+      <a class="mode" href="export.html">Export</a>
+      <a class="mode" href="calibration.html">Calibrate</a>
+      <a class="mode on" href="diagnostics.html" aria-current="page">Diagnostics</a>
+    </nav>
+    <div class="chips">
+      <span class="chip"><i class="dot ok"></i>Scanner</span>
+      <span class="chip"><i class="dot ok"></i>Self-test passed</span>
+      <span class="chip"><i class="dot"></i>Writes locked</span>
+    </div>
+  </header>
+
+  <div class="row">
+
+    <!-- ═════════ LEFT RAIL — hardware manifest ═════════ -->
+    <aside class="rail">
+      <section>
+        <h2>Identity</h2>
+        <dl class="kv">
+          <dt>Model</dt><dd>F-135 Plus</dd>
+          <dt>Serial</dt><dd>16275</dd>
+          <dt>USB</dt><dd>0F05:F135</dd>
+          <dt>FX2 firmware</dt><dd>2-stage, loaded</dd>
+        </dl>
+      </section>
+      <section>
+        <h2>Boards</h2>
+        <dl class="kv">
+          <dt>Host / USB</dt><dd>0x10 · ok</dd>
+          <dt>Lamp</dt><dd>0x40 · hw 05 fw 0A</dd>
+          <dt>CCD / FPGA</dt><dd>0x44 · hw 05 fw 06</dd>
+          <dt>Motor (PICM)</dt><dd>ok · repaired</dd>
+          <dt>DX sensor</dt><dd>ok</dd>
+        </dl>
+        <p style="font-size:11px;color:var(--mute);margin-top:10px">
+          The full manifest — every board, its firmware, and the serial —
+          is what support asks for first. Copy it in one click.
+        </p>
+        <button class="btn" style="margin-top:4px">Copy manifest</button>
+      </section>
+      <section>
+        <h2>Session</h2>
+        <dl class="kv">
+          <dt>Uptime</dt><dd>01:42:18</dd>
+          <dt>Rolls scanned</dt><dd>2</dd>
+          <dt>USB errors</dt><dd>0</dd>
+          <dt>Log file</dt><dd>session.log</dd>
+        </dl>
+      </section>
+    </aside>
+
+    <!-- ═════════ CENTER — technical panels ═════════ -->
+    <main class="stage">
+      <div class="stagehead">
+        <span class="title">Diagnostics</span>
+        <span class="meta">live readbacks · technical output stays here, never in your photographs</span>
+      </div>
+
+      <div class="grid">
+
+        <div class="panel wide">
+          <h2>Capture integrity — last scan <span class="state ok">lossless</span></h2>
+          <div class="bignums">
+            <div><span class="lbl">Lines</span><b>57 900</b></div>
+            <div><span class="lbl">Sync markers found</span><b>57 900</b></div>
+            <div><span class="lbl">Losses</span><b class="good">0</b></div>
+            <div><span class="lbl">Intact</span><b class="good">100.00 %</b></div>
+            <div><span class="lbl">Sustained rate</span><b>11.6 MiB/s</b></div>
+            <div><span class="lbl">Capture</span><b>694.8 MB</b></div>
+          </div>
+          <svg class="spark" viewBox="0 0 800 44" preserveAspectRatio="none"
+               aria-label="Line-gap monitor across the scan: flat at 6000 words per line, no deviations">
+            <line x1="0" y1="22" x2="800" y2="22" stroke="#5E8C61" stroke-width="1.5"/>
+            <text x="6" y="14" fill="#8C8C8C" font-size="9" font-family="monospace">gap = 6 000 words/line, whole scan — any tear would spike here</text>
+          </svg>
+        </div>
+
+        <div class="panel">
+          <h2>Temperatures</h2>
+          <div class="temp"><span class="name">Light board</span>
+            <span class="meter"><i style="width:41%"></i><span class="lim" style="left:80%"></span></span>
+            <span class="v">41.2 °C</span></div>
+          <div class="temp"><span class="name">Motherboard</span>
+            <span class="meter"><i style="width:39%"></i><span class="lim" style="left:80%"></span></span>
+            <span class="v">38.9 °C</span></div>
+          <div class="temp"><span class="name">Lamp raw</span>
+            <span class="meter"><i style="width:32%"></i><span class="lim" style="left:80%"></span></span>
+            <span class="v">0x0280</span></div>
+          <p style="font-size:11px;color:var(--mute);margin-top:8px">
+            Red tick = shutdown threshold. The lamp readout is the raw
+            register value; the sensor’s scale is only partly decoded.
+          </p>
+        </div>
+
+        <div class="panel">
+          <h2>USB stream</h2>
+          <dl class="kv" style="font-size:12px">
+            <dt>Image endpoint</dt><dd>EP 0x86 bulk</dd>
+            <dt>Command endpoint</dt><dd>EP 0x01 / 0x81</dd>
+            <dt>Line format</dt><dd>6 000 × u16, RGB interleaved</dd>
+            <dt>Sync</dt><dd>bit 0 of first word</dd>
+            <dt>FIFO policy</dt><dd>reset ×2 before scan only</dd>
+            <dt>Last drain</dt><dd>clean</dd>
+          </dl>
+        </div>
+
+        <div class="panel">
+          <h2>Self test <span class="state ok">10 / 10 passed</span></h2>
+          <div class="bist">
+            <div><span>FPGA comm</span><b>pass</b></div>
+            <div><span>Power rails 3V/5V/6V</span><b>pass</b></div>
+            <div><span>Temp sensor (mother)</span><b>pass</b></div>
+            <div><span>Power rails 12V/13V</span><b>pass</b></div>
+            <div><span>Temp sensor (light)</span><b>pass</b></div>
+            <div><span>CCD comm</span><b>pass</b></div>
+            <div><span>Current drivers</span><b>pass</b></div>
+            <div><span>Motor</span><b>pass</b></div>
+            <div><span>DX entry sensor</span><b>pass</b></div>
+            <div><span>DX exit sensor</span><b>pass</b></div>
+          </div>
+          <div style="margin-top:10px"><button class="btn">Run self test</button></div>
+        </div>
+
+        <div class="panel">
+          <h2>Registers — live readback</h2>
+          <div class="scroller">
+          <table aria-label="Register readbacks">
+            <thead><tr><th>Board</th><th>Reg</th><th>Value</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>0x10</td><td>status</td><td>0x88</td><td class="d">host ok, no faults</td></tr>
+              <tr><td>0x40</td><td>0x80</td><td>0x01</td><td class="d">lamp enable — visible</td></tr>
+              <tr><td>0x40</td><td>0x81</td><td>04 14 0B 00</td><td class="d">LED levels R·G·B·Ir</td></tr>
+              <tr><td>0x40</td><td>0x83</td><td>0x10</td><td class="d">lamp status — lit</td></tr>
+              <tr><td>0x40</td><td>0x84</td><td>0x0280</td><td class="d">lamp temperature raw</td></tr>
+              <tr><td>0x44</td><td>0x82</td><td>0x0061</td><td class="d">FPGA control — colour scan</td></tr>
+              <tr><td>0x44</td><td>0x84·0</td><td>0xF8</td><td class="d">AFE config — 3-ch CDS, 4 V</td></tr>
+              <tr><td>0x44</td><td>0x84·2–4</td><td>13 13 13</td><td class="d">AFE gains R·G·B</td></tr>
+              <tr><td>0x44</td><td>0x84·5–7</td><td>−18 −26 −20</td><td class="d">AFE offsets R·G·B</td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <div class="panel wide">
+          <h2>Event log</h2>
+          <div class="log"><span class="t">09:41:02</span>  <em>scan</em>     strip complete — 57 900 lines, 0 losses, 11.6 MiB/s
+<span class="t">09:39:50</span>  <em>frames</em>   boundary confidence low at 27|28 (dense edge) — flagged in Review
+<span class="t">09:38:44</span>  <em>scan</em>     transport up to speed · sync lock acquired
+<span class="t">09:38:41</span>  <em>lamp</em>     enabled — targets from calibration 08:52, converged first pass
+<span class="t">09:38:39</span>  <em>fifo</em>     reset ×2 (BeforeScan) — none during stream
+<span class="t">08:52:19</span>  <em>calib</em>    flat field captured — means 50 204 · 49 962 · 49 916
+<span class="t">08:41:07</span>  <em>calib</em>    dark field captured — means 1 120.5 · 1 443.0 · 1 160.9
+<span class="t">08:12:33</span>  <em>usb</em>      firmware loaded, re-enumerated as 0F05:F135</div>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn">Export log</button>
+            <button class="btn">Copy for support</button>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <footer class="statusline">
+    <span>DIAGNOSTICS</span>
+    <span>read-only — no register writes from this panel</span>
+    <span class="fill"></span>
+    <span>polling 1 Hz · idle</span>
+  </footer>
+</div>
+</body>
+</html>

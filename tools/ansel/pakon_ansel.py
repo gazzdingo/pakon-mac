@@ -8,8 +8,9 @@ Rpd2Pcs→Srgb.
 **Shasta** (``pakon_shasta.py``): dpi aims + toneLut assemble + live image
 sampling (``0x1027b970``/``0x1027b3c0``) + I16 ``ImaShastaOp`` apply are
 ported (`SHASTA_TONE_LUT_PORTED` / `SHASTA_APPLY_PORTED`). Full analyze
-aim producers still open (`SHASTA_ANALYZE_PORTED=False`; Ane neighbor
-merge ``0x102a82a0`` WALL; frame/`+0x6cac` + finalize knot/adjust closed).
+aim producers still open (`SHASTA_ANALYZE_PORTED=False`; Ane build
+``0x1027e9d0`` WALL; neighbor merge + frame/`+0x6cac` + finalize
+knot/adjust closed).
 
 **SRA** (``pakon_sra.py``): shipped ``common-sraFwdLut-metric-*.lut`` is
 ``AnsCommonSraFwdLutDPI`` — a real Pakon table, but **not** Shasta's

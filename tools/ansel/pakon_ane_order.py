@@ -4,10 +4,10 @@
 PakonIMAu.dll base ``0x10000000``. Catalog + host layout for the float
 table CnPremium indexes at mid-aim. ``getResults`` dens **fill** from
 Impl curve rows is ported; analyze **bin-index** / dens-hist **accum**
-ported; finalize knot leaf ``0x102a7a30`` + adjust ``0x102a78c0`` +
-curve-row pack ``0x1027e840`` ported. Neighbor-hist merge ``0x102a82a0``
-and full sample/residual → knots orchestration still open →
-``ANE_ORDER_PORTED = False``.
+ported; neighbor-hist merge ``0x102a82a0`` + finalize knot
+``0x102a7a30`` + adjust ``0x102a78c0`` + curve-row pack ``0x1027e840``
+ported. Full sample/residual → dens-hist build ``0x1027e9d0`` still
+open → ``ANE_ORDER_PORTED = False``.
 
 VERIFIED call chain
 ===================
@@ -52,13 +52,28 @@ Called from accumulate ``0x102a84d0`` after bin-index slot lookup
 
 ``ANE_ANALYZE_HIST_ACCUM_PORTED = True``.
 
+Neighbor-hist merge ``0x102a82a0`` (PORTED + Unicorn)
+----------------------------------------------------
+Called from finalize ``0x102a8770`` per ``(plane, bin)``:
+
+* ``plane_start = [obj+0x40] * plane``; ``plane_end = (plane+1)*stride − 1``
+* ``center = plane_start + bin``; clone dens-hist at ``[obj+0xa4][center]``
+* Expand ring: while ``ring < [obj+0x54]`` **or** ``sum(counts) < [obj+0x5c]``,
+  add left neighbor bins (if ``left ≥ plane_start``) and/or right
+  (if ``right ≤ plane_end``); then ``left−1``, ``right+1``, ``ring+1``.
+* Stop early when both neighbors fall outside the plane slot range.
+* Returns the merged dens-hist (COM smart-ptr); sources unchanged.
+
+``ANE_ANALYZE_NEIGHBOR_MERGE_PORTED = True``.
+
 Finalize ``0x102a8770`` → knot doubles (leaves PORTED)
 -----------------------------------------------------
-Per ``(plane, bin)``: neighbor merge ``0x102a82a0`` (COM; open) then
-knot leaf ``0x102a7a30`` (PORTED + Unicorn) writes a ``double`` into
-the ``+0x78`` plane vectors. Optional adjust ``0x102a78c0`` (PORTED)
+Per ``(plane, bin)``: neighbor merge ``0x102a82a0`` then knot leaf
+``0x102a7a30`` (PORTED + Unicorn) writes a ``double`` into the
+``+0x78`` plane vectors. Optional adjust ``0x102a78c0`` (PORTED)
 when finalize flag set and ``[obj+0x2c]==0``. Scale pass ``0x104ee9c0``
-multiplies plane vectors when arg ≠ 1.
+multiplies plane vectors when arg ≠ 1. Host compose
+``ane_finalize_plane_doubles_from_hists`` wires merge→knot→adjust.
 
 Knot leaf ``0x102a7a30`` (hist counts → double):
 
@@ -83,7 +98,7 @@ planes ``1…`` → ``y[p]``; ``n_channels = n_planes − 1`` (cite
 
 ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED = True``.
 
-Neighbor merge ``0x102a82a0`` + full build orchestration still open →
+Full sample/residual → dens-hist build ``0x1027e9d0`` still open →
 ``ANE_ORDER_PORTED = False``.
 
 ``NoiseMethods::getNoiseTable`` @ ``0x10112980``
@@ -138,7 +153,7 @@ Per plane ``p`` (``p < +0x48``), continuous dens pointer (not reset):
    into the next plane's slot (DLL behaviour; Unicorn-golden).
 6. After segments: pad with final ``Yp`` while ``i < n``.
 
-``ANE_GET_RESULTS_FILL_PORTED = True``. Neighbor merge + full analyze
+``ANE_GET_RESULTS_FILL_PORTED = True``. Full analyze build
 orchestration still open → ``ANE_ORDER_PORTED = False``.
 
 OrderOrientation (separate)
@@ -155,8 +170,9 @@ Flags
 * ``ANE_ANALYZE_HIST_ACCUM_PORTED = True`` — dens-hist ``inc`` leaf (Unicorn).
 * ``ANE_ANALYZE_FINALIZE_KNOT_PORTED = True`` — hist→knot ``0x102a7a30``.
 * ``ANE_ANALYZE_FINALIZE_ADJUST_PORTED = True`` — adjust ``0x102a78c0``.
+* ``ANE_ANALYZE_NEIGHBOR_MERGE_PORTED = True`` — ``0x102a82a0`` merge.
 * ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED = True`` — ``0x1027e840`` pack.
-* ``ANE_ORDER_PORTED = False`` — ``0x102a82a0`` merge + full build open.
+* ``ANE_ORDER_PORTED = False`` — build ``0x1027e9d0`` sample/residual open.
 """
 from __future__ import annotations
 
@@ -173,6 +189,7 @@ ANE_ANALYZE_BIN_INDEX_PORTED = True
 ANE_ANALYZE_HIST_ACCUM_PORTED = True
 ANE_ANALYZE_FINALIZE_KNOT_PORTED = True
 ANE_ANALYZE_FINALIZE_ADJUST_PORTED = True
+ANE_ANALYZE_NEIGHBOR_MERGE_PORTED = True
 ANE_CURVE_ROWS_FROM_DOUBLES_PORTED = True
 
 PATH_ANALYZE_ANE_ORDER = 0x100FAD90
@@ -181,7 +198,7 @@ ANE_ORDER_IMPL_ANALYZE = 0x101ED3A0
 ANE_ORDER_CAP_GET_RESULTS = 0x10110830
 ANE_ORDER_IMPL_GET_RESULTS = 0x101EBE90
 ANE_ORDER_GET_RESULTS_FILL = 0x101EC10A
-ANE_ANALYZE_BUILD_CURVES = 0x1027E9D0  # Ane.cpp from Impl+0xc0
+ANE_ANALYZE_BUILD_CURVES = 0x1027E9D0  # Ane.cpp from Impl+0xc0 (open)
 ANE_ANALYZE_BIN_INDEX = 0x102A8555  # leaf inside 0x102a84d0 accumulate
 ANE_ANALYZE_BIN_INDEX_END = 0x102A857C  # before call 0x101ed810
 ANE_ANALYZE_HIST_ACCUM = 0x104F56E0  # dens-hist bin + inc
@@ -189,9 +206,22 @@ ANE_ANALYZE_HIST_ACCUM_END = 0x104F570B  # after ret 4 prologue target
 ANE_ANALYZE_FINALIZE = 0x102A8770
 ANE_ANALYZE_FINALIZE_KNOT = 0x102A7A30  # hist counts → knot double
 ANE_ANALYZE_FINALIZE_ADJUST = 0x102A78C0  # optional knot adjust
-ANE_ANALYZE_NEIGHBOR_MERGE = 0x102A82A0  # open (COM smart-ptr hist merge)
+ANE_ANALYZE_NEIGHBOR_MERGE = 0x102A82A0  # COM smart-ptr hist merge
+ANE_ANALYZE_NEIGHBOR_MERGE_END = 0x102A83DA  # ret 0x14
 ANE_CURVE_ROWS_FROM_DOUBLES = 0x1027E840  # +0x78 doubles → float rows
 ORDER_ORIENTATION_CAP_ANALYZE = 0x101218C0
+
+# Ane object fields used by neighbor merge / finalize (cite 0x102a82cf…)
+ANE_OBJ_MERGE_MAX_RADIUS_OFF = 0x54
+ANE_OBJ_N_PLANES_OFF = 0x58
+ANE_OBJ_MERGE_MIN_COUNT_OFF = 0x5C
+ANE_OBJ_HIST_MAP_OFF = 0xA4
+ANE_OBJ_KNOT_SCALE_OFF = 0x10
+ANE_OBJ_ADJUST_LIMIT_OFF = 0x20
+ANE_OBJ_ADJUST_SKIP_OFF = 0x2C  # nonzero → skip adjust pass
+
+# Finalize scale-pass gate: |scale − 1| vs rdata @ 0x105a87f0
+ANE_FINALIZE_SCALE_EPS = 1.1920928955078125e-07
 
 # 0x102a78c0 piecewise tables (cite rdata @ listed VAs)
 _ANE_78C0_THRESH = (0.03, 0.06, 0.125, 0.25, 0.5, 1.0, 10.0)
@@ -375,6 +405,142 @@ def _ane_window_rms(
     if sc == 0.0:
         return 0.0
     return math.sqrt(scd2 / sc)
+
+
+def ane_neighbor_hist_merge(
+    dens_hists: Sequence[Sequence[int]],
+    bin_index: int,
+    *,
+    min_count: int = 0,
+    max_radius: int = 0,
+) -> list[int]:
+    """Neighbor dens-hist merge @ ``0x102a82a0`` (Unicorn-golden).
+
+    ``dens_hists[i]`` is the count array for dens-bin slot ``i`` within
+    one plane (length = Ane ``+0x40`` stride). Starts from a **copy** of
+    ``dens_hists[bin_index]``, then adds left/right neighbor bin counts
+    while ``ring < max_radius`` or ``sum < min_count`` (Ane ``+0x54`` /
+    ``+0x5c``). Stops when both neighbors leave ``[0, len)``.
+    """
+    stride = len(dens_hists)
+    if stride <= 0:
+        raise ValueError("dens_hists must be non-empty")
+    b = int(bin_index)
+    if b < 0 or b >= stride:
+        raise ValueError(f"bin_index {b} out of range for stride {stride}")
+    n = len(dens_hists[b])
+    for i, h in enumerate(dens_hists):
+        if len(h) != n:
+            raise ValueError(f"dens_hists[{i}] length {len(h)} != {n}")
+    working = [int(x) for x in dens_hists[b]]
+    left = b - 1
+    right = b + 1
+    ring = 0
+    total = sum(working)
+    max_r = int(max_radius)
+    min_c = int(min_count)
+    while True:
+        if ring >= max_r and total >= min_c:
+            break
+        if left >= 0:
+            src = dens_hists[left]
+            for i in range(n):
+                working[i] += int(src[i])
+            if right < stride:
+                src = dens_hists[right]
+                for i in range(n):
+                    working[i] += int(src[i])
+        elif right < stride:
+            src = dens_hists[right]
+            for i in range(n):
+                working[i] += int(src[i])
+        else:
+            break
+        left -= 1
+        right += 1
+        ring += 1
+        total = sum(working)
+    return working
+
+
+def ane_finalize_plane_doubles_from_hists(
+    plane_dens_hists: Sequence[Sequence[Sequence[int]]],
+    *,
+    knot_scale: float = 1.0,
+    merge_min_count: int = 0,
+    merge_max_radius: int = 0,
+    do_adjust: bool = False,
+    adjust_limit: float = 0.0,
+    scale: float = 1.0,
+) -> list[list[float]]:
+    """Finalize compose: merge → knot → optional adjust → scale.
+
+    ``plane_dens_hists[plane][bin]`` = dens-hist counts. Mirrors
+    ``0x102a8770`` per-slot path using ported leaves (cite merge /
+    ``0x102a7a30`` / ``0x102a78c0``). ``scale`` is finalize ``[ebp+8]``;
+    when ``|scale−1| > ANE_FINALIZE_SCALE_EPS`` each knot is multiplied.
+    """
+    if not plane_dens_hists:
+        raise ValueError("plane_dens_hists must be non-empty")
+    n_planes = len(plane_dens_hists)
+    n_bins = len(plane_dens_hists[0])
+    if n_bins <= 0:
+        raise ValueError("each plane must have ≥1 dens-bin")
+    out: list[list[float]] = []
+    for p in range(n_planes):
+        row_hists = plane_dens_hists[p]
+        if len(row_hists) != n_bins:
+            raise ValueError(
+                f"plane {p} has {len(row_hists)} bins; expected {n_bins}"
+            )
+        doubles: list[float] = []
+        for b in range(n_bins):
+            merged = ane_neighbor_hist_merge(
+                row_hists,
+                b,
+                min_count=merge_min_count,
+                max_radius=merge_max_radius,
+            )
+            v = ane_finalize_knot_7a30(merged, float(knot_scale), 0)
+            if do_adjust:
+                v = ane_finalize_adjust_78c0(v, float(adjust_limit))
+            doubles.append(float(v))
+        out.append(doubles)
+    sc = float(scale)
+    if abs(sc - 1.0) > ANE_FINALIZE_SCALE_EPS:
+        out = [[v * sc for v in row] for row in out]
+    return out
+
+
+def noise_table_from_dens_hists(
+    plane_dens_hists: Sequence[Sequence[Sequence[int]]],
+    n: int,
+    *,
+    knot_scale: float = 1.0,
+    merge_min_count: int = 0,
+    merge_max_radius: int = 0,
+    do_adjust: bool = False,
+    adjust_limit: float = 0.0,
+    scale: float = 1.0,
+) -> "NoiseTable":
+    """dens-hists → finalize → curve rows → ``getResults`` dens fill.
+
+    ``n_channels = n_planes − 1`` (cite ``0x101ebff8``). Requires ≥2
+    planes (plane0 = knot ``x``, plane1+ = ``y``).
+    """
+    doubles = ane_finalize_plane_doubles_from_hists(
+        plane_dens_hists,
+        knot_scale=knot_scale,
+        merge_min_count=merge_min_count,
+        merge_max_radius=merge_max_radius,
+        do_adjust=do_adjust,
+        adjust_limit=adjust_limit,
+        scale=scale,
+    )
+    if len(doubles) < 2:
+        raise ValueError("need ≥2 planes for curve rows (x + ≥1 y)")
+    knots = curve_knots_from_plane_doubles(doubles)
+    return noise_table_from_knots(knots, n, n_channels=len(doubles) - 1)
 
 
 def ane_finalize_knot_7a30(
@@ -583,14 +749,16 @@ def main() -> None:
     print(f"  finalize          {ANE_ANALYZE_FINALIZE:#010x}")
     print(f"  finalize knot     {ANE_ANALYZE_FINALIZE_KNOT:#010x}")
     print(f"  finalize adjust   {ANE_ANALYZE_FINALIZE_ADJUST:#010x}")
-    print(f"  neighbor merge    {ANE_ANALYZE_NEIGHBOR_MERGE:#010x} (open)")
+    print(f"  neighbor merge    {ANE_ANALYZE_NEIGHBOR_MERGE:#010x}")
     print(f"  curve rows        {ANE_CURVE_ROWS_FROM_DOUBLES:#010x}")
+    print(f"  build curves      {ANE_ANALYZE_BUILD_CURVES:#010x} (open)")
     print(f"  ctor/alloc        {NOISE_TABLE_CTOR:#010x} / {NOISE_TABLE_ALLOC:#010x}")
     print(
         f"  LAYOUT_PORTED={ANE_NOISE_TABLE_LAYOUT_PORTED} "
         f"FILL_PORTED={ANE_GET_RESULTS_FILL_PORTED} "
         f"BIN_INDEX_PORTED={ANE_ANALYZE_BIN_INDEX_PORTED} "
         f"HIST_ACCUM_PORTED={ANE_ANALYZE_HIST_ACCUM_PORTED} "
+        f"NEIGHBOR_MERGE_PORTED={ANE_ANALYZE_NEIGHBOR_MERGE_PORTED} "
         f"FINALIZE_KNOT_PORTED={ANE_ANALYZE_FINALIZE_KNOT_PORTED} "
         f"FINALIZE_ADJUST_PORTED={ANE_ANALYZE_FINALIZE_ADJUST_PORTED} "
         f"CURVE_ROWS_PORTED={ANE_CURVE_ROWS_FROM_DOUBLES_PORTED} "
@@ -604,6 +772,13 @@ def main() -> None:
     hist = [0] * 16
     b = ane_dens_hist_accum(hist, 25, offset=5.0, divisor=2.0)
     print(f"  sample dens-hist bin={b} counts={hist[b]}")
+    merged = ane_neighbor_hist_merge(
+        [[1, 0], [0, 2], [0, 0], [3, 0], [0, 4]],
+        2,
+        min_count=100,
+        max_radius=2,
+    )
+    print(f"  sample neighbor merge={merged}")
     k = ane_finalize_knot_7a30([1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1], 1.0)
     print(f"  sample finalize knot={k}")
     rows = curve_knots_from_plane_doubles([[0.0, 10.0], [1.0, 2.0]])

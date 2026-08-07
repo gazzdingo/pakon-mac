@@ -15,6 +15,8 @@
   ``0x104f56e0…``; getCnContext path-from-bag host contract
 * Ane finalize knot ``0x102a7a30…`` + adjust ``0x102a78c0…``; curve
   rows from plane doubles host contract (``0x1027e840``)
+* Ane neighbor-hist merge ``0x102a82a0…`` (COM map + stubbed
+  ``operator new`` / malloc; FS SEH nops)
 * TLA FindDmin high-side hist walk ``0x100093f0…`` (frame ``+0x6cac``);
   host ColNeg 1px remap contract (stage-2 closed form)
 
@@ -29,7 +31,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from unicorn import Uc, UcError, UC_ARCH_X86, UC_MODE_32
+from unicorn import Uc, UcError, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE
 from unicorn.x86_const import (
     UC_X86_REG_EAX,
     UC_X86_REG_EBX,
@@ -37,6 +39,7 @@ from unicorn.x86_const import (
     UC_X86_REG_ECX,
     UC_X86_REG_EDI,
     UC_X86_REG_EDX,
+    UC_X86_REG_EIP,
     UC_X86_REG_ESI,
     UC_X86_REG_ESP,
 )
@@ -65,6 +68,10 @@ VA_ANE_HIST_ACCUM = ane.ANE_ANALYZE_HIST_ACCUM
 VA_ANE_HIST_ACCUM_END = ane.ANE_ANALYZE_HIST_ACCUM_END
 VA_ANE_FINALIZE_KNOT = ane.ANE_ANALYZE_FINALIZE_KNOT
 VA_ANE_FINALIZE_ADJUST = ane.ANE_ANALYZE_FINALIZE_ADJUST
+VA_ANE_NEIGHBOR_MERGE = ane.ANE_ANALYZE_NEIGHBOR_MERGE
+VA_ANE_OP_NEW = 0x104FFD53
+VA_ANE_MALLOC = 0x104FFD78
+VA_ANE_HIST_DTOR = 0x104F5AF0
 VA_TLA_DESC_PACK = sc.TLA_DESC_PACK
 VA_TLA_DESC_PACK_END = sc.TLA_DESC_PACK_END
 VA_TLA_FIND_DMIN_WALK = sc.TLA_FIND_DMIN_HIST_WALK
@@ -382,6 +389,168 @@ def run_ane_finalize_adjust(dll: bytes, value: float, limit: float) -> float:
     except UcError:
         pass
     return float(struct.unpack("<d", uc.mem_read(out, 8))[0])
+
+
+def _patch_fs_seh(img: bytearray, start: int, end: int) -> None:
+    """Nop ``fs:[0]`` SEH loads/stores in ``[start, end)`` (Unicorn has no FS)."""
+    off0 = start - IMAGE_BASE
+    off1 = end - IMAGE_BASE
+    i = off0
+    while i < off1 - 5:
+        if img[i : i + 6] == bytes.fromhex("64a100000000"):
+            img[i : i + 6] = bytes.fromhex("b8ffffffff90")
+            i += 6
+            continue
+        if img[i : i + 7] == bytes.fromhex("64892500000000"):
+            img[i : i + 7] = b"\x90" * 7
+            i += 7
+            continue
+        if img[i : i + 7] == bytes.fromhex("64890d00000000"):
+            img[i : i + 7] = b"\x90" * 7
+            i += 7
+            continue
+        if img[i : i + 7] == bytes.fromhex("648b0d00000000"):
+            img[i : i + 7] = bytes.fromhex("b9ffffffff9090")
+            i += 7
+            continue
+        i += 1
+
+
+def run_ane_neighbor_hist_merge(
+    dll: bytes,
+    dens_hists: list[list[int]],
+    bin_index: int,
+    *,
+    min_count: int = 0,
+    max_radius: int = 0,
+) -> list[int]:
+    """Unicorn neighbor merge ``0x102a82a0`` → merged dens-hist counts.
+
+    Builds a synthetic Ane ``+0xa4`` hist map (plane 0). Stubs
+    ``operator new`` / malloc with a bump allocator; nops FS SEH in the
+    merge/clone path.
+    """
+    if not dens_hists:
+        raise ValueError("dens_hists must be non-empty")
+    n_bins = len(dens_hists[0])
+    stride = len(dens_hists)
+    img = bytearray(dll[:0x740000])
+    for s, e in (
+        (0x102A82A0, 0x102A84C2),
+        (0x104EA590, 0x104EA620),
+        (0x104F5A30, 0x104F5AF0),
+        (0x104F5540, 0x104F56A4),
+        (0x104EA620, 0x104EA650),
+    ):
+        _patch_fs_seh(img, s, e)
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    uc.mem_map(IMAGE_BASE, 0x740000)
+    uc.mem_write(IMAGE_BASE, bytes(img))
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    bump = [HEAP_ADDR + 0x10000]
+
+    def alloc(n: int) -> int:
+        a = bump[0]
+        bump[0] = (a + n + 15) & ~15
+        uc.mem_write(a, b"\x00" * n)
+        return a
+
+    def hook_alloc(uc: Uc, address: int, size: int, user: object) -> None:
+        esp = uc.reg_read(UC_X86_REG_ESP)
+        nbytes = struct.unpack("<I", uc.mem_read(esp + 4, 4))[0]
+        ptr = alloc(max(int(nbytes), 1))
+        ret = struct.unpack("<I", uc.mem_read(esp, 4))[0]
+        uc.reg_write(UC_X86_REG_EAX, ptr)
+        uc.reg_write(UC_X86_REG_ESP, esp + 4)
+        uc.reg_write(UC_X86_REG_EIP, ret)
+
+    def hook_dtor(uc: Uc, address: int, size: int, user: object) -> None:
+        esp = uc.reg_read(UC_X86_REG_ESP)
+        ret = struct.unpack("<I", uc.mem_read(esp, 4))[0]
+        uc.reg_write(UC_X86_REG_ESP, esp + 8)
+        uc.reg_write(UC_X86_REG_EIP, ret)
+
+    uc.hook_add(UC_HOOK_CODE, hook_alloc, begin=VA_ANE_OP_NEW, end=VA_ANE_OP_NEW + 1)
+    uc.hook_add(UC_HOOK_CODE, hook_alloc, begin=VA_ANE_MALLOC, end=VA_ANE_MALLOC + 1)
+    uc.hook_add(UC_HOOK_CODE, hook_dtor, begin=VA_ANE_HIST_DTOR, end=VA_ANE_HIST_DTOR + 1)
+
+    def make_hist(counts: list[int]) -> int:
+        bins = alloc(n_bins * 4)
+        uc.mem_write(bins, struct.pack(f"<{n_bins}i", *counts))
+        h = alloc(0x40)
+        blob = bytearray(0x40)
+        struct.pack_into("<I", blob, 0, 0x105DDC3C)
+        struct.pack_into("<I", blob, 8, 10)
+        struct.pack_into("<I", blob, 0x0C, n_bins)
+        struct.pack_into("<d", blob, 0x10, 0.0)
+        struct.pack_into("<d", blob, 0x18, 1.0)
+        struct.pack_into("<d", blob, 0x20, 0.0)
+        struct.pack_into("<d", blob, 0x28, 1.0)
+        blob[0x30] = 0
+        blob[0x31] = 1
+        struct.pack_into("<I", blob, 0x34, 2)
+        struct.pack_into("<I", blob, 0x38, bins)
+        uc.mem_write(h, bytes(blob))
+        return h
+
+    wrappers: list[int] = []
+    for counts in dens_hists:
+        if len(counts) != n_bins:
+            raise ValueError("dens_hists rows must share length")
+        h = make_hist(counts)
+        w = alloc(8)
+        uc.mem_write(w, struct.pack("<II", 0x105DD018, h))
+        wrappers.append(w)
+    arr = alloc(stride * 4)
+    uc.mem_write(arr, struct.pack(f"<{stride}I", *wrappers))
+    arr_holder = alloc(8)
+    uc.mem_write(arr_holder, struct.pack("<II", 0, arr))
+    map_obj = alloc(0x20)
+    uc.mem_write(map_obj + 0x0C, struct.pack("<I", arr_holder))
+    map_wrap = alloc(8)
+    uc.mem_write(map_wrap, struct.pack("<II", 0x105DD018, map_obj))
+    ane_obj = alloc(0x100)
+    uc.mem_write(ane_obj + ane.ANE_OBJ_PLANE_STRIDE_OFF, struct.pack("<i", stride))
+    uc.mem_write(
+        ane_obj + ane.ANE_OBJ_MERGE_MAX_RADIUS_OFF, struct.pack("<i", int(max_radius))
+    )
+    uc.mem_write(
+        ane_obj + ane.ANE_OBJ_MERGE_MIN_COUNT_OFF, struct.pack("<i", int(min_count))
+    )
+    uc.mem_write(ane_obj + ane.ANE_OBJ_HIST_MAP_OFF, struct.pack("<I", map_wrap))
+    out = alloc(8)
+    uc.mem_write(out, struct.pack("<II", 0x105DD018, 0))
+    ret_addr = HEAP_ADDR + 0xF000
+    uc.mem_write(ret_addr, b"\xcc")
+    esp = STACK_ADDR + 0x8000
+    # stdcall: out, plane=0, bin, min_count (+0x5c), max_radius (+0x54)
+    uc.mem_write(
+        esp,
+        struct.pack(
+            "<Iiiiii",
+            ret_addr,
+            out,
+            0,
+            int(bin_index),
+            int(min_count),
+            int(max_radius),
+        ),
+    )
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    uc.reg_write(UC_X86_REG_ECX, ane_obj)
+    try:
+        uc.emu_start(
+            VA_ANE_NEIGHBOR_MERGE, ret_addr, timeout=10_000_000, count=500_000
+        )
+    except UcError:
+        pass
+    out_hist = struct.unpack("<I", uc.mem_read(out + 4, 4))[0]
+    if out_hist == 0:
+        raise RuntimeError("neighbor merge returned null hist")
+    n = struct.unpack("<I", uc.mem_read(out_hist + ane.ANE_HIST_N_OFF, 4))[0]
+    bins_addr = struct.unpack("<I", uc.mem_read(out_hist + ane.ANE_HIST_BINS_OFF, 4))[0]
+    return list(struct.unpack(f"<{n}i", uc.mem_read(bins_addr, n * 4)))
 
 
 def run_ane_dens_hist_accum(
@@ -816,6 +985,29 @@ def main() -> int:
         if not ok:
             fail += 1
 
+    # Ane neighbor-hist merge (0x102a82a0)
+    merge_cases: list[tuple[str, list[list[int]], int, int, int]] = [
+        ("expand r=2", [[1, 0], [0, 2], [0, 0], [3, 0], [0, 4]], 2, 100, 2),
+        ("radius0 enough", [[5, 5], [1, 1], [9, 9]], 2, 1, 0),
+        ("edge left", [[7, 0], [0, 1], [0, 1], [0, 1]], 0, 100, 3),
+        ("edge right", [[1, 0], [1, 0], [1, 0], [0, 8]], 3, 100, 3),
+        ("exhaust neighbors", [[0, 0], [0, 0], [5, 0], [0, 0], [0, 0]], 2, 5, 5),
+    ]
+    for label, hists, b, mc, mr in merge_cases:
+        host = ane.ane_neighbor_hist_merge(
+            hists, b, min_count=mc, max_radius=mr
+        )
+        ref = run_ane_neighbor_hist_merge(
+            dll, hists, b, min_count=mc, max_radius=mr
+        )
+        ok = host == ref
+        print(
+            f"  ane_neighbor_merge {label}: host={host} dll={ref} "
+            f"{'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+
     # Curve rows from plane doubles (0x1027e840) → dens fill compose
     planes = [[0.0, 10.0, 20.0], [1.0, 1.0, 11.0]]
     knots = ane.curve_knots_from_plane_doubles(planes)
@@ -829,6 +1021,29 @@ def main() -> int:
     )
     ok = np.allclose(dens, ref_dens)
     print(f"  curve_rows→dens_fill compose: {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+
+    # dens-hists → merge→knot→curve→getResults compose (host leaves)
+    ph = [
+        [[1, 2, 3], [2, 2, 2], [3, 1, 0]],
+        [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    ]
+    doubles = ane.ane_finalize_plane_doubles_from_hists(
+        ph, knot_scale=1.0, merge_min_count=0, merge_max_radius=0
+    )
+    ok = len(doubles) == 2 and all(len(r) == 3 for r in doubles)
+    print(f"  dens→finalize doubles shape: {ok} {'OK' if ok else 'FAIL'}")
+    if not ok:
+        fail += 1
+    nt = ane.noise_table_from_dens_hists(
+        ph, n=16, knot_scale=1.0, merge_min_count=0, merge_max_radius=0
+    )
+    ok = nt.n == 16 and nt.n_channels == 1 and nt.dens.shape == (1, 16)
+    print(
+        f"  dens→getResults NoiseTable: n={nt.n} ch={nt.n_channels} "
+        f"{'OK' if ok else 'FAIL'}"
+    )
     if not ok:
         fail += 1
 
@@ -968,6 +1183,7 @@ def main() -> int:
         f"ANE_HIST_ACCUM={ane.ANE_ANALYZE_HIST_ACCUM_PORTED} "
         f"ANE_FINALIZE_KNOT={ane.ANE_ANALYZE_FINALIZE_KNOT_PORTED} "
         f"ANE_FINALIZE_ADJUST={ane.ANE_ANALYZE_FINALIZE_ADJUST_PORTED} "
+        f"ANE_NEIGHBOR_MERGE={ane.ANE_ANALYZE_NEIGHBOR_MERGE_PORTED} "
         f"ANE_CURVE_ROWS={ane.ANE_CURVE_ROWS_FROM_DOUBLES_PORTED} "
         f"ANE_ORDER={ane.ANE_ORDER_PORTED}"
     )

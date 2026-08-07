@@ -136,10 +136,13 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
      Layout ported (``pakon_ane_order.NoiseTable``); dens **fill** from
      curve rows ported (``get_results_fill_dens`` /
      ``ANE_GET_RESULTS_FILL_PORTED``). Analyze hist **bin-index** +
-     dens-hist ``inc`` + finalize knot/adjust + curve-row leaves ported
-     (``ANE_ANALYZE_BIN_INDEX_PORTED`` / ``ANE_ANALYZE_HIST_ACCUM_PORTED`` /
-     ``ANE_ANALYZE_FINALIZE_KNOT_PORTED`` / ``ANE_ANALYZE_FINALIZE_ADJUST_PORTED`` /
-     ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED``); neighbor merge ``0x102a82a0``
+     dens-hist ``inc`` + neighbor merge + finalize knot/adjust +
+     curve-row leaves ported (``ANE_ANALYZE_BIN_INDEX_PORTED`` /
+     ``ANE_ANALYZE_HIST_ACCUM_PORTED`` /
+     ``ANE_ANALYZE_NEIGHBOR_MERGE_PORTED`` /
+     ``ANE_ANALYZE_FINALIZE_KNOT_PORTED`` /
+     ``ANE_ANALYZE_FINALIZE_ADJUST_PORTED`` /
+     ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED``); build orch ``0x1027e9d0``
      still WALL.
   3. Master LUT = global ``AnsLut`` @ ``0x106b5f74`` built by CRT init
      ``0x1056a470`` → ctor ``0x100f42a0(0xc, 0, 0xfff)``. Data pointer
@@ -172,10 +175,12 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
   ``SCPLUT_DMIN_REMAP_PORTED`` / ``ANE_GET_RESULTS_FILL_PORTED`` /
   ``BADDSCENE_DMIN_PACK_PORTED`` / ``ADDSCENE_DESC_PACK_PORTED`` /
   ``PATH_DMIN_FROM_BAG_PORTED`` / ``ANE_ANALYZE_BIN_INDEX_PORTED`` /
-  ``ANE_ANALYZE_HIST_ACCUM_PORTED`` / ``ANE_ANALYZE_FINALIZE_KNOT_PORTED`` /
-  ``ANE_ANALYZE_FINALIZE_ADJUST_PORTED`` / ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED``).
-  **WALL for ``ANALYZE``:** Ane neighbor merge ``0x102a82a0`` + full
-  dens→``getResults`` wire (frame/`+0x6cac` + finalize knot/adjust
+  ``ANE_ANALYZE_HIST_ACCUM_PORTED`` / ``ANE_ANALYZE_NEIGHBOR_MERGE_PORTED`` /
+  ``ANE_ANALYZE_FINALIZE_KNOT_PORTED`` / ``ANE_ANALYZE_FINALIZE_ADJUST_PORTED`` /
+  ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED``). Host dens-hist→finalize→
+  ``getResults`` compose is wired when dens-hists are supplied.
+  **WALL for ``ANALYZE``:** Ane build orch ``0x1027e9d0``
+  sample/residual → dens-hist (frame/`+0x6cac` + merge/finalize leaves
   closed); contrast / float-LUT side paths. Do **not** invent
   percentile tone from dpi ``shadowPercent`` / ``highlightPercent``.
 
@@ -329,11 +334,13 @@ UNKNOWN / blockers (honest)
 ---------------------------
 * Mid-aim **upstream producers**: ScpLut remap + dens fill + bAddScene
   pack + AddScene desc pack + getCnContext ``path+0x3c`` bag load +
-  Ane bin-index + dens-hist ``inc`` + finalize knot/adjust + curve rows
-  + frame FindDmin ``+0x6cac`` + ColNeg 1px remap closed (Unicorn-golden).
-  Still need Ane neighbor merge ``0x102a82a0`` + full dens wire.
-  Contrast (``0x10119060``) / float-table (``0x1004f7b0``) side paths
-  open. ``ANALYZE`` stays False.
+  Ane bin-index + dens-hist ``inc`` + neighbor merge ``0x102a82a0`` +
+  finalize knot/adjust + curve rows + frame FindDmin ``+0x6cac`` +
+  ColNeg 1px remap closed (Unicorn-golden). Host dens-hist→
+  ``getResults`` compose wired. Still need Ane build orch
+  ``0x1027e9d0`` (sample/residual → dens-hist). Contrast
+  (``0x10119060``) / float-table (``0x1004f7b0``) side paths open.
+  ``ANALYZE`` stays False.
 * Cap ``+0x3e0`` automatic assign from analyze still UNKNOWN; host
   publishes via cited ``setToneLut`` ``0x101e48d0`` (``SHASTA_CAP_TONE_LUT_PORTED``).
 * Iem hist fill ``0x104ea940`` from plane list not ported — host builds

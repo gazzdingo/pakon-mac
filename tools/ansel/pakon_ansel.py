@@ -482,8 +482,10 @@ class AnselEngine:
                 x.astype(np.int32), self.setshifts_out
             ).astype(np.float64)
             # STAND-IN for Shasta toneLut until SHASTA_TONE_LUT_PORTED.
-            # Linked core from working-images-v1 / c5f63c9. When Shasta
-            # analyze→toneLut ports, replace this block (not SRA).
+            # Builder 0x10293ee0 + 0x10293d50 + fill are golden with
+            # injected work fields, but Cap +0x3e0 / live 0x102935d0 /
+            # dens still WALL — keep linked-percentile fallback.
+            # Linked core from working-images-v1 / c5f63c9.
             if shasta_mod.SHASTA_TONE_LUT_PORTED:
                 raise RuntimeError(
                     "SHASTA_TONE_LUT_PORTED=True but host wire missing — "

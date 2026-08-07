@@ -131,8 +131,10 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
      ``dmin_dens[i] = int16(dmin[i] + dens_i)`` (16-bit wrap);
      advance ``table`` by ``n`` floats while ``i+1 < +0x48``.
 
-     Layout ported (``pakon_ane_order.NoiseTable``); **float fill from
-     ``getResults`` interpolation still WALL**.
+     Layout ported (``pakon_ane_order.NoiseTable``); dens **fill** from
+     curve rows ported (``get_results_fill_dens`` /
+     ``ANE_GET_RESULTS_FILL_PORTED``). AneOrder **analyze** that builds
+     those rows still WALL.
   3. Master LUT = global ``AnsLut`` @ ``0x106b5f74`` built by CRT init
      ``0x1056a470`` → ctor ``0x100f42a0(0xc, 0, 0xfff)``. Data pointer
      ``[0x106b5f7c] = alloc+0x10000`` (signed-int16 index 0). Fill:
@@ -158,11 +160,13 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
   ``metricGray`` / processed-dmin avgs / ``white``.
 
 * Mid-aim **arithmetic** is host-ported (``cn_premium_mid_aim_rgb``;
-  ``SHASTA_AIM_MID_RGB_PORTED``). Input **path** cited + bag/layout
-  helpers (``SHASTA_AIM_INPUT_PATH_PORTED``). **WALL for ``ANALYZE``:**
-  live dmin writer values + ``getResults`` dens fill; contrast /
-  float-LUT side paths. Then ``0x10293960`` fill. Do **not** invent
-  percentile tone from dpi ``shadowPercent`` / ``highlightPercent``.
+  ``SHASTA_AIM_MID_RGB_PORTED``). Input **path** + ScpLut remap +
+  ``getResults`` dens fill ported (``SHASTA_AIM_INPUT_PATH_PORTED`` /
+  ``SCPLUT_DMIN_REMAP_PORTED`` / ``ANE_GET_RESULTS_FILL_PORTED``).
+  **WALL for ``ANALYZE``:** AddScene desc / ``path+0x3c`` **producers**
+  and AneOrder **analyze** curve rows; contrast / float-LUT side paths.
+  Do **not** invent percentile tone from dpi ``shadowPercent`` /
+  ``highlightPercent``.
 
 CapabilityImpl ``+0x3e0`` vs working ``+0x3b0`` (VERIFIED facts)
 ---------------------------------------------------------------
@@ -199,50 +203,76 @@ Curve helpers — status
   ``r < 0`` is ``err_prev > tol`` (DLL ``0x102933b8…c2``; earlier host
   ``<=`` was wrong at fill-scale args).
 * ``0x10293960`` (~994 B): **ported + Unicorn-golden**
-  (``tone_lut_fill_93960`` / ``SHASTA_CURVE_FILL_PORTED``). Still not a
-  full analyze→Cap toneLut (builder's 2nd segment + ``0x10293d50`` +
-  Cap ``+0x3e0`` path open) → ``SHASTA_TONE_LUT_PORTED=False``.
+  (``tone_lut_fill_93960`` / ``SHASTA_CURVE_FILL_PORTED``).
 
-  - ``this``/``eax`` = param struct from builder ``0x10293ee0``:
+* Builder ``0x10293ee0`` (~992 B, ret ``0x102942bf``): **ported +
+  Unicorn-golden** with injected work fields
+  (``tone_lut_builder_93ee0`` / ``SHASTA_TONE_LUT_BUILDER_PORTED``).
+  Sole caller generate ``0x10245f2b`` pushes ``(+0x48−+0x2b0)``. Still
+  not a host Cap toneLut → ``SHASTA_TONE_LUT_PORTED=False``.
 
-    ==========  ==============================  ========================
-    param off   work field                      role
-    ==========  ==============================  ========================
-    ``+0``      ``+0x334`` (int)                span end code
-    ``+4``      ``fist(+0x378)`` (``0x104ffe44`` trunc)  adj
-    ``+0x10``   ``+0x128`` or ``+0x138``        ``u0`` blend weight
-    ``+0x20``   ``+0x148``                      ``p20`` → sub0 via
-                                                ``(1−p20)·d2c``
-    ``+0x28``   ``+0x338``                      → ``d28`` rel start
-    ``+0x2c``   ``+0x300``                      → ``d2c`` rel start
-    ``+0x30``   ``+0x340``                      ``p30`` alpha scale
-    ``+0x18``   written by fill                 ``p18`` slope
-    ``+0x38``   written by fill                 ``p38`` (side; loop
-                                                recomputes from leaves)
-    ==========  ==============================  ========================
+  Flow (cited): prep ``0x1027b1c0`` → clamp blend doubles ``[0,1]`` →
+  seed ``toneLut[+0x2b0]=+0x2b0`` → **fill#1** (up to ``+0x64``) →
+  **fill#2** (down to ``0``) → ``0x10293d50(arg)`` → clamp loop.
 
-  - Stack: ``[ebp+8]=start`` (work ``+0x2b0`` / aim), ``[ebp+0xc]=end``,
-    ``[ebp+0x10]=toneLut`` vector @ ``+0x3ac``.
-  - Setup: ``93510(span,span,span−adj*)``; ``93510(d28,d2c,d28)``;
-    log-ratio ``c50/cb0(span, S1)`` (span≥0 → c50); ``p18 =
-    d80(d2c·0.75, lr, span, S1) / (d2c·0.75)``; ``sub0 =
-    (1−p20)·d2c`` (or ``d2c∓1`` at boundary); ``p38 =
-    (d80(d2c,d2c,d28,S2) − d80(sub0,lr,span,S1)) / (d2c−sub0)``.
-  - Loop ``i`` from ``start±1`` toward ``end±1``: ``α =
-    clamp01((i−start−sub0)/(d2c−sub0))·p30``; blend ``lo =
-    start+(i−start)·p18``, ``hi = d80(off,lr,span,S1)+start``, ``up =
-    d80(off,d2c,d28,S2)+start`` by ``u0`` / ``α``; store
-    ``ftol2(out+0.5)``.
-  - **Aim layout the fill needs from track A / analyze** (injected OK
-    for golden): work ``+0x2b0…+0x2bc`` as start/end pair args to the
-    two builder calls (``+0x2b0``→first start; ends from ``+0x64`` /
-    ``+0x330`` siblings — field←dpi beyond the param map above still
-    partial). Mid aims ``+0x2b4/+0x2b8`` feed ``0x10293d50``, not this
-    fill.
-* ``0x10293d50`` (~395 B): uses ``+0x1d0``, ``+0x2b4/+0x2b8``, toneLut
-  ``+0x3b0``, ``+0x328``, arg ``[ebp+8]``; may touch ``+0x3c0`` via
-  ``0x10246050``. Partial index arithmetic ported below; full body
-  **UNKNOWN**.
+  Fill param←work (stack blob @ builder; fill ``this``/``eax``):
+
+  ==========  ==============================  ========================
+  param off   fill#1 (highlight↑)             fill#2 (shadow↓)
+  ==========  ==============================  ========================
+  ``+0``      ``+0x334``                      ``+0x330``
+  ``+4``      ``ftol2(+0x378)``                ``ftol2(+0x370)``
+  ``+0x10``   ``+0x128`` if ``+0x378≥0`` else   ``+0x120`` if ``+0x370≥0`` else
+              ``+0x138``                      ``+0x130``
+  ``+0x20``   ``+0x148``                      ``+0x140``
+  ``+0x28``   ``+0x338``                      ``+0x32c``
+  ``+0x2c``   ``+0x300``                      ``+0x2f4``
+  ``+0x30``   ``+0x340``                      ``+0x220``
+  start/end   ``+0x2b0`` / ``+0x64``           ``+0x2b0`` / ``0``
+  ==========  ==============================  ========================
+
+  Guard (fill#1, ``code_end`` vs start): if ``+0x334 ≤ +0x2b0`` →
+  ``code_end=start+1``, ``adj=0``; if ``code_28 ≤ code_end`` → both
+  ``code_28/2c = code_end+1``; if ``code_2c ≤ start`` → ``code_2c =
+  code_28``. Fill#2 mirrors with ``≥`` / ``start−1``. After fills:
+  ``p18/p38`` → work ``+0x358/+0x360`` (↑) and ``+0x350/+0x348`` (↓).
+
+  Dpi names on **ShastaParams** dump ``0x10128033`` (same early layout
+  on the work object for these doubles):
+
+  ==========  ==============================
+  work off    dpi key (Params dump)
+  ==========  ==============================
+  ``+0x120``  ``shadowExpBlend``
+  ``+0x128``  ``highlightExpBlend``
+  ``+0x130``  ``shadowTransitionRatio``
+  ``+0x138``  ``highlightTransitionRatio``
+  ``+0x140``  ``shadowExpSatFactor``
+  ``+0x148``  ``shadowCompSatFactor``
+  ``+0x220``  ``highlightDeltaGain``
+  ``+0x1d0``  ``blackNoiseStdDev``
+  ``+0x1d8``  ``minBlackOffset``
+  ``+0x1e0``  ``maxWhiteOffset``
+  ==========  ==============================
+
+  Prep ints ``+0x2c0…+0x338`` from buttons/aggr × ``+0x58`` (cite
+  ``0x1027b1c0``). Image-derived ``+0x2f4/+0x300/+0x340/+0x370/+0x378``
+  come from ``0x1027be10`` / ``0x102935d0`` (inject for golden; not
+  dpi). Work ``+0x48/+0x60/+0x64`` are int clamp/size codes on the
+  Generate object (not Params ``codeValuesPerButton`` @ Params``+0x48``).
+
+* ``0x10293d50`` (~395 B): **ported + Unicorn-golden**
+  (``black_noise_fill_93d50`` / ``SHASTA_BLACK_NOISE_93D50_PORTED``).
+  Mid aims ``+0x2b4/+0x2b8`` feed this — **not** the ``0x10293960``
+  fills. ``t = (+0x2b8−+0x2b4)/+0x1d0`` when ``+0x1d0>0`` else ``0``;
+  ``index = ftol2(t+0.5)+(+0x2b4)``; ``sample =
+  max(0, toneLut[index]−(+0x328)+arg)``; ``scale = t·(+0x1e0)``. If
+  ``scale==0``: blackNoise ← 0 (DLL ``0x10246050``). Else for
+  ``i∈[0,+0x64)``: weight ``1`` if ``i≤index`` else
+  ``exp(−0.5·((i−index)/scale)²)``; store
+  ``ftol2(weight·(+0x1d8)·sample+0.5)``. Builder then
+  ``toneLut[i] += arg − blackNoise[i]`` and clamps to ``[+0x60,+0x64]``
+  for ``i∈[0,+0x64]`` inclusive.
 
 ``ImaShastaOp`` apply (verified fragment)
 ----------------------------------------
@@ -267,19 +297,19 @@ Relationship to SRA forward LUT
 
 UNKNOWN / blockers (honest)
 ---------------------------
-* Mid-aim **input values**: find/insert/getNoiseTable **path** closed;
-  bag + ``NoiseTable`` layout ported. Still need live dmin bytes from
-  AddScene/ScpLut and dens floats from AneOrder ``getResults`` fill.
+* Mid-aim **upstream producers**: ScpLut remap + ``getResults`` dens fill
+  closed (Unicorn-golden). Still need AddScene desc / ``path+0x3c``
+  **writers** and AneOrder **analyze** curve knots for live scenes.
   Contrast (``0x10119060``) / float-table (``0x1004f7b0``) side paths
   open. ``ANALYZE`` stays False.
-* Builder ``0x10293ee0`` 2nd segment + ``0x10293d50`` + work-field←dpi
-  scalars beyond the param map above — next VA for full ``toneLut``.
+* Image-derived builder inputs from ``0x102935d0`` / live dens still
+  needed before an honest end-to-end analyze→toneLut.
 * Cap ``+0x3e0`` ← working ``+0x3b0`` automatic path.
 * Full ``ImaShastaOp`` / ``ShastaApply`` aggregate wiring.
 * Therefore ``SHASTA_ANALYZE_PORTED`` / ``SHASTA_TONE_LUT_PORTED = False``
   — host Preference path uses linked-percentile **STAND-IN**
   (``working-images-v1``); do **not** claim that stand-in is Shasta.
-  Fill leaf is golden (``SHASTA_CURVE_FILL_PORTED``) with injected aims.
+  Builder + ``0x10293d50`` + fill leaf are golden with injected fields.
 """
 from __future__ import annotations
 
@@ -311,6 +341,11 @@ SHASTA_CURVE_EXP_PORTED = True
 SHASTA_CURVE_DISPATCH_PORTED = True
 # Unicorn-golden 0x10293960 fill (injected aims/param). Full toneLut still open.
 SHASTA_CURVE_FILL_PORTED = True
+# Unicorn-golden 0x10293d50 blackNoise fill (injected mids/scales).
+SHASTA_BLACK_NOISE_93D50_PORTED = True
+# Unicorn-golden builder 0x10293ee0 (both fills + 93d50 + clamp; injected work).
+# Not Cap export / live analyze → SHASTA_TONE_LUT_PORTED stays False.
+SHASTA_TONE_LUT_BUILDER_PORTED = True
 
 # ShastaParams early scalars (ctor 0x100543b0 / dump 0x101280a0)
 SHASTA_PARAMS_METRIC_GRAY_OFF = 0x38
@@ -351,10 +386,23 @@ F64_0_1 = 0.1  # 0x105a77a0 — dispatcher 0x10293510
 F64_1_1 = 1.1  # 0x10579a80 — Newton seed factor 0x10293330/410
 F64_2_5 = 2.5  # 0x105a5a20 — 0x1027be10 side field
 F64_0_999 = 0.999  # 0x105a3c08 — log-ratio clamps in 0x10292c50/cb0
+F64_NEG_HALF = -0.5  # 0x1057ae70 — blackNoise gauss 0x10293d50
 F64_CLAMP_POS = 2000.0  # 0x105a77b0
 F64_CLAMP_NEG = -2000.0  # 0x105a77a8
 CURVE_LOG_RATIO_ITERS = 100  # edx seed in dispatcher 0x10293510
 CURVE_NEWTON_ITERS = 100  # edx at 0x10293514
+
+# ShastaParams dump 0x10128033 — blend / blackNoise scalars used by builder
+WORK_SHADOW_EXP_BLEND_OFF = 0x120
+WORK_HIGHLIGHT_EXP_BLEND_OFF = 0x128
+WORK_SHADOW_TRANSITION_RATIO_OFF = 0x130
+WORK_HIGHLIGHT_TRANSITION_RATIO_OFF = 0x138
+WORK_SHADOW_EXP_SAT_FACTOR_OFF = 0x140
+WORK_SHADOW_COMP_SAT_FACTOR_OFF = 0x148
+WORK_HIGHLIGHT_DELTA_GAIN_OFF = 0x220
+WORK_BLACK_NOISE_STD_DEV_OFF = 0x1D0
+WORK_MIN_BLACK_OFFSET_OFF = 0x1D8
+WORK_MAX_WHITE_OFFSET_OFF = 0x1E0
 
 
 def parse_dpi_scalars(path: Path) -> dict[str, str]:
@@ -396,28 +444,34 @@ def clamp01(x: float) -> float:
 def curve_log_ratio_c50(a: float, b: float) -> float:
     """``0x10292c50`` closed form (Unicorn-golden vs PakonIMAu.dll).
 
-    ``-b·log(1 − a/b)`` when ``0 ≤ a ≤ 0.999·b``; else ``−2000`` / ``+2000``.
-    Used by curve fill ``0x10293960`` — not a toneLut by itself.
+    ``-b·log(1 − a/b)`` with two-sided clamp vs ``0.999·b`` (cite
+    ``0x10292c50…ca7``): ``a ≥ 0`` and ``0.999·b < a`` → ``+2000``;
+    ``a < 0`` and ``0.999·b > a`` → ``−2000``. Used by fill
+    ``0x10293960`` — not a toneLut by itself.
     """
-    if a < F64_0:
+    thresh = F64_0_999 * b
+    if a >= F64_0:
+        if thresh < a:
+            return F64_CLAMP_POS
+    elif thresh > a:
         return F64_CLAMP_NEG
-    if a > F64_0_999 * b:
-        return F64_CLAMP_POS
     return -b * math.log(1.0 - a / b)
 
 
 def curve_log_ratio_cb0(a: float, b: float) -> float:
     """``0x10292cb0`` closed form (Unicorn-golden vs PakonIMAu.dll).
 
-    ``t = b·exp(a/b)``; then ``-b·log(1 − a/t)`` when ``0 ≤ a ≤ 0.999·t``;
-    else ``±2000``. Sibling of ``0x10292c50`` on the opposite branch of
-    ``0x10293960``.
+    ``t = b·exp(a/b)``; then ``-b·log(1 − a/t)`` with the same two-sided
+    clamp vs ``0.999·t`` as ``c50`` (cite ``0x10292cb0…d2b``). Fill
+    selects ``cb0`` when param adj ``< 0`` (``0x10293a3e``).
     """
-    if a < F64_0:
-        return F64_CLAMP_NEG
     t = b * math.exp(a / b)
-    if a > F64_0_999 * t:
-        return F64_CLAMP_POS
+    thresh = F64_0_999 * t
+    if a >= F64_0:
+        if thresh < a:
+            return F64_CLAMP_POS
+    elif thresh > a:
+        return F64_CLAMP_NEG
     return -b * math.log(1.0 - a / t)
 
 
@@ -681,7 +735,7 @@ def cn_premium_mid_aim_rgb(
 
     Cite: ``0x100569a1…0x100570b3``. Caller supplies dmin RGB (from
     ``SceneContextBag.find_dmin`` / writers) and dens floats (from
-    ``NoiseTable`` after ``getResults`` fill — values still WALL).
+    ``NoiseTable`` after ``getResults`` fill — analyze knots still WALL).
     """
     dens_i, dmin_dens = ane_dens_contrib(
         dmin_rgb, dens_table, black_noise_sigma_mult, dens_n_channels
@@ -849,9 +903,11 @@ def tone_lut_fill_93960(
     span_f = float(span)
     s1 = curve_dispatch_93510(span_f, span_f, float(span_adj))
     s2 = curve_dispatch_93510(d28, d2c, d28)
+    # Log-ratio leaf keyed on adj sign (DLL ``test eax,eax`` at
+    # ``0x10293a3e`` loads param ``+4``), not on span sign.
     lr = (
         curve_log_ratio_c50(span_f, s1)
-        if span >= 0
+        if adj >= 0
         else curve_log_ratio_cb0(span_f, s1)
     )
     d75 = d2c * F64_0_75
@@ -905,17 +961,13 @@ def curve_index_from_span(
     code_hi: int,
     scale_1d0: float,
 ) -> int:
-    """Partial ``0x10293d50`` when the ``+0x1d0`` divide path is taken:
+    """Index fragment of ``0x10293d50`` when ``+0x1d0 > 0``:
 
-    ``fist((code_hi - code_lo) / scale_1d0 + 0.5) + code_lo``.
-
-    Branch condition (``fcomp`` vs 0 @ ``+0x1d0``) not re-derived here —
-    caller must only use this when that path is known active. Full
-    ``0x10293d50`` (blackNoise / ``+0x3c0`` fill) remains UNKNOWN.
+    ``ftol2((code_hi - code_lo) / scale_1d0 + 0.5) + code_lo``.
     """
     if scale_1d0 == 0.0:
         raise ValueError("scale_1d0 is 0")
-    return fist_round((code_hi - code_lo) / scale_1d0 + F64_HALF) + code_lo
+    return ftol2_chop((code_hi - code_lo) / scale_1d0 + F64_HALF) + code_lo
 
 
 def tone_lut_adjust_sample(
@@ -924,10 +976,292 @@ def tone_lut_adjust_sample(
     off_328: int,
     arg_ebp8: int,
 ) -> int:
-    """Partial ``0x10293d50``: ``toneLut[index] - (+0x328) + [ebp+8]``."""
+    """Sample fragment of ``0x10293d50``:
+    ``toneLut[index] - (+0x328) + [ebp+8]`` (pre-clamp).
+    """
     if tone_lut.dtype != np.int32:
         raise TypeError("toneLut fragment expects int32")
     return int(tone_lut[index]) - int(off_328) + int(arg_ebp8)
+
+
+@dataclass
+class BlackNoise93d50In:
+    """Work fields for ``0x10293d50`` (dpi names from Params dump)."""
+
+    mid_lo: int  # +0x2b4
+    mid_hi: int  # +0x2b8
+    black_noise_std_dev: float  # +0x1d0
+    min_black_offset: float  # +0x1d8
+    max_white_offset: float  # +0x1e0
+    off_328: int  # +0x328 (prep)
+    code_max: int  # +0x64 — loop runs i∈[0, code_max)
+    arg: int  # builder [ebp+8] = generate (+0x48−+0x2b0)
+
+
+def black_noise_fill_93d50(
+    black_noise: np.ndarray,
+    tone_lut: np.ndarray,
+    inp: BlackNoise93d50In,
+) -> int:
+    """``0x10293d50`` blackNoiseLut fill (Unicorn-golden vs PakonIMAu.dll).
+
+    Writes ``black_noise[0 … code_max)``. Returns the sample index.
+    When ``scale == 0``, fills zeros (DLL ``0x10246050`` resize/fill path).
+    """
+    if black_noise.dtype != np.int32 or tone_lut.dtype != np.int32:
+        raise TypeError("blackNoise/toneLut expect int32")
+    if inp.black_noise_std_dev > F64_0:
+        t = (int(inp.mid_hi) - int(inp.mid_lo)) / float(inp.black_noise_std_dev)
+    else:
+        t = F64_0
+    index = ftol2_chop(t + F64_HALF) + int(inp.mid_lo)
+    if not (0 <= index < len(tone_lut)):
+        raise IndexError(f"93d50 index {index} out of toneLut range")
+    sample = float(tone_lut_adjust_sample(tone_lut, index, inp.off_328, inp.arg))
+    if sample < F64_0:
+        sample = F64_0
+    scale = t * float(inp.max_white_offset)
+    n = int(inp.code_max)
+    if n < 0:
+        n = 0
+    if scale == F64_0:
+        black_noise[:n] = 0
+        if n < len(black_noise):
+            # leave the rest untouched (DLL only touches sized range)
+            pass
+        return index
+    for i in range(n):
+        if i <= index:
+            w = F64_1
+        else:
+            u = (float(i) - float(index)) / scale
+            w = math.exp(F64_NEG_HALF * u * u)
+        black_noise[i] = np.int32(
+            ftol2_chop(w * float(inp.min_black_offset) * sample + F64_HALF)
+        )
+    return index
+
+
+@dataclass
+class ToneLutBuilderWork:
+    """Injected Generate/work snapshot for ``0x10293ee0`` (cited fields only)."""
+
+    code_start: int  # +0x2b0
+    code_min: int  # +0x60 clamp lo
+    code_max: int  # +0x64 clamp hi / fill#1 end
+    code_48: int  # +0x48 — generate arg = code_48 − code_start
+    # prep outputs (or run prep_breakpoint_pair yourself)
+    off_328: int = 0
+    code_32c: int = 0  # +0x32c
+    code_330: int = 0  # +0x330
+    code_334: int = 0  # +0x334
+    code_338: int = 0  # +0x338
+    # image-derived / 0x102935d0 (inject)
+    code_2f4: int = 0  # +0x2f4
+    code_300: int = 0  # +0x300
+    p340: float = 1.0  # +0x340
+    adj_370: float = 0.0  # +0x370
+    adj_378: float = 0.0  # +0x378
+    # dpi blend scalars (Params dump names)
+    shadow_exp_blend: float = 0.5  # +0x120
+    highlight_exp_blend: float = 0.5  # +0x128
+    shadow_transition_ratio: float = 0.5  # +0x130
+    highlight_transition_ratio: float = 0.5  # +0x138
+    shadow_exp_sat_factor: float = 0.25  # +0x140
+    shadow_comp_sat_factor: float = 0.25  # +0x148
+    highlight_delta_gain: float = 1.0  # +0x220
+    # blackNoise scales
+    mid_lo: int = 0  # +0x2b4
+    mid_hi: int = 0  # +0x2b8
+    black_noise_std_dev: float = 2.0  # +0x1d0
+    min_black_offset: float = 10.0  # +0x1d8
+    max_white_offset: float = 1.0  # +0x1e0
+    # written by builder (optional readback)
+    p18_hi: float = 0.0  # +0x358
+    p38_hi: float = 0.0  # +0x360
+    p18_lo: float = 0.0  # +0x350
+    p38_lo: float = 0.0  # +0x348
+
+
+def _builder_clamp_blends(w: ToneLutBuilderWork) -> None:
+    """``0x10293ee0`` clamps cited blend doubles to ``[0,1]`` in place."""
+    w.highlight_exp_blend = clamp01(w.highlight_exp_blend)
+    w.highlight_transition_ratio = clamp01(w.highlight_transition_ratio)
+    w.shadow_exp_blend = clamp01(w.shadow_exp_blend)
+    w.shadow_transition_ratio = clamp01(w.shadow_transition_ratio)
+    w.p340 = clamp01(w.p340)
+    w.highlight_delta_gain = clamp01(w.highlight_delta_gain)
+    w.shadow_comp_sat_factor = clamp01(w.shadow_comp_sat_factor)
+    w.shadow_exp_sat_factor = clamp01(w.shadow_exp_sat_factor)
+
+
+def tone_lut_builder_93ee0(
+    tone_lut: np.ndarray,
+    black_noise: np.ndarray,
+    work: ToneLutBuilderWork,
+    *,
+    run_prep: bool = False,
+    prep_inputs: tuple[tuple[float, float], ...] | None = None,
+    code_values_per_button: float = 75.0,
+) -> ToneLutBuilderWork:
+    """``0x10293ee0`` toneLut builder (Unicorn-golden with injected work).
+
+    Reuses ``tone_lut_fill_93960`` twice + ``black_noise_fill_93d50`` +
+    the post clamp/add loop. Does **not** populate Cap ``+0x3e0`` —
+    ``SHASTA_TONE_LUT_PORTED`` stays False.
+
+    If ``run_prep``, requires ``prep_inputs`` as five ``(stops, aggr)``
+    pairs for ``0x1027b1c0`` channels (shadowAggr…highlightExpScale
+    order as in prep); writes ``off_328`` / ``code_32c…338``.
+    """
+    if tone_lut.dtype != np.int32 or black_noise.dtype != np.int32:
+        raise TypeError("toneLut/blackNoise expect int32")
+    if run_prep:
+        if prep_inputs is None or len(prep_inputs) != 5:
+            raise ValueError("run_prep needs five (stops, aggr) pairs")
+        # Channel 0: vs +0x48 → +0x2c0 / +0x328
+        a0, b0 = prep_breakpoint_pair(
+            prep_inputs[0][0],
+            prep_inputs[0][1],
+            code_values_per_button,
+            work.code_48,
+            work.code_48,
+        )
+        work.off_328 = b0
+        start = int(work.code_start)
+        a1, b1 = prep_breakpoint_pair(
+            prep_inputs[1][0],
+            prep_inputs[1][1],
+            code_values_per_button,
+            start,
+            start,
+        )
+        work.code_32c = b1
+        a2, b2 = prep_breakpoint_pair(
+            prep_inputs[2][0],
+            prep_inputs[2][1],
+            code_values_per_button,
+            start,
+            start,
+        )
+        work.code_330 = b2
+        a3, _ = prep_breakpoint_pair(
+            prep_inputs[3][0],
+            prep_inputs[3][1],
+            code_values_per_button,
+            start,
+            start,
+        )
+        work.code_334 = start + a3
+        a4, _ = prep_breakpoint_pair(
+            prep_inputs[4][0],
+            prep_inputs[4][1],
+            code_values_per_button,
+            start,
+            start,
+        )
+        work.code_338 = start + a4
+        # Prep guards @ 0x1027b29a…
+        if work.code_330 >= start:
+            work.code_330 = start - 1
+        if work.code_32c >= work.code_330:
+            work.code_32c = work.code_330 - 1
+        if work.code_334 <= start:
+            work.code_334 = start + 1
+        if work.code_338 <= work.code_334:
+            work.code_338 = work.code_334 + 1
+
+    _builder_clamp_blends(work)
+    start = int(work.code_start)
+    tone_lut_seed_identity(tone_lut, start)
+    arg = int(work.code_48) - start
+
+    # Fill #1 — highlight upward (end = +0x64)
+    code_end = int(work.code_334)
+    adj = ftol2_chop(float(work.adj_378))
+    u0 = (
+        float(work.highlight_exp_blend)
+        if float(work.adj_378) >= F64_0
+        else float(work.highlight_transition_ratio)
+    )
+    c28 = int(work.code_338)
+    c2c = int(work.code_300)
+    if code_end <= start:
+        code_end = start + 1
+        adj = 0
+    if c28 <= code_end:
+        c28 = code_end + 1
+        c2c = c28
+    if c2c <= start:
+        c2c = c28
+    p1 = ToneLutFillParam(
+        code_end=code_end,
+        adj=adj,
+        u0=u0,
+        p20=float(work.shadow_comp_sat_factor),
+        code_28=c28,
+        code_2c=c2c,
+        p30=float(work.p340),
+    )
+    tone_lut_fill_93960(tone_lut, start, int(work.code_max), p1)
+    work.p18_hi = p1.p18
+    work.p38_hi = p1.p38
+
+    # Fill #2 — shadow downward (end = 0)
+    code_end = int(work.code_330)
+    adj = ftol2_chop(float(work.adj_370))
+    u0 = (
+        float(work.shadow_exp_blend)
+        if float(work.adj_370) >= F64_0
+        else float(work.shadow_transition_ratio)
+    )
+    c28 = int(work.code_32c)
+    c2c = int(work.code_2f4)
+    if code_end >= start:
+        code_end = start - 1
+        adj = 0
+    if c28 >= code_end:
+        c28 = code_end - 1
+        c2c = c28
+    if c2c >= start:
+        c2c = c28
+    p2 = ToneLutFillParam(
+        code_end=code_end,
+        adj=adj,
+        u0=u0,
+        p20=float(work.shadow_exp_sat_factor),
+        code_28=c28,
+        code_2c=c2c,
+        p30=float(work.highlight_delta_gain),
+    )
+    tone_lut_fill_93960(tone_lut, start, 0, p2)
+    work.p18_lo = p2.p18
+    work.p38_lo = p2.p38
+
+    bn_in = BlackNoise93d50In(
+        mid_lo=int(work.mid_lo),
+        mid_hi=int(work.mid_hi),
+        black_noise_std_dev=float(work.black_noise_std_dev),
+        min_black_offset=float(work.min_black_offset),
+        max_white_offset=float(work.max_white_offset),
+        off_328=int(work.off_328),
+        code_max=int(work.code_max),
+        arg=arg,
+    )
+    black_noise_fill_93d50(black_noise, tone_lut, bn_in)
+
+    # Post loop 0x10294266…b7: toneLut[i] += arg − blackNoise[i], clamp
+    lo = int(work.code_min)
+    hi = int(work.code_max)
+    if hi >= 0:
+        for i in range(hi + 1):
+            v = int(tone_lut[i]) + arg - int(black_noise[i])
+            if v < lo:
+                v = lo
+            elif v > hi:
+                v = hi
+            tone_lut[i] = np.int32(v)
+    return work
 
 
 def ima_shasta_apply_i16(
@@ -1099,6 +1433,32 @@ def main() -> None:
         f"p38={fill_param.p38:.6g} lut[{mid}]={int(lut[mid])} "
         f"FILL={SHASTA_CURVE_FILL_PORTED}"
     )
+    bn = empty_tone_lut(int(dpi.max_value) + 1)
+    work = ToneLutBuilderWork(
+        code_start=code,
+        code_min=0,
+        code_max=end,
+        code_48=code + 200,
+        off_328=100,
+        code_32c=code - 400,
+        code_330=code - 200,
+        code_334=min(code + 450, end),
+        code_338=min(code + 550, end),
+        code_2f4=code - 350,
+        code_300=code + 350,
+        p340=1.0,
+        adj_370=40.0,
+        adj_378=50.0,
+        mid_lo=codes[1],
+        mid_hi=codes[2],
+    )
+    tone_lut_builder_93ee0(lut, bn, work)
+    print(
+        f"  builder 0x10293ee0 (injected): p18_hi={work.p18_hi:.6g} "
+        f"p18_lo={work.p18_lo:.6g} bn[{code}]={int(bn[code])} "
+        f"BUILDER={SHASTA_TONE_LUT_BUILDER_PORTED} "
+        f"93D50={SHASTA_BLACK_NOISE_93D50_PORTED}"
+    )
     plane = np.array([code], dtype=np.int16)
     out = ima_shasta_apply_i16(plane, lut)
     print(f"  I16 apply fragment: in={code} out={int(out[0])}")
@@ -1110,15 +1470,17 @@ def main() -> None:
         f"LOG_RATIO={SHASTA_CURVE_LOG_RATIO_PORTED} "
         f"EXP={SHASTA_CURVE_EXP_PORTED} "
         f"DISPATCH={SHASTA_CURVE_DISPATCH_PORTED} "
-        f"FILL={SHASTA_CURVE_FILL_PORTED}"
+        f"FILL={SHASTA_CURVE_FILL_PORTED} "
+        f"BUILDER={SHASTA_TONE_LUT_BUILDER_PORTED} "
+        f"93D50={SHASTA_BLACK_NOISE_93D50_PORTED}"
     )
     print(
         f"  log-ratio: c50(0.5,1)={curve_log_ratio_c50(0.5, 1.0):.6g} "
         f"cb0(0.5,1)={curve_log_ratio_cb0(0.5, 1.0):.6g}"
     )
     print(
-        "  fill golden with injected aims; live dmin/getResults dens + "
-        "builder 2nd segment/0x10293d50 still WALL (toneLut STAND-IN; "
+        "  builder+93d50+fill golden with injected aims; live dens/"
+        "0x102935d0 fields + Cap +0x3e0 still WALL (toneLut STAND-IN; "
         "SHASTA_TONE_LUT_PORTED=False)"
     )
 

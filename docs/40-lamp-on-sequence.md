@@ -231,3 +231,85 @@ the route — but if acquisition lands first, prefer the search.
 **Recommended order:** characterise EP 0x86 → get a line read → run the search
 from n=1 → compare against 5/20/11/4. That reaches first light without ever
 trusting a number we did not measure on this machine.
+
+---
+
+## 10. FIRST LIGHT ACHIEVED — 2026-08-06, operator-confirmed
+
+**The lamp lights.** The decoded encoding in §3 is correct, and the init block
+is required.
+
+Working sequence, board `0x40`, every packet `07 02 40 00`:
+
+```
+02 07 40 04 8f e8 ff 18 00      init: fault/warn thresholds
+02 07 40 04 8c e0 ff 20 00
+02 07 40 04 8b f0 00 20 03
+02 07 40 04 8d a0 00 70 03
+02 04 40 01 d0 00               init: 0xD0 = 00
+02 04 40 01 d1 01               init: 0xD1 = 01
+02 04 40 01 80 00               lamp off, known state
+02 0f 40 0c 82 fd 01 00 00 fd 01 00 00 fd 01 57 02    PWM on=509, N=599
+02 08 40 05 81 04 00 04 00 04                          levels 4/4/4, IR off
+02 04 40 01 80 01               ENABLE visible
+...
+02 04 40 01 80 00               lamp off
+```
+
+**The init block is not optional.** `docs/40` §5 listed `0x8B/0x8C/0x8D/0x8F` +
+`0xD0`/`0xD1` as optional monitor thresholds. On hardware they are required: an
+otherwise identical run without them produced no light and left `0x83` at
+`0x00`. With them, `0x83` goes to `0x02` and the lamp lights. Correct §5
+accordingly.
+
+`0x8E` was never sent, at any point. The board self-regulates, as both analyses
+predicted.
+
+### Thermal behaviour, predicted then observed
+
+```
+0x84 setpoint echo     0x0280 = 640 = 40.000 C     <- ctor default LampTempWorking
+TempLB at rest         40.062 - 40.125 C           <- board holding setpoint
+TempLB during lamp-on  rises to 40.312 C, settles back after off
+```
+
+The board's TEC regulates to exactly the constructor default with the host
+sending nothing. Predicted from the binary, confirmed on hardware to within an
+eighth of a degree.
+
+### Safety approach that made this safe to attempt
+
+The wire encoding had been decoded but never tested, so a wrong channel order
+could have overdriven a channel — the clamps are asymmetric (`R<=4`, `G<=20`,
+`B<=20` with IR off). Every level byte was therefore capped at **4**, the
+tightest clamp of any channel, making the payload **permutation-proof**: legal
+in every position regardless of order. IR was forced off throughout. That is why
+first light could be attempted at all without waiting for CCD-based search.
+
+## 11. The remaining blocker is CCD acquisition, not the lamp
+
+With the lamp confirmed lit, EP 0x86 was captured simultaneously:
+
+```
+lamp OFF   CCD mean 1422.0
+lamp ON    CCD mean 1418.7 / 1409.9 / 1411.0 / 1424.3
+after OFF  CCD mean 1425.1
+```
+
+**No response — deltas of ±3 counts on ~1420, i.e. noise.** The sensor is
+clocking (structured 3-channel output, ~2151 px lines, stable to ~1 count) but
+**not integrating**.
+
+So the blocker is neither the repaired U34 nor the lamp: **acquisition has never
+been started.** `FN_bDrvCcdAcquireControl` sets bit 0 of CCD register `0x82`
+(`docs/12`), and that has not been sent. Gain/offset almost certainly need
+programming too — now known per mode from the registry (`Gain_R/G/B` 13/13/13,
+`Offset_R/G/B` -18/-26/-20).
+
+That is the next step, and it is a write to the CCD control path — a different
+risk class from the light board, and worth doing deliberately.
+
+**Caveat on the per-channel numbers above:** the three DC levels (~1339, ~1352,
+~1575) permute between slots across captures, because the USB buffer boundary
+does not land on a 3-sample pixel group. The *set* is constant; the labels are
+not. Do not read a per-channel delta from an unaligned capture.

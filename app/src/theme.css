@@ -1157,3 +1157,9 @@ input[type='checkbox'] {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+@keyframes pkspin {
+  to {
+    transform: rotate(360deg);
+  }
+}

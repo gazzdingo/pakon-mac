@@ -1,20 +1,110 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Modal, Select, ListBoxItem, Spinner } from '@heroui/react';
-import { Dot, Plain, StatusLine, TopBar, Working } from './components';
+// The Console — shell.
+//
+// Two bars across the top (mode, then the twin capture/export lanes), three
+// columns under them, the roll along the floor. The screens swap the centre
+// and the right rail; the furniture does not move.
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Btn, Chip, Info, Spinner, TopBar, Lanes, useTheme } from './components';
 import Review from './Review';
+import Scan from './Scan';
 import ExportScreen from './Export';
-import { Calibration, Diagnostics, Scan } from './Info';
+import { Calibration, Diagnostics } from './Info';
 import * as api from './api';
 
 const FILM_PATHS = [
-  ['ColNeg', 'Colour negative (C-41)'],
-  ['BnW', 'Black and white'],
-  ['POSITIVE', 'Positive / slide (E-6)'],
+  ['ColNeg', 'Colour neg'],
+  ['BnW', 'B&W'],
+  ['POSITIVE', 'Positive'],
   ['IMPORTED', 'Imported'],
 ];
 
-/** Open-capture flow. A .bin carries no DX, and the decode path refuses to
- *  assume a stock, so the film choice is asked here rather than guessed. */
+/** Machine state, split honestly: what the app reads now, and what is not
+ *  wired. Every "not wired" row names the register the standalone tool uses,
+ *  so the row is a fact rather than a promise. */
+export function machineRows(boot, roll) {
+  const cal = boot?.calibration;
+  const sync = roll?.sync;
+  return {
+    read: [
+      [
+        'Calibration',
+        cal?.present ? 'loaded' : 'missing',
+        cal?.present ? 'good' : 'bad',
+        <>
+          Per-pixel dark and gain tables from <span className="num">calibration/</span>. Valid only
+          for the exposure triad they were captured at.
+        </>,
+      ],
+      ['Capture intact', sync ? `${sync.pct_clean} %` : '—', sync?.losses === 0 ? 'good' : sync ? 'warn' : ''],
+      ['Sync losses', sync ? sync.losses : '—', sync?.losses === 0 ? 'good' : sync ? 'bad' : ''],
+      ['Words per line', boot ? '6000 · 3 ch' : '—'],
+      [
+        'Infrared plane',
+        roll?.ir?.has_ir ? 'captured' : 'not in capture',
+        roll?.ir?.has_ir ? 'good' : 'na',
+      ],
+      [
+        'Colour data',
+        boot?.vendor_data?.ansel_root_ok ? 'found' : 'missing',
+        boot?.vendor_data?.ansel_root_ok ? 'good' : 'bad',
+      ],
+      ['Workspace', api.fmtBytes(boot?.workspace?.total_bytes)],
+    ],
+    unwired: [
+      [
+        'Scanner USB',
+        '0f05:f135',
+        'na',
+        <>
+          Enumeration, firmware load and bulk capture are proven in{' '}
+          <span className="num">tools/pakon_session.py</span> and are not connected to this window.
+        </>,
+      ],
+      ['Lamp on / off', 'reg 0x83', 'na'],
+      ['Lamp temperature', 'reg 0x84', 'na'],
+      [
+        'Lamp health',
+        'not monitored',
+        'na',
+        <>
+          Nothing watches the lamp during a run. The vendor does not either, so this would be new
+          work rather than parity.
+        </>,
+      ],
+      ['Transport', 'reg 0xA5', 'na'],
+      [
+        'Film in guides',
+        'no register',
+        'na',
+        <>
+          There is no such register. The vendor cached film presence host-side and the writer has
+          never been found, so no sensor is shown rather than one invented.
+        </>,
+      ],
+      [
+        'Roll end',
+        'not detected',
+        'na',
+        <>
+          Tried and withdrawn: a lamp failure mid-roll read as <b>film present</b>, because darkness
+          and film both fall below the clear-gate threshold.
+        </>,
+      ],
+      [
+        'Serial',
+        'never read',
+        'na',
+        <>
+          The only serial anyone has — <span className="num">16275</span> — belongs to a different
+          scanner.
+        </>,
+      ],
+    ],
+  };
+}
+
+/* ── open capture ───────────────────────────────────────────────────────── */
+
 function OpenDialog({ open, onClose, onOpened, captures }) {
   const [path, setPath] = useState('');
   const [name, setName] = useState('');
@@ -70,166 +160,171 @@ function OpenDialog({ open, onClose, onOpened, captures }) {
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,.72)' }}
-      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
-    >
-      <div
-        className="border w-[600px] max-w-[92vw] p-6"
-        style={{ background: 'var(--plate)', borderColor: 'var(--rule)' }}
-      >
-        <div className="ledger text-[19px] mb-1">Open capture</div>
-        <p className="text-[12px] mb-4" style={{ color: 'var(--mute)' }}>
-          The capture stays where it is. A render cache is built in the temporary workspace; your
-          adjustments are saved separately and survive it.
-        </p>
+    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="sheet">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <span className="title">Open capture</span>
+          <span className="sp" />
+          <Info side="left">
+            The capture stays where it is. A render cache is built in a temporary workspace and
+            deleted on quit; your adjustments live outside it and re-apply when the same capture is
+            reopened.
+          </Info>
+        </div>
 
-        <label className="lbl block mb-1">Capture file</label>
-        <div className="flex gap-2 mb-3">
-          <input
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            placeholder="/path/to/capture.bin"
-            spellCheck={false}
-            className="flex-1 px-2 py-[7px] text-[12px] num border outline-none"
-            style={{ background: 'var(--void)', borderColor: 'var(--rule)', color: 'var(--ink)' }}
-          />
-          <Plain
-            className="!w-auto px-4"
-            onPress={async () => {
-              const p = await window.pakon?.openCapture();
-              if (p) {
-                setPath(p);
-                if (!name) setName(p.split('/').pop().replace(/\.bin$/, ''));
-              }
-            }}
-          >
-            Browse…
-          </Plain>
+        <div className="field" style={{ marginBottom: 12 }}>
+          <span className="lbl">Capture</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              className="inp"
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="/path/to/capture.bin"
+              spellCheck={false}
+            />
+            <Btn
+              variant="flat"
+              onClick={async () => {
+                const p = await window.pakon?.openCapture();
+                if (p) {
+                  setPath(p);
+                  if (!name) setName(p.split('/').pop().replace(/\.bin$/, ''));
+                }
+              }}
+            >
+              Browse…
+            </Btn>
+          </div>
         </div>
 
         {captures?.length ? (
-          <div className="mb-3 max-h-[132px] overflow-y-auto border" style={{ borderColor: 'var(--rule)' }}>
+          <div className="rows" style={{ marginBottom: 12, maxHeight: 150, overflowY: 'auto' }}>
             {captures.map((c) => (
               <button
                 key={c.path}
+                type="button"
+                className={path === c.path ? 'on' : ''}
                 onClick={() => {
                   setPath(c.path);
                   if (!name) setName(c.saved_name || c.name.replace(/\.bin$/, ''));
                 }}
-                className="flex w-full justify-between items-baseline px-3 py-[6px] text-[12px] gate"
-                style={{ background: path === c.path ? 'var(--plate2)' : 'transparent' }}
               >
-                <span className="num">{c.name}</span>
-                <span className="num text-[11px]" style={{ color: 'var(--mute)' }}>
-                  {api.fmtBytes(c.bytes)} · ~{c.approx_lines.toLocaleString()} lines
-                  {c.has_sidecar ? ` · ${c.adjusted} saved` : ''}
+                <span className="num" style={{ flex: 1, fontSize: 12 }}>
+                  {c.name}
+                </span>
+                {c.has_sidecar ? <Chip tone="info">{c.adjusted} saved</Chip> : null}
+                <span className="num" style={{ fontSize: 11, color: 'var(--faint)' }}>
+                  {api.fmtBytes(c.bytes)}
                 </span>
               </button>
             ))}
           </div>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <div>
-            <label className="lbl block mb-1">Roll name</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="2026-08-07 A"
-              className="w-full px-2 py-[7px] text-[12px] border outline-none ledger"
-              style={{ background: 'var(--void)', borderColor: 'var(--rule)', color: 'var(--ink)' }}
-            />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div className="field">
+            <span className="lbl">Roll name</span>
+            <input className="inp" value={name} onChange={(e) => setName(e.target.value)} placeholder="2026-08-07 A" />
           </div>
-          <div>
-            <label className="lbl block mb-1">DX code (optional)</label>
-            <input
-              value={dx}
-              onChange={(e) => setDx(e.target.value)}
-              placeholder="78-13"
-              spellCheck={false}
-              className="w-full px-2 py-[7px] text-[12px] num border outline-none"
-              style={{ background: 'var(--void)', borderColor: 'var(--rule)', color: 'var(--ink)' }}
-            />
+          <div className="field">
+            <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              DX
+              <Info side="left">
+                Optional. Captures carry no DX packets and{' '}
+                <span className="num">tools/dx_decode.py</span> has never been validated against a
+                real roll, so this is a typed lookup, not a reading.
+              </Info>
+            </span>
+            <input className="inp" value={dx} onChange={(e) => setDx(e.target.value)} placeholder="78-13" spellCheck={false} />
           </div>
         </div>
 
         {dx.trim() ? (
-          <div className="text-[12px] mb-3 px-3 py-2 border" style={{ borderColor: 'var(--rule)' }}>
+          <div className="rows" style={{ marginBottom: 12, padding: '8px 11px', fontSize: 12 }}>
             {film ? (
               <>
-                <b className="ledger">{film.name}</b>{' '}
-                <span style={{ color: 'var(--mute)' }}>
-                  · {film.manufacturer} · path {film.path}
+                <b>{film.name}</b>
+                <span style={{ color: 'var(--faint)' }}>
+                  {' '}
+                  · {film.manufacturer} · {film.path}
                   {film.iso ? ` · ISO ${film.iso}` : ''}
                 </span>
               </>
             ) : (
-              <span style={{ color: 'var(--mute)' }}>No stock matches that DX code.</span>
+              <span className="quiet">No stock matches that DX.</span>
             )}
           </div>
         ) : (
-          <div className="mb-3">
-            <label className="lbl block mb-1">Film type</label>
-            <div className="grid grid-cols-2 gap-[6px]">
+          <div className="field" style={{ marginBottom: 12 }}>
+            <span className="lbl">Film path</span>
+            <div className="seg" role="radiogroup" aria-label="Film path">
               {FILM_PATHS.map(([id, label]) => (
                 <button
                   key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={filmPath === id}
+                  className={filmPath === id ? 'on' : ''}
                   onClick={() => setFilmPath(id)}
-                  className="border px-2 py-[7px] text-left text-[12px] gate"
-                  style={{
-                    borderColor: filmPath === id ? 'var(--ink)' : 'var(--rule)',
-                    background: filmPath === id ? 'var(--plate2)' : 'transparent',
-                  }}
                 >
                   {label}
                 </button>
               ))}
             </div>
-            <p className="text-[11px] mt-2" style={{ color: 'var(--mute)' }}>
-              A capture carries no DX code, so the film has to be stated. The decode path refuses to
-              silently assume a colour-negative default.
-            </p>
           </div>
         )}
 
         {error ? (
-          <Alert.Root color="danger" className="rounded-none mb-3">
-            <Alert.Content>
-              <Alert.Description className="num text-[11px]">{error}</Alert.Description>
-            </Alert.Content>
-          </Alert.Root>
-        ) : null}
-
-        {busy ? (
-          <div className="mb-3">
-            <Working>
-              {job.phase} — {job.message}
-            </Working>
-            <div className="h-[3px] mt-1" style={{ background: 'var(--rule)' }}>
-              <div
-                className="h-full gate"
-                style={{ width: `${(job.progress || 0) * 100}%`, background: 'var(--filament)' }}
-              />
-            </div>
+          <div
+            style={{
+              background: 'var(--danger-flat)',
+              color: 'var(--danger-ink)',
+              borderRadius: 'var(--r-sm)',
+              padding: '9px 11px',
+              marginBottom: 12,
+              fontSize: 12,
+            }}
+          >
+            <span className="num" style={{ fontSize: 11 }}>
+              {error}
+            </span>
           </div>
         ) : null}
 
-        <div className="flex gap-2 justify-end">
-          <Plain className="!w-auto px-5" isDisabled={busy} onPress={onClose}>
+        {busy ? (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 5 }}>
+              <Spinner>{job.phase}</Spinner>
+              <span className="sp" />
+              <span className="num" style={{ fontSize: 11, color: 'var(--faint)' }}>
+                {job.message}
+              </span>
+            </div>
+            <div className="bar warnfill">
+              <i style={{ width: `${(job.progress || 0) * 100}%` }} />
+            </div>
+            <p className="quiet" style={{ marginTop: 6 }}>
+              A 694 MB capture takes about 26 s: decoding is 6 s and the per-frame scene balance is
+              the rest.
+            </p>
+          </div>
+        ) : null}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Btn variant="flat" disabled={busy} onClick={onClose}>
             Cancel
-          </Plain>
-          <Plain className="!w-auto px-5" isDisabled={!path || busy} onPress={go}>
+          </Btn>
+          <Btn variant="primary" disabled={!path || busy} onClick={go}>
             {busy ? 'Opening…' : 'Open'}
-          </Plain>
+          </Btn>
         </div>
       </div>
     </div>
   );
 }
 
-/** housekeeping.html state A — leftovers from a previous session. */
+/* ── leftovers from a previous session ──────────────────────────────────── */
+
 function CleanupDialog({ state, onDone }) {
   const [sel, setSel] = useState(() => new Set(state.rolls.map((r) => r.id)));
   const [busy, setBusy] = useState(false);
@@ -237,108 +332,89 @@ function CleanupDialog({ state, onDone }) {
   const bytes = chosen.reduce((a, r) => a + r.bytes, 0);
   const atRisk = chosen.filter((r) => r.adjusted > r.exported);
 
-  async function purge(ids) {
-    setBusy(true);
-    try {
-      await api.purge({ ids });
-    } finally {
-      setBusy(false);
-      onDone();
-    }
-  }
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,.72)' }}>
-      <div className="border w-[680px] max-w-[92vw] p-6" style={{ background: 'var(--plate)', borderColor: 'var(--rule)' }}>
-        <div className="ledger text-[19px] mb-1">Scans from a previous session are still here</div>
-        <p className="text-[12px] mb-4" style={{ color: 'var(--mute)' }}>
-          The app didn't get to clean up last time (it may have been force-quit). Keep the scans to
-          carry on with them, or delete them now.
-        </p>
+    <div className="scrim">
+      <div className="sheet">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <span className="title">Scans from a previous session</span>
+          <span className="sp" />
+          <Info side="left">
+            The workspace holds raw captures and the render cache. It is regenerable from the capture
+            files and is normally cleared on quit; the app was force-quit or crashed last time.
+          </Info>
+        </div>
 
-        <div className="border mb-3 max-h-[280px] overflow-y-auto" style={{ borderColor: 'var(--rule)' }}>
+        <div className="rows" style={{ marginBottom: 12, maxHeight: 280, overflowY: 'auto' }}>
           {state.rolls.map((r) => (
-            <label
-              key={r.id}
-              className="flex items-center gap-3 px-3 py-[9px] border-b text-[12px]"
-              style={{ borderColor: '#1c1c1c' }}
-            >
+            <label key={r.id}>
               <input
                 type="checkbox"
                 checked={sel.has(r.id)}
                 onChange={(e) => {
                   const n = new Set(sel);
-                  e.target.checked ? n.add(r.id) : n.delete(r.id);
+                  if (e.target.checked) n.add(r.id);
+                  else n.delete(r.id);
                   setSel(n);
                 }}
               />
-              <span className="ledger flex-1">{r.name}</span>
-              {r.adjusted > r.exported ? (
-                <span className="text-[11px] filament">
-                  ▲ {r.adjusted} adjusted, {r.exported} exported
-                </span>
-              ) : null}
-              <span className="num text-[11px]" style={{ color: 'var(--mute)' }}>
+              <span style={{ flex: 1 }}>{r.name}</span>
+              {r.adjusted > r.exported ? <Chip tone="warn">{r.adjusted} adjusted, {r.exported} exported</Chip> : null}
+              <span className="num" style={{ fontSize: 11, color: 'var(--faint)' }}>
                 {api.fmtDate(r.mtime)}
               </span>
-              <span className="num text-[11px] w-[72px] text-right">{api.fmtBytes(r.bytes)}</span>
+              <span className="num" style={{ fontSize: 11, width: 72, textAlign: 'right' }}>
+                {api.fmtBytes(r.bytes)}
+              </span>
             </label>
           ))}
         </div>
 
-        <div className="flex justify-between items-baseline text-[12px] mb-4">
-          <span style={{ color: 'var(--mute)' }}>Selected</span>
-          <b className="num">
-            {chosen.length} roll{chosen.length === 1 ? '' : 's'} · {api.fmtBytes(bytes)}
-          </b>
-        </div>
-
         {atRisk.length ? (
-          <Alert.Root color="warning" className="rounded-none mb-3">
-            <Alert.Content>
-              <Alert.Description className="text-[11px]">
-                {atRisk.length} of these has adjustments that were never exported. The adjustments
-                themselves are kept — they live outside the workspace and re-apply when you reopen
-                the same capture. Deleting removes the bulk capture cache only.
-              </Alert.Description>
-            </Alert.Content>
-          </Alert.Root>
+          <p className="quiet" style={{ marginBottom: 12 }}>
+            Adjustments are kept regardless — they live outside the workspace. Deleting removes the
+            bulk capture cache only.
+          </p>
         ) : null}
 
-        <div className="flex gap-2 justify-end">
-          <Plain className="!w-auto px-5" isDisabled={busy} onPress={onDone}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Btn variant="flat" disabled={busy} onClick={onDone}>
             Keep everything
-          </Plain>
-          <Plain
-            className="!w-auto px-5"
-            isDisabled={busy || !chosen.length}
-            onPress={() => purge(chosen.map((r) => r.id))}
+          </Btn>
+          <Btn
+            variant="primary"
+            disabled={busy || !chosen.length}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await api.purge({ ids: chosen.map((r) => r.id) });
+              } finally {
+                setBusy(false);
+                onDone();
+              }
+            }}
           >
-            Delete selected ({api.fmtBytes(bytes)})
-          </Plain>
+            Delete {api.fmtBytes(bytes)}
+          </Btn>
         </div>
       </div>
     </div>
   );
 }
 
+/* ── app ────────────────────────────────────────────────────────────────── */
+
 export default function App() {
   const [ready, setReady] = useState(false);
   const [fatal, setFatal] = useState(null);
+  const [dark, setDark] = useTheme();
   const [mode, setMode] = useState('review');
   const [boot, setBoot] = useState(null);
   const [rolls, setRolls] = useState([]);
   const [roll, setRoll] = useState(null);
+  const [sel, setSel] = useState(0);
   const [openDlg, setOpenDlg] = useState(false);
   const [cleanup, setCleanup] = useState(null);
-
-  const refreshRolls = useCallback(async (preferId) => {
-    const rs = await api.rolls();
-    setRolls(rs);
-    const pick = rs.find((r) => r.id === preferId) || rs.find((r) => r.id === roll?.id) || rs[0];
-    setRoll(pick || null);
-    return pick;
-  }, [roll?.id]);
+  const [exportJob, setExportJob] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -346,13 +422,10 @@ export default function App() {
         await api.initApi();
         const b = await api.bootstrap();
         setBoot(b);
-        // Rolls already live in the backend (a reattached session) belong on
-        // screen immediately, not only after the next open.
         const rs = await api.rolls();
         setRolls(rs);
         if (rs.length) setRoll(rs[0]);
         setReady(true);
-        // Only offer cleanup for workspace dirs that are not currently open.
         const stale = b.workspace.rolls.filter((r) => !rs.some((x) => x.id === r.id));
         if (stale.length) setCleanup({ ...b.workspace, rolls: stale });
       } catch (e) {
@@ -361,14 +434,25 @@ export default function App() {
     })();
   }, []);
 
+  useEffect(() => {
+    setSel((s) => Math.min(s, Math.max(0, (roll?.frames?.length ?? 1) - 1)));
+  }, [roll?.id, roll?.frames?.length]);
+
+  const updateRoll = useCallback((r) => {
+    setRoll(r);
+    setRolls((rs) => rs.map((x) => (x.id === r.id ? r : x)));
+  }, []);
+
+  const machine = useMemo(() => machineRows(boot, roll), [boot, roll]);
+
   if (fatal)
     return (
-      <div className="h-full flex items-center justify-center p-10">
-        <div className="max-w-[60ch]">
-          <div className="ledger text-[20px] mb-2" style={{ color: 'var(--halt)' }}>
+      <div className="app" style={{ display: 'grid', placeItems: 'center' }}>
+        <div style={{ maxWidth: '58ch' }}>
+          <div className="title" style={{ color: 'var(--danger-ink)', marginBottom: 8 }}>
             Cannot reach the backend
           </div>
-          <p className="num text-[12px]" style={{ color: 'var(--mute)' }}>
+          <p className="num" style={{ fontSize: 12, color: 'var(--mute)' }}>
             {fatal}
           </p>
         </div>
@@ -377,52 +461,52 @@ export default function App() {
 
   if (!ready)
     return (
-      <div className="h-full flex items-center justify-center">
-        <Working>Starting…</Working>
+      <div className="app" style={{ display: 'grid', placeItems: 'center' }}>
+        <Spinner>Starting</Spinner>
       </div>
     );
 
-  const chips = (
-    <>
-      <span className="flex items-center gap-[6px] lbl">
-        <Dot tone={boot?.vendor_data?.ansel_root_ok ? 'ok' : 'bad'} />
-        Colour data
-      </span>
-      <span className="flex items-center gap-[6px] lbl">
-        <Dot tone={boot?.calibration?.present ? 'ok' : 'bad'} />
-        Calibration
-      </span>
-      <span className="flex items-center gap-[6px] lbl">
-        <Dot tone="idle" />
-        Workspace {api.fmtBytes(boot?.workspace?.total_bytes)}
-      </span>
-    </>
-  );
-
   return (
-    <div className="flex flex-col h-full">
-      <TopBar mode={mode} setMode={setMode} roll={roll} chips={chips} />
+    <div className="app">
+      <TopBar mode={mode} setMode={setMode} roll={roll} dark={dark} setDark={setDark} />
+      <Lanes exportJob={exportJob} />
 
       {mode === 'review' ? (
         <Review
           roll={roll}
-          setRoll={(r) => {
-            setRoll(r);
-            setRolls((rs) => rs.map((x) => (x.id === r.id ? r : x)));
-          }}
+          setRoll={updateRoll}
           rolls={rolls}
+          sel={sel}
+          setSel={setSel}
           onPickRoll={(id) => api.roll(id).then(setRoll)}
           onOpen={() => setOpenDlg(true)}
           onGoExport={() => setMode('export')}
+          machine={[...machine.read, ...machine.unwired]}
+        />
+      ) : mode === 'scan' ? (
+        <Scan
+          roll={roll}
+          rolls={rolls}
+          sel={sel}
+          setSel={setSel}
+          boot={boot}
+          machine={machine}
+          onOpen={() => setOpenDlg(true)}
+          onPickRoll={(id) => api.roll(id).then(setRoll)}
         />
       ) : mode === 'export' ? (
-        <ExportScreen roll={roll} setRoll={setRoll} onGoReview={() => setMode('review')} />
+        <ExportScreen
+          roll={roll}
+          setRoll={updateRoll}
+          sel={sel}
+          setSel={setSel}
+          onJob={setExportJob}
+          onGoReview={() => setMode('review')}
+        />
       ) : mode === 'diagnostics' ? (
         <Diagnostics />
-      ) : mode === 'calibrate' ? (
-        <Calibration />
       ) : (
-        <Scan />
+        <Calibration boot={boot} />
       )}
 
       <OpenDialog
@@ -430,7 +514,10 @@ export default function App() {
         onClose={() => setOpenDlg(false)}
         captures={boot?.captures}
         onOpened={async (id) => {
-          await refreshRolls(id);
+          const rs = await api.rolls();
+          setRolls(rs);
+          setRoll(rs.find((r) => r.id === id) || rs[0] || null);
+          setSel(0);
           setMode('review');
           api.bootstrap().then(setBoot).catch(() => {});
         }}

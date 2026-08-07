@@ -1,110 +1,109 @@
-// Review + Frame editor.
+// Review — design/variants/console-review.html.
 //
-// The image is the interface: one large preview, inspector at the side, edits
-// render in place without blocking the app. There is one image per frame and
-// no intermediates — changing a parameter changes the frame's version hash,
-// which changes the image URL, and the backend renders it again.
+// Same furniture as Scan with the centre swapped: settings rail left, the
+// photograph on a neutral ground in the middle, the correction bench right,
+// the roll along the floor.
 //
-// Two-tier render, from measurement rather than assumption: a quarter-res
-// preview is ~40 ms and full quality is ~430 ms on this machine, so a drag
-// runs on the preview path and settles to the sharper one when it stops.
+// Two-tier render, from measurement on this machine (tools/pakon_render.py
+// check, 694 MB / 57 900 lines / 47 frames): quarter-res preview 39 ms,
+// half-res display 147 ms. A drag runs on the preview path and settles to
+// display when it stops. Full quality (630 ms) is an export-only path — it is
+// never rendered interactively.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Chip, Slider, Switch, Tooltip } from '@heroui/react';
 import {
-  DensityTrace,
+  Btn,
+  Chip,
+  Field,
   Filmstrip,
-  KV,
-  Plain,
+  Grp,
+  Info,
   Rail,
-  Section,
-  StatusLine,
-  Working,
+  RailHead,
+  Seg,
+  Spinner,
+  State,
+  StepTrack,
+  Toggle,
 } from './components';
 import * as api from './api';
 
-const BALANCE = [
-  ['density', 'Density', 'exposure, all channels'],
-  ['red', 'Red – Cyan', null],
-  ['green', 'Green – Magenta', null],
-  ['blue', 'Blue – Yellow', null],
+const CHANNELS = [
+  ['red', 'R–C', 'R', 'Cyan −8', '+8 Red'],
+  ['green', 'G–M', 'G', 'Magenta −8', '+8 Green'],
+  ['blue', 'B–Y', 'B', 'Yellow −8', '+8 Blue'],
+  ['density', 'Density', 'D', 'Darker −8', '+8 Lighter'],
 ];
 
-function StepSlider({ label, hint, value, auto, onChange, onCommit, disabled, reason }) {
-  const touched = Math.abs(value) > 1e-9;
-  const row = (
-    <div className="py-[7px]" style={{ opacity: disabled ? 0.45 : 1 }}>
-      <div className="flex items-baseline gap-2 mb-[6px]">
-        <span className="text-[12px] flex-1">
-          {label}
-          {hint ? (
-            <small className="block text-[10px]" style={{ color: 'var(--mute)' }}>
-              {hint}
-            </small>
-          ) : null}
-        </span>
-        {auto !== undefined ? (
-          <span className="num text-[11px]" style={{ color: 'var(--mute)' }} title="auto value">
-            {auto}
-          </span>
-        ) : null}
-        <span
-          className="num text-[12px] w-[48px] text-right border px-[5px] py-[2px]"
-          style={{
-            borderColor: touched ? 'var(--mute)' : 'var(--rule)',
-            color: touched ? 'var(--ink)' : 'var(--mute)',
-          }}
-        >
-          {disabled ? '—' : value > 0 ? `+${value}` : value}
-        </span>
-      </div>
-      <Slider.Root
-        aria-label={label}
-        value={value}
-        onChange={onChange}
-        onChangeEnd={onCommit}
-        minValue={-8}
-        maxValue={8}
-        step={0.25}
-        isDisabled={disabled}
-        className="w-full"
-      >
-        <Slider.Track className="h-[3px] rounded-none" style={{ background: 'var(--rule)' }}>
-          <Slider.Fill className="rounded-none" style={{ background: 'var(--mute)' }} />
-          <Slider.Thumb
-            className="rounded-none w-[9px] h-[15px] border-0"
-            style={{ background: touched ? 'var(--ink)' : 'var(--mute)' }}
-          />
-        </Slider.Track>
-      </Slider.Root>
-    </div>
-  );
-  return disabled && reason ? (
-    <Tooltip content={<span className="max-w-[280px] block text-[11px]">{reason}</span>}>
-      {row}
-    </Tooltip>
-  ) : (
-    row
+const fmt = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v || 0).toFixed(2);
+
+/* ── the plot: histogram of the 14-bit source, and nothing invented ─────── */
+
+function Plot({ hist, channel }) {
+  const W = 1000;
+  const H = 620;
+  const path = useMemo(() => {
+    if (!hist) return null;
+    const ch = ['r', 'g', 'b'];
+    const max = Math.max(1, ...ch.flatMap((c) => hist.hist[c]));
+    const line = (arr) =>
+      arr
+        .map((v, i) => `${((i / (arr.length - 1)) * W).toFixed(1)},${(H - (v / max) * H).toFixed(1)}`)
+        .join(' ');
+    const sum = hist.hist.r.map((_, i) => hist.hist.r[i] + hist.hist.g[i] + hist.hist.b[i]);
+    const smax = Math.max(1, ...sum);
+    const area =
+      sum
+        .map((v, i) => `${((i / (sum.length - 1)) * W).toFixed(1)},${(H - (v / smax) * H).toFixed(1)}`)
+        .join(' ') + ` ${W},${H} 0,${H}`;
+    return { line, area };
+  }, [hist]);
+
+  if (!hist || !path) return <div className="plotbox" />;
+
+  const shown = channel === 'rgb' ? ['r', 'g', 'b'] : [channel];
+  const col = { r: 'var(--chR)', g: 'var(--chG)', b: 'var(--chB)' };
+
+  return (
+    <svg
+      className="plotbox"
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="RGB histogram of the frame's 14-bit source"
+    >
+      <g stroke="var(--grid)" strokeWidth="1" vectorEffect="non-scaling-stroke">
+        <path d={`M250,0V${H}M500,0V${H}M750,0V${H}M0,155H${W}M0,310H${W}M0,465H${W}`} />
+      </g>
+      {channel === 'rgb' ? <polygon points={path.area} fill="var(--mass)" /> : null}
+      {shown.map((c) => (
+        <polyline
+          key={c}
+          points={path.line(hist.hist[c])}
+          fill="none"
+          stroke={col[c]}
+          strokeWidth="1.4"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+    </svg>
   );
 }
 
-/** The honest line-scan model: a continuous strip with boundaries found
- *  afterwards, and the user able to correct them. */
-function BoundaryLane({ roll, selected, onSelect, onEdit, busy }) {
+/* ── boundary editor — opened from the flag, closed by default ──────────── */
+
+function Boundaries({ roll, selected, onSelect, onEdit, busy, onClose }) {
   const laneRef = useRef(null);
   const [drag, setDrag] = useState(null);
-
-  const lo = Math.max(0, (roll.frames[Math.max(0, selected - 2)]?.a ?? 0) - 200);
-  const hi = Math.min(roll.lines, (roll.frames[Math.min(roll.frames.length - 1, selected + 2)]?.b ?? roll.lines) + 200);
+  const lo = 0;
+  const hi = roll.lines;
   const span = Math.max(1, hi - lo);
-  const pct = (line) => ((line - lo) / span) * 100;
+  const pct = (v) => ((v - lo) / span) * 100;
 
-  const lineAt = useCallback(
-    (clientX) => {
-      const r = laneRef.current.getBoundingClientRect();
-      return Math.round(lo + ((clientX - r.left) / r.width) * span);
-    },
-    [lo, span],
-  );
+  const lineAt = useCallback((clientX) => {
+    const r = laneRef.current.getBoundingClientRect();
+    return Math.round(lo + ((clientX - r.left) / r.width) * span);
+  }, [span]);
 
   useEffect(() => {
     if (!drag) return undefined;
@@ -122,79 +121,15 @@ function BoundaryLane({ roll, selected, onSelect, onEdit, busy }) {
     };
   }, [drag, lineAt, onEdit]);
 
-  const visible = roll.frames.filter((f) => f.b > lo && f.a < hi);
-  const lowConf = roll.frames.find((f) => f.confidence === 'low');
-
   return (
-    <div className="px-4 pt-[10px] pb-3 border-t" style={{ borderColor: 'var(--rule)', background: 'var(--plate)' }}>
-      <div className="flex items-baseline gap-3 mb-2">
-        <span className="lbl" style={{ color: 'var(--ink)' }}>
-          Frame boundaries on the strip
-        </span>
-        {lowConf ? (
-          <span className="text-[11px] filament">
-            ▲ frame {lowConf.index + 1} is an unusual length — check its boundaries
-          </span>
-        ) : null}
-        <span className="num text-[10px] ml-auto" style={{ color: 'var(--mute)' }}>
-          lines {lo}–{hi}
-        </span>
-      </div>
-
-      <div
-        ref={laneRef}
-        className="relative h-[64px] border overflow-hidden select-none"
-        style={{ borderColor: 'var(--rule)', background: '#161006' }}
-      >
-        {visible.map((f) => (
-          <button
-            key={f.index}
-            onClick={() => onSelect(f.index)}
-            className="absolute top-2 bottom-2 overflow-hidden border gate"
-            style={{
-              left: `${pct(f.a)}%`,
-              width: `${((f.b - f.a) / span) * 100}%`,
-              borderColor: f.index === selected ? 'var(--ink)' : 'transparent',
-            }}
-            title={`Frame ${f.index + 1}: lines ${f.a}–${f.b}`}
-          >
-            <img
-              src={api.frameUrl(roll.id, f.index, 'thumb', f.version)}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          </button>
-        ))}
-        {visible.slice(0, -1).map((f) => {
-          const line = drag?.index === f.index ? drag.line : f.b;
-          return (
-            <div
-              key={`b${f.index}`}
-              onMouseDown={() => setDrag({ index: f.index, line: f.b })}
-              className="absolute top-0 bottom-0 w-[11px] -ml-[5px]"
-              style={{ left: `${pct(line)}%`, cursor: 'col-resize' }}
-              title={`Boundary ${f.index + 1} | ${f.index + 2} — drag to move`}
-            >
-              <span
-                className="absolute top-0 bottom-0 left-[4px] w-[2px]"
-                style={{
-                  background: f.confidence === 'low' ? 'var(--filament)' : 'var(--ink)',
-                  opacity: drag?.index === f.index ? 1 : 0.75,
-                }}
-              />
-              <i className="absolute top-[2px] left-[8px] num text-[9px] not-italic" style={{ color: 'var(--mute)' }}>
-                {f.index + 1}|{f.index + 2}
-              </i>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex gap-2 mt-2 items-center">
-        <Plain
-          className="!w-auto px-3"
-          isDisabled={busy}
-          onPress={() =>
+    <div className="strip">
+      <div className="striphead">
+        <span className="lbl">Boundaries</span>
+        <span className="quiet">drag to move · the two frames re-render on release</span>
+        <span className="sp" />
+        <Btn
+          disabled={busy}
+          onClick={() =>
             onEdit({
               op: 'split',
               index: selected,
@@ -202,53 +137,112 @@ function BoundaryLane({ roll, selected, onSelect, onEdit, busy }) {
             })
           }
         >
-          Split at middle
-        </Plain>
-        <Plain
-          className="!w-auto px-3"
-          isDisabled={busy || selected >= roll.frames.length - 1}
-          onPress={() => onEdit({ op: 'merge', index: selected })}
-        >
-          Merge with next
-        </Plain>
-        <Plain className="!w-auto px-3" isDisabled={busy} onPress={() => onEdit({ op: 'redetect' })}>
-          Re-detect all
-        </Plain>
-        <span className="text-[11px] ml-auto" style={{ color: 'var(--mute)' }}>
-          Drag a boundary to move it — the two frames re-render on release.
-        </span>
+          Split
+        </Btn>
+        <Btn disabled={busy || selected >= roll.frames.length - 1} onClick={() => onEdit({ op: 'merge', index: selected })}>
+          Merge
+        </Btn>
+        <Btn disabled={busy} onClick={() => onEdit({ op: 'redetect' })}>
+          Re-detect
+        </Btn>
+        <Btn variant="flat" onClick={onClose}>
+          Done
+        </Btn>
+      </div>
+      <div
+        ref={laneRef}
+        className="relative select-none"
+        style={{ height: 58, background: '#241a12', borderRadius: 3, overflow: 'hidden' }}
+      >
+        {roll.frames.map((f) => (
+          <button
+            key={f.index}
+            type="button"
+            onClick={() => onSelect(f.index)}
+            className="absolute"
+            style={{
+              left: `${pct(f.a)}%`,
+              width: `${((f.b - f.a) / span) * 100}%`,
+              top: 5,
+              bottom: 5,
+              overflow: 'hidden',
+              boxShadow: f.index === selected ? 'inset 0 0 0 2px var(--primary)' : 'none',
+            }}
+            title={`Frame ${f.index + 1}: lines ${f.a}–${f.b}`}
+          >
+            <img
+              src={api.frameUrl(roll.id, f.index, 'thumb', f.version)}
+              alt=""
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          </button>
+        ))}
+        {roll.frames.slice(0, -1).map((f) => {
+          const line = drag?.index === f.index ? drag.line : f.b;
+          return (
+            <div
+              key={`b${f.index}`}
+              onMouseDown={() => setDrag({ index: f.index, line: f.b })}
+              className="absolute"
+              style={{ left: `${pct(line)}%`, top: 0, bottom: 0, width: 11, marginLeft: -5, cursor: 'col-resize' }}
+              title={`Boundary ${f.index + 1}|${f.index + 2}`}
+            >
+              <span
+                className="absolute"
+                style={{
+                  top: 0,
+                  bottom: 0,
+                  left: 4,
+                  width: 2,
+                  background: f.confidence === 'low' ? 'var(--warning)' : '#fff',
+                  opacity: drag?.index === f.index ? 1 : 0.7,
+                }}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-export default function Review({ roll, setRoll, rolls, onPickRoll, onOpen, onGoExport }) {
-  const [sel, setSel] = useState(0);
-  const [pending, setPending] = useState(null); // live slider values
+/* ── screen ─────────────────────────────────────────────────────────────── */
+
+export default function Review({
+  roll,
+  setRoll,
+  rolls,
+  sel,
+  setSel,
+  onPickRoll,
+  onOpen,
+  onGoExport,
+  machine,
+}) {
+  const [pending, setPending] = useState(null);
   const [busy, setBusy] = useState(false);
   const [sharp, setSharp] = useState(false);
-  const [clip, setClip] = useState(null);
+  const [chan, setChan] = useState('red');
+  const [plotCh, setPlotCh] = useState('rgb');
+  const [clipboard, setClipboard] = useState(null);
   const [hist, setHist] = useState(null);
+  const [bounds, setBounds] = useState(false);
   const settle = useRef(null);
 
   const frame = roll?.frames?.[sel];
   const params = pending ?? frame?.params ?? {};
 
   useEffect(() => {
-    setSel((s) => Math.min(s, Math.max(0, (roll?.frames?.length ?? 1) - 1)));
-  }, [roll?.id, roll?.frames?.length]);
-
-  // Sharpen up after the parameters stop moving.
-  useEffect(() => {
     setSharp(false);
     clearTimeout(settle.current);
-    settle.current = setTimeout(() => setSharp(true), 260);
+    settle.current = setTimeout(() => setSharp(true), 240);
     return () => clearTimeout(settle.current);
   }, [frame?.version, sel]);
 
   useEffect(() => {
-    if (!roll || !frame) return;
+    if (!roll || !frame) return undefined;
     let alive = true;
+    setHist(null);
     api
       .get(api.histUrl(roll.id, sel))
       .then((h) => alive && setHist(h))
@@ -284,331 +278,450 @@ export default function Review({ roll, setRoll, rolls, onPickRoll, onOpen, onGoE
     [roll, setRoll],
   );
 
-  // Keyboard grammar — same philosophy as the vendor's, saner keys.
   useEffect(() => {
+    if (!roll) return undefined;
     const onKey = (e) => {
       if (e.target.tagName === 'INPUT' || e.metaKey || e.ctrlKey) return;
       const step = e.shiftKey ? 1 : 0.25;
-      const bump = (k, d) => {
+      const k = e.key;
+      const bump = (d) => {
         e.preventDefault();
-        commit({ ...params, [k]: +((params[k] || 0) + d).toFixed(2) });
+        commit({ ...params, [chan]: +((params[chan] || 0) + d).toFixed(2) });
       };
-      if (e.key === 'ArrowRight' || e.key === 'j') setSel((s) => Math.min(s + 1, roll.frames.length - 1));
-      else if (e.key === 'ArrowLeft' || e.key === 'k') setSel((s) => Math.max(s - 1, 0));
-      else if (e.key === 'r') bump('red', step);
-      else if (e.key === 'R') bump('red', -step);
-      else if (e.key === 'g') bump('green', step);
-      else if (e.key === 'G') bump('green', -step);
-      else if (e.key === 'b') bump('blue', step);
-      else if (e.key === 'B') bump('blue', -step);
-      else if (e.key === 'd') bump('density', step);
-      else if (e.key === 'D') bump('density', -step);
-      else if (e.key === '0') {
+      if (k === 'ArrowRight' || k === 'j') setSel(Math.min(sel + 1, roll.frames.length - 1));
+      else if (k === 'ArrowLeft' || k === 'k') setSel(Math.max(sel - 1, 0));
+      else if (k === 'r' || k === 'R') setChan('red');
+      else if (k === 'g' || k === 'G') setChan('green');
+      else if (k === 'b' || k === 'B') setChan('blue');
+      else if (k === 'd' || k === 'D') setChan('density');
+      else if (k === '+' || k === '=') bump(step);
+      else if (k === '-' || k === '_') bump(-step);
+      else if (k === '0') {
         e.preventDefault();
-        api.resetFrame(roll.id, sel).then(setRoll);
-      } else if (e.key === 'Backspace') {
+        commit({ ...params, [chan]: 0 });
+      } else if (k === 'Delete' || k === 'Backspace') {
         e.preventDefault();
-        commit({ ...params, rejected: !params.rejected });
-      } else if (e.key === 'c') setClip({ ...params });
-      else if (e.key === 'v' && clip) commit({ ...clip, rejected: params.rejected });
+        commit({ ...params, rejected: true });
+      } else if (k === 'Insert') {
+        e.preventDefault();
+        commit({ ...params, rejected: false });
+      } else if (k === 'c') setClipboard({ ...params });
+      else if (k === 'v' && clipboard) commit({ ...clipboard, rejected: params.rejected });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [roll, sel, params, clip, commit, setRoll]);
+  }, [roll, sel, params, chan, clipboard, commit, setSel]);
 
   if (!roll) {
     return (
-      <div className="flex flex-1 min-h-0">
-        <Rail>
-          <Section title="Rolls in workspace">
-            <p className="text-[11px]" style={{ color: 'var(--mute)' }}>
-              Nothing open. A roll is one capture plus its settings.
-            </p>
-          </Section>
-        </Rail>
-        <main className="flex-1 flex flex-col" style={{ background: 'var(--void)' }}>
-          <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
-            <div className="ledger text-[22px]">No roll open</div>
-            <p className="text-[13px] max-w-[54ch]" style={{ color: 'var(--mute)' }}>
-              Open a capture to see the roll as a set of frames. Frames are rendered from the
-              capture on demand — nothing is written to disk until you export.
-            </p>
-            <Plain className="!w-auto px-6" onPress={onOpen}>
+      <div className="body" style={{ gridTemplateColumns: '280px minmax(0,1fr)' }}>
+        <Rail side="l">
+          <RailHead title="Rolls" />
+          <div className="railfoot">
+            <Btn variant="primary big" onClick={onOpen}>
               Open capture…
-            </Plain>
+            </Btn>
           </div>
-        </main>
+        </Rail>
+        <div className="stage" style={{ flexDirection: 'column', gap: 14 }}>
+          <span className="title">No roll open</span>
+          <span className="quiet">Frames are rendered from a capture on demand.</span>
+        </div>
       </div>
     );
   }
 
-  const adjusted = roll.frames.filter((f) => f.adjusted).length;
-  const rejected = roll.frames.filter((f) => f.params?.rejected).length;
-  const exported = roll.frames.filter((f) => f.exported).length;
   const scale = sharp ? 'display' : 'preview';
+  const lowConf = roll.frames.find((f) => f.confidence === 'low');
+  const val = params[chan] || 0;
+  const chanDef = CHANNELS.find(([k]) => k === chan);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex flex-1 min-h-0">
-        {/* ── left rail ── */}
-        <Rail>
-          <Section title="Rolls in workspace">
-            <div className="flex flex-col gap-[2px]">
+    <>
+      <div className="body" style={{ gridTemplateColumns: '280px minmax(0,1fr) 340px' }}>
+        {/* ── settings rail — the same furniture Scan uses ── */}
+        <Rail side="l" aria-label="Capture settings">
+          <RailHead title="Roll">
+            <Btn style={{ height: 24, padding: '0 8px', fontSize: 12 }} onClick={onOpen}>
+              Open…
+            </Btn>
+          </RailHead>
+
+          <Grp>
+            <div className="rows">
               {rolls.map((r) => (
                 <button
                   key={r.id}
+                  type="button"
+                  className={r.id === roll.id ? 'on' : ''}
                   onClick={() => onPickRoll(r.id)}
-                  className="flex justify-between items-baseline px-2 py-[7px] text-[12px] border gate"
-                  style={{
-                    borderColor: r.id === roll.id ? 'var(--rule)' : 'transparent',
-                    background: r.id === roll.id ? 'var(--plate2)' : 'transparent',
-                  }}
                 >
-                  <em className="ledger not-italic">{r.name}</em>
-                  <span className="num text-[11px]" style={{ color: 'var(--mute)' }}>
-                    {r.frames.length} frames
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {r.name}
+                  </span>
+                  <span className="num" style={{ fontSize: 11, color: 'var(--faint)' }}>
+                    {r.frames.length}
                   </span>
                 </button>
               ))}
             </div>
-            <Plain className="mt-2" onPress={onOpen}>
-              Open capture…
-            </Plain>
-          </Section>
+          </Grp>
 
-          <Section title="This roll">
-            <KV
-              rows={[
-                ['Frames', roll.frames.length],
-                ['Adjusted', adjusted],
-                ['Rejected', rejected],
-                ['Exported', exported],
-                ['Lines', roll.lines.toLocaleString()],
-                ['Capture', api.fmtBytes(roll.sync?.bytes)],
-              ]}
-            />
-            <p className="text-[11px] mt-[10px]" style={{ color: 'var(--mute)' }}>
-              Settings persist with the roll — reopen the capture and every adjustment comes back.
-            </p>
-          </Section>
-
-          <Section title="Selection">
-            <Plain className="mb-[6px]" onPress={() => commit({ ...params, rejected: !params.rejected })}>
-              {params.rejected ? 'Restore frame (⌫)' : 'Reject frame (⌫)'}
-            </Plain>
-            <Plain className="mb-[6px]" onPress={() => setClip({ ...params })}>
-              Copy offsets (C)
-            </Plain>
-            <Plain
-              isDisabled={!clip}
-              onPress={() => clip && commit({ ...clip, rejected: params.rejected })}
+          <Grp title="Capture settings">
+            <Field
+              label="Film path"
+              info={
+                <>
+                  Fixed when the roll was opened. A capture carries no DX packets, so the stock is
+                  stated by hand and the decode path refuses to assume one.
+                </>
+              }
             >
-              Paste offsets (V)
-            </Plain>
-            <p className="text-[11px] mt-[10px]" style={{ color: 'var(--mute)' }}>
-              Rejected frames stay in the roll, marked, and are skipped at export.
-            </p>
-          </Section>
+              <Seg
+                ariaLabel="Film path"
+                value={roll.film_path || 'ColNeg'}
+                options={[
+                  ['ColNeg', 'Colour neg', true],
+                  ['BnW', 'B&W', true],
+                  ['POSITIVE', 'Positive', true],
+                ]}
+              />
+            </Field>
+
+            <Field
+              label="Resolution"
+              value="2000 × 3000"
+              info={
+                <>
+                  <b>Base 16 only.</b> The decoder accepts <span className="num">6000</span>-word
+                  lines, and the committed calibration tables were captured at base 16. Base 4 and 8
+                  would need their own dark and gain references and a decoder that handles their line
+                  length.
+                </>
+              }
+            >
+              <Seg
+                ariaLabel="Resolution"
+                value="16"
+                options={[
+                  ['4', 'Base 4', true],
+                  ['8', 'Base 8', true],
+                  ['16', 'Base 16', true],
+                ]}
+              />
+            </Field>
+
+            <Toggle
+              on
+              disabled
+              info={
+                <>
+                  The Ansel preference path. It is a <b>stand-in</b> —{' '}
+                  <span className="num">SETSHIFTS_12_PORTED = False</span> — so the tone it produces
+                  is not yet Kodak's.
+                </>
+              }
+            >
+              Premium colour path
+            </Toggle>
+
+            <Toggle
+              on={false}
+              disabled
+              info={
+                <>
+                  Calibrated on this unit — <span className="num">Ir 4</span>, duty{' '}
+                  <span className="num">0.887</span>, clamp <span className="num">≤ 8</span> — and
+                  never run. An infrared line is <span className="num">8000</span> words; the decoder
+                  takes <span className="num">6000</span>.
+                </>
+              }
+            >
+              Digital ICE
+            </Toggle>
+
+            <Field
+              label="DX"
+              info={
+                <>
+                  Typed, not read. Captures carry no DX packets, and{' '}
+                  <span className="num">tools/dx_decode.py</span> has never been validated against a
+                  real roll.
+                </>
+              }
+            >
+              <div className="inp">
+                {roll.dx || '—'}
+                <span className="sp" />
+                <span style={{ fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--mute)' }}>
+                  {roll.stock?.name || roll.film_path}
+                </span>
+              </div>
+            </Field>
+          </Grp>
+
+          <Grp title="Machine">
+            <State rows={machine} />
+          </Grp>
         </Rail>
 
-        {/* ── stage ── */}
-        <main className="flex-1 min-w-0 flex flex-col" style={{ background: 'var(--void)' }}>
-          <div className="flex items-baseline gap-[14px] px-5 pt-3 pb-1.5">
-            <span className="ledger text-[19px]">{roll.name}</span>
-            <span className="lbl" style={{ color: 'var(--ink)' }}>
-              Frame {sel + 1} of {roll.frames.length}
+        {/* ── centre ── */}
+        <div className="centre">
+          <div className="actbar">
+            <span className="title">Frame {sel + 1}</span>
+            <span className="quiet">
+              of <span className="num" style={{ fontSize: 12 }}>{roll.frames.length}</span>
+              {roll.stock?.name ? ` · ${roll.stock.name}` : ''}
             </span>
-            <span className="text-[12px] ml-auto" style={{ color: 'var(--mute)' }}>
-              lines {frame.a}–{frame.b} · rendered from capture + settings
-            </span>
+            {busy ? <Spinner /> : null}
+            <span className="sp" />
+            {params.rejected ? (
+              <Chip tone="bad" dot>
+                Rejected
+              </Chip>
+            ) : null}
+            <Btn variant="flat" onClick={() => commit({ ...params, rejected: true })} disabled={params.rejected}>
+              Reject <kbd>Del</kbd>
+            </Btn>
+            <Btn variant="primary" onClick={() => commit({ ...params, rejected: false })} disabled={!params.rejected}>
+              Accept <kbd style={{ background: 'rgba(255,255,255,.22)', color: '#fff' }}>Ins</kbd>
+            </Btn>
           </div>
 
-          <div className="flex-1 min-h-0 flex items-center justify-center px-5 py-2 relative">
+          <main className="stage">
             <img
               key={`${roll.id}-${sel}-${frame.version}-${scale}`}
+              className="photo"
               src={api.frameUrl(roll.id, sel, scale, frame.version)}
               alt={`Frame ${sel + 1}`}
-              className="stage-img border"
-              style={{
-                borderColor: 'var(--rule)',
-                transform: params.rejected ? 'none' : 'none',
-                opacity: params.rejected ? 0.45 : 1,
-              }}
+              style={{ opacity: params.rejected ? 0.4 : 1 }}
             />
-            {params.rejected ? (
-              <span className="absolute lbl px-2 py-1" style={{ background: 'var(--halt)', color: '#fff' }}>
-                Rejected — skipped at export
-              </span>
-            ) : null}
+          </main>
+
+          <div className="editbar">
+            <span className="lbl">Rotate</span>
+            <Btn variant="flat" onClick={() => commit({ ...params, rotate: ((params.rotate || 0) + 270) % 360 })}>
+              Left
+            </Btn>
+            <Btn variant="flat" onClick={() => commit({ ...params, rotate: ((params.rotate || 0) + 180) % 360 })}>
+              180°
+            </Btn>
+            <Btn variant="flat" onClick={() => commit({ ...params, rotate: ((params.rotate || 0) + 90) % 360 })}>
+              Right
+            </Btn>
+            <span className="lbl" style={{ marginLeft: 8 }}>
+              Flip
+            </span>
+            <Btn variant={params.flip_h ? 'primary' : 'flat'} onClick={() => commit({ ...params, flip_h: !params.flip_h })}>
+              Horizontal
+            </Btn>
+            <Btn variant={params.flip_v ? 'primary' : 'flat'} onClick={() => commit({ ...params, flip_v: !params.flip_v })}>
+              Vertical
+            </Btn>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <Btn disabled>Crop</Btn>
+              <Info side="left">
+                The render engine takes a crop rectangle, and nothing in this window can draw one. No
+                marquee tool is implemented.
+              </Info>
+            </span>
+            <span className="sp" />
+            <span className="quiet" style={{ whiteSpace: 'nowrap' }}>
+              {sharp ? 'half-res' : 'quarter-res'} · full quality at export
+            </span>
           </div>
+        </div>
 
-          <div className="flex gap-3 items-center px-5 py-2 text-[11px]" style={{ color: 'var(--mute)' }}>
-            <span>
-              Density <b className="num" style={{ color: 'var(--ink)' }}>{(params.density || 0) > 0 ? '+' : ''}{params.density || 0}</b>
-            </span>
-            <span>
-              Balance{' '}
-              <b className="num" style={{ color: 'var(--ink)' }}>
-                R {params.red || 0} · G {params.green || 0} · B {params.blue || 0}
-              </b>
-            </span>
-            <span>
-              Rotation <b className="num" style={{ color: 'var(--ink)' }}>{params.rotate || 0}°</b>
-            </span>
-            <span className="ml-auto">
-              {sharp ? 'half-res preview · full quality at export' : 'quarter-res while adjusting'}
-            </span>
-          </div>
-
-          <BoundaryLane roll={roll} selected={sel} onSelect={setSel} onEdit={editBoundary} busy={busy} />
-        </main>
-
-        {/* ── inspector ── */}
-        <Rail side="right" width={320}>
-          <Section title={`Frame ${sel + 1} — adjustments`}>
-            <div
-              className="grid grid-cols-[1fr_auto_auto] gap-x-2 text-[9px] tracking-[0.12em] uppercase pb-1"
-              style={{ color: 'var(--mute)' }}
-            >
-              <span>Parameter</span>
-              <span className="text-right">Auto</span>
-              <span className="text-right w-[48px]">Steps</span>
-            </div>
-            {BALANCE.map(([key, label, hint], i) => (
-              <StepSlider
-                key={key}
-                label={label}
-                hint={hint}
-                value={params[key] || 0}
-                auto={i === 0 ? '—' : (roll.auto_offsets?.[i - 1] ?? 0).toFixed(1)}
-                onChange={(v) => setPending({ ...params, [key]: v })}
-                onCommit={(v) => commit({ ...params, [key]: v })}
-              />
-            ))}
-            <p className="text-[11px] mt-2" style={{ color: 'var(--mute)' }}>
-              Auto is the roll-level scene balance. Your changes are offsets on top of it in the
-              vendor's own button-step unit ({roll.units?.code_values_per_button ?? 75} code values);
-              zero everything and the frame is exactly the automatic result.
-            </p>
-          </Section>
-
-          {roll.unavailable_controls?.length ? (
-            <Section title="Not available">
-              {roll.unavailable_controls.map((c) => (
-                <StepSlider key={c.key} label={c.label} value={0} disabled reason={c.reason} />
-              ))}
-              <p className="text-[11px] mt-1" style={{ color: 'var(--mute)' }}>
-                These are drawn in the design but have no traced vendor operation behind them. They
-                are shown disabled rather than faked with a curve of ours.
-              </p>
-            </Section>
-          ) : null}
-
-          <Section title="Geometry">
-            <div className="grid grid-cols-3 gap-[6px] mb-[6px]">
+        {/* ── the correction bench ── */}
+        <Rail side="r" aria-label="Frame corrections">
+          <RailHead title="Tone">
+            <span className="itabs">
               {[
-                ['⟲ 90°', () => commit({ ...params, rotate: ((params.rotate || 0) + 270) % 360 })],
-                ['⟳ 90°', () => commit({ ...params, rotate: ((params.rotate || 0) + 90) % 360 })],
-                ['180°', () => commit({ ...params, rotate: ((params.rotate || 0) + 180) % 360 })],
-              ].map(([l, fn]) => (
-                <Plain key={l} onPress={fn}>
-                  {l}
-                </Plain>
+                ['rgb', 'RGB', ''],
+                ['r', 'R', 'r'],
+                ['g', 'G', 'g'],
+                ['b', 'B', 'b'],
+              ].map(([id, label, cls]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`it ${cls}${plotCh === id ? ' on' : ''}`}
+                  onClick={() => setPlotCh(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </span>
+          </RailHead>
+
+          <Grp>
+            <Plot hist={hist} channel={plotCh} />
+            <div className="clip">
+              <span>
+                shadows <i>{hist ? `${hist.clipped_shadow_pct?.toFixed(2) ?? '0.00'} %` : '—'}</i>
+              </span>
+              <span>
+                Dmin{' '}
+                <i>{hist ? hist.dmin.map((v) => v.toFixed(0)).join(' · ') : '—'}</i>
+              </span>
+              <b>
+                <span>
+                  highlights <i>{hist ? `${hist.clipped_pct.toFixed(2)} %` : '—'}</i>
+                </span>
+              </b>
+            </div>
+          </Grp>
+
+          <Grp
+            title="Colour"
+            info={
+              <>
+                The vendor's own per-frame control: density plus three colour offsets, in
+                button-steps of <span className="num">75.0</span> code values, range{' '}
+                <span className="num">−8…+8</span> in quarters. Zero is the roll's own scene balance,
+                still live underneath — it is not replaced.
+              </>
+            }
+          >
+            <div className="chanrow">
+              {CHANNELS.map(([key, label, k]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`chan${chan === key ? ' on' : ''}`}
+                  onClick={() => setChan(key)}
+                >
+                  {label} <span className="k">{k}</span>
+                  <span className="v">{fmt(params[key] || 0)}</span>
+                </button>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-[6px]">
-              <Plain active={params.flip_h} onPress={() => commit({ ...params, flip_h: !params.flip_h })}>
-                Flip H
-              </Plain>
-              <Plain active={params.flip_v} onPress={() => commit({ ...params, flip_v: !params.flip_v })}>
-                Flip V
-              </Plain>
+
+            <div className="sliderline">
+              <div>
+                <StepTrack
+                  value={val}
+                  onInput={(v) => setPending({ ...params, [chan]: v })}
+                  onCommit={(v) => commit({ ...params, [chan]: v })}
+                />
+                <div className="ends">
+                  <span>{chanDef[3]}</span>
+                  <span>0</span>
+                  <span>{chanDef[4]}</span>
+                </div>
+              </div>
+              <span className="value">{fmt(val)}</span>
             </div>
-          </Section>
 
-          <Section>
-            {busy ? <Working>Re-rendering frame {sel + 1}…</Working> : null}
-            <Plain className="mb-[6px]" onPress={() => api.resetFrame(roll.id, sel).then(setRoll)}>
-              Reset frame to auto (0)
-            </Plain>
-            <Plain
-              className="mb-[6px]"
-              onPress={async () => {
-                setBusy(true);
-                try {
-                  setRoll(await api.applyToRoll(roll.id, sel, ['density', 'red', 'green', 'blue']));
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Apply offsets to whole roll
-            </Plain>
-            <Plain onPress={onGoExport}>Go to export →</Plain>
-          </Section>
+            <div className="keys">
+              <span>
+                <kbd>R</kbd>
+                <kbd>G</kbd>
+                <kbd>B</kbd>
+                <kbd>D</kbd>select
+              </span>
+              <span>
+                <kbd>−</kbd>
+                <kbd>+</kbd>±0.25
+              </span>
+              <span>
+                <kbd>⇧</kbd>±1.00
+              </span>
+              <span>
+                <kbd>0</kbd>zero
+              </span>
+              <span>
+                <kbd>C</kbd>
+                <kbd>V</kbd>copy
+              </span>
+            </div>
 
-          <Section title="Frame metadata">
-            <KV
-              rows={[
-                ['Strip position', `${frame.a}–${frame.b}`],
-                ['Boundary', frame.confidence],
-                ['Dmin (R·G·B)', hist ? hist.dmin.map((v) => v.toFixed(0)).join(' · ') : '…'],
-                ['Clipped', hist ? `${hist.clipped_pct.toFixed(3)} %` : '…'],
-                ['IR plane', roll.ir?.has_ir ? 'captured' : 'not in capture'],
-              ]}
-            />
-            {hist ? <Histogram hist={hist.hist} /> : null}
-          </Section>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <Btn variant="flat" style={{ flex: 1 }} onClick={() => api.resetFrame(roll.id, sel).then(setRoll)}>
+                Reset frame
+              </Btn>
+              <Btn
+                variant="flat"
+                style={{ flex: 1 }}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    setRoll(await api.applyToRoll(roll.id, sel, ['density', 'red', 'green', 'blue']));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Apply to roll
+              </Btn>
+            </div>
+          </Grp>
 
-          <Section title="Roll status" grow>
-            <Chip.Root
-              color={adjusted && !exported ? 'warning' : 'default'}
-              variant="bordered"
-              className="rounded-none"
-            >
-              <Chip.Label className="text-[10px] tracking-[0.1em] uppercase">
-                {adjusted} adjusted · {exported} exported
-              </Chip.Label>
-            </Chip.Root>
-            <p className="text-[11px] mt-2" style={{ color: 'var(--mute)' }}>
-              Export writes files; until then this roll lives only in the workspace.
-            </p>
-          </Section>
+          <Grp title="Not available">
+            {(roll.unavailable_controls || []).map((c) => (
+              <div className="dead" key={c.key}>
+                <span className="nm">{c.label}</span>
+                <span className="sp" />
+                <Info side="left">{c.reason}</Info>
+              </div>
+            ))}
+            <div className="dead">
+              <span className="nm">Tone curve</span>
+              <span className="sp" />
+              <Info side="left">
+                The vendor's contrast is a pick from shipped FUGC lookup tables, not a curve. Drawing
+                an editable curve here would be inventing an operator the machine does not have.
+              </Info>
+            </div>
+          </Grp>
+
+          <div className="railfoot">
+            <Btn variant="primary big" onClick={onGoExport}>
+              Export roll →
+            </Btn>
+          </div>
         </Rail>
       </div>
 
-      {/* ── bottom: the roll ── */}
-      <footer className="shrink-0 border-t" style={{ borderColor: 'var(--rule)', background: 'var(--plate)' }}>
-        <Filmstrip roll={roll} selected={sel} onSelect={setSel} />
-        <DensityTrace trace={roll.trace} selected={sel} onSelect={setSel} />
-        <StatusLine left="REVIEW">
-          <span>
-            {roll.name} · {roll.frames.length} frames · {rejected} rejected
-          </span>
-          <span style={{ marginLeft: 'auto' }}>
-            settings autosaved to sidecar · capture temporary
-          </span>
-        </StatusLine>
-      </footer>
-    </div>
-  );
-}
-
-function Histogram({ hist }) {
-  const W = 300;
-  const H = 56;
-  const max = Math.max(...['r', 'g', 'b'].flatMap((c) => hist[c]));
-  const path = (arr) =>
-    arr.map((v, i) => `${((i / (arr.length - 1)) * W).toFixed(1)},${(H - (v / max) * H).toFixed(1)}`).join(' ');
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-[56px] mt-3" aria-label="RGB histogram of the 14-bit source">
-      {[
-        ['r', 'var(--halt)'],
-        ['g', 'var(--pass)'],
-        ['b', '#5A7EA6'],
-      ].map(([c, col]) => (
-        <polyline key={c} fill="none" stroke={col} strokeWidth="1" opacity="0.85" points={path(hist[c])} />
-      ))}
-    </svg>
+      {bounds ? (
+        <Boundaries
+          roll={roll}
+          selected={sel}
+          onSelect={setSel}
+          onEdit={editBoundary}
+          busy={busy}
+          onClose={() => setBounds(false)}
+        />
+      ) : (
+        <Filmstrip roll={roll} selected={sel} onSelect={setSel}>
+          {lowConf ? (
+            <div className="flag" role="status">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M12 3.5 22 20H2Z" />
+                <path d="M12 10v4" />
+                <circle cx="12" cy="17" r=".8" fill="currentColor" />
+              </svg>
+              Boundary{' '}
+              <span className="num" style={{ fontSize: 12 }}>
+                {lowConf.index + 1}|{lowConf.index + 2}
+              </span>{' '}
+              is low confidence
+              <Info>
+                That frame came out well off the median width for this roll. The strip is one
+                continuous capture and the frames are found afterwards, so the fix is to move the
+                window — not to rescan.
+              </Info>
+              <span className="sp" />
+              <Btn onClick={() => setBounds(true)}>Adjust</Btn>
+            </div>
+          ) : (
+            <>
+              <span className="lbl">This roll</span>
+              <Btn onClick={() => setBounds(true)}>Boundaries</Btn>
+            </>
+          )}
+        </Filmstrip>
+      )}
+    </>
   );
 }

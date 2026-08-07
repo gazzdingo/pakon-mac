@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
-"""Byte-faithful Ansel colour from shipped Pakon data files.
+"""Ansel colour from shipped Pakon data files (host post-process).
 
 Pakon (docs/11 §5, PakonIMAu strings): stage-2 RPD stays **I16** through
 Shasta/SBA (`Only I16 data type is supported by ImaShastaOp`), then
-Rpd2Pcs→Srgb. Shasta exports tone LUTs; we do not yet decode pcode binaries,
-but the install ships the exact 12-bit tables Ansel uses for metric tone:
+Rpd2Pcs→Srgb.
 
-  common/common-sraFwdLut-metric-default.lut   — SRA forward (RPD/RIM)
-      Probed: SRA[200]≈1512 ≈ sba neutralBalancePoint 1550 / metricGray 1618.
-      This is the missing step that lifts stage-2 codes (~200) into the ICC
-      domain without inventing a percentile stretch.
-  fugc/fugc-generic*.lut                       — FUGC 1D (fugc-lutMap)
-  sba/SbaDPI/sba-CN-default.dpi                — neutralBalancePoint, …
-  shasta/shasta-rpd.dpi                        — white / metricGray aims
-  profile/Rpd2Pcs_HR200_QS_v5s10.pf            — mft2, n_in=4096 (12-bit)
-  profile/Srgb_v2.pf
+**Shasta** (``pakon_shasta.py``): dpi aims verified; scene ``toneLut`` from
+``AnsShastaCapabilityImpl::analyze`` is **not** ported.
 
-Pipeline implemented here (I16 codes 0..4095 throughout until ICC):
+**SRA** (``pakon_sra.py``): shipped ``common-sraFwdLut-metric-*.lut`` is
+``AnsCommonSraFwdLutDPI`` — a real Pakon table, but **not** Shasta's
+``toneLut``. We apply it as an explicit tone **stand-in** until Shasta
+analyze is ported.
 
-  RPD12 → channel balance (SBA) → SRA fwd lut → FUGC → median→1550
-        → Rpd2Pcs→Srgb (U8 encode = code·255/4095 for 4096-entry tables)
+Also: FUGC **seed** lut from ``fugc-lutMap`` → ``fugc-generic*.lut``
+(``pakon_fugc.py``: real Pakon seed; host apply **without** ``setLutInfo``
+analyze shift is a stand-in). SBA: Preference mode-``0x11`` fragment →
+``setshifts_12(A, A)`` (CN second pass; A≡B from same Sba Cap) →
+``apply_balance_shifts``. ``PREFERENCE_SHIFTS_PORTED`` stays False (fragment
+only; lo≠1 open).
 
-DPI / LUT selection uses the vendor ``.map`` files (see pakon_ansel_maps).
-Full AnsOrder / SbaDecodePcode is still NOT ported.
+Pipeline here (I16 0..4095 until ICC):
+
+  RPD12 → setshifts_12(A,A)+apply (CN) → SRA fwd lut (Shasta stand-in)
+        → FUGC seed lut (stand-in; missing setLutInfo) →
+          median→neutralBalancePoint → Rpd2Pcs→Srgb
+
+See ``docs/46-ansel-parity-checklist.md``.
 """
 from __future__ import annotations
 
@@ -31,8 +35,15 @@ from pathlib import Path
 
 import numpy as np
 
+import pakon_fugc as fugc_mod
 import pakon_ansel_maps as maps
+import pakon_sba_apply as sba_apply
 import pakon_sba_pcode as sba_pcode
+import pakon_sba_preference as sba_pref
+import pakon_sba_stage2 as sba_stage2
+import pakon_scp_lut as scp_lut
+import pakon_shasta as shasta_mod
+import pakon_sra as sra_mod
 
 RPD_MAX = 4092
 SHASTA_MAX = 4095
@@ -66,23 +77,27 @@ def _floats(s: str) -> list[float]:
 
 @dataclass
 class ShastaParams:
+    """Thin view of ``pakon_shasta.ShastaDpi`` aims (not scene toneLut)."""
+
     white: float = 3000.0
     metric_gray: float = 1618.0
     max_value: float = 4095.0
     shadow_percent: float = 1.0
     highlight_percent: float = 99.0
     code_values_per_button: float = 75.0
+    dpi: shasta_mod.ShastaDpi | None = None
 
     @classmethod
     def load(cls, path: Path) -> "ShastaParams":
-        d = parse_dpi(path)
+        dpi = shasta_mod.ShastaDpi.load(path)
         return cls(
-            white=float(d.get("white", 3000)),
-            metric_gray=float(d.get("metricGray", 1618)),
-            max_value=float(d.get("maxValue", 4095)),
-            shadow_percent=float(d.get("shadowPercent", 1.0)),
-            highlight_percent=float(d.get("highlightPercent", 99.0)),
-            code_values_per_button=float(d.get("codeValuesPerButton", 75)),
+            white=dpi.white,
+            metric_gray=dpi.metric_gray,
+            max_value=dpi.max_value,
+            shadow_percent=dpi.shadow_percent,
+            highlight_percent=dpi.highlight_percent,
+            code_values_per_button=dpi.code_values_per_button,
+            dpi=dpi,
         )
 
 
@@ -93,6 +108,11 @@ class SbaParams:
     neu: tuple[float, float, float] = (975.0, 975.0, 975.0)
     neo: tuple[float, float, float] = (1010.0, 1010.0, 1010.0)
     fpo: tuple[float, float, float] = (879.0, 1250.0, 1386.0)
+    fpa: tuple[float, float, float] = (-70.0, -55.0, -45.0)
+    pcls: float = 0.0  # Preference w1e; AnsSbaDPI+0x24 — all shipped dpi are 0
+    neutral_button: float = 130.0
+    neutral_under_constraint: float = -16.0
+    neutral_over_constraint: float = 16.0
     key: str = "ansel-sba-CN-default"
     pcode_name: str = "pcode-dls_1.7"
     sfs_table_name: str = "sfsTable35"
@@ -105,12 +125,22 @@ class SbaParams:
         neu = _floats(d["neu"]) if "neu" in d else [975, 975, 975]
         neo = _floats(d["neo"]) if "neo" in d else [1010, 1010, 1010]
         fpo = _floats(d["fpo"]) if "fpo" in d else [879, 1250, 1386]
+        fpa = _floats(d["fpa"]) if "fpa" in d else [-70, -55, -45]
         return cls(
             neutral_balance_point=float(d.get("neutralBalancePoint", 1550)),
             min_dmin=(md[0], md[1], md[2]),
             neu=(neu[0], neu[1], neu[2]),
             neo=(neo[0], neo[1], neo[2]),
             fpo=(fpo[0], fpo[1], fpo[2]),
+            fpa=(fpa[0], fpa[1], fpa[2]),
+            pcls=float(d.get("pcls", 0)),
+            neutral_button=float(d.get("neutralButton", 130)),
+            neutral_under_constraint=float(
+                d.get("neutralUnderConstraint", -16.0)
+            ),
+            neutral_over_constraint=float(
+                d.get("neutralOverConstraint", 16.0)
+            ),
             key=d.get("key", path.stem),
             pcode_name=d.get("pcode", "pcode-dls_1.7"),
             sfs_table_name=d.get("sfsTable", "sfsTable35"),
@@ -119,34 +149,21 @@ class SbaParams:
 
 
 def load_sra_fwd_lut(path: Path) -> np.ndarray:
-    """Load common-sraFwdLut-metric-*.lut → (4096,) int table.
+    """Load ``AnsCommonSraFwdLutDPI`` ASCII → (4096,) int table.
 
-    File is `SRA_NUM_FORWARDLUT = 4096` then one integer per line (often 4095
-    values in practice). Index = RPD code. Verified: [200]→1512, [1550]→3021.
+    Cite: ``pakon_sra.py`` / DLL ``0x105954a0``. Not Shasta ``toneLut``.
     """
-    rows: list[int] = []
-    for ln in path.read_text(errors="replace").splitlines():
-        s = ln.strip()
-        if s.isdigit() or (s.startswith("-") and s[1:].isdigit()):
-            rows.append(int(s))
-    table = np.zeros(4096, dtype=np.int32)
-    n = min(len(rows), 4096)
-    table[:n] = rows[:n]
-    if n and n < 4096:
-        table[n:] = rows[n - 1]
-    return table
+    return sra_mod.load_sra_fwd_lut(path)
 
 
 def load_fugc_lut(path: Path) -> np.ndarray:
-    """Load fugc-generic*.lut → (4096, 3) table (identity fill)."""
-    table = np.arange(4096, dtype=np.int32)[:, None].repeat(3, axis=1)
-    for raw in path.read_text(errors="replace").splitlines():
-        parts = raw.split()
-        if len(parts) < 4 or not parts[0].lstrip("-").isdigit():
-            continue
-        i, r, g, b = (int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]))
-        if 0 <= i < 4096:
-            table[i] = (r, g, b)
+    """Load shipped FUGC **seed** lut → (4096, 3).
+
+    Cite: ``pakon_fugc.load_fugc_seed_lut`` / DLL LutDpi. Host applies this
+    table directly as a **stand-in**; Pakon ``setLutInfo`` may still shift
+    it from analyze aims.
+    """
+    table, _dmin = fugc_mod.load_fugc_seed_lut(path)
     return table
 
 
@@ -176,12 +193,11 @@ def rpd12_to_icc_u8(rpd12: np.ndarray) -> np.ndarray:
 
 
 def channel_balance(rpd12: np.ndarray, mode: str = "median") -> np.ndarray:
-    """Coarse SBA: equalise channels (pcode not decoded yet)."""
+    """Legacy median equalise — NOT Pakon SBA (kept for ``--balance`` / fallback)."""
     x = rpd12.astype(np.float64)
     if mode == "highlight":
         refs = np.array([np.percentile(x[:, :, c], 99.0) for c in range(3)])
     else:
-        # median of pixels above the 5th percentile (skip empty gate)
         y = x.mean(axis=2)
         mask = y > np.percentile(y, 5.0)
         refs = np.array([
@@ -194,6 +210,34 @@ def channel_balance(rpd12: np.ndarray, mode: str = "median") -> np.ndarray:
         if refs[c] > 1.0:
             x[:, :, c] *= target / refs[c]
     return np.clip(x, 0, SHASTA_MAX)
+
+
+def preference_shift_words(sba: SbaParams) -> tuple[int, int, int]:
+    """Mode-``0x11`` Preference fragment → ``+0x3a38`` words (docs/49)."""
+    return sba_pref.preference_shifts_from_dpi_fields(
+        fpo=sba.fpo,
+        fpa=sba.fpa,
+        neutral_balance_point=sba.neutral_balance_point,
+        neutral_button=sba.neutral_button,
+        under_constraint=sba.neutral_under_constraint,
+        over_constraint=sba.neutral_over_constraint,
+        pcls=sba.pcls,
+    )
+
+
+def cn_setshifts_apply_words(
+    sba: SbaParams,
+    planar_3band: tuple[int, ...] | list[int],
+    num_lut: int = 4096,
+) -> tuple[int, int, int]:
+    """CN second-pass apply words: ``setshifts_12(A, A)`` (docs/52).
+
+    VERIFIED: both getShifts Caps are the scene Sba Cap (same ``+0x3a38``),
+    so buffer A ≡ B. OUT is written to ``scene+0x4b6`` on the afterSCPLut
+    balanceOrder pass (ScpLut zeroes that cluster first).
+    """
+    a = preference_shift_words(sba)
+    return sba_apply.setshifts_12(a, a, planar_3band, num_lut)
 
 
 def aim_medians(rpd12: np.ndarray, aim: float) -> np.ndarray:
@@ -218,7 +262,10 @@ class AnselEngine:
     scene: SceneContext | None = None
     selected: maps.SelectedAnselFiles | None = None
     pcode: sba_pcode.DecodedPcode | None = None
+    stage2: sba_stage2.Stage2Program | None = None
     sfs_rows: list[tuple[int, int, int, int]] = field(default_factory=list)
+    band3_lut: scp_lut.ThreeBandLut | None = None
+    setshifts_out: tuple[int, int, int] | None = None
     _icc_cache: object = field(default=None, repr=False)
 
     @classmethod
@@ -238,13 +285,24 @@ class AnselEngine:
         fugc = load_fugc_lut(sel.fugc_lut)
 
         pcode = None
+        stage2 = None
         sfs_rows: list[tuple[int, int, int, int]] = []
         pcode_path = root / "sba" / "Pcode" / sba.pcode_name
         sfs_path = root / "sba" / "Sfs" / sba.sfs_table_name
         if pcode_path.is_file():
             pcode = sba_pcode.load_pcode(pcode_path)
+            stage2 = sba_stage2.parse_decoded(pcode)
         if sfs_path.is_file():
             sfs_rows = sba_pcode.parse_sfs_table(sfs_path)
+
+        band3 = None
+        setshifts_out = None
+        lut_path = scp_lut.find_shipped_3band_lut(root)
+        if lut_path is not None and sba_apply.SETSHIFTS_12_PORTED:
+            band3 = scp_lut.load_3band_lut_ascii(lut_path)
+            setshifts_out = cn_setshifts_apply_words(
+                sba, band3.planar, band3.num_lut
+            )
 
         print(
             f"  Ansel map: path={scene.ansel_path} src={scene.source_type} "
@@ -261,15 +319,30 @@ class AnselEngine:
             f"neutral={sba.neutral_balance_point:g}  "
             f"gray/white={shasta.metric_gray:g}/{shasta.white:g}"
         )
-        if pcode is not None:
+        if pcode is not None and stage2 is not None:
             print(
-                f"  SBA pcode: {pcode.name} decoded "
+                f"  SBA pcode: {pcode.name} stage1+stage2 "
                 f"(program_words={len(pcode.program)}, "
+                f"dim={stage2.dim_a}x{stage2.dim_b}, "
+                f"op7={len(stage2.op7)}, stage2_rc=0x{stage2.return_code & 0xffffffff:x}, "
                 f"sfs={sba.sfs_table_name} rows={len(sfs_rows)}; "
-                f"analyze/getShifts NOT ported — median balance still used)"
+                f"Preference FPU mapped (docs/49; pcls=w1e={sba.pcls:g}); "
+                f"PREFERENCE_SHIFTS_PORTED="
+                f"{sba_pref.PREFERENCE_SHIFTS_PORTED})"
             )
         else:
             print(f"  SBA pcode: missing {pcode_path}")
+        if setshifts_out is not None and band3 is not None:
+            print(
+                f"  SBA setShifts(1,2): A≡B Preference fragment → OUT="
+                f"{setshifts_out}  lut={band3.name} "
+                f"(SETSHIFTS_12_PORTED={sba_apply.SETSHIFTS_12_PORTED})"
+            )
+        else:
+            print(
+                "  SBA setShifts(1,2): unavailable — median channel_balance "
+                "fallback"
+            )
         return cls(
             shasta=shasta,
             sba=sba,
@@ -282,16 +355,25 @@ class AnselEngine:
             scene=scene,
             selected=sel,
             pcode=pcode,
+            stage2=stage2,
             sfs_rows=sfs_rows,
+            band3_lut=band3,
+            setshifts_out=setshifts_out,
         )
 
     def render_scene(self, rpd12: np.ndarray,
                      roll_scale: np.ndarray | None = None) -> np.ndarray:
-        """I16 RPD12 → toned I16 using vendor SRA + FUGC tables."""
+        """I16 RPD12 → toned I16 (SBA + Shasta tone stand-ins + FUGC)."""
         x = rpd12.astype(np.float64)
         if roll_scale is not None:
             x = x * roll_scale.reshape(1, 1, 3)
-        x = channel_balance(x, mode="median")
+        if self.setshifts_out is not None:
+            x = sba_apply.apply_balance_shifts(
+                x.astype(np.int32), self.setshifts_out
+            ).astype(np.float64)
+        else:
+            x = channel_balance(x, mode="median")
+        # SRA fwd lut = AnsCommonSraFwdLutDPI stand-in for Shasta toneLut
         x = apply_1d_lut(x, self.sra_lut)
         x = apply_1d_lut(x, self.fugc_lut)
         x = aim_medians(x, self.sba.neutral_balance_point)

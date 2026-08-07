@@ -81,7 +81,7 @@ See `tools/ansel/README.md`.
 
 ## Implemented but NOT Pakon-same (stand-ins)
 
-- [ ] **SBA channel balance** — median equalise (`channel_balance`). Preference FPU **mapped** (`docs/49`); `setShifts` `(1,2)` **DLL-golden** (`SETSHIFTS_12_PORTED=True`); apply blocked on Preference→A/B wiring (`PREFERENCE_SHIFTS_PORTED=False`).
+- [ ] **SBA channel balance** — host applies `setshifts_12(A,A)`+`apply_balance_shifts` with Preference mode-`0x11` fragment (`A≡B`, OUT=`scene+0x4b6`; `docs/52`). Full Preference FPU / lo≠1 still open (`PREFERENCE_SHIFTS_PORTED=False`).
 - [ ] **Tone** — we apply shipped **SRA** fwd lut as tone. Pakon CN auto-tone builds **Shasta** `toneLut` via analyze→export→`ImaShastaOp`. SRA table is a real artefact but **wrong stage** for Shasta parity.
 - [ ] **FUGC apply** — we apply shipped **seed** `fugc-generic*.lut`. Pakon may `setLutInfo`-shift it from analyze aims (`+0x6140`). Offset-0 matches seed; non-zero aims not wired.
 - [ ] **Post-balance aim** — `aim_medians(…, neutralBalancePoint)` stand-in.
@@ -144,7 +144,7 @@ See `tools/ansel/README.md`.
 - [ ] **Shasta image→aims + curve** — still UNKNOWN.
 
 ### Honest blockers (current)
-1. **Wire Preference → `setshifts_12` → apply** — `(1,2)` is DLL-golden (`SETSHIFTS_12_PORTED`); need buffer-B provenance + host apply path before `PREFERENCE_SHIFTS_PORTED`.
+1. **Preference FPU golden / lo≠1** — host wires `setshifts_12(A,A)`+apply with mode-`0x11` fragment (`A≡B` cited); `PREFERENCE_SHIFTS_PORTED` still False.
 2. **lo≠1 / user-balance modes** — `aimY` from `scene+0x38a2` / FOS arg1 when tokens present.
 3. **Confirm / refute FOS `orderFpo` → nested `fpo`** (static: absent; dynamic only if needed).
 4. **FOS dens closed form** (FOS parity, not Preference RGB).
@@ -168,8 +168,8 @@ See `tools/ansel/README.md`.
 
 ## Suggested next RE order (Pakon-only)
 
-1. **Wire** `setshifts_12` into host (Preference A + getShifts B → apply OUT).
-2. User-balance / lo≠1 `aimY` paths if needed.
+1. Preference FPU full/golden + lo≠1 `aimY` (host already applies `setshifts_12(A,A)`).
+2. User-balance paths if needed.
 3. FOS dens closed form (FOS parity — not Preference RGB).
 4. FUGC aim writers / `setLutInfo` wiring.
 5. Shasta curve helpers / ColorAdjust unsharp.

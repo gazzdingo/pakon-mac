@@ -13,15 +13,26 @@ Closes control-word provenance and the shipped **`(1,2)`** closed form.
 (cdecl, 5 stack args). Immediately before the call, QI
 (`0x104ffdd6`) selects:
 
-| Arg | Source | Type (RTTI near QI) |
-|-----|--------|---------------------|
-| 1 | `lea …` OUT buffer | 3×int16 destination |
-| 2 | prior QI → `edi` | `AnsSbaCapability` (`0x106927b4`) |
-| 3 | `[esp+0x54]` | SBA Cap (getShifts #1) |
-| 4 | QI result | **`AnsSCPLutCapability`** (`0x106927d4`) |
-| 5 | `[esp+0x20]−4` | second getShifts Cap / accumulate peer |
+| Arg | Source | Role (VERIFIED) |
+|-----|--------|-----------------|
+| 1 | `lea [esp+0x9c]` | smart-ptr / return glue (not shift OUT) |
+| 2 | QI → `edi` | **`AnsSbaCapability`** (`0x106927b4`) — getShifts **A** Cap |
+| 3 | `[esp+0x4c]` QI | **same Sba Cap** — getShifts **B** Cap (stack-arg fixups) |
+| 4 | QI result | **`AnsSCPLutCapability`** (`0x106927d4`) — control words |
+| 5 | `[esp+0x20]−4` = **`scene+0x4b6`** | **3×int16 OUT** destination |
 
 `setShifts` @ `0x10100260` uses arg4 as `ecx` for `0x10122a70`.
+Shift OUT stores (`0x101004aa`, `0x10100f31`, …) write **`[esp+0xbc]` =
+arg5 = `scene+0x4b6`**, not arg1.
+
+**Buffer A ≡ B:** both getShifts Caps are the scene Sba Cap → same
+Preference `+0x3a38` words. Shipped `(1,2)` is therefore
+`setshifts_12(A, A, lut)`.
+
+**OrderWide:** first `analyzeBalanceOrder` (flag 0) can
+`getShifts`→**add** into `scene+0x4b6`; ScpLut **zeroes** `+0x4b6`;
+second pass (afterSCPLut) **writes** setShifts OUT there. Apply sees the
+second-pass OUT.
 
 ---
 
@@ -205,9 +216,11 @@ For shipped CN SCPLut dpi, setShifts runs **`(1, 2)`**:
 Therefore:
 
 * Raw Preference `+0x3a38` words are **not** apply LUT inputs for CN auto.
-* Apply needs `setShifts` **OUT** (`0x60e − reconstruct(Y_lut(A'), C(B'))`).
-* `SETSHIFTS_12_PORTED = True` (DLL golden). Wiring + Preference inputs
-  still block `PREFERENCE_SHIFTS_PORTED`.
+* Apply words = `setshifts_12(A, A)` → `scene+0x4b6` (CN afterSCPLut).
+* Host wires that through `apply_balance_shifts` with Preference
+  mode-`0x11` fragment for `A` (`pakon_ansel.cn_setshifts_apply_words`).
+* `SETSHIFTS_12_PORTED = True`. `PREFERENCE_SHIFTS_PORTED` stays **False**
+  (Preference fragment / lo≠1 still open).
 
 Optional: `(0, 0)` would copy Preference → OUT — **not** shipped CN.
 

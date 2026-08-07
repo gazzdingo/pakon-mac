@@ -336,9 +336,17 @@ def load_3band_lut_ascii(path: Path) -> ThreeBandLut:
 
 
 def find_shipped_3band_lut(ansel_root: Path) -> Path | None:
-    """``<ansel_root>/dataPathItems/common/<SHIPPED_3BAND_LUT_NAME>``."""
-    p = ansel_root / "dataPathItems" / "common" / SHIPPED_3BAND_LUT_NAME
-    return p if p.is_file() else None
+    """Locate shipped 3-band lut under anselinstalldir or dataPathItems."""
+    root = Path(ansel_root)
+    candidates = (
+        root / "common" / SHIPPED_3BAND_LUT_NAME,  # dataPathItems root
+        root / "dataPathItems" / "common" / SHIPPED_3BAND_LUT_NAME,
+        root / "anselinstalldir" / "dataPathItems" / "common" / SHIPPED_3BAND_LUT_NAME,
+    )
+    for p in candidates:
+        if p.is_file():
+            return p
+    return None
 
 
 def main() -> None:

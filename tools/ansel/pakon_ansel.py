@@ -298,7 +298,13 @@ class AnselEngine:
         band3 = None
         setshifts_out = None
         lut_path = scp_lut.find_shipped_3band_lut(root)
-        if lut_path is not None and sba_apply.SETSHIFTS_12_PORTED:
+        # Both fragments must be golden before Preference→(1,2)→apply is
+        # the host default; either False falls back to median channel_balance.
+        if (
+            lut_path is not None
+            and sba_apply.SETSHIFTS_12_PORTED
+            and sba_pref.PREFERENCE_SHIFTS_PORTED
+        ):
             band3 = scp_lut.load_3band_lut_ascii(lut_path)
             setshifts_out = cn_setshifts_apply_words(
                 sba, band3.planar, band3.num_lut

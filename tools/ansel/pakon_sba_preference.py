@@ -17,9 +17,9 @@ Opening RGB + ``w1e`` (Update 3) — SOLVED
   (``inner+0x24``). Dump ``0x102ae48f`` prints ``\\tpcls = \\t`` from
   ``[ebx+0x24]``; ``readAscii`` parses ``"pcls"`` @ ``0x102ad38d`` into
   ``obj+0x24``. **All shipped ``sba-*.dpi`` have ``pcls = 0``.**
-* Host should load ``fpo``/``fpa``/``pcls``/clamp fields from dpi; do **not**
-  wire into apply as default — shipped CN ``setShifts`` uses ``(1,2)``
-  (``docs/52``), not Preference passthrough.
+* Host loads ``fpo``/``fpa``/``pcls``/clamp fields from dpi; CN apply uses
+  ``setshifts_12(A, A)`` on Preference words (``docs/52``), not raw
+  Preference passthrough.
 
 FOS OUT ``+0x1e/+20/+22`` are unrelated stats (``docs/47``).
 
@@ -70,10 +70,11 @@ LUT build ``0x1006c4f0`` (``out[i]=master[i+shift]``). ``getShifts`` copies
 ``+0x3a38`` raw. ``setShifts`` @ ``0x10100260`` control words are SCPLut
 ``ntdChoice``/``ctdChoice``; shipped CN → ``(1, 2)`` transform
 (``0x60e`` + LUT + ``×0x186a0``), **not** ``(0, 0)`` passthrough and **not**
-``(2, 2)`` (that copies getShifts buffer B). See ``docs/52``. Do not enable
-default host apply on Preference outputs yet.
+``(2, 2)`` (that copies getShifts buffer B). See ``docs/52``. Host default
+applies ``setshifts_12(A, A)`` OUT (gated on ``PREFERENCE_SHIFTS_PORTED``
+and ``SETSHIFTS_12_PORTED``); raw ``+0x3a38`` is never apply input for CN.
 
-Apply helper (when shifts known): ``tools/ansel/pakon_sba_apply.py``.
+Apply helper: ``tools/ansel/pakon_sba_apply.py``.
 """
 from __future__ import annotations
 

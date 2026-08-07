@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verified SBA balance-shift *apply* (PakonIMAu.dll) — not wired by default.
+"""Verified SBA balance-shift *apply* (PakonIMAu.dll).
 
 VERIFIED
 --------
@@ -39,9 +39,8 @@ setShifts control words + ``(1,2)`` (VERIFIED — ``docs/52``)
   (``pakon_setshifts_golden.py``).
 * CN call site: getShifts A≡B (same Sba Cap ``+0x3a38``); OUT =
   ``scene+0x4b6``. Host: ``pakon_ansel.cn_setshifts_apply_words`` →
-  ``apply_balance_shifts``.
-* ``PREFERENCE_SHIFTS_PORTED=True`` for hi=``0x10`` FPU (``docs/49``);
-  host still feeds Preference words through ``setshifts_12``.
+  ``apply_balance_shifts`` when both ``SETSHIFTS_12_PORTED`` and
+  ``PREFERENCE_SHIFTS_PORTED`` (hi=``0x10`` FPU; ``docs/49``).
 """
 from __future__ import annotations
 
@@ -104,7 +103,8 @@ def setshifts_12(
     * ``C1,C2 = axis_c*(0x60e − B)``
     * ``OUT = 0x60e − inverse(Y, C1, C2)``
 
-    Golden vs DLL (``pakon_setshifts_golden``). Not wired into host apply.
+    Golden vs DLL (``pakon_setshifts_golden``). Host CN path:
+    ``pakon_ansel.cn_setshifts_apply_words`` → ``apply_balance_shifts``.
     """
     a_p = _pivot(shifts_a)
     lut_rgb = lookup_3band_planar(a_p, planar_lut, num_lut)
@@ -132,7 +132,7 @@ def apply_balance_shifts(rpd12: np.ndarray, shifts: tuple[int, int, int]) -> np.
 
     ``shifts`` must be the three int16 values that reach
     ``applyBalanceShifts`` (setShifts **OUT**, not raw ``+0x3a38`` for
-    shipped CN). Host default path does not call this.
+    shipped CN). Host CN default calls this with ``setshifts_12(A, A)``.
     """
     x = np.asarray(rpd12, dtype=np.int32)
     out = np.empty_like(x)

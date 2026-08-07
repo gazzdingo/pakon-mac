@@ -1,5 +1,12 @@
 # Fixing capture, and the checklist for everything else
 
+> **RESOLVED 2026-08-07. Suspect A was correct.** Removing the in-loop
+> `FN_bDrvResetFifos` calls took a 60 s capture from 94.79 % intact / 960 losses
+> to **100.00 % intact / 0 losses**, 694.8 MB at 11.6 MB/s sustained with plain
+> synchronous reads. It was never a throughput problem — the capture loop was
+> discarding the FPGA's buffer before every read. **Async libusb and the Rust
+> core are unnecessary.** Every tear and shear in earlier frames came from this.
+
 ## 1. Capture — the plan
 
 **Symptom:** ~5 % of words missing from ~13 s into a run. 960 non-6000 gaps in
@@ -62,10 +69,10 @@ high-speed and the copying happens inside libusb either way.
 ## 2. Checklist for the rest
 
 ### Capture
-- [ ] remove in-loop FIFO resets (Suspect A)
-- [ ] async libusb ring, 16 × 256 KB
-- [ ] gap-count instrumentation as the acceptance metric
-- [ ] sustained 60 s run with zero losses
+- [x] remove in-loop FIFO resets (Suspect A) — **this was the whole fix**
+- [~] async libusb ring — **not needed**, sync reads hold 11.6 MB/s losslessly
+- [x] gap-count instrumentation as the acceptance metric
+- [x] sustained 60 s run with zero losses — 57,900 lines, 0 losses
 - [ ] clean the film gate — there is a hair at column ~804 casting a 155 px shadow
 
 ### Decode

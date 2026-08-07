@@ -197,10 +197,18 @@ def show_matrix(data_dir: str) -> int:
 
 def render_raw(in_path: str, out_path: str, width: int, data_dir: str) -> int:
     """Render interleaved 16-bit RGB triplets through the vendor transform."""
-    lut = build_density_lut()
+    lut_path = os.path.join(data_dir, "_ClientColNegLut.txt")
+    if os.path.exists(lut_path):
+        # True vendor table; kernel stores int32 via _ftol (truncate toward 0)
+        lut = [float(int(v)) for v in load_vendor_lut(lut_path)]
+        print(f"LUT: {lut_path} ({len(lut)} entries, int-truncated)")
+    else:
+        lut = build_density_lut()
+        print("no vendor LUT file; using regenerated formula", file=sys.stderr)
     mat_path = os.path.join(data_dir, "_ClientColNegMat.txt")
     if os.path.exists(mat_path):
         coeff, offset = quantise_matrix(load_vendor_matrix(mat_path))
+        print(f"matrix: {mat_path}")
     else:
         coeff = [[COEFF_FIXED, 0, 0], [0, COEFF_FIXED, 0], [0, 0, COEFF_FIXED]]
         offset = [0, 0, 0]

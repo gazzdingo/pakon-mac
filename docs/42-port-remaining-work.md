@@ -370,3 +370,91 @@ Stage 5 — "acquire raw scan lines", the blocker since the project began — is
 **solved**. Remaining: segment lines on bit 0, identify which sub-stream is R/G/B
 (not determined by the binary — drive one LED at a time), couple transport speed
 to line rate, and feed the existing colour pipeline.
+
+---
+
+## The AFE is an AD9826 — and there is no missing channel-enable
+
+Identified from TLB.dll alone (four independent alignments, before any
+datasheet): `0x84` idx 2/3/4 gains clamped to `0x3F`; idx 5/6/7 offsets in
+9-bit sign-magnitude with D8 as sign; registry `Gain_R/G/B` and `Offset_R/G/B`
+binding to exactly those indices; and idx 0/1 the only other registers ever
+written. That is the **Analog Devices AD9826** register map.
+
+### `0x84` idx 0 = `0x78` — Configuration Register
+
+| bit | meaning | vendor | power-on default |
+|---|---|---|---|
+| D7 | **input range** | **0 = 2 V** | **1 = 4 V** |
+| D6 | internal VREF | 1 | 1 |
+| D5 | **3-channel mode** | **1 = ON** | **1 = ON** |
+| D4 | CDS vs SHA | 1 = CDS | 1 |
+| D3 | input clamp bias | 1 | 1 |
+| D0 | output mode | 0 = 16-bit | 0 |
+
+### `0x84` idx 1 = `0x80` — MUX Configuration
+
+D7 = 1 → channel order **R, G, B**. D6/D5/D4 select a channel only in 1- or
+2-channel mode.
+
+### Three consequences
+
+1. **Nothing is missing.** The AD9826 powers up in 3-channel CDS mode (`0xF8`).
+   There is no channel-enable register on the FPGA, and the complete set of CCD
+   registers the vendor ever writes is `0x82` idx 0–6, 9, 0x0A, 0x0B and `0x84`
+   idx 0–7. Closed set.
+2. **The vendor's `0x78` would make clipping WORSE**, by 2×. It differs from the
+   default in one bit: D7, halving the input range from 4 V to 2 V. If we are
+   currently at the `0xF8` default we already have maximum headroom and are
+   *still* railing.
+3. **Channel order is R, G, B** — supersedes this doc's earlier "not determined
+   by the binary". Sub-stream 0 = Red, 1 = Green, 2 = Blue.
+
+### Why the gain sweep did nothing
+
+AD9826 gain is `6.0 / (1 + 5.0·(63−G)/63)`. So `Gain = 13` → **1.28×** and
+`Gain = 1` → **1.02×**. The entire 13→1 sweep was a 25 % lever, applied *after*
+the CDS stage — it cannot rescue an input that clips upstream. Measured 5 %
+change, exactly as predicted.
+
+### `0xFFFE` is saturation, confirmed
+
+Bit 0 is the line-sync flag, tested word-by-word at three independent sites, so
+**no data word may set it** — making `0xFFFE` the largest legal data value. And
+**no code anywhere in TLB.dll tests for `0xFFFE`**; all 108 occurrences in the
+disassembly are unrelated 32-bit constants. There is no clipped-pixel sentinel.
+Our max non-fill reading of 65530 (`0xFFFA`) sits just under it.
+
+### The vendor calibrates to 97–100 % of full scale ON AN EMPTY GATE
+
+`FN_bCalibrateFindLedCurrent` runs with `DutyCycleOpenGate_*` — open gate means
+**no film** — and targets R 64000, G 64000, **B 65500**, Ir 40000 out of 65534.
+Blue is tuned to within **34 counts of the rail**. `FN_bCalibrateFindLedDutyCycle`
+then refines into the window `[63936, 64000]` via
+`duty_new = duty_old × 63968 / max_measured`.
+
+**So a near-clipping empty gate is the correct calibrated state.** We are not
+looking at a broken machine, we are looking at an uncalibrated lamp a few stops
+hot.
+
+### The lever is LED on-counts, NOT gain and NOT integration time
+
+* gain is a 25 % lever after CDS — useless here;
+* **integration time is the same number as the lamp PWM period** (`N = trunc(
+  exposure × 0.24)`), so changing it desynchronises the LED PWM from the line
+  period. Coupled pair, not an independent knob. Its units are undetermined.
+* **LED on-counts are what the vendor's own search adjusts.** Halve per channel
+  until each max is below 63936, then iterate `on × 63968 / max` to converge.
+
+### The one test that decides everything — free, read-only
+
+**FIFO reset, lamp OFF, capture, de-interleave by 3.** If all three sub-streams
+go dark, it is saturation and the machine works. If two stay pinned at `0xFFFE`
+in the dark, the input is railed for a hardware reason and no exposure change
+will help. Do this before spending any effort on exposure.
+
+Also free and high-value: read back the AFE config we have never written —
+`02 04 44 01 85 00` then `01 03 44 02 07` (and idx 1). `0xF8` means we are at
+the 4 V default with maximum headroom; anything with D5 clear would mean the
+PICM put the AFE into 1- or 2-channel mode at boot and the whole question
+reopens.

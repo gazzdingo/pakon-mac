@@ -509,8 +509,17 @@ def poly_pixel(rgb, coeffs):
     read that float32 back. Rounding all six products to float32 -- or none of
     them -- disagrees with the vendor.
 
-    The working precision is the x87 register precision, which under MSVC's
-    default control word (0x027F) is 53-bit, i.e. exactly Python's float.
+    The working precision is the x87 register precision. MSVC's default control
+    word (0x027F) is 53-bit, i.e. exactly Python's float -- but this turns out
+    not to be load-bearing: emulating the function at 53-bit and at 64-bit
+    extended gives identical output over 4003 pixels, because the final
+    `fstp dword` washes the difference out. Only forcing 24-bit single changes
+    anything, and MSVC never does that. So this implementation does not depend
+    on knowing the vendor's control word.
+
+    Verified against TLB.dll over 6007 random pixels with zero mismatches, and
+    on the 7 pixels in 200000 where the precision variants disagree, all 7 of
+    which go our way. See `pakon_color_golden.py random`.
     """
     r, g, b = (int(v) & 0xFFFF for v in rgb)
     # 0x1000d95b-0x1000d96d: R*R and G*G are consumed from the stack.

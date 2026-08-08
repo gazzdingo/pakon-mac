@@ -34,6 +34,7 @@ export const get = (p) => req(p);
 export const post = (p, body) => req(p, { method: 'POST', body: JSON.stringify(body ?? {}) });
 
 export const bootstrap = () => get('/api/app/bootstrap');
+export const hardware = () => get('/api/app/hardware');
 export const workspace = () => get('/api/app/workspace');
 export const sessionState = () => get('/api/app/session');
 export const rolls = () => get('/api/app/rolls');
@@ -51,6 +52,30 @@ export const closeRoll = (id) => post(`/api/app/roll/${id}/close`, {});
 export const exportRoll = (body) => post('/api/app/export', body);
 export const purge = (body) => post('/api/app/workspace/purge', body);
 export const lookupFilm = (dx) => post('/api/app/film', { dx });
+
+/* ── the scanner ─────────────────────────────────────────────────────────
+ * startScan hands off to a separate process that owns the USB handle, so
+ * cancelScan closing its control pipe is what actually stops the transport.
+ * stopScanner is the panic button and does not care what state anything is in.
+ */
+export const startScan = (body) => post('/api/app/scan', body);
+export const cancelScan = (id) => post('/api/app/scan/cancel', { id });
+export const stopScanner = () => post('/api/app/scan/stop', {});
+
+export const fmtClock = (s) => {
+  if (s == null) return '—';
+  const t = Math.max(0, Math.floor(s));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+};
+
+/** CLEAR / FILM / DARK, and the tone each carries. DARK is not a warning —
+ *  it is the state that stops the transport. */
+export const GATE = {
+  clear: { label: 'Clear', tone: 'ok', note: 'No film in the path' },
+  film: { label: 'Film', tone: 'info', note: 'Film in the path, lit' },
+  dark: { label: 'Dark', tone: 'bad', note: 'Lamp failed or path blocked' },
+  unknown: { label: '—', tone: '', note: '' },
+};
 
 /** URL for one frame. `version` is the parameter hash, so changing a
  *  parameter changes the URL and the browser cache cannot serve a stale one. */

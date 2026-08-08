@@ -9,7 +9,7 @@
 // and 8 are disabled, why a stage is unavailable — goes behind <Info>, which
 // is closed until asked.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { frameUrl } from './api';
+import { frameUrl, fmtBytes, fmtClock, GATE } from './api';
 
 export const MODES = [
   ['scan', 'Scan'],
@@ -265,32 +265,52 @@ export function TopBar({ mode, setMode, roll, dark, setDark }) {
   );
 }
 
-/** Twin lanes. `capture` is permanently idle in this build — the transport is
- *  not driven from here — and says so once, in the lane, behind an Info. */
-export function Lanes({ exportJob }) {
+/** Twin lanes. Capture is live: it runs while the transport does, and its Stop
+ *  reaches the motor — see Scan.jsx for why that is a separate process. */
+export function Lanes({ exportJob, scanJob, onStopScan }) {
   const running = exportJob && exportJob.status === 'running';
   const pct = running || exportJob?.status === 'done' ? Math.round((exportJob.progress || 0) * 100) : null;
+
+  const scanning = scanJob && scanJob.status === 'running';
+  const elapsed = scanJob?.elapsed ?? (scanJob?.seconds || 0);
+  const cap = scanJob?.max_seconds || 0;
+  const spct = scanning && cap ? Math.min(100, Math.round((elapsed / cap) * 100)) : null;
+  const gate = GATE[scanJob?.window?.state || 'unknown'] || GATE.unknown;
+
   return (
     <div className="lanes">
       <div className="lane">
         <span className="what">
           <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             Capture
-            <Info side="left">
-              <b>Not wired.</b> Driving the transport is proven in{' '}
-              <span className="num">tools/pakon_session.py</span> — EP&nbsp;
-              <span className="num">0x86</span> at <span className="num">11.6&nbsp;MB/s</span>, zero
-              losses — and is not connected to this window. Rolls are opened from captures already on
-              disk.
-            </Info>
+            {scanning ? null : (
+              <Info side="left">
+                Idle until a scan runs. The transport is driven by a separate
+                process that owns the USB handle, so Stop reaches the motor even
+                if this window stops responding.
+              </Info>
+            )}
           </span>
-          <b>Idle</b>
+          <b>
+            {scanning
+              ? `${fmtClock(elapsed)} · ${gate.label} · ${fmtBytes(scanJob.bytes)}`
+              : scanJob?.status === 'done'
+                ? scanJob.message || 'Done'
+                : 'Idle'}
+          </b>
         </span>
-        <div className="bar">
-          <i style={{ width: '0%' }} />
+        <div className={`bar${scanning ? ' warnfill' : ''}`}>
+          <i style={{ width: `${spct ?? 0}%` }} />
         </div>
-        <span className="pc">&mdash;</span>
-        <Btn disabled>Stop</Btn>
+        <span className="pc">{scanning ? fmtClock(Math.max(0, cap - elapsed)) : '—'}</span>
+        <Btn
+          variant={scanning ? 'danger' : ''}
+          disabled={!scanning}
+          onClick={onStopScan}
+          title={scanning ? 'Stop the transport now' : undefined}
+        >
+          Stop
+        </Btn>
       </div>
       <div className="lane">
         <span className="what">

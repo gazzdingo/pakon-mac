@@ -20,12 +20,127 @@ const FILM_PATHS = [
 
 /** Machine state, split honestly: what the app reads now, and what is not
  *  wired. Every "not wired" row names the register the standalone tool uses,
- *  so the row is a fact rather than a promise. */
-export function machineRows(boot, roll) {
+ *  so the row is a fact rather than a promise.
+ *
+ *  WHERE THE LAMP READINGS COME FROM, WHICH IS THE WHOLE POINT OF THIS RAIL.
+ *  Only one process can hold the USB interface, and during a scan that is the
+ *  scan process — so this window cannot probe, and `hardware_state` serves the
+ *  probe it took before the scan began.
+ *
+ *  Rendering that cache as if it were current made this rail say
+ *  `Lamp —`, `Lamp temperature —` and `Lamp health idle` *while the lamp was
+ *  being polled once a second*, with the readings sitting in the scan job the
+ *  same screen was already showing. "Idle" was flatly untrue at the one moment
+ *  the monitoring mattered, and it is the same shape of untruth as a Cancel
+ *  button that is enabled and does nothing.
+ *
+ *  So: while a scan runs these rows read from the scan's own poll, which is
+ *  the freshest data in the system. Otherwise they read from the probe, and if
+ *  that probe was served from cache the row says `cached` rather than dressing
+ *  a stale number up as a live one. */
+export function machineRows(boot, roll, hw, scanJob) {
   const cal = boot?.calibration;
   const sync = roll?.sync;
+  const scanning = scanJob?.status === 'running';
+  // The scan process is the authority whenever it is running.
+  const lamp = (scanning ? scanJob?.lamp : hw?.lamp) || null;
+  const gate = scanning ? scanJob?.window?.state : null;
+  const present = hw?.present && hw?.state === 'ready';
+  const stale = !scanning && hw?.cached;
+  const age = stale ? ' · cached' : '';
   return {
     read: [
+      [
+        'Scanner USB',
+        scanning
+          ? 'held by the scan'
+          : present
+            ? `0f05:f135${age}`
+            : hw?.state === 'needs_firmware'
+              ? 'no firmware'
+              : 'absent',
+        scanning || present ? 'good' : hw?.present ? 'warn' : 'na',
+        <>
+          A scan runs in its own process and owns the handle for its duration, so
+          this window can neither probe nor be the thing that fails to let go of
+          it.
+        </>,
+      ],
+      [
+        'Lamp',
+        lamp?.status_hex ? `${lamp.status_hex}${lamp.ok === false ? ' fault' : ''}` : '—',
+        lamp?.ok === false ? 'bad' : lamp?.status_hex ? 'good' : 'na',
+        <>
+          Register <span className="num">0x83</span>. Fault bits{' '}
+          <span className="num">5</span> and <span className="num">6</span> abort a scan.
+          {scanning ? ' Read by the scan process, once a second.' : null}
+        </>,
+      ],
+      [
+        'Lamp temperature',
+        lamp?.temp_lb_c != null ? `${lamp.temp_lb_c.toFixed(2)} °C` : '—',
+        lamp?.temp_lb_c != null ? 'good' : 'na',
+        <>
+          Register <span className="num">0x88</span>, raw × <span className="num">0.0625</span>.
+          The board self-regulates to <span className="num">40.0</span> °C with the host sending
+          nothing.
+        </>,
+      ],
+      [
+        'Lamp health',
+        scanning
+          ? lamp?.ok === false
+            ? 'FAULT'
+            : `polled · ${lamp?.polls ?? 0}`
+          : present
+            ? 'polled during a scan'
+            : 'idle',
+        scanning ? (lamp?.ok === false ? 'bad' : 'good') : present ? 'good' : 'na',
+        <>
+          Once a second while the transport runs. The vendor does not do this —{' '}
+          <span className="num">LAMP_WARNING</span> and <span className="num">LAMP_ERROR</span> are
+          consumed but never produced anywhere in <span className="num">TLB.dll</span> — so this is
+          better than parity, not catching up to it.
+        </>,
+      ],
+      [
+        'Transport',
+        scanning
+          ? `running · ${scanJob?.speed ?? hw?.calibration?.speed ?? ''}`
+          : hw?.calibration?.speed
+            ? `reg 0xA5 · ${hw.calibration.speed}`
+            : 'reg 0xA5',
+        scanning ? 'warn' : present ? 'good' : 'na',
+        <>
+          <span className="num">MotorSpeedPlus</span> for{' '}
+          <span className="num">DpiBase16_35</span>, from the recovered hive. Stopped on every exit
+          path, including a killed process.
+        </>,
+      ],
+      [
+        'Roll end',
+        gate
+          ? { clear: 'clear gate', film: 'film', dark: 'DARK' }[gate] || gate
+          : present
+            ? 'clear / film / dark'
+            : 'needs the scanner',
+        gate === 'dark' ? 'bad' : gate ? 'good' : present ? 'good' : 'na',
+        <>
+          Three states, not two. The last detector tested only "bright enough to be a clear gate", so
+          a dead lamp read as film present. <b>Dark stops the motor.</b> Levels come from{' '}
+          <span className="num">calibration/</span>, and the classifier is regression-tested against
+          the capture where the lamp actually died.
+        </>,
+      ],
+      [
+        'Writes',
+        hw?.writes_locked ? 'locked' : 'unlocked',
+        hw?.writes_locked ? 'warn' : 'good',
+        <>
+          <span className="num">tools/WRITES_LOCKED</span>. While it exists no register write is
+          sent, so no scan can start.
+        </>,
+      ],
       [
         'Calibration',
         cal?.present ? 'loaded' : 'missing',
@@ -52,42 +167,23 @@ export function machineRows(boot, roll) {
     ],
     unwired: [
       [
-        'Scanner USB',
-        '0f05:f135',
-        'na',
-        <>
-          Enumeration, firmware load and bulk capture are proven in{' '}
-          <span className="num">tools/pakon_session.py</span> and are not connected to this window.
-        </>,
-      ],
-      ['Lamp on / off', 'reg 0x83', 'na'],
-      ['Lamp temperature', 'reg 0x84', 'na'],
-      [
-        'Lamp health',
-        'not monitored',
-        'na',
-        <>
-          Nothing watches the lamp during a run. The vendor does not either, so this would be new
-          work rather than parity.
-        </>,
-      ],
-      ['Transport', 'reg 0xA5', 'na'],
-      [
         'Film in guides',
         'no register',
         'na',
         <>
           There is no such register. The vendor cached film presence host-side and the writer has
-          never been found, so no sensor is shown rather than one invented.
+          never been found, so no sensor is shown rather than one invented. The gate classification
+          above is the closest real answer.
         </>,
       ],
       [
-        'Roll end',
-        'not detected',
+        'DX barcode',
+        'not read',
         'na',
         <>
-          Tried and withdrawn: a lamp failure mid-roll read as <b>film present</b>, because darkness
-          and film both fall below the clear-gate threshold.
+          Read by a dedicated sensor board, not from the CCD image.{' '}
+          <span className="num">tools/dx_decode.py</span> has never been validated against a real
+          roll.
         </>,
       ],
       [
@@ -415,6 +511,8 @@ export default function App() {
   const [openDlg, setOpenDlg] = useState(false);
   const [cleanup, setCleanup] = useState(null);
   const [exportJob, setExportJob] = useState(null);
+  const [hw, setHw] = useState(null);
+  const [scanJob, setScanJob] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -422,6 +520,12 @@ export default function App() {
         await api.initApi();
         const b = await api.bootstrap();
         setBoot(b);
+        if (b.hardware?.scan_job) {
+          setScanJob({ id: b.hardware.scan_job, kind: 'scan', status: 'running',
+                       phase: 'scanning' });
+          setMode('scan');
+        }
+        setHw(b.hardware || null);
         const rs = await api.rolls();
         setRolls(rs);
         if (rs.length) setRoll(rs[0]);
@@ -434,6 +538,74 @@ export default function App() {
     })();
   }, []);
 
+  /* The machine, polled. Fast while a scan runs because the classification and
+     the lamp are the only things telling you it is safe to keep going; slowly
+     otherwise, since each probe is a USB round trip.
+
+     This is also how a scan already in flight is adopted. The scan lives in
+     its own process, so it outlives this window: relaunching the app, or
+     opening it while a scan started elsewhere is running, must show the scan
+     and offer its Cancel rather than pretend the machine is idle. */
+  const adopt = useCallback((h) => {
+    setHw(h);
+    if (h?.scan_job) {
+      setScanJob((cur) =>
+        cur && cur.id === h.scan_job && cur.status === 'running'
+          ? cur
+          : { id: h.scan_job, kind: 'scan', status: 'running', phase: 'scanning' });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return undefined;
+    const scanning = scanJob?.status === 'running';
+    const t = setInterval(() => {
+      api.hardware().then(adopt).catch(() => {});
+    }, scanning ? 4000 : 15000);
+    return () => clearInterval(t);
+  }, [ready, scanJob?.status, adopt]);
+
+  /* The scan itself, polled hard. */
+  useEffect(() => {
+    if (scanJob?.status !== 'running') return undefined;
+    let alive = true;
+    const t = setInterval(async () => {
+      try {
+        const j = await api.job(scanJob.id);
+        if (!alive) return;
+        setScanJob(j);
+        if (j.status !== 'running') {
+          api.bootstrap().then((b) => { setBoot(b); setHw(b.hardware || null); }).catch(() => {});
+        }
+      } catch { /* the backend will be asked again in 500 ms */ }
+    }, 500);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [scanJob?.status, scanJob?.id]);
+
+  const startScan = useCallback(async (body) => {
+    const r = await api.startScan(body);
+    setScanJob({ id: r.id, status: 'running', kind: 'scan', phase: 'starting',
+                 max_seconds: r.max_seconds, path: r.path });
+    setMode('scan');
+    return r;
+  }, []);
+
+  const cancelScan = useCallback(async () => {
+    if (!scanJob?.id) return;
+    try {
+      await api.cancelScan(scanJob.id);
+    } catch { /* the panic button below is the fallback */ }
+  }, [scanJob?.id]);
+
+  const stopScanner = useCallback(async () => {
+    try {
+      await api.stopScanner();
+    } catch { /* nothing more this window can do; the child has its own limit */ }
+  }, []);
+
   useEffect(() => {
     setSel((s) => Math.min(s, Math.max(0, (roll?.frames?.length ?? 1) - 1)));
   }, [roll?.id, roll?.frames?.length]);
@@ -443,7 +615,10 @@ export default function App() {
     setRolls((rs) => rs.map((x) => (x.id === r.id ? r : x)));
   }, []);
 
-  const machine = useMemo(() => machineRows(boot, roll), [boot, roll]);
+  const machine = useMemo(
+    () => machineRows(boot, roll, hw, scanJob),
+    [boot, roll, hw, scanJob],
+  );
 
   if (fatal)
     return (
@@ -469,7 +644,7 @@ export default function App() {
   return (
     <div className="app">
       <TopBar mode={mode} setMode={setMode} roll={roll} dark={dark} setDark={setDark} />
-      <Lanes exportJob={exportJob} />
+      <Lanes exportJob={exportJob} scanJob={scanJob} onStopScan={stopScanner} />
 
       {mode === 'review' ? (
         <Review
@@ -491,7 +666,11 @@ export default function App() {
           setSel={setSel}
           boot={boot}
           machine={machine}
+          hw={hw}
+          scanJob={scanJob}
           onOpen={() => setOpenDlg(true)}
+          onStartScan={startScan}
+          onCancelScan={cancelScan}
           onPickRoll={(id) => api.roll(id).then(setRoll)}
         />
       ) : mode === 'export' ? (

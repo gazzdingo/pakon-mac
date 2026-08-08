@@ -207,15 +207,28 @@ LAMP_POLL_S = 1.0
 LAMP_POLL_FAIL_LIMIT = 5         # consecutive failures before we call it blind
 LAMP_WARMUP_S = 5.0              # WaitForLamp default, hive-confirmed "5.000000"
 
-#: The primary guard, and the one the vendor actually relies on:
-#: ``i_uiNoFilmTimeOut``, seconds, validated 10..300 at 0x10041485/0x1004148a
-#: and shipped at 120. Proven to be seconds because it is added straight to a
-#: ``time()`` return at 0x1002f9b7 and 0x1003115d. The previous value here was
-#: 3.0 s -- 40x more aggressive than the vendor, and a far likelier cause of a
-#: roll being cut short than any total-time cap. docs/55 s5.
-STALL_LIMIT_S = 120.0            # no image bytes for this long -> stop
-STALL_LIMIT_MIN_S = 10.0
-STALL_LIMIT_MAX_S = 300.0
+#: How long the capture may see no image bytes before it gives up.
+#:
+#: Sized from ``i_uiNoFilmTimeOut``: seconds, validated 10..300 at
+#: 0x10041485/0x1004148a, shipped at 120. It is proven to be seconds because it
+#: is added straight to a ``time()`` return at 0x1002f9b7 and 0x1003115d.
+#:
+#: Note what that value means for the vendor, because it is not what this
+#: constant means for us. The vendor's deadline is built once at scan start
+#: (0x1002f9c9) and never re-armed, and it is only consulted once the *optical*
+#: test has already said the frame is blank (0x10030447). So for the vendor it
+#: is a **floor** on scan duration -- the scan may not end on the leader -- not
+#: a watchdog on byte flow. The vendor's own byte-starvation timeout is
+#: ScanPacketReadyTimeOut (3 s) and timing out there is explicitly *not* fatal
+#: (0x1002fe00 downgrades WAIT_TIMEOUT to WAIT_OBJECT_0).
+#:
+#: We use 120 s as a stall limit because it is the vendor's own floor: below it
+#: the vendor would not even entertain the idea that the film has ended. The
+#: previous value here was 3.0 s, which is 40x more trigger-happy than that and
+#: is the likeliest cause of a roll being cut short. docs/55 s5.2a, s7.3.
+STALL_LIMIT_S = 120.0
+STALL_LIMIT_MIN_S = 10.0         # i_uiNoFilmTimeOut's validated band, 0x10041485
+STALL_LIMIT_MAX_S = 300.0        # 0x1004148a
 
 #: docs/40 s12: 0x83 bit 5 and bit 6 are real faults; the vendor aborts
 #: ``FN_bLampTemperatureStable`` on bit 5. Bit 1 is transient and self-clearing,

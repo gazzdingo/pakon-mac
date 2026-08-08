@@ -931,6 +931,12 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
     meta = {
         "version": 1,
         "capture": str(out),
+        # --- the contract pakon_decode.load_capture_sidecar reads. Top level,
+        # by that function's own lookup order, and duplicated under "config"
+        # because it accepts either. Do not rename these without changing it.
+        "speed": cfg.speed,
+        "line_rate_0x91": cfg.line_rate_0x91,
+        "config": cfg.to_json(),
         "bytes": res.bytes,
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "written_by": "tools/pakon_scan.py",
@@ -972,6 +978,12 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
         "lamp_refresh": res.lamp_refresh,
         "stopped": res.stopped,
         "gate": gate_desc or {},
+        "dx": res.dx,
+        "dx_log": res.dx_log,
+        # Flattened for readers that only want the outcome.
+        "lines": res.lines,
+        "reason": res.reason,
+        "ok": res.ok,
     }
     # Derived, and only if the decode module is importable. It is under active
     # development by another task, so a failure to import it must never cost us
@@ -991,9 +1003,18 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
 
 def write_capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
                            gate_desc: dict | None = None) -> str | None:
-    """Write ``<capture>.meta.json``. Never raises; a scan is not lost over it."""
+    """Write ``<capture>.scan.json``. Never raises; a scan is not lost over it.
+
+    One file, with the name ``pakon_decode.load_capture_sidecar`` already looks
+    for. There were briefly two — a ``.meta.json`` from here and a
+    ``.scan.json`` written afterwards from ``cmd_run`` — which is precisely the
+    arrangement in which a decode later reads whichever it finds first and the
+    two quietly disagree. Written from ``run_scan``'s ``finally`` so it also
+    exists when a scan aborts, which the ``cmd_run`` version could not
+    guarantee.
+    """
     try:
-        p = out.with_suffix(".meta.json")
+        p = out.with_suffix(".scan.json")
         p.write_text(json.dumps(capture_metadata(out, cfg, res, gate_desc),
                                 indent=1))
         return str(p)
@@ -1602,33 +1623,12 @@ def cmd_run(a) -> int:
         print(f"  ({len(res.packets)} packets; nothing was sent)",
               file=sys.stderr)
     elif res.path and not a.dry_run:
-        # Sidecar for offline decode: transport scale depends on speed /
-        # line_rate (pakon_decode.transport_scale). Same numbers Pakon pairs
-        # at capture so pixels are already square.
-        try:
-            side = Path(res.path).with_suffix(".scan.json")
-            cfg = res.config if isinstance(res.config, dict) else {}
-            payload = {
-                "capture": res.path,
-                "speed": cfg.get("speed"),
-                "dpi_base": cfg.get("dpi_base"),
-                "line_rate_0x91": cfg.get("line_rate_0x91"),
-                "integration": cfg.get("integration"),
-                "lamp_n": cfg.get("lamp_n"),
-                "config": cfg,
-                "bytes": res.bytes,
-                "lines": res.lines,
-                "reason": res.reason,
-                "ok": res.ok,
-                "dx": res.dx,
-                "dx_log": res.dx_log,
-            }
-            side.write_text(json.dumps(payload, indent=2, default=str) + "\n")
-            if not a.json:
-                print(f"wrote sidecar {side}", file=sys.stderr)
-        except (OSError, TypeError, ValueError) as e:
-            print(f"warning: could not write .scan.json sidecar: {e}",
-                  file=sys.stderr)
+        # The capture sidecar is written by run_scan's finally (see
+        # write_capture_metadata) so that it exists on aborts too. It used to be
+        # written again here, which meant two files describing one capture and
+        # a decode reading whichever it found first.
+        if res.metadata and not a.json:
+            print(f"wrote sidecar {res.metadata}", file=sys.stderr)
         # The DX result on its own, next to the capture, so the app can pick a
         # film stock without parsing the whole scan record.
         try:

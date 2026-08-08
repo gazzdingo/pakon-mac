@@ -611,8 +611,21 @@ def _print_summary(s: dict) -> None:
     if s["frames"]:
         print(f"  frames (half-frame code, line): {s['frames'][:20]}"
               f"{' …' if len(s['frames']) > 20 else ''}")
-        print(f"  anchor head-first {s['anchor_35mm_head_first']}")
-        print(f"  anchor tail-first {s['anchor_35mm_tail_first']}")
+        print(f"  printed frame numbers (35 mm, code/2): "
+              f"{[round(c / 2, 1) for c, _ in s['frames'][:20]]}")
+        # The vendor's acceptance gate is one agreeing code below 24 entries
+        # (0x10014753), so BOTH directions can read "accepted". The count is
+        # what discriminates; the authority on direction is the tail-first
+        # status bit, not this.
+        h = s["anchor_35mm_head_first"]
+        t = s["anchor_35mm_tail_first"]
+        print(f"  anchor head-first {h}")
+        print(f"  anchor tail-first {t}")
+        print(f"  sequence agrees better "
+              f"{'head-first' if h['agree'] > t['agree'] else 'tail-first' if t['agree'] > h['agree'] else 'equally either way'}"
+              f" ({h['agree']} vs {t['agree']} of {h['entries']}); "
+              f"the status bit says "
+              f"{'TAIL FIRST' if s['tail_first'] else 'head first'}")
     for n in s.get("notes", []):
         print(f"  note: {n}")
 

@@ -141,23 +141,81 @@ DECODABLE_BASES = (16,)
 # limits — all of them backstops, none of them adjustable to "off"
 # --------------------------------------------------------------------------
 
-#: A 36-exposure roll at the calibrated base-16 speed runs about four minutes.
-DEFAULT_MAX_SECONDS = 360.0
-#: The ceiling. Nothing may ask for longer; the last run was allowed seven
-#: minutes of darkness and that was already too generous.
-HARD_MAX_SECONDS = 900.0
+# The vendor bounds a run by *distance*, not by elapsed time, and guards it
+# with a no-progress watchdog. See docs/55-scan-timeouts.md for the addresses.
+# TLB.dll validates iMaxFilmLength_mm to 24..6400 mm (0x1004174c / 0x10041751)
+# and PSI supplies these two:
+NORMAL_ROLL_MM = 1670            # NormalRollMaxFilmLength_mm, a 36-exposure roll
+LONG_ROLL_MM = 3340              # LongRollMaxFilmLength_mm, exactly 2x
+MAX_FILM_LENGTH_MM = 6400        # the API's own ceiling, 0x10041751
+
+#: ``MotorSpeedPlus / 1000`` is millimetres per second. Reconciled from the
+#: /1000 in FN_bBeforeScan (0x1002e687), the GUI's "tenths of mm/s, 10..355"
+#: (docs/51 s220) against register 0xA5's legal 1000..32766 (docs/12 s476), and
+#: the 1:2:4 DpiBase ratio. Strongly supported, not directly measured.
+MM_PER_S_PER_SPEED_UNIT = 1.0 / 1000.0
+
+#: Leader, trailer and start/stop transients on top of the nominal roll length.
+SCAN_MARGIN = 1.25
+#: The vendor's own LongRoll/Normal ratio. Past this, more film has gone by than
+#: the vendor's long-roll mode itself permits.
+SCAN_CEILING_FACTOR = LONG_ROLL_MM / NORMAL_ROLL_MM      # 2.0
+
 MIN_MAX_SECONDS = 5.0
+
+
+def speed_mm_per_s(speed: int) -> float:
+    """Transport speed in mm/s for a ``MotorSpeedPlus`` register value."""
+    return max(1, int(speed)) * MM_PER_S_PER_SPEED_UNIT
+
+
+def scan_seconds_for(speed: int, film_mm: float = NORMAL_ROLL_MM) -> float:
+    """How long ``film_mm`` of film takes to pass at ``speed``."""
+    return float(film_mm) / speed_mm_per_s(speed)
+
+
+def scan_limits_for(speed: int,
+                    film_mm: float = NORMAL_ROLL_MM) -> tuple[float, float]:
+    """``(default_cap, hard_ceiling)`` in seconds for one transport speed.
+
+    A single constant cannot be right for three speeds that differ by 4.4x, so
+    both numbers are derived from the distance the vendor bounds, not guessed.
+    For a 36-exposure roll this gives 353/565 s at base 16, 182/291 s at base 8
+    and 81/129 s at base 4.
+    """
+    expected = scan_seconds_for(speed, film_mm)
+    return expected * SCAN_MARGIN, expected * SCAN_CEILING_FACTOR
+
+
+#: Module-level fallbacks are the *slowest* speed, so they stay valid whatever
+#: the run is configured for. Prefer ``scan_limits_for(cfg.speed)``.
+DEFAULT_MAX_SECONDS, HARD_MAX_SECONDS = scan_limits_for(MOTOR_SPEED[16])
+#: Absolute backstop at any speed: the API's 6400 mm at the slowest transport.
+ABSOLUTE_MAX_SECONDS = scan_seconds_for(MOTOR_SPEED[16], MAX_FILM_LENGTH_MM)
 
 #: Disk backstop. 11.6 MB/s x 360 s is 4.2 GB, so 8 GB cannot be reached by a
 #: scan that is behaving.
 DEFAULT_MAX_BYTES = 8 << 30
 
 CHUNK = 256 * 1024               # the read size the lossless 60 s run used
-READ_TIMEOUT_MS = 2000
+#: ``ScanPacketReadyTimeOut``, the vendor's own value. Note that for the vendor
+#: a timeout here is *not* fatal: 0x1002fe00 re-reads status 0x2b and downgrades
+#: WAIT_TIMEOUT to WAIT_OBJECT_0 rather than failing. Ours must not abort on it
+#: either -- the stall watchdog below is what ends a dead scan.
+READ_TIMEOUT_MS = 3000
 LAMP_POLL_S = 1.0
 LAMP_POLL_FAIL_LIMIT = 5         # consecutive failures before we call it blind
 LAMP_WARMUP_S = 5.0              # WaitForLamp default, hive-confirmed "5.000000"
-STALL_LIMIT_S = 3.0              # no image bytes for this long -> abort
+
+#: The primary guard, and the one the vendor actually relies on:
+#: ``i_uiNoFilmTimeOut``, seconds, validated 10..300 at 0x10041485/0x1004148a
+#: and shipped at 120. Proven to be seconds because it is added straight to a
+#: ``time()`` return at 0x1002f9b7 and 0x1003115d. The previous value here was
+#: 3.0 s -- 40x more aggressive than the vendor, and a far likelier cause of a
+#: roll being cut short than any total-time cap. docs/55 s5.
+STALL_LIMIT_S = 120.0            # no image bytes for this long -> stop
+STALL_LIMIT_MIN_S = 10.0
+STALL_LIMIT_MAX_S = 300.0
 
 #: docs/40 s12: 0x83 bit 5 and bit 6 are real faults; the vendor aborts
 #: ``FN_bLampTemperatureStable`` on bit 5. Bit 1 is transient and self-clearing,
@@ -423,8 +481,15 @@ def clamp_speed(v: int) -> int:
     return max(pc.MOTOR_SPEED_MIN_PLUS, min(pc.MOTOR_SPEED_MAX_PLUS, int(v)))
 
 
-def clamp_seconds(v: float) -> float:
-    return max(MIN_MAX_SECONDS, min(HARD_MAX_SECONDS, float(v)))
+def clamp_seconds(v: float, speed: int | None = None) -> float:
+    """Clamp a requested cap into the band the vendor's own bounds allow.
+
+    With ``speed`` given the ceiling is that speed's own -- a base-4 run has no
+    business asking for a base-16 run's budget. Without it the slowest speed's
+    ceiling is used, which is the loosest of the three.
+    """
+    ceiling = scan_limits_for(speed)[1] if speed else HARD_MAX_SECONDS
+    return max(MIN_MAX_SECONDS, min(ceiling, float(v)))
 
 
 # --------------------------------------------------------------------------
@@ -1153,7 +1218,7 @@ def watch_parent(cancel: Cancel) -> None:
 
 def run_scan(out_path: str | Path,
              cfg: ScanConfig,
-             max_seconds: float = DEFAULT_MAX_SECONDS,
+             max_seconds: float | None = None,
              max_bytes: int = DEFAULT_MAX_BYTES,
              cancel: Cancel | None = None,
              log=None,
@@ -1185,7 +1250,11 @@ def run_scan(out_path: str | Path,
     # repeat, and the selftest caught it.
     if cancel is None:
         cancel = Cancel()
-    max_seconds = clamp_seconds(max_seconds)
+    # None means "use the cap this transport speed implies" rather than one
+    # constant shared by three speeds that differ by 4.4x. docs/55 s7.
+    if max_seconds is None:
+        max_seconds = scan_limits_for(cfg.speed)[0]
+    max_seconds = clamp_seconds(max_seconds, cfg.speed)
     res = ScanResult(path=str(out_path), config=cfg.to_json())
 
     g = gate.Gate.from_calibration()
@@ -1934,9 +2003,13 @@ def main() -> int:
     r.add_argument("--speed", type=int, default=None,
                    help="transport speed register 0xA5; defaults to the "
                         "calibrated MotorSpeedPlus for the base")
-    r.add_argument("--max-seconds", type=float, default=DEFAULT_MAX_SECONDS,
-                   help=f"hard time limit, clamped to "
-                        f"{MIN_MAX_SECONDS}..{HARD_MAX_SECONDS}")
+    r.add_argument("--max-seconds", type=float, default=None,
+                   help="hard time limit; default is derived from the "
+                        "transport speed and the vendor's 1670 mm roll bound "
+                        f"({scan_limits_for(MOTOR_SPEED[16])[0]:.0f} s at base "
+                        f"16, {scan_limits_for(MOTOR_SPEED[4])[0]:.0f} s at "
+                        f"base 4). Clamped to {MIN_MAX_SECONDS} s .. that "
+                        "speed's ceiling")
     r.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
     r.add_argument("--dry-run", action="store_true",
                    help="build and print the sequence; send nothing")

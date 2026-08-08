@@ -118,40 +118,46 @@ def do_read(store: cs.CalibrationStore, transport: cd.Transport,
             f"pass --force. The existing read is kept either way; nothing is "
             f"ever overwritten or deleted.")
 
-    chk = guard.check()
-    if not chk["may_read"]:
-        # Was a read taken but never saved? Its bytes are still in FX2 RAM.
-        if chk["code"] == "already-read" and guard.unsaved_nonce():
-            return _salvage(store, transport, guard, source)
-        raise cd.ReadRefused(chk["reason"])
+    # Everything from the decision to the stamp happens under one lock. Two
+    # instances started together would otherwise both see a fresh cycle and
+    # both read -- the second corrupting what the first captured.
+    with cd.ReadLock(store.root / "journal" / "read.lock"):
+        chk = guard.check()
+        if not chk["may_read"]:
+            # A read taken but never saved? Its bytes are still in FX2 RAM.
+            if chk["code"] == "already-read" and guard.unsaved_nonce():
+                return _salvage(store, transport, guard, source)
+            raise cd.ReadRefused(chk["reason"])
 
-    nonce_box = {}
+        nonce_box = {}
 
-    def _stamp():
-        nonce_box["nonce"] = guard.stamp()
-        guard.note("read", nonce=nonce_box["nonce"], source=source)
+        def _stamp():
+            nonce_box["nonce"] = guard.stamp()
+            guard.note("read", nonce=nonce_box["nonce"], source=source)
 
-    out = cd.read_bus(transport, before_run=_stamp)
+        out = cd.read_bus(transport, before_run=_stamp)
 
-    if not out["devices"]:
-        guard.note("empty", nonce=nonce_box.get("nonce"),
-                   status=out["status_raw"])
-        raise cd.ReadRefused(
-            "No device on the bus answered at any address from 0x50 to 0x57.\n"
-            + "\n".join(f"  0x{a:02x}: {r['text']}"
-                        for a, r in sorted(out["results"].items()))
-            + "\n\nNothing was written to the scanner. The read-once marker "
-              "is set for this power cycle, so power-cycle before retrying.")
+        if not out["devices"]:
+            guard.note("empty", nonce=nonce_box.get("nonce"),
+                       status=out["status_raw"])
+            raise cd.ReadRefused(
+                "No device on the bus answered at any address from 0x50 to "
+                "0x57.\n"
+                + "\n".join(f"  0x{a:02x}: {r['text']}"
+                            for a, r in sorted(out["results"].items()))
+                + "\n\nNothing was written to the scanner. The read-once "
+                  "marker is set for this power cycle, so power-cycle before "
+                  "retrying.")
 
-    # Bytes to disk BEFORE anything interprets them.
-    rec = store.save_read(out["devices"], source=source,
-                          session={"nonce": nonce_box.get("nonce"),
-                                   "status": out["status_raw"],
-                                   "complete": out["complete"],
-                                   "salvaged": out.get("salvaged", False)})
-    guard.note("saved", nonce=nonce_box.get("nonce"), stamp=rec.stamp,
-               dir=str(rec.path))
-    return {"record": rec, "raw": out, "salvaged": False}
+        # Bytes to disk BEFORE anything interprets them.
+        rec = store.save_read(out["devices"], source=source,
+                              session={"nonce": nonce_box.get("nonce"),
+                                       "status": out["status_raw"],
+                                       "complete": out["complete"],
+                                       "salvaged": out.get("salvaged", False)})
+        guard.note("saved", nonce=nonce_box.get("nonce"), stamp=rec.stamp,
+                   dir=str(rec.path))
+        return {"record": rec, "raw": out, "salvaged": False}
 
 
 def _salvage(store: cs.CalibrationStore, transport: cd.Transport,

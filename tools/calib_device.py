@@ -329,6 +329,95 @@ def firmware_ok(path: Path = FIRMWARE) -> tuple[bool, str]:
 # the power-cycle guard
 # --------------------------------------------------------------------------
 
+class ReadLock:
+    """Serialise the check-then-read sequence across processes.
+
+    Without this there is a real race: two app instances started together can
+    both see "no marker, no resident firmware", both conclude the cycle is
+    fresh, and both read -- the second one corrupting what the first captured.
+    The FX2-RAM marker cannot close that window on its own because it is only
+    written after the decision is made.
+
+    fcntl.flock where it exists, because the kernel drops it if the process
+    dies; an O_EXCL file with a staleness check elsewhere.
+    """
+
+    def __init__(self, path: Path, stale_after: float = 300.0):
+        self.path = Path(path)
+        self.stale_after = stale_after
+        self._fh = None
+        self._mode = None
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            import fcntl                                    # noqa: PLC0415
+            self._fh = open(self.path, "a+")
+            try:
+                fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                self._fh.close()
+                self._fh = None
+                raise ReadRefused(
+                    "Another copy of this program is already reading the "
+                    "scanner's calibration. Refusing to read at the same "
+                    "time -- two reads in one power cycle is exactly the "
+                    "accident this guards against. Nothing was sent to the "
+                    "scanner.")
+            self._mode = "flock"
+            self._fh.seek(0)
+            self._fh.truncate()
+            self._fh.write(f"{os.getpid()} {time.time()}\n")
+            self._fh.flush()
+            return self
+        except ImportError:
+            pass
+        # No fcntl (Windows): exclusive create, with staleness recovery.
+        if self.path.exists():
+            try:
+                age = time.time() - self.path.stat().st_mtime
+            except OSError:
+                age = 0.0
+            if age < self.stale_after:
+                raise ReadRefused(
+                    "Another copy of this program appears to be reading the "
+                    "scanner's calibration. Refusing to read at the same "
+                    "time. If nothing else is running, delete "
+                    f"{self.path} and try again. Nothing was sent to the "
+                    "scanner.")
+            try:
+                os.replace(self.path, self.path.with_suffix(".stale"))
+            except OSError:
+                pass
+        try:
+            fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            raise ReadRefused(
+                "Another copy of this program just started reading the "
+                "scanner's calibration. Nothing was sent to the scanner.")
+        os.write(fd, f"{os.getpid()} {time.time()}\n".encode())
+        os.close(fd)
+        self._mode = "exclusive-file"
+        return self
+
+    def __exit__(self, *exc):
+        if self._mode == "flock" and self._fh is not None:
+            try:
+                import fcntl                                # noqa: PLC0415
+                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+            except Exception:                               # noqa: BLE001
+                pass
+            self._fh.close()
+        elif self._mode == "exclusive-file":
+            # Releasing a lock is the one removal this code performs, and it
+            # removes a lock file, never a calibration.
+            try:
+                os.unlink(self.path)
+            except OSError:
+                pass
+        return False
+
+
 class PowerCycleGuard:
     """Answers one question: may we read, right now, on this power cycle?"""
 

@@ -386,6 +386,35 @@ def test_orchestration() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_concurrent_read_locked() -> None:
+    section("two processes cannot both decide the cycle is fresh")
+    import calib_read as cr
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        t = sim()
+        store = cs.CalibrationStore(tmp)
+        guard = cd.PowerCycleGuard(t, tmp / "journal")
+        lock_path = tmp / "journal" / "read.lock"
+
+        # Hold the lock as a second instance would, then try to read.
+        with cd.ReadLock(lock_path):
+            try:
+                cr.do_read(store, t, guard, source="test")
+                check(False, "a concurrent read is refused")
+            except cd.ReadRefused as e:
+                check("same time" in str(e), "a concurrent read is refused",
+                      str(e)[:60])
+            check(t.reads.get(0x52, 0) == 0,
+                  "and the scanner was never touched")
+
+        # Once released, the read proceeds normally.
+        res = cr.do_read(store, t, guard, source="test")
+        check(res["record"].is_good, "the read succeeds once the lock is free")
+        check(t.reads[0x52] == 1, "exactly one I2C read in total")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> int:
     print("calibration read/backup self-tests -- no scanner required")
     test_verify()
@@ -398,6 +427,7 @@ def main() -> int:
     test_store_append_only()
     test_save_before_interpret()
     test_orchestration()
+    test_concurrent_read_locked()
     print(f"\n{_count - len(_fails)}/{_count} checks passed")
     if _fails:
         print("FAILED:")

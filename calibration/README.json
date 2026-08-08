@@ -50,5 +50,6 @@
     ],
     "note": "deliberately ~50000 not the vendor's 64000 target so no channel clips"
   },
-  "usage": "corrected = (raw - dark) * gain, then clamp to 14 bits"
+  "usage": "Tables are EP 0x86 wire u16. Decode: dark14=dark/4; (raw14-dark14)*gain → clamp 14-bit. Gate uses wire as-is.",
+  "domain": "wire_u16"
 }

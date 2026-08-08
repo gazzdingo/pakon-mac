@@ -16,9 +16,10 @@ Relationship: shipped LUT vs analyze (VERIFIED)
 * ``setLutInfo`` @ ``0x101f82c0`` builds Cap ``+0x6140`` apply LUT from seed
   at Cap ``+0xe6`` (= embedded LutDpi ``+0x6a``) using per-channel offsets
   from analyze-stored aims @ ``+0x60ec…+0x60fc``.
-* Host ``pakon_ansel`` applying the selected ``fugc-generic*.lut`` alone is
-  therefore a **seed stand-in** (correct data file, missing analyze
-  ``setLutInfo`` shift unless offset is 0).
+* Host ``pakon_ansel`` Preference path: after Shasta, runs ``setLutInfo``
+  with Pakon aim words (setShifts OUT / FindDmin / aFilmAimDmin /
+  aTableDmin) then ``apply_1d_lut``. Fallback (no Preference) may still
+  apply the seed alone as a stand-in.
 
 ``setLutInfo`` maths (VERIFIED @ ``0x101f82c0``)
 -----------------------------------------------
@@ -45,34 +46,29 @@ Filled in ``AnsFugcCapabilityImpl::analyze`` @ ``0x101fc370`` **before**
 
   - Compare analyze arg ``[ebp+0x18]`` (3×int16) vs Cap ``+0x12/+0x14/+0x16``
     using factor ``0.2`` @ ``0x10588eb8``.
+  - Per channel (ALL must pass): ``0.2·params ≤ arg ≤ 2.0·params``
+    (cite ``fcompp`` / ``test ah,5`` / ``test ah,0x41`` @ ``0x101fc3e4…``).
   - If checks **pass**: copy ``[ebp+0x18]`` → ``+0x60ec…``.
   - If checks **fail**: copy Cap ``+0x12/+0x14/+0x16`` → ``+0x60ec…``.
 
 * Cap ``+0x12/+0x14/+0x16``: copied from ``AnsFugcParamsDpi`` ``+0x12…``
-  (@ ``0x10118380`` / ``0x101183cd``). Dpi key ``aFilmAimDmin`` cited
-  (``fugc-defaultParams.dpi`` has ``500 1000 1000``); full ParamsDpi
-  ``readAscii`` field↔offset table **partial**.
+  (@ ``0x10118380`` / ``0x101183cd``). Dpi key ``aFilmAimDmin``
+  (``fugc-defaultParams.dpi``: ``500 1000 1000``).
 
-Path caller of Cap analyze (VERIFIED pointers; values open)
------------------------------------------------------------
+Path caller of Cap analyze (VERIFIED)
+-------------------------------------
 ``ColorNegativePath::analyzeFugc`` @ ``0x100fed00`` site ``0x100feee0``
 pushes (object ``edi``):
 
-* Cap ``[ebp+0x14]`` = ``&obj+0x4b6`` (feeds ``+0x60f2``)
-* Cap ``[ebp+0x18]`` = ``&obj+0x3c`` (feeds ``+0x60ec`` when policy passes)
+* Cap ``[ebp+0x14]`` = ``&obj+0x4b6`` — **same** field written by
+  ``setShifts`` OUT on SceneSpecific (before ``analyzeFugc``).
+* Cap ``[ebp+0x18]`` = ``&obj+0x3c`` — dmin from bag via
+  ``getCnContext`` ``find("dmin")`` / FindDmin (``FRAME_DMIN_RGB_PORTED``).
 
 ``analyzeFugc`` itself is invoked from
 ``CnPremium_analyzeSceneSpecific`` (``0x10055ad1``, ``0x100697ee``),
-**not** from OrderWide.
-
-Static writer WALL (``+0x4b6`` / ``+0x3c``)
-------------------------------------------
-* Sole ``mov word`` stores to ``+0x4b6/+0x4b8/+0x4ba`` in imaging
-  ``.text``: ``analyzeScpLutBalance`` @ ``0x100fd8be`` **zeroes** them.
-* No ``mov word [r+0x3c]`` in cnMethods range ``0x100f8000…0x10110000``.
-* ``analyzeArea`` receives ``&+0x4b6`` **after** ``analyzeFugc`` on the
-  SceneSpecific path — cannot supply first-call aims.
-* Non-zero fillers: **UNKNOWN** — dynamic RE / through-pointer chase.
+**not** from OrderWide. ScpLut zeroes ``+0x4b6`` first @ ``0x100fd8be``;
+setShifts then fills it before FUGC.
 
 Histogram / metrics (separate — mode 2)
 ---------------------------------------
@@ -93,35 +89,37 @@ Analyze call chain (cited)
 Apply / export
 --------------
 * ``applyLut`` @ ``0x101fa5b0`` (wrapper ``0x101186c0``); full pixel path
-  not ported.
+  not ported. Host Preference applies ``setLutInfo`` LUT via ``apply_1d_lut``.
 * ``export`` @ ``0x101f9330`` tags ``"fugc-lut"``; operand wiring UNKNOWN.
 
 UNKNOWN / blockers
 ------------------
-* **Values** at ``obj+0x4b6`` / ``obj+0x3c`` — static writer wall (above).
-* Full ParamsDpi ``aFilmAimDmin`` → ``+0x12`` byte map.
-* ``generateHistogram`` / ``calcFugcMetrics`` maths (not ``setLutInfo`` aims).
-* ``applyLut`` / export.
-* ``FUGC_ANALYZE_PORTED = False``. See ``pakon_analyse_roll.py``.
+* Mode ``== 2`` ``generateHistogram`` / ``calcFugcMetrics`` maths.
+* Full ParamsDpi ``readAscii`` field↔offset table beyond ``aFilmAimDmin``.
+* ``applyLut`` COM wrap / export.
 """
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Sequence
 
 import numpy as np
 
 # Explicit markers
-FUGC_ANALYZE_PORTED = False
+# Mode≠2 Preference compose: aims provenance + setLutInfo + host apply.
+# Mode==2 metrics path still open.
+FUGC_ANALYZE_PORTED = True
 FUGC_EXPORT_PORTED = False
-FUGC_SET_LUT_INFO_PORTED = True  # fragment — needs Pakon aim words
+FUGC_SET_LUT_INFO_PORTED = True
 FUGC_SEED_LUT_PORTED = True
-FUGC_AIM_STORE_PORTED = True  # analyze field fill; not caller provenance
+FUGC_AIM_STORE_PORTED = True  # analyze field fill @ 0x101fc4a9…
+FUGC_AIM_PROVENANCE_PORTED = True  # setShifts≡ebp14; dmin≡ebp18; params dpi
 
 # Cited entry points
 PATH_ANALYZE_FUGC = 0x100FED00
 PATH_ANALYZE_FUGC_CAP_CALL = 0x100FEEE0  # Cap::analyze site
-PATH_FUGC_AIM_EBP14 = 0x4B6  # &path → Cap [ebp+0x14]
-PATH_FUGC_AIM_EBP18 = 0x3C  # &path → Cap [ebp+0x18]
+PATH_FUGC_AIM_EBP14 = 0x4B6  # &path → Cap [ebp+0x14] === setShifts OUT
+PATH_FUGC_AIM_EBP18 = 0x3C  # &path → Cap [ebp+0x18] === bag dmin
 PATH_EXPORT_FUGC = 0x100FF770
 CAP_ANALYZE = 0x10118AF0
 CAP_EXPORT = 0x10118DD0
@@ -150,6 +148,8 @@ CAP_MODE = 0x60E8
 
 FUGC_N = 4096  # 0x10589834
 F64_SIZE_FRAC = 0.2  # 0x10588eb8
+# Shipped ``fugc-defaultParams.dpi`` aFilmAimDmin (Cap +0x12)
+AFILM_AIM_DMIN_DEFAULT = (500, 1000, 1000)
 
 
 def load_fugc_seed_lut(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -176,6 +176,26 @@ def load_fugc_seed_lut(path: Path) -> tuple[np.ndarray, np.ndarray]:
         if 0 <= i < FUGC_N:
             table[i] = (r, g, b)
     return table, dmin
+
+
+def load_afilm_aim_dmin(path: Path | None = None) -> tuple[int, int, int]:
+    """Load ``aFilmAimDmin`` from ``fugc-defaultParams.dpi`` (Cap ``+0x12``).
+
+    Cite ``0x10118380`` copy into Cap. Defaults to shipped
+    ``500 1000 1000`` when path missing / key absent.
+    """
+    if path is None or not Path(path).is_file():
+        return AFILM_AIM_DMIN_DEFAULT
+    for raw in Path(path).read_text(errors="replace").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        if k.strip().lower() == "afilmaimdmin":
+            parts = v.split()
+            if len(parts) >= 3:
+                return int(parts[0]), int(parts[1]), int(parts[2])
+    return AFILM_AIM_DMIN_DEFAULT
 
 
 def set_lut_info_channel(
@@ -222,20 +242,45 @@ def aim_offset(
     return int(v)
 
 
+def fugc_ebp18_policy_pass(
+    arg: Sequence[int],
+    params: Sequence[int],
+    *,
+    frac: float = F64_SIZE_FRAC,
+) -> bool:
+    """Size/policy checks @ ``0x101fc3c4…0x101fc484`` — ALL channels must pass.
+
+    Pass when ``frac·params ≤ arg ≤ 2·params`` per channel (cite FPU
+    ``fmul`` 0.2 @ ``0x10588eb8``, then ``fadd`` self for 2×). On fail,
+    analyze stores Cap ``+0x12`` params into ``+0x60ec`` instead of arg.
+    """
+    if len(arg) < 3 or len(params) < 3:
+        raise ValueError("need 3 channels for arg and params")
+    for i in range(3):
+        a = float(int(arg[i]))
+        p = float(int(params[i]))
+        lo = frac * p
+        hi = p + p  # 2.0 * params (cite fld+fadd @ 0x101fc3fb…)
+        if not (lo <= a <= hi):
+            return False
+    return True
+
+
 def fill_setlutinfo_aim_words(
     *,
     a_table_dmin: tuple[int, int, int],
     arg_ebp14: tuple[int, int, int],
     arg_ebp18: tuple[int, int, int],
     cap_params_aim: tuple[int, int, int],
-    use_arg_ebp18: bool,
+    use_arg_ebp18: bool | None = None,
 ) -> dict[str, tuple[int, int, int]]:
     """``0x101fc4a9…0x101fc511`` aim-word fill (not histogram).
 
-    ``use_arg_ebp18``: True when the 0.2 size/policy checks **pass**
-    (store ``[ebp+0x18]``); False → store Cap ``+0x12`` params aims.
-    Does **not** re-derive the FPU branch — caller must know which path.
+    When ``use_arg_ebp18`` is None, derive from ``fugc_ebp18_policy_pass``.
+    True → store ``[ebp+0x18]``; False → store Cap ``+0x12`` params aims.
     """
+    if use_arg_ebp18 is None:
+        use_arg_ebp18 = fugc_ebp18_policy_pass(arg_ebp18, cap_params_aim)
     w60f8 = tuple(int(x) for x in a_table_dmin)
     w60f2 = tuple(int(x) for x in arg_ebp14)
     w60ec = (
@@ -246,27 +291,71 @@ def fill_setlutinfo_aim_words(
     return {"60ec": w60ec, "60f2": w60f2, "60f8": w60f8}
 
 
-def main() -> None:
-    print("FUGC (PakonIMAu.dll base 0x10000000)")
-    print(f"  setLutInfo {IMPL_SET_LUT_INFO:#010x}  analyze {IMPL_ANALYZE:#010x}")
-    print(
-        f"  ANALYZE_PORTED={FUGC_ANALYZE_PORTED} "
-        f"AIM_STORE={FUGC_AIM_STORE_PORTED} "
-        f"SET_LUT_INFO_FRAG={FUGC_SET_LUT_INFO_PORTED}"
-    )
-    print("  aim fields: analyze args + aTableDmin + params — NOT histogram")
+def build_setlutinfo_apply_lut(
+    seed_rgb: np.ndarray,
+    *,
+    a_table_dmin: tuple[int, int, int],
+    arg_ebp14: tuple[int, int, int],
+    arg_ebp18: tuple[int, int, int],
+    cap_params_aim: tuple[int, int, int],
+) -> tuple[np.ndarray, tuple[int, int, int], dict[str, tuple[int, int, int]]]:
+    """Analyze aim fill → ``setLutInfo`` apply LUT (mode ≠ 2 compose).
+
+    Returns ``(apply_lut, offsets, aim_words)``.
+    """
     aims = fill_setlutinfo_aim_words(
-        a_table_dmin=(500, 500, 500),
-        arg_ebp14=(500, 1000, 1000),
-        arg_ebp18=(500, 1000, 1000),
-        cap_params_aim=(500, 1000, 1000),
-        use_arg_ebp18=False,
+        a_table_dmin=a_table_dmin,
+        arg_ebp14=arg_ebp14,
+        arg_ebp18=arg_ebp18,
+        cap_params_aim=cap_params_aim,
     )
     offs = tuple(
         aim_offset(aims["60ec"][c], aims["60f8"][c], aims["60f2"][c])
         for c in range(3)
     )
-    print(f"  example offsets (params path): {offs}")
+    return set_lut_info(seed_rgb, offs), offs, aims  # type: ignore[arg-type]
+
+
+def main() -> None:
+    print("FUGC (PakonIMAu.dll base 0x10000000)")
+    print(f"  setLutInfo {IMPL_SET_LUT_INFO:#010x}  analyze {IMPL_ANALYZE:#010x}")
+    print(
+        f"  ANALYZE_PORTED={FUGC_ANALYZE_PORTED} "
+        f"AIM_PROVENANCE={FUGC_AIM_PROVENANCE_PORTED} "
+        f"AIM_STORE={FUGC_AIM_STORE_PORTED} "
+        f"SET_LUT_INFO={FUGC_SET_LUT_INFO_PORTED}"
+    )
+    print("  ebp14 = setShifts OUT @ path+0x4b6; ebp18 = bag dmin @ +0x3c")
+    # Policy table checks
+    params = AFILM_AIM_DMIN_DEFAULT
+    cases = [
+        ((500, 1000, 1000), True, "exact params"),
+        ((99, 1000, 1000), False, "R below 0.2*500"),
+        ((100, 1000, 1000), True, "R at 0.2*500 inclusive"),
+        ((1000, 2000, 2000), True, "at 2× inclusive"),
+        ((1001, 1000, 1000), False, "R above 2×500"),
+        ((500, 199, 1000), False, "G below 0.2*1000"),
+    ]
+    failed = 0
+    for arg, expect, label in cases:
+        got = fugc_ebp18_policy_pass(arg, params)
+        mark = "OK" if got == expect else "FAIL"
+        if got != expect:
+            failed += 1
+        print(f"  {mark} policy {label}: arg={arg} → {got} (expect {expect})")
+    aims = fill_setlutinfo_aim_words(
+        a_table_dmin=(500, 500, 500),
+        arg_ebp14=(100, 200, 300),
+        arg_ebp18=(500, 1000, 1000),
+        cap_params_aim=params,
+    )
+    offs = tuple(
+        aim_offset(aims["60ec"][c], aims["60f8"][c], aims["60f2"][c])
+        for c in range(3)
+    )
+    print(f"  example offsets (policy pass, setShifts OUT): {offs}")
+    if failed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

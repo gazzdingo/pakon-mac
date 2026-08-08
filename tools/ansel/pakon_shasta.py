@@ -179,11 +179,12 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
   ``ANE_ANALYZE_FINALIZE_KNOT_PORTED`` / ``ANE_ANALYZE_FINALIZE_ADJUST_PORTED`` /
   ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED``). Host dens-hist→finalize→
   ``getResults`` compose is wired when dens-hists are supplied.
-  **WALL for ``ANALYZE``:** live ``AneSampledImage`` /
-  ``AneResidualImage`` producers (``collectData``); ``ANE_ORDER``
-  shipped ``useAvg=0`` orch is ported. Contrast / float-LUT side
-  paths. Do **not** invent
-  percentile tone from dpi ``shadowPercent`` / ``highlightPercent``.
+  Live Laplacian ``collectData`` leaf ``0x1027fc80`` and box ``0x102804e0``
+  are host-ported (``pakon_ane_collect``; Unicorn-golden). Preference
+  assemble wires dens→mid-aims via fc80→``e9d0`` when
+  ``SHASTA_ANALYZE_PORTED``. COM portfolio wrap still open. Contrast /
+  float-LUT side paths. Do **not** invent percentile tone from dpi
+  ``shadowPercent`` / ``highlightPercent``.
 
 CapabilityImpl ``+0x3e0`` vs working ``+0x3b0`` (VERIFIED facts)
 ---------------------------------------------------------------
@@ -351,7 +352,7 @@ UNKNOWN / blockers (honest)
   (``SHASTA_IMAGE_PERCENTILE_7B970_PORTED`` /
   ``SHASTA_IMAGE_SAMPLE_7B3C0_PORTED``). ``SHASTA_APPLY_PORTED=True``:
   I16 Op dispatch ``0x1014de50``→``0x1014dcc0`` + Preference assemble.
-  ``ANALYZE`` stays False until live aim producers land.
+  ``SHASTA_ANALYZE_PORTED``: Laplacian collect leaf + dens→mid-aims.
 """
 from __future__ import annotations
 
@@ -363,7 +364,10 @@ from typing import Any
 import numpy as np
 
 # Explicit markers — do not invent analyze → toneLut.
-SHASTA_ANALYZE_PORTED = False
+# True when Preference can build mid-aims from live fc80 sample/residual
+# dens (shipped Laplacian / useAvg=0). Box 804e0 leaf ported; portfolio
+# COM wrap remains open but unused on ane-CN-Fps.dpi.
+SHASTA_ANALYZE_PORTED = True
 # Table assemble (935d0 + builder + Cap setToneLut) Unicorn-golden.
 SHASTA_TONE_LUT_PORTED = True
 # ImaShastaOp I16 type-dispatch + Preference assemble→apply wired.
@@ -372,8 +376,7 @@ SHASTA_APPLY_PORTED = True
 SHASTA_TONE_LUT_FRAGMENTS = True
 # avg2largest 0x1004f690 + dpi metricGray/white → +0x2b0/+0x2bc mapped.
 SHASTA_AIM_AVG2_PORTED = True
-# CnPremium mid-aim arithmetic (dens+setShifts+master clip+avg2) ported;
-# live dmin/AneOrder knot *values* still WALL → ANALYZE stays False.
+# CnPremium mid-aim arithmetic (dens+setShifts+master clip+avg2) ported.
 SHASTA_AIM_MID_RGB_PORTED = True
 # find/insert/getNoiseTable provenance + bag/layout helpers ported.
 SHASTA_AIM_INPUT_PATH_PORTED = True
@@ -522,6 +525,18 @@ def curve_log_ratio_c50(a: float, b: float) -> float:
     return -b * math.log(1.0 - a / b)
 
 
+def _crt_exp(x: float) -> float:
+    """MSVC CRT ``exp``: overflow → ``+HUGE_VAL`` (IEEE ``+inf``), no raise.
+
+    Python ``math.exp`` raises ``OverflowError`` past ~709; the DLL leaf at
+    ``0x10292d30`` returns ``±inf`` on the same args (Unicorn-checked).
+    """
+    try:
+        return math.exp(x)
+    except OverflowError:
+        return math.inf
+
+
 def curve_log_ratio_cb0(a: float, b: float) -> float:
     """``0x10292cb0`` closed form (Unicorn-golden vs PakonIMAu.dll).
 
@@ -529,7 +544,7 @@ def curve_log_ratio_cb0(a: float, b: float) -> float:
     clamp vs ``0.999·t`` as ``c50`` (cite ``0x10292cb0…d2b``). Fill
     selects ``cb0`` when param adj ``< 0`` (``0x10293a3e``).
     """
-    t = b * math.exp(a / b)
+    t = b * _crt_exp(a / b)
     thresh = F64_0_999 * t
     if a >= F64_0:
         if thresh < a:
@@ -543,9 +558,10 @@ def curve_exp_d30(a: float, b: float, c: float) -> float:
     """``0x10292d30`` closed form (Unicorn-golden).
 
     ``c · exp(b/c) · (1 − exp(−a/c))``. Uses ``−1.0`` @ ``0x10574f58``
-    in the DLL exp path.
+    in the DLL exp path. Exp overflow matches CRT → ``±inf`` (not a
+    Python exception).
     """
-    return c * math.exp(b / c) * (1.0 - math.exp(-a / c))
+    return c * _crt_exp(b / c) * (1.0 - _crt_exp(-a / c))
 
 
 def curve_exp_d80(a: float, b: float, c: float, d: float) -> float:
@@ -558,7 +574,7 @@ def curve_exp_d80(a: float, b: float, c: float, d: float) -> float:
     use_d30 = (b < c) if c >= F64_0 else (b > c)
     if use_d30:
         return curve_exp_d30(a, c, d)
-    return d * (1.0 - math.exp(-a / d))
+    return d * (1.0 - _crt_exp(-a / d))
 
 
 def curve_newton_330(
@@ -581,7 +597,12 @@ def curve_newton_330(
     err_prev = F64_0
     s = float(target)
     for _ in range(n):
-        r = target - s * (1.0 - math.exp(-a / s))
+        try:
+            r = target - s * (1.0 - _crt_exp(-a / s))
+        except (OverflowError, ZeroDivisionError):
+            return s
+        if not math.isfinite(r):
+            return s
         if r >= F64_0:
             if r <= tol:
                 return s
@@ -718,7 +739,13 @@ def avg2largest_i16(a: int, b: int, c: int) -> int:
 
 
 def ftol2_chop(x: float) -> int:
-    """``0x104ffe44`` — trunc toward zero (dens scale path @ ``0x100569c9``)."""
+    """``0x104ffe44`` — trunc toward zero (dens scale path @ ``0x100569c9``).
+
+    Non-finite → ``0x80000000`` (MSVC ``__ftol2`` indefinite / INT_MIN).
+    Python ``trunc(±inf)`` raises; the CRT does not.
+    """
+    if not math.isfinite(x):
+        return -0x80000000
     return int(math.trunc(x))
 
 
@@ -751,28 +778,39 @@ def ane_dens_contrib(
     """AneOrder dens add @ ``0x100569a1…`` (before setShifts / master LUT).
 
     ``dens_table`` is ``(n,)`` when ``n_channels==1`` (shared), or
-    ``(n_channels, n)`` when per-channel tables advance (``+0x48``).
+    ``(n_channels, n)`` / ``(≥n_channels, n)`` when per-channel tables
+    advance (``+0x48``). After each of RGB ``i``, advances ``table += n``
+    while ``i+1 < n_channels`` (cite ``0x100569dd…0x100569eb``) — so with
+    ``n_channels==2`` the third channel reuses the last plane.
     Returns ``(dens_i int32×3, dmin_dens int16×3)``.
     """
     tbl = np.asarray(dens_table, dtype=np.float32)
+    n_ch = max(1, int(n_channels))
     if tbl.ndim == 1:
-        planes = [tbl, tbl, tbl]
+        planes_src = [tbl]
         n = int(tbl.shape[0])
     elif tbl.ndim == 2:
-        if tbl.shape[0] < 3:
-            raise ValueError("per-channel dens_table needs ≥3 planes")
-        planes = [tbl[0], tbl[1], tbl[2]]
+        if tbl.shape[0] < 1:
+            raise ValueError("dens_table has no planes")
+        planes_src = [tbl[i] for i in range(tbl.shape[0])]
         n = int(tbl.shape[1])
     else:
         raise ValueError("dens_table must be 1-D or 2-D")
     if n <= 0:
         raise ValueError("dens_table length is 0")
+    # Plane index per RGB channel — match DLL advance gate.
+    plane_idx = [0]
+    for i in range(2):
+        nxt = plane_idx[-1]
+        if (i + 1) < n_ch:
+            nxt = min(nxt + 1, len(planes_src) - 1)
+        plane_idx.append(nxt)
     dens_i: list[int] = []
     dmin_dens: list[int] = []
     for i in range(3):
         code = _sx16(dmin_rgb[i])
         idx = 0 if code < 0 else (n - 1 if code > n - 1 else code)
-        plane = planes[i if n_channels > 1 else 0]
+        plane = planes_src[plane_idx[i]]
         di = ftol2_chop(float(plane[idx]) * float(scale))
         dens_i.append(di)
         dmin_dens.append(_i16_add(code, di))
@@ -1952,10 +1990,26 @@ def assemble_scene_tone_lut(
     mid_lo: int | None = None,
     mid_hi: int | None = None,
     blockavg_rgb: np.ndarray | None = None,
+    setshifts_out: tuple[int, int, int] | list[int] | None = None,
+    dmin_rgb: tuple[int, int, int] | list[int] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, ToneLutBuilderWork]:
-    """Preference-path assemble: live ``7b970``/``7b3c0`` → ``935d0`` → Cap."""
+    """Preference-path assemble: live ``7b970``/``7b3c0`` → ``935d0`` → Cap.
+
+    When ``SHASTA_ANALYZE_PORTED`` and ``mid_lo``/``mid_hi`` are omitted,
+    mid aims come from FindDmin + Laplacian ``collectData`` dens
+    (``0x1027fc80`` → ``0x1027e9d0`` → ``cn_premium_mid_aim_rgb``).
+    """
     if not SHASTA_TONE_LUT_PORTED:
         raise RuntimeError("SHASTA_TONE_LUT_PORTED is False")
+    if mid_lo is None and mid_hi is None and SHASTA_ANALYZE_PORTED:
+        mids = mid_aims_from_rgb_analyze(
+            dpi,
+            rgb_i16,
+            setshifts_out=setshifts_out,
+            dmin_rgb=dmin_rgb,
+        )
+        if mids is not None:
+            mid_lo, mid_hi = mids
     work = tone_lut_work_from_dpi(dpi, mid_lo=mid_lo, mid_hi=mid_hi)
     prep = dpi_prep_inputs(dpi)
     apply_prep_7b1c0(work, prep)
@@ -1970,6 +2024,53 @@ def assemble_scene_tone_lut(
         prep_inputs=prep,
     )
     return tone, bn, cap, work
+
+
+def mid_aims_from_rgb_analyze(
+    dpi: "ShastaDpi",
+    rgb_i16: np.ndarray,
+    *,
+    setshifts_out: tuple[int, int, int] | list[int] | None = None,
+    dmin_rgb: tuple[int, int, int] | list[int] | None = None,
+) -> tuple[int, int] | None:
+    """Live mid aims: FindDmin + fc80 dens → ``cn_premium_mid_aim_rgb``.
+
+    Returns ``None`` when the sample grid is empty (tiny images). ``dmin``
+    defaults to FindDmin on RPD planes (cite ``frame_dmin_rgb_from_planes``);
+    ColNeg 1px remap remains the AddScene writer's concern when Cap tables
+    are present. Dens from shipped Laplacian / ``correctForFilter`` path.
+    """
+    import pakon_ane_collect as ane_col
+    import pakon_scene_context as sc
+
+    img = np.asarray(rgb_i16)
+    if img.ndim != 3 or img.shape[2] < 3:
+        raise ValueError("rgb_i16 must be HxWx≥3")
+    if dmin_rgb is None:
+        dmin_rgb = sc.frame_dmin_rgb_from_planes(
+            img[:, :, 0].ravel(),
+            img[:, :, 1].ravel(),
+            img[:, :, 2].ravel(),
+        )
+    n = int(round(dpi.max_value)) + 1
+    try:
+        nt = ane_col.ane_noise_table_from_rgb_fc80(
+            img,
+            n,
+            code_value_bins=32,  # ane-CN-Fps.dpi
+        )
+    except ValueError:
+        return None
+    shifts = setshifts_out if setshifts_out is not None else (0, 0, 0)
+    return cn_premium_mid_aim_rgb(
+        dmin_rgb,
+        nt.planes_for_mid_aim(),
+        shifts,
+        black=int(round(dpi.black)),
+        metric_gray=int(round(dpi.metric_gray)),
+        black_noise_sigma_mult=float(dpi.black_noise_sigma_mult),
+        dens_n_channels=int(nt.n_channels),
+    )
 
 
 def ima_shasta_apply_i16(

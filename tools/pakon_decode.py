@@ -28,8 +28,16 @@ Usage:
   # Every product type (raw14, rpd, ansel_rpd, srgb, cc_srgb, tones) + frames:
   ./pakon_decode.py strip captures/strip_cal.bin out/ --all --sba-default
   ./pakon_decode.py strip captures/strip_cal.bin out/ --color --icc --frames --dx 78-13
+  # Transport geometry: pass the capture's motor speed (or rely on *.scan.json).
+  # gold400.bin was at 11467 → square; legacy strips at 25802 get ~2.25× stretch.
+  ./pakon_decode.py strip captures/gold400.bin out/ --motor-speed 11467 --frames
+  # Photographic viewing land (tag working-images-v1) until Preference/Shasta aims exist:
+  ./pakon_decode.py strip captures/roll.bin out/ --color --icc --frames --dx 96-1 --legacy-tone --max-frames 12
   ./pakon_decode.py strip captures/test_nofifo.bin out/ --color --icc --sba-default
   ./pakon_decode.py verify-lut
+
+Eyeball ``*_srgb.png`` (ICC output). ``*_rpd.png`` / ``*_ansel_rpd.png`` are
+percentile / code previews — not photo finishes. ``*_raw14.png`` is uninverted.
 
 Products (--all):
   strip_raw14.png          linear 14-bit preview
@@ -47,6 +55,7 @@ Images stay under captures/ (gitignored). Never commit them.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -165,10 +174,17 @@ def apply_flatfield(rgb: np.ndarray, dark: np.ndarray, empty: np.ndarray,
 def load_unit_calibration(
     cal_dir: str | Path | None = None,
 ) -> tuple[np.ndarray, np.ndarray, Path]:
-    """Load committed per-pixel dark/gain (14-bit domain).
+    """Load committed per-pixel dark/gain for post-``to_rgb14`` maths.
 
     Files: ``dark_2000x3.npy``, ``gain_2000x3.npy`` under ``calibration/``.
     Valid only for the exposure triad in that directory's ``README.json``.
+
+    Domain (cite ``tools/pakon_gate.py`` header + ``calibration/README.json``):
+    the committed ``.npy`` tables are in the **EP 0x86 wire** u16 domain
+    (``ref_dark.bin`` mean ≈ 1120/1443/1161). ``to_rgb14`` does ``>> 2``, so
+    subtractable dark here is ``dark_wire / 4``. Gain is unchanged:
+
+        ((raw_w − dark_w) · gain) / 4  ≡  (raw14 − dark_w/4) · gain
     """
     root = Path(cal_dir) if cal_dir is not None else DEFAULT_CALIBRATION_DIR
     dark_p = root / "dark_2000x3.npy"
@@ -178,15 +194,17 @@ def load_unit_calibration(
             f"unit calibration missing under {root} "
             f"(need dark_2000x3.npy + gain_2000x3.npy)"
         )
-    dark = np.load(dark_p)
+    dark_wire = np.load(dark_p)
     gain = np.load(gain_p)
-    if dark.shape != (PIXELS_PER_LINE, CHANNELS):
+    if dark_wire.shape != (PIXELS_PER_LINE, CHANNELS):
         raise ValueError(f"{dark_p}: expected {(PIXELS_PER_LINE, CHANNELS)}, "
-                         f"got {dark.shape}")
+                         f"got {dark_wire.shape}")
     if gain.shape != (PIXELS_PER_LINE, CHANNELS):
         raise ValueError(f"{gain_p}: expected {(PIXELS_PER_LINE, CHANNELS)}, "
                          f"got {gain.shape}")
-    return dark.astype(np.float64, copy=False), gain.astype(np.float64, copy=False), root
+    # Wire → 14-bit dark. Leave .npy on disk in wire domain for pakon_gate.
+    dark14 = dark_wire.astype(np.float64) * 0.25
+    return dark14, gain.astype(np.float64, copy=False), root
 
 
 def apply_unit_calibration(
@@ -196,8 +214,10 @@ def apply_unit_calibration(
 ) -> np.ndarray:
     """``corrected = (raw - dark) * gain``, clamp to 14-bit.
 
-    ``raw`` / ``dark`` are in the post-``to_rgb14`` domain. Cite:
-    ``calibration/README.json``, ``docs/46-handover-ansel.md``.
+    ``raw`` / ``dark`` are in the post-``to_rgb14`` domain. ``dark`` must
+    come from ``load_unit_calibration`` (wire/4), not the raw ``.npy``.
+    Cite: ``calibration/README.json``, ``docs/46-handover-ansel.md``,
+    ``tools/pakon_gate.py`` (domain note).
     """
     out = (rgb.astype(np.float64) - dark) * gain
     return np.clip(out, 0, RAW14_MAX).astype(np.uint16)
@@ -369,18 +389,144 @@ def find_frames(rgb14: np.ndarray, min_gap: int = 50,
 # I/O
 # --------------------------------------------------------------------------
 
-# DpiBase16 full frame is 3000 transport samples × 2000 CCD (docs/30).
-# strip_cal.bin only gets ~1380 lines/frame — motor was ~2.17× too fast
-# relative to line rate — so the transport axis is spatially compressed.
-TARGET_LINES_PER_FRAME = 3000
-DEFAULT_TRANSPORT_SCALE = TARGET_LINES_PER_FRAME / 1380.0  # ≈ 2.174
+# --------------------------------------------------------------------------
+# Transport geometry (square pixels)
+# --------------------------------------------------------------------------
+#
+# Pakon does not hardcode a resample factor. It pairs MotorSpeedPlus with the
+# exposure line clock so raw lines are already square for the selected DpiBase
+# (16Base output is 2000×3000 — docs/30). Offline we recover the same relation:
+#
+#   across  = CCD_px / film_height_mm          (sensor, fixed for a geometry)
+#   along   ∝ line_rate / motor_speed          (transport)
+#   scale   = across / along                   (PIL stretch on the line axis)
+#
+# Register 0xA5 units are unknown (docs/12); light-board 0x91 is the line-rate
+# register in our calibration triad. Absolute Hz/mm/s drop out if we anchor so
+# that along == across at the motor speed that pairs with our *fixed* exposure
+# triad (integration 4093 / N 982 / 0x91=60 from calibration/README.json).
+#
+# With that clock held constant, ~1380 brightness-gap lines at speed 25802 map
+# to ~3000 lines near hive DpiBase8's MotorSpeedPlus (11467). So for this host
+# stack, square lands on 11467 — not hive DpiBase16's 5917 (which pairs with a
+# different line clock / binning). scale ∝ speed; gold400 @ 11467 → ~1.0.
+#
+# Same class of bug as the integration/N/line-rate triad: three values that are
+# really one matched setting.
+
+CCD_ACROSS_PX = 2000
+FILM_ACROSS_MM = 24.0
+ACROSS_PX_PER_MM = CCD_ACROSS_PX / FILM_ACROSS_MM  # ≈ 83.333
+
+# Hive MotorSpeedPlus (HKLM\…\DpiBase<N>_35) — same table as pakon_scan.
+MOTOR_SPEED = {4: 25802, 8: 11467, 16: 5917}
+REF_LINE_RATE = 60
+# Square-pixel motor for our locked exposure triad (see comment block above).
+SQUARE_MOTOR_SPEED = MOTOR_SPEED[8]
+
+# Legacy strips (strip_cal etc.) were captured at DpiBase4's speed with the
+# base-16 exposure triad — that is why an unsquash ≈ 2.25 existed at all.
+LEGACY_DEFAULT_MOTOR_SPEED = MOTOR_SPEED[4]
+
+TARGET_LINES_PER_FRAME = 3000  # DpiBase16 vendor frame along-travel samples
+
+
+def transport_scale(speed: float,
+                    line_rate: float = REF_LINE_RATE) -> float:
+    """Resample factor so transport pixels match across-CCD mm spacing.
+
+    ``scale = (across_px/mm) / (along_lines/mm)`` with
+    ``along ∝ line_rate / speed``, anchored so
+    ``transport_scale(SQUARE_MOTOR_SPEED, REF_LINE_RATE) == 1``.
+    """
+    if speed <= 0 or line_rate <= 0:
+        raise ValueError(f"speed and line_rate must be > 0 (got {speed}, {line_rate})")
+    return (float(speed) / SQUARE_MOTOR_SPEED) * (REF_LINE_RATE / float(line_rate))
+
+
+def along_lines_per_mm(speed: float,
+                       line_rate: float = REF_LINE_RATE) -> float:
+    """Lines per millimetre of film travel at this transport setting."""
+    return ACROSS_PX_PER_MM / transport_scale(speed, line_rate)
+
+
+DEFAULT_TRANSPORT_SCALE = transport_scale(LEGACY_DEFAULT_MOTOR_SPEED)  # ≈ 2.250
+
+
+def load_capture_sidecar(capture: Path | str) -> dict | None:
+    """Read ``*.scan.json`` next to a ``.bin`` (written by pakon_scan)."""
+    p = Path(capture)
+    for cand in (p.with_suffix(".scan.json"),
+                 Path(str(p) + ".scan.json"),
+                 p.with_suffix(".json")):
+        if not cand.is_file() or cand == p:
+            continue
+        try:
+            data = json.loads(cand.read_text())
+        except (OSError, json.JSONDecodeError, UnicodeError):
+            continue
+        if isinstance(data, dict):
+            return data
+    return None
+
+
+def resolve_transport_scale(
+        *,
+        transport_scale_override: float | None = None,
+        motor_speed: int | float | None = None,
+        dpi_base: int | None = None,
+        line_rate: int | float | None = None,
+        capture: Path | str | None = None,
+) -> tuple[float, str]:
+    """Pick the unsquash factor. Override > explicit speed/base > sidecar > legacy."""
+    if transport_scale_override is not None:
+        return float(transport_scale_override), "explicit --transport-scale"
+
+    lr = float(line_rate) if line_rate is not None else float(REF_LINE_RATE)
+    speed: float | None = float(motor_speed) if motor_speed is not None else None
+    note = ""
+
+    if dpi_base is not None:
+        if dpi_base not in MOTOR_SPEED:
+            raise ValueError(f"dpi_base must be one of {tuple(MOTOR_SPEED)}")
+        speed = float(MOTOR_SPEED[dpi_base])
+        note = f"DpiBase{dpi_base} MotorSpeedPlus"
+
+    if speed is None and capture is not None:
+        meta = load_capture_sidecar(capture)
+        if meta:
+            cfg = meta.get("config") if isinstance(meta.get("config"), dict) else {}
+            raw_speed = meta.get("speed", cfg.get("speed"))
+            raw_lr = (meta.get("line_rate_0x91")
+                      or cfg.get("line_rate_0x91")
+                      or meta.get("line_rate"))
+            if raw_speed is not None:
+                speed = float(raw_speed)
+                note = f"sidecar {Path(capture).name}"
+            if raw_lr is not None and line_rate is None:
+                lr = float(raw_lr)
+
+    if speed is None:
+        speed = float(LEGACY_DEFAULT_MOTOR_SPEED)
+        note = (f"legacy default speed {LEGACY_DEFAULT_MOTOR_SPEED} "
+                f"(pass --motor-speed / --dpi-base or a .scan.json sidecar)")
+
+    ts = transport_scale(speed, lr)
+    src = (f"{note + '; ' if note else ''}"
+           f"speed={int(speed) if speed == int(speed) else speed} "
+           f"line_rate={int(lr) if lr == int(lr) else lr} "
+           f"→ scale={ts:.4f} "
+           f"(square @{SQUARE_MOTOR_SPEED}/{REF_LINE_RATE})")
+    return ts, src
 
 
 def unsquash_transport(rgb: np.ndarray, scale: float = DEFAULT_TRANSPORT_SCALE) -> np.ndarray:
     """Resample the line (transport) axis so pixels are square.
 
     `rgb` is (n_lines, ccd, 3). After this, a full frame is ~3000×2000 and
-    aspect 3:2. Without it the picture looks squashed along the film advance.
+    aspect 3:2 when the capture was at the matched Pakon speed/line-rate pair.
+    Mismatched transport (too fast) compresses the travel axis; scale > 1
+    stretches it back.
     """
     if abs(scale - 1.0) < 1e-6:
         return rgb
@@ -478,6 +624,7 @@ def cmd_strip(args: argparse.Namespace) -> int:
             print(f"warning: unit calibration skipped ({e})", file=sys.stderr)
         else:
             print(f"unit calibration {cal_root}  "
+                  f"dark_wire/4→14-bit mean={dark.mean(0).round(1)}  "
                   f"(raw-dark)*gain → clamp {RAW14_MAX}")
             rgb = apply_unit_calibration(rgb, dark, gain)
             for c, name in enumerate("RGB"):
@@ -490,9 +637,14 @@ def cmd_strip(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     frames_dir = out / "frames"
 
-    ts = args.transport_scale
-    print(f"transport scale {ts:.4f} "
-          f"({ts:.3f}× along film → square pixels at DpiBase16)")
+    ts, ts_src = resolve_transport_scale(
+        transport_scale_override=args.transport_scale,
+        motor_speed=getattr(args, "motor_speed", None),
+        dpi_base=getattr(args, "dpi_base", None),
+        line_rate=getattr(args, "line_rate", None),
+        capture=args.input,
+    )
+    print(f"transport scale {ts:.4f}  ({ts_src})")
 
     stock = None
     if args.dx:
@@ -530,7 +682,13 @@ def cmd_strip(args: argparse.Namespace) -> int:
             print(f"wrote {out / 'strip_rpd16.tiff'}")
 
     spans = find_frames(rgb)
-    print(f"detected {len(spans)} frames")
+    max_frames = int(getattr(args, "max_frames", 0) or 0)
+    if max_frames > 0:
+        spans = spans[:max_frames]
+        print(f"detected frames (using first {len(spans)} "
+              f"via --max-frames {max_frames})")
+    else:
+        print(f"detected {len(spans)} frames")
 
     srgb = None
     toned12 = None
@@ -561,9 +719,12 @@ def cmd_strip(args: argparse.Namespace) -> int:
             scene=scene,
             sba_key_override=force_key,
         )
-        print(f"  Ansel two-pass on {len(spans)} scenes "
-              f"({rpd.shape[0]} lines) …")
-        srgb, toned12 = engine.render_strip(rpd, spans, return_toned=True)
+        legacy = bool(getattr(args, "legacy_tone", False))
+        print(f"  Ansel {'legacy-v1' if legacy else 'two-pass'} on "
+              f"{len(spans)} scenes ({rpd.shape[0]} lines) …")
+        srgb, toned12 = engine.render_strip(
+            rpd, spans, return_toned=True, legacy_tone=legacy,
+        )
         write_png(out / "strip_srgb.png", srgb, ts)
         print(f"wrote {out / 'strip_srgb.png'}")
 
@@ -651,6 +812,13 @@ def main() -> int:
                    help="apply density LUT + 3×4 matrix → 12-bit RPD")
     s.add_argument("--icc", action="store_true",
                    help="Ansel stand-in (SBA/Shasta/FUGC) + Rpd2Pcs→sRGB")
+    s.add_argument("--legacy-tone", action="store_true",
+                   help="viewing path from tag working-images-v1: ColNeg + "
+                        "highlight balance + linked percentile + "
+                        "median→metricGray + ICC (skips Preference/Shasta/"
+                        "FUGC apply; use until FOS/Shasta aims exist)")
+    s.add_argument("--max-frames", type=int, default=0,
+                   help="export only the first N detected frames (0=all)")
     s.add_argument("--balance", action="store_true",
                    help="extra pre-Ansel channel balance on stage-2 RPD")
     s.add_argument("--dx", default=None,
@@ -692,10 +860,22 @@ def main() -> int:
                    help="legacy: open-gate capture (with --dark; overrides "
                         "unit calibration)")
     s.add_argument("--max-lines", type=int, default=0)
-    s.add_argument("--transport-scale", type=float, default=DEFAULT_TRANSPORT_SCALE,
-                   help="resample transport axis for square pixels "
-                        f"(default {DEFAULT_TRANSPORT_SCALE:.3f} = 3000/1380; "
-                        "use 1.0 to disable)")
+    s.add_argument("--transport-scale", type=float, default=None,
+                   help="explicit resample factor for square pixels "
+                        "(overrides --motor-speed; 1.0 disables). "
+                        "Default: derive from speed/line-rate")
+    s.add_argument("--motor-speed", type=int, default=None,
+                   help="transport register 0xA5 used when the strip was "
+                        f"captured (hive: 4→{MOTOR_SPEED[4]}, "
+                        f"8→{MOTOR_SPEED[8]}, 16→{MOTOR_SPEED[16]}). "
+                        f"gold400.bin was 11467. Default without sidecar: "
+                        f"{LEGACY_DEFAULT_MOTOR_SPEED}")
+    s.add_argument("--dpi-base", type=int, choices=(4, 8, 16), default=None,
+                   help="use hive MotorSpeedPlus for this DpiBase as the "
+                        "capture speed (same table as pakon_scan)")
+    s.add_argument("--line-rate", type=int, default=None,
+                   help="light-board 0x91 line-rate register at capture "
+                        f"(default {REF_LINE_RATE} from calibration triad)")
     s.add_argument("--data-dir", default=DEFAULT_DATA_DIR)
     s.add_argument("--ansel-root", default=DEFAULT_ANSEL_ROOT,
                    help="anselinstalldir/dataPathItems (shasta/sba/fugc/profile)")

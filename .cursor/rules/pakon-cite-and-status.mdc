@@ -1,0 +1,39 @@
+---
+description: Cite PakonIMAu.dll VAs on ports; FOS status table in replies
+alwaysApply: true
+---
+
+# Pakon cite + status table
+
+## Cite every ported line
+
+When adding or changing host ports of Pakon behaviour (especially under
+`tools/ansel/`, `tools/pakon_*.py`, and related docs):
+
+- Put a comment on **each** new/changed constant, store offset, and
+  computation line naming **where it lives in Pakon**.
+- Format: `PakonIMAu.dll @ 0x……` (base `0x10000000`). The DLL has no
+  source line numbers — **VA is the cite**.
+- Docstrings alone are not enough; keep the cite on the line (or the
+  constant) that implements the behaviour.
+- Do not invent maths; only port equations with a cited VA.
+
+Example:
+
+```python
+F64_10000 = 10000.0  # PakonIMAu.dll @ 0x105a7258
+gm_slope = ftol2_chop(F64_10000 * c1_e)  # PakonIMAu.dll @ 0x102902d1 → esi+0x12
+```
+
+## FOS status table — every task end
+
+When working on FOS / `SbaCalcFosResults`, **end every user-facing reply
+that finishes a task (or a substantial step)** with an up-to-date
+**done / not done** table for FOS analyze leaves only:
+
+opening, dmin, cov, R², orderAvg, slopes/offsets, eigen, paxel,
+`orderFpo` / helper Δ, full analyze wire, host roll caller,
+Preference `fpo` edge.
+
+Do this even if the reply is short, interrupted, or only confirms a
+question — if FOS work was in progress, the table closes the turn.

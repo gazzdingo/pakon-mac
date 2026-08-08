@@ -8,9 +8,9 @@ Rpd2Pcs→Srgb.
 **Shasta** (``pakon_shasta.py``): dpi aims + toneLut assemble + live image
 sampling (``0x1027b970``/``0x1027b3c0``) + I16 ``ImaShastaOp`` apply are
 ported (`SHASTA_TONE_LUT_PORTED` / `SHASTA_APPLY_PORTED`). Full analyze
-aim producers still open (`SHASTA_ANALYZE_PORTED=False`; Ane build
-``0x1027e9d0`` WALL; neighbor merge + frame/`+0x6cac` + finalize
-knot/adjust closed).
+aim producers closed (`SHASTA_ANALYZE_PORTED=True`; Ane Laplacian
+collect ``0x1027fc80`` → dens orch). ColorAdjust: contrast LUT +
+default-skip leaves ported; ``SpCombine`` / unsharp apply still open.
 
 **SRA** (``pakon_sra.py``): shipped ``common-sraFwdLut-metric-*.lut`` is
 ``AnsCommonSraFwdLutDPI`` — a real Pakon table, but **not** Shasta's
@@ -18,12 +18,13 @@ knot/adjust closed).
 stand-in. Preference path assembles ``engine.tone_lut`` from the scene
 image when flags allow; else linked-percentile STAND-IN.
 
-Also: FUGC **seed** lut from ``fugc-lutMap`` → ``fugc-generic*.lut``
-(``pakon_fugc.py``: real Pakon seed; host apply **without** ``setLutInfo``
-analyze shift is a stand-in). SBA: Preference mode-``0x11`` fragment →
-``setshifts_12(A, A)`` (CN second pass; A≡B from same Sba Cap) →
-``apply_balance_shifts``. Preference hi=``0x10`` FPU is golden
-(``PREFERENCE_SHIFTS_PORTED``); ``hi≠0x10`` UV aims still open.
+Also: FUGC seed + ``setLutInfo`` on Preference when
+``FUGC_ANALYZE_PORTED`` (``ebp+0x14`` = setShifts OUT @ ``scene+0x4b6``;
+``ebp+0x18`` = FindDmin; ``aFilmAimDmin``; seed ``aTableDmin``). SBA:
+Preference mode-``0x11`` fragment → ``setshifts_12(A, A)`` (CN second
+pass; A≡B from same Sba Cap) → ``apply_balance_shifts``. Preference
+hi=``0x10`` FPU is golden (``PREFERENCE_SHIFTS_PORTED``); ``hi≠0x10`` UV
+aims still open.
 
 Pipeline here (I16 0..4095 until ICC):
 
@@ -32,8 +33,9 @@ Pipeline here (I16 0..4095 until ICC):
           scene (``7b970``/``7b3c0``→``935d0``→builder→Cap) when
           ``SHASTA_TONE_LUT_PORTED`` → ``ImaShastaOp`` I16 apply when
           ``SHASTA_APPLY_PORTED``, else linked percentile STAND-IN →
-          Rpd2Pcs→Srgb
-    No SRA, no FUGC, no ``aim_medians`` / per-channel re-equalize
+          FUGC ``setLutInfo``+apply (mode≠2) → ColorAdjust leaf
+          (factory-zero → skip; contrast LUT if non-zero) → Rpd2Pcs→Srgb
+    No SRA, no ``aim_medians`` / per-channel re-equalize
     (those cancelled Preference OUT or crushed contrast on Gold 400).
 
   Fallback (Preference→setShifts apply unavailable):
@@ -49,6 +51,7 @@ from pathlib import Path
 
 import numpy as np
 
+import pakon_color_adjust as color_adjust
 import pakon_fugc as fugc_mod
 import pakon_ansel_maps as maps
 import pakon_sba_apply as sba_apply
@@ -56,6 +59,7 @@ import pakon_sba_pcode as sba_pcode
 import pakon_sba_preference as sba_pref
 import pakon_sba_stage2 as sba_stage2
 import pakon_scp_lut as scp_lut
+import pakon_scene_context as scene_ctx
 import pakon_shasta as shasta_mod
 import pakon_sra as sra_mod
 
@@ -173,12 +177,17 @@ def load_sra_fwd_lut(path: Path) -> np.ndarray:
 def load_fugc_lut(path: Path) -> np.ndarray:
     """Load shipped FUGC **seed** lut → (4096, 3).
 
-    Cite: ``pakon_fugc.load_fugc_seed_lut`` / DLL LutDpi. Host applies this
-    table directly as a **stand-in**; Pakon ``setLutInfo`` may still shift
-    it from analyze aims.
+    Cite: ``pakon_fugc.load_fugc_seed_lut`` / DLL LutDpi. Preference path
+    builds the apply LUT via ``setLutInfo``; fallback still uses seed.
     """
     table, _dmin = fugc_mod.load_fugc_seed_lut(path)
     return table
+
+
+def load_fugc_seed_and_dmin(path: Path) -> tuple[np.ndarray, tuple[int, int, int]]:
+    """Seed table + LutDpi ``aTableDmin`` (Cap ``+0xe0`` / analyze ``+0x60f8``)."""
+    table, dmin = fugc_mod.load_fugc_seed_lut(path)
+    return table, (int(dmin[0]), int(dmin[1]), int(dmin[2]))
 
 
 def apply_1d_lut(rpd12: np.ndarray, lut: np.ndarray) -> np.ndarray:
@@ -284,7 +293,8 @@ def linked_percentile_tone(
     and its post-tone per-channel median→``metricGray`` re-equalize — both
     fight DLL-correct Preference OUT (Gold 400 A=(746,350,189),
     OUT=(688,292,130)). Caller runs Preference/setShifts apply (or median
-    ``channel_balance``) first.
+    ``channel_balance``) first. For the photographic viewing land that
+    matched ``working-images-v1``, use ``working_images_v1_tone`` instead.
     """
     x = rpd12.astype(np.float64)
     y = x.mean(axis=2)
@@ -297,10 +307,53 @@ def linked_percentile_tone(
     return np.clip(x, 0, float(max_value))
 
 
+def working_images_v1_tone(
+    rpd12: np.ndarray,
+    *,
+    white: float = 3000.0,
+    metric_gray: float = 1618.0,
+    shadow_percent: float = 1.0,
+    highlight_percent: float = 99.0,
+    max_value: float = SHASTA_MAX,
+    balance_channels: bool = True,
+) -> np.ndarray:
+    """Full ``working-images-v1`` / ``c5f63c9`` tone land (viewing path).
+
+    1. Optional highlight p99 channel match (coarse SBA stand-in)
+    2. Linked luminance percentile → ``0..white``
+    3. Per-channel median → ``metricGray``
+
+    Steps 1+3 are NOT Preference-faithful (they cancel setShifts OUT
+    ratios) but are what made tag ``working-images-v1`` look photographic
+    with ColNeg + ICC. Use via ``--legacy-tone`` until FOS opening /
+    Shasta analyze produce scene-faithful aims.
+    """
+    x = rpd12.astype(np.float64).copy()
+    if balance_channels:
+        his = np.array([
+            np.percentile(x[:, :, c], highlight_percent) for c in range(3)
+        ])
+        target = float(his.max()) if his.max() > 0 else 1.0
+        for c in range(3):
+            if his[c] > 0:
+                x[:, :, c] *= target / his[c]
+    x = linked_percentile_tone(
+        x,
+        white=white,
+        shadow_percent=shadow_percent,
+        highlight_percent=highlight_percent,
+        max_value=max_value,
+    )
+    for c in range(3):
+        med = float(np.median(x[:, :, c]))
+        if med > 1.0:
+            x[:, :, c] *= float(metric_gray) / med
+    return np.clip(x, 0, float(max_value))
+
 # Preference opening RGB source labels (docs/48). Host uses dpi fpo until a
 # cited FOS→nested-fpo writer exists; do not invent dens maths.
 OPENING_FPO_SOURCE_DPI = "dpi-fpo"
-OPENING_FPO_SOURCE_FOS = "fos-orderFpo"  # reserved; FOS_ANALYZE dens not ported
+OPENING_FPO_SOURCE_FOS = "fos-orderFpo"  # test override only; no DLL edge
 
 
 @dataclass
@@ -324,6 +377,12 @@ class AnselEngine:
     opening_fpo: tuple[int, int, int] | None = None
     opening_fpo_source: str = OPENING_FPO_SOURCE_DPI
     tone_lut: object = field(default=None, repr=False)  # np.int32 work/Cap table
+    fugc_a_table_dmin: tuple[int, int, int] = (500, 500, 500)
+    fugc_afilm_aim_dmin: tuple[int, int, int] = fugc_mod.AFILM_AIM_DMIN_DEFAULT
+    # TLA CiImage+0xc8 ColorAdjust (ctor zeros) — UI sliders unset by default.
+    color_adjust: color_adjust.ColorAdjustParams = field(
+        default_factory=color_adjust.ColorAdjustParams
+    )
     _icc_cache: object = field(default=None, repr=False)
 
     @classmethod
@@ -340,8 +399,8 @@ class AnselEngine:
         **selected** ``sba-*.dpi`` (``sba.map`` or ``sba_key_override``), not a
         hardcoded CN-default. Nested opening RGB for Preference is dpi
         ``fpo`` (docs/48) unless ``opening_fpo_override`` is supplied — that
-        path is reserved for a future cited FOS ``orderFpo`` and is **not**
-        enabled by default (``FOS_ANALYZE_PORTED=False``).
+        path is a **test hook** only — DLL has no FOS→nested ``fpo`` edge
+        (``FOS_TO_PREFERENCE_FPO_EDGE=False``; ``docs/48``).
         """
         root = Path(ansel_root)
         if scene is None:
@@ -355,7 +414,9 @@ class AnselEngine:
         shasta = ShastaParams.load(sel.shasta_dpi)
         sba = SbaParams.load(sel.sba_dpi)
         sra = load_sra_fwd_lut(sel.sra_lut)
-        fugc = load_fugc_lut(sel.fugc_lut)
+        fugc, fugc_dmin = load_fugc_seed_and_dmin(sel.fugc_lut)
+        params_dpi = root / "fugc" / "fugc-defaultParams.dpi"
+        afilm_aim = fugc_mod.load_afilm_aim_dmin(params_dpi)
 
         # Opening RGB: selected dpi fpo, unless an explicit override is given.
         # FOS dens → orderFpo is not ported; do not invent a substitute.
@@ -418,13 +479,10 @@ class AnselEngine:
             f"neutral={sba.neutral_balance_point:g}  "
             f"gray/white={shasta.metric_gray:g}/{shasta.white:g}"
         )
-        stand_in = (
-            "STAND-IN" if fpo_src == OPENING_FPO_SOURCE_DPI
-            else "override"
-        )
         print(
-            f"  Preference opening RGB: {fpo_src}={fpo_i} ({stand_in}; "
-            f"docs/48 — FOS→nested fpo not wired)  "
+            f"  Preference opening RGB: {fpo_src}={fpo_i} "
+            f"({'dpi embed' if fpo_src == OPENING_FPO_SOURCE_DPI else 'override'}; "
+            f"docs/48 — FOS→nested fpo VERIFIED absent)  "
             f"fpa={tuple(int(x) for x in sba.fpa)}  "
             f"pcls={int(sba.pcls)}  "
             f"NBP={sba.neutral_balance_point:g}  "
@@ -475,11 +533,13 @@ class AnselEngine:
             preference_a=preference_a,
             opening_fpo=fpo_i,
             opening_fpo_source=fpo_src,
+            fugc_a_table_dmin=fugc_dmin,
+            fugc_afilm_aim_dmin=afilm_aim,
         )
 
     def render_scene(self, rpd12: np.ndarray,
                      roll_scale: np.ndarray | None = None) -> np.ndarray:
-        """I16 RPD12 → toned I16 (SBA + Shasta tone stand-in; FUGC on fallback)."""
+        """I16 RPD12 → toned I16 (SBA + Shasta + FUGC + ColorAdjust leaf)."""
         preference_apply = self.setshifts_out is not None
         if preference_apply:
             # Preference OUT is the channel balance — skip median roll_scale
@@ -488,9 +548,10 @@ class AnselEngine:
             x = sba_apply.apply_balance_shifts(
                 x.astype(np.int32), self.setshifts_out
             ).astype(np.float64)
+            balanced = x
             # Assemble Cap toneLut from live image sampling when unset
-            # (7b970/7b3c0 → 935d0 → builder → setToneLut). Aim mids are
-            # dpi stand-ins until ANALYZE producers land.
+            # (7b970/7b3c0 → 935d0 → builder → setToneLut). Mid-aims from
+            # FindDmin + Laplacian collectData dens when ANALYZE is True.
             if (
                 shasta_mod.SHASTA_TONE_LUT_PORTED
                 and self.tone_lut is None
@@ -498,7 +559,9 @@ class AnselEngine:
             ):
                 rgb16 = np.clip(x, 0, self.shasta.max_value).astype(np.int16)
                 tone, _bn, _cap, _w = shasta_mod.assemble_scene_tone_lut(
-                    self.shasta.dpi, rgb16
+                    self.shasta.dpi,
+                    rgb16,
+                    setshifts_out=self.setshifts_out,
                 )
                 self.tone_lut = tone
             if (
@@ -525,8 +588,39 @@ class AnselEngine:
                     highlight_percent=self.shasta.highlight_percent,
                     max_value=self.shasta.max_value,
                 )
-            # FUGC: setLutInfo fragment is ported but aim words at path+0x4b6
-            # hit a static writer WALL — do not invent aims / skip seed stub.
+            # FUGC setLutInfo (mode≠2): ebp14 = setShifts OUT @ +0x4b6;
+            # ebp18 = FindDmin on post-balance RPD (bag dmin stand-in).
+            if (
+                fugc_mod.FUGC_SET_LUT_INFO_PORTED
+                and fugc_mod.FUGC_AIM_PROVENANCE_PORTED
+                and self.setshifts_out is not None
+            ):
+                bal16 = np.clip(balanced, 0, SHASTA_MAX).astype(np.int16)
+                ebp18 = scene_ctx.frame_dmin_rgb_from_planes(
+                    bal16[:, :, 0].ravel(),
+                    bal16[:, :, 1].ravel(),
+                    bal16[:, :, 2].ravel(),
+                )
+                apply_lut, _offs, _aims = fugc_mod.build_setlutinfo_apply_lut(
+                    self.fugc_lut.astype(np.int32, copy=False),
+                    a_table_dmin=self.fugc_a_table_dmin,
+                    arg_ebp14=self.setshifts_out,
+                    arg_ebp18=ebp18,
+                    cap_params_aim=self.fugc_afilm_aim_dmin,
+                )
+                x = apply_1d_lut(x, apply_lut)
+            # ColorAdjust after FUGC (IMAu save-path contrast/unsharp gate).
+            # Factory-zero params → skip (DEFAULT_SKIP). Contrast LUT when
+            # leaf ported + non-zero; unsharp apply still WALL.
+            if (
+                color_adjust.COLOR_ADJUST_DEFAULT_SKIP_PORTED
+                or color_adjust.COLOR_ADJUST_CONTRAST_LUT_PORTED
+            ):
+                img16 = np.clip(x, 0, SHASTA_MAX).astype(np.int16)
+                img16 = color_adjust.apply_preference_color_adjust_i16(
+                    img16, self.color_adjust
+                )
+                x = img16.astype(np.float64)
         else:
             x = rpd12.astype(np.float64)
             if roll_scale is not None:
@@ -591,15 +685,27 @@ class AnselEngine:
     def render_strip(self, rpd16: np.ndarray,
                      spans: list[tuple[int, int]],
                      quiet: bool = False,
-                     return_toned: bool = False):
+                     return_toned: bool = False,
+                     *,
+                     legacy_tone: bool = False):
         rpd12_full = rpd16_to_rpd12(rpd16)
         scenes = [rpd12_full[a:b] for a, b in spans if b > a]
         # Median roll scales are a fallback AnalyseRoll stand-in only.
         # On the CN Preference path they fight setShifts OUT ratios.
         roll_scale = None
-        if self.setshifts_out is None and scenes:
+        if (
+            not legacy_tone
+            and self.setshifts_out is None
+            and scenes
+        ):
             roll_scale = self.analyze_roll_scales(scenes)
-        if not quiet and roll_scale is not None:
+        if legacy_tone and not quiet:
+            print(
+                "  Ansel tone: working-images-v1 "
+                "(highlight balance + linked + metricGray; "
+                "skips Preference/Shasta/FUGC)"
+            )
+        elif not quiet and roll_scale is not None:
             print(f"  Ansel roll channel scales = {roll_scale.round(3)}")
         elif not quiet and self.setshifts_out is not None:
             print("  Ansel roll channel scales: skipped (Preference setShifts)")
@@ -610,7 +716,17 @@ class AnselEngine:
         covered = np.zeros(n, dtype=bool)
 
         def _run(a: int, b: int, scale):
-            toned = self.render_scene(rpd12_full[a:b], scale)
+            if legacy_tone:
+                toned = working_images_v1_tone(
+                    rpd12_full[a:b],
+                    white=self.shasta.white,
+                    metric_gray=self.shasta.metric_gray,
+                    shadow_percent=self.shasta.shadow_percent,
+                    highlight_percent=self.shasta.highlight_percent,
+                    max_value=self.shasta.max_value,
+                )
+            else:
+                toned = self.render_scene(rpd12_full[a:b], scale)
             toned_full[a:b] = toned
             out[a:b] = self.to_srgb(toned)
 
@@ -647,8 +763,13 @@ def find_frames_rpd(rgb14: np.ndarray,
                     min_frame: int = 900,
                     max_frame: int = 1600,
                     min_gap: int = 40,
-                    max_gap: int = 350) -> list[tuple[int, int]]:
-    """Frame split: only *short* bright/flat runs count as inter-frame gaps."""
+                    max_gap: int = 350,
+                    min_content_std: float = 40.0) -> list[tuple[int, int]]:
+    """Frame split: only *short* bright/flat runs count as inter-frame gaps.
+
+    Trailing empty / near-zero variance strip is dropped so flat-field
+    trailers are not equal-sliced into dozens of blank ``*_srgb.png`` frames.
+    """
     g = rgb14[:, :, 1].astype(np.float64)
     mean = g.mean(axis=1)
     std = g.std(axis=1)
@@ -710,4 +831,10 @@ def find_frames_rpd(rgb14: np.ndarray,
             final.append((pos, b))
         elif final:
             final[-1] = (final[-1][0], b)
-    return final
+
+    # Drop blank / near-blank spans (leader flashes + trailer equal-slices).
+    kept: list[tuple[int, int]] = []
+    for a, b in final:
+        if float(std[a:b].mean()) >= float(min_content_std):
+            kept.append((a, b))
+    return kept

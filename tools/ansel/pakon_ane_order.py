@@ -139,10 +139,11 @@ Build orch ``0x1027e9d0`` (PORTED — shipped ``useAvg=0``)
 Host ``ane_build_noise_table_e9d0`` composes accumulate → finalize →
 curve rows → ``getResults`` fill for the shipped path.
 
-``ANE_ORDER_PORTED = True`` (``useAvg=0`` path). Live
-``AneSampledImage`` / ``AneResidualImage`` producers
-(``AnsAneCapabilityImpl::collectData``) still WALL for
-``SHASTA_ANALYZE_PORTED``.
+``ANE_ORDER_PORTED = True`` (``useAvg=0`` path). Live Laplacian
+``collectData`` pixel leaf ``0x1027fc80`` and box ``0x102804e0`` are
+ported (``ANE_COLLECT_FC80_PORTED`` / ``ANE_COLLECT_804E0_PORTED``);
+COM portfolio wrap remains open. ``SHASTA_ANALYZE_PORTED`` wires fc80
+dens into Preference mid-aims.
 
 ``NoiseMethods::getNoiseTable`` @ ``0x10112980``
 -----------------------------------------------

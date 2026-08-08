@@ -111,15 +111,16 @@ Per-scene path (SceneSpecific — not OrderWide)
 (``analyzeArea`` ``&+0x4b6`` out-arg @ ``0x10055fd8`` is **after**
 ``analyzeFugc`` on that path).
 
-FUGC aim fields — static writer WALL
-------------------------------------
+FUGC aim fields — setShifts OUT ≡ Cap ``[ebp+0x14]``
+----------------------------------------------------
 Pointers (VERIFIED): ``analyzeFugc`` → Cap ``[ebp+0x14]=&obj+0x4b6``,
 ``[ebp+0x18]=&obj+0x3c``.
 
-Stores to ``+0x4b6/+0x4b8/+0x4ba``: only ScpLutBalance **zero** @
-``0x100fd8be`` (see ``pakon_scp_lut.py``). No ``mov word [r+0x3c]`` in
-cnMethods ``0x100f8000…0x10110000``. Non-zero aim fillers: **UNKNOWN** —
-needs dynamic RE / deeper through-pointer chase.
+``+0x4b6/+0x4b8/+0x4ba``: ScpLutBalance **zero** @ ``0x100fd8be``, then
+``setShifts`` OUT writes the same cluster before ``analyzeFugc`` on
+SceneSpecific (cite ``pakon_fugc.FUGC_AIM_PROVENANCE_PORTED``).
+``+0x3c``: bag dmin via ``getCnContext`` / FindDmin
+(``PATH_DMIN_FROM_BAG_PORTED`` / ``FRAME_DMIN_RGB_PORTED``).
 
 Order-wide state → apply
 ------------------------
@@ -135,7 +136,7 @@ UNKNOWN / blockers
 ------------------
 * Preference / ``+0x4d0e`` → no alternate ``+0x3a38`` writer.
 * pass1 / FOS / pass2 bodies; FPO/scale memory layout.
-* Non-zero writers of FUGC ``+0x4b6`` / ``+0x3c`` (static wall).
+* FUGC mode==2 metrics / histogram bodies.
 * ``AnsOrder`` ``[edx+8]`` → OrderWide vtable slot.
 """
 from __future__ import annotations

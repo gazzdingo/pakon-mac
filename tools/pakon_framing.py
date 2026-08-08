@@ -196,7 +196,11 @@ class Frame:
 # Hive MotorSpeedPlus per DpiBase (same table as pakon_decode / pakon_scan).
 MOTOR_SPEED = {4: 25802, 8: 11467, 16: 5917}
 REF_LINE_RATE = 60
-SQUARE_MOTOR_SPEED = MOTOR_SPEED[8]
+# DpiBase16's MotorSpeedPlus. Our exposure triad is DpiBase16's
+# (calibration/README.json) and the vendor's FRAME_SIZES_000 makes that base
+# 2000 x 3000 over 24 x 36 mm -- square. See pakon_decode's geometry block.
+# This was MOTOR_SPEED[8]; that is the 1.9x estimate_pitch used to warn about.
+SQUARE_MOTOR_SPEED = MOTOR_SPEED[16]
 
 
 def along_lines_per_mm(speed: float, line_rate: float = REF_LINE_RATE) -> float:
@@ -338,21 +342,21 @@ def estimate_pitch(ones: np.ndarray, min_run: int = 200) -> float | None:
     WHY THIS IS NOT JUST BELT-AND-BRACES
     ------------------------------------
     The vendor never needs this: TLB knows its own calibrated DPI and motor
-    speed, so ``pitch`` is a constant it looks up. We are not so lucky. The
-    transport geometry in ``pakon_decode`` predicts 83.333 lines/mm at
-    ``MotorSpeedPlus`` 11467 (transport_scale == 1.0), which makes a 38 mm
-    pitch 3167 lines. ``captures/gold400.bin`` was captured at exactly that
-    setting -- its sidecar says ``speed 11467, line_rate_0x91 60,
-    dpi_base 8`` -- and its measured frame pitch is about **1650 lines**, a
-    factor of 1.9 out.
+    speed, so ``pitch`` is a constant it looks up. We are not so lucky --
+    nothing in a ``.bin`` records the transport speed, and captures taken
+    before ``pakon_scan`` wrote sidecars have no record of it anywhere.
 
-    That is consistent with every other pitch figure in the docs
-    (``docs/54`` ~1014 and ~1324 lines/frame, ``docs/46`` ~1460) and
-    inconsistent with 3000. Something in the along-film scale is wrong, and it
-    is not this module's to fix -- ``pakon_decode`` belongs to another task.
+    This estimator also *found* the geometry bug it used to warn about. It
+    measured ``captures/gold400.bin`` at 1656 lines where the old anchor
+    (square at ``MotorSpeedPlus`` 11467) predicted 3167 -- a factor of 1.938,
+    which is exactly 11467/5917. The anchor is now DpiBase16's 5917, the
+    prediction is 1634, and the residual is 1.3 %. See ``pakon_decode``'s
+    geometry comment block and ``pakon_decode.py geometry``.
 
-    So framing measures the pitch and does not trust the geometry. Pass
-    ``--pitch-lines`` to force a value, or ``--speed`` to derive one.
+    So the two routes now agree, and framing still prefers the measurement:
+    it needs neither the sidecar nor the anchor, only the fact that 35 mm
+    frames are 38 mm apart. Pass ``--pitch-lines`` to force a value, or
+    ``--speed`` to derive one.
 
     Returns the estimated start-to-start pitch in lines, or None if there is
     not enough structure to measure.
@@ -569,6 +573,37 @@ def frame_cascade(trace: np.ndarray,
     return frames, report
 
 
+def find_frames_traces(trace: np.ndarray,
+                       green: np.ndarray,
+                       speed: float | None = None,
+                       line_rate: float = REF_LINE_RATE,
+                       clear_level: float = DEFAULT_CLEAR_LEVEL,
+                       ones_threshold: float | None = None,
+                       pitch_lines: float | None = None) -> tuple[list[Frame], dict]:
+    """The cascade from two precomputed 1-D traces.
+
+    This is the entry point for callers that already hold the strip on disk
+    and cannot afford to materialise it: the vendor's framing only ever sees
+    per-line scalars (docs/53 §4.2.1), so a caller that can produce
+    ``(R+G+B)/3`` and the green mean per line -- chunked, as
+    ``pakon_render.open_capture`` already does for its histogram -- never needs
+    the pixels here at all. A 31 000-line capture costs 0.5 MB this way rather
+    than 1.5 GB.
+
+    ``trace`` and ``green`` must be per-line and the same length, and must be
+    on the *calibrated* scale, because ``clear_level`` is an absolute level.
+    """
+    trace = np.asarray(trace, dtype=np.float64).reshape(-1)
+    green = np.asarray(green, dtype=np.float64).reshape(-1)
+    if trace.size != green.size:
+        raise ValueError(f"trace and green differ in length: "
+                         f"{trace.size} vs {green.size}")
+    lines_per_mm = resolve_lines_per_mm(speed, line_rate)
+    present = film_present(green, clear_level)
+    return frame_cascade(trace, lines_per_mm, present,
+                         ones_threshold, pitch_lines=pitch_lines)
+
+
 def find_frames(strip: np.ndarray,
                 speed: float | None = None,
                 line_rate: float = REF_LINE_RATE,
@@ -576,10 +611,11 @@ def find_frames(strip: np.ndarray,
                 ones_threshold: float | None = None,
                 pitch_lines: float | None = None) -> tuple[list[Frame], dict]:
     """Top level: strip in, vendor-shaped frame list out."""
-    lines_per_mm = resolve_lines_per_mm(speed, line_rate)
-    present = film_present(green_trace(strip), clear_level)
-    return frame_cascade(framing_trace(strip), lines_per_mm, present,
-                         ones_threshold, pitch_lines=pitch_lines)
+    return find_frames_traces(framing_trace(strip), green_trace(strip),
+                              speed=speed, line_rate=line_rate,
+                              clear_level=clear_level,
+                              ones_threshold=ones_threshold,
+                              pitch_lines=pitch_lines)
 
 
 # --------------------------------------------------------------------------
@@ -712,6 +748,21 @@ def self_test() -> int:
 WORDS_PER_LINE = 6000   # base-16: 2000 px x 3 channels, as pakon_decode
 
 
+def _sidecar(capture: Path) -> dict | None:
+    """Read ``*.scan.json`` next to a capture. Same lookup as pakon_decode."""
+    for cand in (capture.with_suffix(".scan.json"),
+                 Path(str(capture) + ".scan.json")):
+        if not cand.is_file() or cand == capture:
+            continue
+        try:
+            data = json.loads(cand.read_text())
+        except (OSError, json.JSONDecodeError, UnicodeError):
+            continue
+        if isinstance(data, dict):
+            return data
+    return None
+
+
 def _load(path: Path, words_per_line: int = WORDS_PER_LINE) -> np.ndarray:
     raw = np.fromfile(path, dtype="<u2")
     n = raw.size // words_per_line
@@ -743,16 +794,24 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("give a capture, or --self-test")
 
     speed = args.speed
-    sidecar = args.capture.with_suffix(".scan.json")
-    if speed is None and sidecar.is_file():
-        try:
-            meta = json.loads(sidecar.read_text())
-            speed = (meta.get("scan") or {}).get("motor_speed") or meta.get("motor_speed")
-        except Exception:
-            speed = None
+    line_rate = args.line_rate
+    if speed is None:
+        # pakon_scan writes "speed" and "line_rate_0x91", top level and under
+        # "config" -- see pakon_scan.capture_metadata, which calls those keys a
+        # contract. This used to look for "motor_speed" under "scan", which no
+        # sidecar has ever contained, so --speed was silently ignored.
+        meta = _sidecar(args.capture)
+        if meta:
+            cfg = meta.get("config") if isinstance(meta.get("config"), dict) else {}
+            raw = meta.get("speed", cfg.get("speed"))
+            if raw is not None:
+                speed = float(raw)
+            raw_lr = (meta.get("line_rate_0x91") or cfg.get("line_rate_0x91"))
+            if raw_lr is not None and args.line_rate == REF_LINE_RATE:
+                line_rate = float(raw_lr)
 
     strip = _load(args.capture)
-    frames, report = find_frames(strip, speed=speed, line_rate=args.line_rate,
+    frames, report = find_frames(strip, speed=speed, line_rate=line_rate,
                                  clear_level=args.clear_level,
                                  ones_threshold=args.ones_threshold,
                                  pitch_lines=args.pitch_lines)

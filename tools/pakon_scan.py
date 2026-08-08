@@ -777,8 +777,16 @@ def ccd_configure(link: Link, cfg: ScanConfig) -> None:
     the transport starts, so the sensor is never running longer than it needs.
     """
     put = lambda i, v, lab: link.ack(pc.fpga_write(i, v), lab)     # noqa: E731
+    # idx5 is the END PIXEL, not the height. fcn.1002c340 asserts on
+    # (offset + height) and docs/53 traced it explicitly. Writing the bare
+    # height made the FPGA read out pixels offset..height -- 1968 instead of
+    # 2000 -- so every sync gap came back 5904 words instead of 6000 and the
+    # decoder rejected an otherwise perfect 720 MB capture.
+    pixel_end = cfg.pixel_offset + cfg.pixel_height
     put(pc.FPGA_IDX_PIXEL_OFFSET, cfg.pixel_offset, "FPGA idx4 pixel offset")
-    put(pc.FPGA_IDX_PIXEL_END, cfg.pixel_height, "FPGA idx5 pixel height")
+    put(pc.FPGA_IDX_PIXEL_END, pixel_end,
+        f"FPGA idx5 pixel end {pixel_end}"
+        f" (= offset {cfg.pixel_offset} + height {cfg.pixel_height})")
     put(pc.FPGA_IDX_INTEGRATION_TIME, cfg.integration,
         f"FPGA idx6 integration {cfg.integration}")
     put(pc.FPGA_IDX_0B, 0, "FPGA idx11 := 0")

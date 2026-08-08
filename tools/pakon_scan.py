@@ -102,6 +102,7 @@ sys.path.insert(0, str(_TOOLS))
 
 import pakon_commands as pc          # noqa: E402
 import pakon_gate as gate            # noqa: E402
+import dx_decode as dxd              # noqa: E402
 import dx_read as dxr                # noqa: E402
 
 VID, PID = 0x0F05, 0xF135
@@ -288,15 +289,41 @@ class FakeDev:
         self.dx_gate_reads = 0
         self.dx_frame = 0
         self.dx_ready = False
+        # Film-sense state, so the film-position path can be exercised. The
+        # board reports film at both sensors while the strip is in the
+        # transport; ``film_out_after`` is how many DX packets that lasts.
+        self.dx_status = dxd.DXSTAT_FILM_SENSE
+        self.film_out_after: int | None = None
+        self.dx_packets = 0
+        # Illuminator state, set by command 0x98.
+        self.dx_illum = pc.DX_ILLUM_BOTH
+        self.dx_illum_armed = True
+        self.dx_illum_writes = 0
 
     def _dx_packet(self) -> bytes:
+        """One 0x90 response: a code word and two perforations.
+
+        Deliberately a *mixed* packet. A single-record packet cannot tell a
+        correct variable-stride walk from the old fixed 5-byte one, and that is
+        the bug this simulator now has to be able to catch.
+        """
         import dx_decode as _dxd
+        self.dx_packets += 1
+        if (self.film_out_after is not None
+                and self.dx_packets > self.film_out_after):
+            self.dx_status = 0x00
         line = 1000 + 100 * self.dx_frame
         b0, b1, b2 = _dxd.encode_dx_full(96, 1, self.dx_frame)
         self.dx_frame += 1
-        rec = bytes([_dxd.EventType.DX_CODE_FULL, b0, b1, b2, 0x00])
-        buf = bytes([(line >> 8) & 0xFF, line & 0xFF, 1]) + rec
-        return buf + bytes(pc.DX_RESPONSE_LEN - len(buf))
+        recs = [
+            _dxd.encode_record(_dxd.EventType.DX_CODE_FULL, bytes([b0, b1, b2]),
+                               flags=self.dx_status),
+            _dxd.encode_record(_dxd.EventType.PERF_LEADING,
+                               bytes([((line + 10) >> 8) & 0xFF, (line + 10) & 0xFF])),
+            _dxd.encode_record(_dxd.EventType.PERF_TRAILING,
+                               bytes([((line + 20) >> 8) & 0xFF, (line + 20) & 0xFF])),
+        ]
+        return _dxd.encode_packet(line, recs, pc.DX_RESPONSE_LEN)
 
     def _note(self, kind: str, pkt: bytes) -> None:
         if not self.trace:
@@ -326,6 +353,19 @@ class FakeDev:
                 kind, self.motor = "MOTOR_RUN", True
         elif pkt[:5] == b"\x02\x04\x40\x01\x80":
             kind = "LAMP_ON" if pkt[5] else "LAMP_OFF"
+        elif pkt[:5] == bytes([0x02, 0x04, pc.AD_LIGHT, 0x01, pc.REG_DX_ILLUM]):
+            # Command 0x98. Handler 0x0DC6 sets the outputs from the mask AND
+            # clears the arm bit unconditionally, so the simulated board does
+            # both -- including disarming on a mask of zero.
+            self.dx_illum = pkt[5]
+            self.dx_illum_armed = False
+            self.dx_illum_writes += 1
+            kind = "DX_ILLUM_ON" if pkt[5] else "DX_ILLUM_OFF"
+        elif pkt[:5] == bytes([0x04, 0x03, pc.AD_LIGHT, 0x00,
+                               pc.CMD_LIGHT_DX_LAMP_RESTART]):
+            self.dx_illum = pc.DX_ILLUM_BOTH
+            self.dx_illum_armed = True          # 0x0882 re-arms it
+            kind = "DX_LAMP_RESTART"
         elif pkt[:6] == b"\x02\x06\x44\x03\x82\x00":
             self.acquire = bool(pkt[6] & pc.FPGA_CTRL_ACQUIRE)
             kind = "ACQUIRE_ON" if self.acquire else "ACQUIRE_OFF"
@@ -354,6 +394,15 @@ class FakeDev:
                     t = int(40.06 * TEMP_UNITS_PER_C)
                     m = int(32.00 * TEMP_UNITS_PER_C)
                     body = (t.to_bytes(2, "little") + m.to_bytes(2, "little"))
+                elif board == pc.AD_LIGHT and reg == pc.REG_DX_SENSORS:
+                    # Four photodiodes that follow the illuminators, then the
+                    # two digital sense inputs. The layout is INFERRED (see
+                    # pakon_commands.REG_DX_SENSORS); this simulates the shape
+                    # so the read path can be exercised, not the values.
+                    lit = 0xC0 if self.dx_illum else 0x08
+                    body = bytes([lit, lit, lit, lit,
+                                  1 if self.dx_status else 0,
+                                  1 if self.dx_status else 0])
                 else:
                     body = bytes(n)
                 return bytearray(bytes([0x07, 0x02, board, 0x00]) + body)
@@ -520,6 +569,11 @@ class Link:
         self.log = log or (lambda *a, **k: None)
         self.sent: list[str] = []
         self.ctrl_shadow = 0
+        #: Set once command 0x98 has turned the DX board's illuminators on.
+        #: That command also disarms their 10 s auto-off, so nothing will turn
+        #: them off again on its own and ``safe_stop`` has to. See
+        #: :func:`lamp_watchdog_disarm`.
+        self.dx_illuminator_on = False
 
     # ---- construction ----
     @classmethod
@@ -712,6 +766,129 @@ def lamp_off(link: Link) -> bool:
 LAMP_REFRESH_MODES = ("full", "drive", "enable", "off")
 #: How often to re-assert the lamp drive during a scan. See lamp_refresh().
 LAMP_REFRESH_S = 20.0
+
+# --------------------------------------------------------------------------
+# The DX board's auto-off, and what to do about it
+# --------------------------------------------------------------------------
+#
+# THE MECHANISM IS DECODED. docs/57 section 6 disassembles it out of the DX
+# board's PIC16F877: a 32-bit counter loaded with 0x0002FAF1 = 195 313 Timer0
+# overflows, decremented once per overflow, switching off RC1 and RB0 when it
+# reaches zero. At the 20 MHz clock docs/57 section 2.1 pins exactly, that is
+# 10.0000 s. Command 0x98 (handler 0x0DC6) clears the arm bit outright, so a
+# single packet ends it -- no refreshing. Command 0x08 puts it back.
+#
+# THREE REASONS NOT TO SIMPLY REPLACE THE REFRESH WITH IT:
+#
+#   1. 0x98 has never been sent to this machine. The mechanism is read, not
+#      observed.
+#   2. Nothing in the firmware names a pin. Whether RC1/RB0 drive the DX
+#      emitters, the main scanning lamp or both is UNKNOWN (docs/57 sections
+#      6, 9, 12). Our 20 s refresh writes the *light board's* 0x80/0x81/0x82,
+#      which are a different set of registers; if those are the main lamp and
+#      RC1/RB0 are not, then 0x98 will disarm a timer that was never the
+#      problem and the lamp will die anyway.
+#   3. The failure we are actually chasing does not fit. captures/roll.bin's
+#      lamp died about two minutes in, not at ten seconds -- so either
+#      something was already kicking this timer, or that failure is a
+#      different one. docs/59 lists it as an open question, and it is.
+#
+# Against that, the refresh is the one thing that has been *measured*: 120 s
+# stable with it, ~60 s without. So the default keeps it, and 0x98 is sent
+# alongside as the decoded mechanism it is.
+#
+#   auto      send 0x98 once at scan start AND keep refreshing. The superset.
+#             Costs one extra packet per scan and cannot be worse than today.
+#   command   send 0x98 at start and again every refresh interval, INSTEAD of
+#             the 0x81/0x82/0x80 triple -- but fall back to the refresh, for
+#             the rest of the scan, the first time the board declines it. This
+#             is the mode that tests the decoded mechanism without betting a
+#             roll of the owner's film on it.
+#   refresh   0x98 is never sent. Exactly the behaviour before this existed.
+#   off       neither. The control, for reproducing the failure deliberately.
+LAMP_WATCHDOG_MODES = ("auto", "command", "refresh", "off")
+LAMP_WATCHDOG_DEFAULT = "auto"
+
+
+def lamp_watchdog_disarm(link: Link, mask: int = pc.DX_ILLUM_BOTH) -> bool:
+    """Send 0x98: set the DX illuminators and disarm their 10 s auto-off.
+
+    Never required. A board that does not answer a write to register 0x98 is
+    a board this project has learned nothing new about, not a reason to refuse
+    to scan -- and the refresh is still there.
+
+    Records on the link that the illuminators were commanded on, because the
+    disarm is unconditional: once 0x98 has been sent they will not switch
+    themselves off again, so ``safe_stop`` has to switch them off explicitly.
+    """
+    try:
+        r = link.ack(pc.dx_illuminator(mask),
+                     f"0x98 DX illuminators 0x{mask:02X}, auto-off disarmed "
+                     f"({pc.DX_WATCHDOG_S:.3f} s, docs/57 s6)",
+                     required=False)
+    except Exception:                                       # noqa: BLE001
+        return False
+    ok = bool(r)
+    if ok and mask:
+        link.dx_illuminator_on = True
+    elif ok:
+        link.dx_illuminator_on = False
+    return ok
+
+
+@dataclass
+class LampWatchdog:
+    """What the 0x98 path did, so the sidecar can say rather than imply."""
+
+    mode: str = LAMP_WATCHDOG_DEFAULT
+    sent: int = 0
+    accepted: int = 0
+    rejected: int = 0
+    fell_back: bool = False
+    note: str = ""
+
+    @property
+    def refresh_still_needed(self) -> bool:
+        """Does the 0x81/0x82/0x80 refresh still have to run?
+
+        Yes in ``auto`` (deliberately -- belt and braces), yes in ``refresh``,
+        yes in ``command`` once the board has declined a 0x98, and no in
+        ``command`` while 0x98 is being accepted. ``off`` runs nothing.
+        """
+        if self.mode == "off":
+            return False
+        if self.mode == "command":
+            return self.fell_back
+        return True
+
+    def to_json(self) -> dict:
+        return {
+            "mode": self.mode,
+            "sent": self.sent,
+            "accepted": self.accepted,
+            "rejected": self.rejected,
+            "fell_back_to_refresh": self.fell_back,
+            "watchdog_seconds": round(pc.DX_WATCHDOG_S, 4),
+            "register": f"0x{pc.REG_DX_ILLUM:02X}",
+            "note": self.note or (
+                "0x98 is a decoded mechanism (docs/57 s6) that has never been "
+                "confirmed on hardware, and whether RC1/RB0 are the main lamp "
+                "is unknown. The 20 s refresh is the measured one."),
+        }
+
+    def send(self, link: Link, mask: int = pc.DX_ILLUM_BOTH) -> bool:
+        self.sent += 1
+        ok = lamp_watchdog_disarm(link, mask)
+        if ok:
+            self.accepted += 1
+        else:
+            self.rejected += 1
+            if self.mode == "command" and not self.fell_back:
+                self.fell_back = True
+                self.note = (
+                    "the board did not acknowledge 0x98, so the 20 s "
+                    "0x82/0x81/0x80 refresh took over for the rest of the run")
+        return ok
 
 
 def lamp_refresh(link: Link, cfg: "ScanConfig", mode: str = "full") -> bool:
@@ -933,7 +1110,8 @@ def safe_stop(link: Link, log=None) -> dict:
     lamp and the sensor can wait a few milliseconds.
     """
     log = log or (lambda *a, **k: None)
-    out = {"motor": False, "lamp": False, "acquire": False, "errors": []}
+    out = {"motor": False, "lamp": False, "acquire": False,
+           "dx_illuminators": None, "errors": []}
     for attempt in range(4):
         try:
             r = link.ack(pc.motor_stop(), f"MOTOR STOP (attempt {attempt + 1})",
@@ -948,6 +1126,16 @@ def safe_stop(link: Link, log=None) -> dict:
         out["lamp"] = lamp_off(link)
     except Exception as e:                                  # noqa: BLE001
         out["errors"].append(f"lamp off: {e}")
+    # If 0x98 was sent, the DX board's 10 s auto-off is disarmed and its
+    # illuminators will now stay on forever unless told otherwise. Sending
+    # 0x98 with an empty mask is the only way back -- 0x08 would turn them on
+    # again and re-arm the timer. Only sent if we are the ones who disarmed it,
+    # so a stop from a different process leaves an untouched board alone.
+    if getattr(link, "dx_illuminator_on", False):
+        try:
+            out["dx_illuminators"] = lamp_watchdog_disarm(link, pc.DX_ILLUM_OFF)
+        except Exception as e:                              # noqa: BLE001
+            out["errors"].append(f"DX illuminators off: {e}")
     try:
         link.ack(pc.dx_stop(), "DX stop", required=False)
     except Exception:                                       # noqa: BLE001
@@ -1062,6 +1250,7 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
         },
         "lamp": res.lamp,
         "lamp_refresh": res.lamp_refresh,
+        "lamp_watchdog": res.lamp_watchdog,
         "stopped": res.stopped,
         "gate": gate_desc or {},
         "dx": res.dx,
@@ -1175,6 +1364,7 @@ class ScanResult:
     dx: dict = field(default_factory=dict)
     dx_log: str = ""
     lamp_refresh: dict = field(default_factory=dict)
+    lamp_watchdog: dict = field(default_factory=dict)
     dark_stop_suppressed: bool = False
     metadata: str | None = None
     ok: bool = False
@@ -1241,7 +1431,8 @@ def run_scan(out_path: str | Path,
              dx_log: str | Path | None = None,
              lamp: bool = True,
              lamp_refresh_s: float = LAMP_REFRESH_S,
-             lamp_refresh_mode: str = "full") -> ScanResult:
+             lamp_refresh_mode: str = "full",
+             lamp_watchdog: str = LAMP_WATCHDOG_DEFAULT) -> ScanResult:
     """One scan, start to finish, with every guard armed.
 
     ``read_dx`` adds the DX poll to the capture loop: pure reads of light-board
@@ -1253,6 +1444,10 @@ def run_scan(out_path: str | Path,
     leaves the lamp off, which necessarily means every window classifies DARK,
     so the DARK stop is suppressed for the duration — the hard time limit is
     what stops it. Do not use it to scan film: the capture will be black.
+
+    ``lamp_watchdog`` chooses how the DX board's decoded 10 s auto-off is
+    handled — see :data:`LAMP_WATCHDOG_MODES` for what each one sends and why
+    the default is the one that does both.
     """
     log = log or (lambda *a, **k: None)
     # NOT `cancel or Cancel()`. Cancel defines __bool__ so the loop can write
@@ -1268,6 +1463,14 @@ def run_scan(out_path: str | Path,
     if max_seconds is None:
         max_seconds = scan_limits_for(cfg.speed)[0]
     max_seconds = clamp_seconds(max_seconds, cfg.speed)
+    if lamp_watchdog not in LAMP_WATCHDOG_MODES:
+        raise ScanRefused(
+            f"unknown lamp watchdog mode {lamp_watchdog!r}; "
+            f"expected one of {', '.join(LAMP_WATCHDOG_MODES)}")
+    wd = LampWatchdog(mode=lamp_watchdog if lamp else "off")
+    if not lamp and lamp_watchdog != "off":
+        wd.note = ("the lamp is deliberately off for this run, so nothing was "
+                   "sent to the illuminators")
     res = ScanResult(path=str(out_path), config=cfg.to_json())
 
     g = gate.Gate.from_calibration()
@@ -1310,6 +1513,14 @@ def run_scan(out_path: str | Path,
             log("phase", phase="lamp", message="light board thresholds")
             lamp_init_thresholds(link)
             lamp_on(link, cfg)
+
+            # The decoded mechanism, sent once before the film moves. Best
+            # effort: a board that will not take it costs us one rejected
+            # packet and we carry on with the refresh, which is the mechanism
+            # that has actually been measured working.
+            if wd.mode in ("auto", "command"):
+                wd.send(link)
+                log("lamp_watchdog", **wd.to_json())
 
             # Warm-up, then a health poll BEFORE any film moves. If the lamp is
             # not healthy now, nothing else should happen at all.
@@ -1383,8 +1594,13 @@ def run_scan(out_path: str | Path,
         deadline = t0 + max_seconds
         next_lamp = t0 + LAMP_POLL_S
         refresh_every = max(0.0, float(lamp_refresh_s)) if lamp else 0.0
-        next_refresh = (t0 + refresh_every) if (refresh_every and
-                                                lamp_refresh_mode != "off") else None
+        # The periodic tick exists if *either* mechanism wants it: the register
+        # refresh, or `command` mode's repeat of 0x98. `--lamp-refresh-mode off`
+        # with `--lamp-watchdog command` is a legitimate combination — it is the
+        # narrowest test of the decoded mechanism there is.
+        do_refresh = lamp_refresh_mode != "off" and wd.refresh_still_needed
+        wants_tick = bool(refresh_every) and (do_refresh or wd.mode == "command")
+        next_refresh = (t0 + refresh_every) if wants_tick else None
         refreshes = 0
         refresh_fails = 0
         last_data = t0
@@ -1413,12 +1629,24 @@ def run_scan(out_path: str | Path,
 
             if next_refresh is not None and now >= next_refresh:
                 next_refresh = now + refresh_every
-                if lamp_refresh(link, cfg, lamp_refresh_mode):
-                    refreshes += 1
-                else:
-                    refresh_fails += 1
-                log("lamp_refresh", mode=lamp_refresh_mode, count=refreshes,
-                    failures=refresh_fails, elapsed=round(now - t0, 2))
+                # In `command` mode the periodic kick is 0x98 itself rather
+                # than the register triple: it is idempotent, it is one packet
+                # instead of three, and re-sending it covers a board that reset
+                # and re-armed its own timer. The moment the board declines it,
+                # `wd.send` flips `fell_back` and the triple takes over below —
+                # for the rest of the run, not just this tick.
+                if wd.mode == "command" and not wd.fell_back:
+                    wd.send(link)
+                    log("lamp_watchdog", elapsed=round(now - t0, 2),
+                        **wd.to_json())
+                if lamp_refresh_mode != "off" and wd.refresh_still_needed:
+                    if lamp_refresh(link, cfg, lamp_refresh_mode):
+                        refreshes += 1
+                    else:
+                        refresh_fails += 1
+                    log("lamp_refresh", mode=lamp_refresh_mode,
+                        count=refreshes, failures=refresh_fails,
+                        elapsed=round(now - t0, 2))
 
             if not skip_lamp_health and now >= next_lamp:
                 next_lamp = now + LAMP_POLL_S
@@ -1502,7 +1730,9 @@ def run_scan(out_path: str | Path,
             "every_s": refresh_every,
             "count": refreshes,
             "failures": refresh_fails,
+            "superseded_by_0x98": (wd.mode == "command" and not wd.fell_back),
         }
+        res.lamp_watchdog = wd.to_json()
         res.dark_stop_suppressed = not lamp
     except ScanAborted as e:
         res.reason = res.reason or "aborted"
@@ -1692,7 +1922,8 @@ def cmd_run(a) -> int:
                        dx_log=a.dx_log,
                        lamp=not a.no_lamp,
                        lamp_refresh_s=a.lamp_refresh,
-                       lamp_refresh_mode=a.lamp_refresh_mode)
+                       lamp_refresh_mode=a.lamp_refresh_mode,
+                       lamp_watchdog=a.lamp_watchdog)
     except ScanRefused as e:
         _emit("error", message=str(e))
         print(f"refused: {e}", file=sys.stderr)
@@ -2041,6 +2272,14 @@ def main() -> int:
                    choices=LAMP_REFRESH_MODES,
                    help="full = 0x82+0x81+0x80 (default), drive = the vendor's "
                         "own second LampOn, enable = 0x80 only, off = control")
+    r.add_argument("--lamp-watchdog", default=LAMP_WATCHDOG_DEFAULT,
+                   choices=LAMP_WATCHDOG_MODES,
+                   help="what to do about the DX board's decoded "
+                        f"{pc.DX_WATCHDOG_S:.0f} s illuminator auto-off "
+                        "(docs/57 s6). auto = send 0x98 once AND keep "
+                        "refreshing (default); command = send 0x98 instead of "
+                        "refreshing, falling back to the refresh if the board "
+                        "declines it; refresh = never send 0x98; off = neither")
     r.add_argument("--no-lamp-health", action="store_true",
                    help="do not poll the lamp. Only for bench work; this is "
                         "the check the overnight failure needed.")

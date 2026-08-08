@@ -65,10 +65,15 @@ __all__ = [
     "lamp_temp_working", "lamp_temp_latch",
     "CMD_LIGHT_FIFO_RESET", "CMD_LIGHT_DX_STOP",
     "dx_stop",
-    # DX board (docs/53-edge-data.md)
+    # DX board (docs/53-edge-data.md, docs/57-dx-firmware.md)
     "REG_LIGHT_INTERRUPT_STATUS", "REG_LIGHT_DX_CODE", "DX_RESPONSE_LEN",
     "DX_GATE_DX", "DX_GATE_LAMP", "DX_FORMAT_DEFAULT",
     "read_interrupt_status", "read_dx_code", "dx_start",
+    "REG_DX_SENSORS", "DX_SENSORS_LEN", "read_dx_sensors",
+    "REG_DX_ILLUM", "DX_ILLUM_RC1", "DX_ILLUM_RB0", "DX_ILLUM_BLINK_RC1",
+    "DX_ILLUM_BLINK_RB0", "DX_ILLUM_BOTH", "DX_ILLUM_OFF",
+    "DX_WATCHDOG_TICKS", "DX_WATCHDOG_TICK_HZ", "DX_WATCHDOG_S",
+    "dx_illuminator", "dx_lamp_restart", "CMD_LIGHT_DX_LAMP_RESTART",
     # motor board
     "REG_MOTOR_SPEED", "CMD_MOTOR_FORWARD", "CMD_MOTOR_REVERSE", "CMD_MOTOR_STOP",
     "MOTOR_SPEED_MIN_PLUS", "MOTOR_SPEED_MAX_PLUS",
@@ -756,6 +761,109 @@ def dx_start(speed: int, film_format: int = DX_FORMAT_DEFAULT,
 def light_fifo_reset(address: int = AD_LIGHT) -> bytes:
     """Light-board half of bDrvResetFifos. ``04 03 40 00 8A``."""
     return command(address, CMD_LIGHT_FIFO_RESET)
+
+
+# --- the DX board's own illuminators, and their 10 s auto-off --------------
+#
+# All of this is read out of the DX board's PIC16F877 image, not out of any
+# host binary -- docs/57-dx-firmware.md section 6 and section 8.3. The board
+# drives two independent illumination outputs, RC1 and RB0, turns them on at
+# reset (0x1830-0x183D), and arms a 32-bit down-counter that switches both off
+# when it expires (0x188E-0x18AB).
+#
+# TWO COMMANDS TOUCH IT AND THEY BEHAVE OPPOSITELY:
+#   0x08  handler 0x0863 -- lamp restart. Turns both off, waits 200 ms, turns
+#         both back on and RE-ARMS the counter with the same 195 313.
+#   0x98  handler 0x0DC6 -- sets both outputs from a bitmask and clears the arm
+#         bit at 0x18D5 `bcf 0x028, 5`, so the auto-off never fires again until
+#         something re-arms it.
+#
+# WHAT IS NOT KNOWN, AND IT MATTERS. Nothing in the firmware names a pin, so
+# whether RC1/RB0 drive the DX emitters, the main scanning lamp, or both is
+# UNKNOWN (docs/57 sections 6, 9 and 12). The repo's empirical result -- that
+# re-asserting the *light board's* 0x80/0x81/0x82 registers every 20 s keeps
+# the main lamp alive for 120 s -- is about a different set of registers and
+# may be a different mechanism entirely. Treat 0x98 as a decoded mechanism that
+# has never been observed working, and keep the refresh until it has been.
+
+#: ``0x98``, the illuminator bitmask. One byte. docs/57 section 8.3.
+REG_DX_ILLUM = 0x98
+
+#: Bits of :data:`REG_DX_ILLUM`, from handler 0x0DC6 line by line.
+DX_ILLUM_RC1 = 0x01         # 0x0DC7-0x0DCA: bit 0 -> RC1
+DX_ILLUM_RB0 = 0x02         # 0x0DCE-0x0DD1: bit 1 -> RB0
+DX_ILLUM_BLINK_RC1 = 0x04   # 0x0DCC-0x0DCD: bit 2 -> blink RC1 at 1 Hz
+DX_ILLUM_BLINK_RB0 = 0x08   # 0x0DD3-0x0DD4: bit 3 -> blink RB0 at 1 Hz
+#: Both illuminators steady on -- the state the board itself boots into.
+DX_ILLUM_BOTH = DX_ILLUM_RC1 | DX_ILLUM_RB0
+DX_ILLUM_OFF = 0x00
+
+#: The auto-off interval, exactly. 0x0002FAF1 Timer0 overflows loaded at
+#: 0x1834-0x1839, decremented once per overflow at 0x1894-0x189A.
+DX_WATCHDOG_TICKS = 0x0002FAF1                       # 195 313
+#: Timer0 overflow rate at the 20 MHz clock docs/57 section 2.1 pins exactly.
+DX_WATCHDOG_TICK_HZ = 19531.25
+#: 195 313 / 19 531.25 = 10.0000 s. Not adjustable, and not derived from
+#: anything the host sends.
+DX_WATCHDOG_S = DX_WATCHDOG_TICKS / DX_WATCHDOG_TICK_HZ
+
+#: Command 0x08, the lamp restart that RE-ARMS the auto-off. Named so that
+#: nothing sends it by accident while trying to disarm the thing.
+CMD_LIGHT_DX_LAMP_RESTART = 0x08
+
+
+def dx_illuminator(mask: int = DX_ILLUM_BOTH, address: int = AD_LIGHT) -> bytes:
+    """Set the DX board's illuminator bitmask AND disarm its 10 s auto-off.
+
+    ``02 04 40 01 98 <mask>``. The disarm is not optional and not a separate
+    bit: handler 0x0DC6 clears the arm flag unconditionally on every 0x98,
+    whatever the mask says. So this call both sets the outputs and stops them
+    from timing out -- including ``mask=DX_ILLUM_OFF``, which turns them off
+    and leaves them off.
+
+    A NOTE ON THE ORDER OF OPERATIONS. Because the disarm is unconditional,
+    sending this once means the outputs will never switch themselves off again.
+    Anything that turns them on with it must turn them off with it too.
+    """
+    if not 0 <= mask <= 0xFF:
+        raise ValueError(f"illuminator mask must fit in a byte, got {mask}")
+    return write_register_u8(address, REG_DX_ILLUM, mask)
+
+
+def dx_lamp_restart(address: int = AD_LIGHT) -> bytes:
+    """Command 0x08: off, 200 ms, on -- and re-arm the 10 s auto-off.
+
+    ``04 03 40 00 08``. This is the *opposite* of :func:`dx_illuminator`: it
+    puts the watchdog back. It is here to be named rather than to be used, and
+    because it is the likeliest explanation for a 20 s empirical figure --
+    something that re-armed a 10 s timer every time it kicked it.
+    """
+    return command(address, CMD_LIGHT_DX_LAMP_RESTART)
+
+
+#: ``0x93``, six bytes: four live photodiode values then the two digital sense
+#: inputs. Handler 0x0BEF, buffer built at 0x0BF7-0x0C05 (docs/57 section 8.3).
+#: A read, so it changes nothing.
+#:
+#: THE BYTE ORDER WITHIN THE SIX IS INFERRED. docs/57 records the contents as
+#: "4 ADC values + RC7 + RC6" and does not spell out the layout byte by byte,
+#: so callers should treat bytes 4 and 5 as "the two digital inputs, order
+#: unconfirmed" until a machine says otherwise. What the two inputs *sense* is
+#: also unknown (docs/57 section 12) -- they are candidates for film position,
+#: and they are the same two levels that reach the host as DX status bits 4
+#: and 5.
+REG_DX_SENSORS = 0x93
+DX_SENSORS_LEN = 6
+
+
+def read_dx_sensors(address: int = AD_LIGHT) -> bytes:
+    """Read the DX board's raw sensors. ``01 03 40 06 93``. Safe.
+
+    The cheap experiment docs/57 section 9 asks for: toggle the illuminator
+    bits with :func:`dx_illuminator` and watch whether these four values move.
+    That is what says whether RC1/RB0 are the DX emitters or the main lamp.
+    """
+    return read_register(address, REG_DX_SENSORS, DX_SENSORS_LEN)
 
 
 # ==========================================================================

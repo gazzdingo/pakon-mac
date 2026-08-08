@@ -394,38 +394,88 @@ def find_frames(rgb14: np.ndarray, min_gap: int = 50,
 # --------------------------------------------------------------------------
 #
 # Pakon does not hardcode a resample factor. It pairs MotorSpeedPlus with the
-# exposure line clock so raw lines are already square for the selected DpiBase
-# (16Base output is 2000×3000 — docs/30). Offline we recover the same relation:
+# exposure line clock so raw lines are already square for the selected DpiBase.
+# Offline we recover the same relation:
 #
 #   across  = CCD_px / film_height_mm          (sensor, fixed for a geometry)
 #   along   ∝ line_rate / motor_speed          (transport)
 #   scale   = across / along                   (PIL stretch on the line axis)
 #
 # Register 0xA5 units are unknown (docs/12); light-board 0x91 is the line-rate
-# register in our calibration triad. Absolute Hz/mm/s drop out if we anchor so
-# that along == across at the motor speed that pairs with our *fixed* exposure
-# triad (integration 4093 / N 982 / 0x91=60 from calibration/README.json).
+# register in our calibration triad. Absolute Hz/mm/s drop out if we anchor the
+# relation at one speed where the along-film sampling is independently known.
 #
-# With that clock held constant, ~1380 brightness-gap lines at speed 25802 map
-# to ~3000 lines near hive DpiBase8's MotorSpeedPlus (11467). So for this host
-# stack, square lands on 11467 — not hive DpiBase16's 5917 (which pairs with a
-# different line clock / binning). scale ∝ speed; gold400 @ 11467 → ~1.0.
+# WHERE THE ANCHOR COMES FROM  (this used to be wrong by 1.938×)
+# --------------------------------------------------------------
+# Our exposure triad is *locked* — integration 4093 / lamp N 982 / 0x91 = 60 —
+# and calibration/README.json records which base it was measured at:
 #
-# Same class of bug as the integration/N/line-rate triad: three values that are
-# really one matched setting.
+#     "dpi_base": "DpiBase16_35"
+#
+# So the triad is DpiBase16's. The vendor's own frame size for that base is
+# FRAME_SIZES_000: HR_HEIGHT_BASE16_35 = 2000, HR_WIDTH_BASE16_35 = 3000
+# (docs/56 §2.7, and docs/30's table agrees). 3000 lines over the 36 mm exposed
+# length is 83.333 lines/mm — equal to 2000 px over 24 mm across. Square.
+#
+# DpiBase16's MotorSpeedPlus is 5917. Therefore, with our triad held at
+# DpiBase16's values, **speed 5917 at line_rate 60 is the square-pixel point**,
+# and scale is 1.0 there. Not 11467.
+#
+# The old anchor was MOTOR_SPEED[8] = 11467, taken from "~1380 brightness-gap
+# lines at speed 25802 map to ~3000". That inference assumed the undocumented
+# early captures ran at 25802, and their own data does not support it (see
+# ``geometry`` below). The vendor's frame-size table needs no such assumption.
+#
+# CHECK, AGAINST DATA, WITH NO SCANNER
+# ------------------------------------
+#   lines/mm(speed, lr) = 83.333 * (5917 / speed) * (lr / 60)
+#
+#   captures/gold400.bin — sidecar says speed 11467, line_rate 60
+#     predicted   83.333 * 5917/11467      = 43.00 lines/mm
+#                 * 38 mm frame pitch      = 1634 lines
+#     measured    frame pitch              = 1656 lines   (+1.3 %)
+#
+# 1656 is also what docs/54 (~1014, ~1324) and docs/46 (~1460) were seeing:
+# every measured pitch in this repo is in the 1300–1900 band, and none of them
+# is anywhere near the 3167 the old anchor predicted for gold400.
+#
+# ``python3 tools/pakon_decode.py geometry [capture.bin ...]`` re-runs the
+# derivation and, given a capture, measures its pitch and reports the residual.
+#
+# Same class of bug as the integration/N/line-rate triad: values that are
+# really one matched setting, split across three registers.
+#
+# STILL NEEDS A MACHINE
+# ---------------------
+# * ACROSS_PX_PER_MM rests on the vendor's frame-size table, not on our data:
+#   no film edge falls inside the 2000-px window (the leader region is uniform
+#   right across it), so the sensor's mm-per-pixel is not measurable from any
+#   capture we hold. A scan of a target with known across-film spacing would
+#   settle it.
+# * Whether the vendor also changes the line clock per base. It must, since
+#   the hive speeds 25802/11467/5917 are not in the 4:3:2 ratio that the
+#   1000×1500 / 1500×2250 / 2000×3000 output sizes require at a fixed clock.
+#   That does not affect us — we never change the triad — but it is why the
+#   hive's *other* two speeds cannot be used to cross-check this anchor.
 
 CCD_ACROSS_PX = 2000
 FILM_ACROSS_MM = 24.0
 ACROSS_PX_PER_MM = CCD_ACROSS_PX / FILM_ACROSS_MM  # ≈ 83.333
 
+FRAME_PITCH_MM = 38.0   # 8 perforations; == pakon_framing.FRAME_PITCH_MM
+FRAME_IMAGE_MM = 36.0   # exposed length
+
 # Hive MotorSpeedPlus (HKLM\…\DpiBase<N>_35) — same table as pakon_scan.
 MOTOR_SPEED = {4: 25802, 8: 11467, 16: 5917}
 REF_LINE_RATE = 60
-# Square-pixel motor for our locked exposure triad (see comment block above).
-SQUARE_MOTOR_SPEED = MOTOR_SPEED[8]
+# Square-pixel motor for our locked (DpiBase16) exposure triad. See above.
+SQUARE_MOTOR_SPEED = MOTOR_SPEED[16]
 
-# Legacy strips (strip_cal etc.) were captured at DpiBase4's speed with the
-# base-16 exposure triad — that is why an unsquash ≈ 2.25 existed at all.
+# Kept as a named constant because pakon_scan and the app refer to it, but it
+# is NO LONGER a silent fallback: see resolve_transport_scale. The claim that
+# the undocumented early captures ran here is contradicted by their own pitch
+# (strip_cal implies ~13900, roll implies ~9900 — both nearer 11467 than
+# 25802, and 25802 would need pitches near 726 lines, not 1349 and 1891).
 LEGACY_DEFAULT_MOTOR_SPEED = MOTOR_SPEED[4]
 
 TARGET_LINES_PER_FRAME = 3000  # DpiBase16 vendor frame along-travel samples
@@ -450,7 +500,32 @@ def along_lines_per_mm(speed: float,
     return ACROSS_PX_PER_MM / transport_scale(speed, line_rate)
 
 
-DEFAULT_TRANSPORT_SCALE = transport_scale(LEGACY_DEFAULT_MOTOR_SPEED)  # ≈ 2.250
+def transport_scale_from_pitch(pitch_lines: float,
+                               pitch_mm: float = FRAME_PITCH_MM) -> float:
+    """Square-pixel factor from a *measured* frame pitch, no speed needed.
+
+    This is the more direct route: it needs neither the sidecar nor the
+    anchor, only the knowledge that consecutive 35 mm frames are 38 mm apart.
+    ``pakon_framing.estimate_pitch`` produces the input.
+    """
+    if pitch_lines <= 0 or pitch_mm <= 0:
+        raise ValueError(f"pitch must be > 0 (got {pitch_lines}, {pitch_mm})")
+    return ACROSS_PX_PER_MM / (float(pitch_lines) / float(pitch_mm))
+
+
+def implied_motor_speed(pitch_lines: float,
+                        line_rate: float = REF_LINE_RATE,
+                        pitch_mm: float = FRAME_PITCH_MM) -> float:
+    """The transport speed a measured pitch implies. Inverse of the above."""
+    lpm = float(pitch_lines) / float(pitch_mm)
+    return SQUARE_MOTOR_SPEED * (ACROSS_PX_PER_MM / lpm) * (float(line_rate) / REF_LINE_RATE)
+
+
+# No sidecar and no measurement means we do not know the transport speed. The
+# honest factor then is 1.0 — leave the geometry alone and say so — rather than
+# a guessed speed. resolve_transport_scale returns a source string that makes
+# the difference visible; the app surfaces it.
+DEFAULT_TRANSPORT_SCALE = 1.0
 
 
 def load_capture_sidecar(capture: Path | str) -> dict | None:
@@ -477,8 +552,19 @@ def resolve_transport_scale(
         dpi_base: int | None = None,
         line_rate: int | float | None = None,
         capture: Path | str | None = None,
+        measured_pitch_lines: float | None = None,
 ) -> tuple[float, str]:
-    """Pick the unsquash factor. Override > explicit speed/base > sidecar > legacy."""
+    """Pick the unsquash factor, and say where it came from.
+
+    Order: override > explicit speed/base > capture sidecar > measured frame
+    pitch > 1.0 with an "unknown" note. There is deliberately no guessed
+    speed at the end of that chain — see DEFAULT_TRANSPORT_SCALE.
+
+    When both a sidecar speed and a measured pitch are available the sidecar
+    wins (it is a recorded fact, not an estimate) but the residual between the
+    two is appended to the source string. That residual is the only offline
+    check we have that the anchor is right, so it is always reported.
+    """
     if transport_scale_override is not None:
         return float(transport_scale_override), "explicit --transport-scale"
 
@@ -507,9 +593,17 @@ def resolve_transport_scale(
                 lr = float(raw_lr)
 
     if speed is None:
-        speed = float(LEGACY_DEFAULT_MOTOR_SPEED)
-        note = (f"legacy default speed {LEGACY_DEFAULT_MOTOR_SPEED} "
-                f"(pass --motor-speed / --dpi-base or a .scan.json sidecar)")
+        if measured_pitch_lines:
+            ts = transport_scale_from_pitch(measured_pitch_lines)
+            return ts, (f"measured frame pitch {measured_pitch_lines:.0f} lines "
+                        f"over {FRAME_PITCH_MM:g} mm → scale={ts:.4f} "
+                        f"(implies speed ≈ "
+                        f"{implied_motor_speed(measured_pitch_lines, lr):.0f}; "
+                        f"no sidecar — run pakon_scan to record one)")
+        return DEFAULT_TRANSPORT_SCALE, (
+            "transport speed UNKNOWN — no --motor-speed/--dpi-base, no "
+            ".scan.json sidecar, no measured pitch. Leaving geometry "
+            "unchanged (scale=1.0) rather than guessing a speed.")
 
     ts = transport_scale(speed, lr)
     src = (f"{note + '; ' if note else ''}"
@@ -517,6 +611,11 @@ def resolve_transport_scale(
            f"line_rate={int(lr) if lr == int(lr) else lr} "
            f"→ scale={ts:.4f} "
            f"(square @{SQUARE_MOTOR_SPEED}/{REF_LINE_RATE})")
+    if measured_pitch_lines:
+        pred = along_lines_per_mm(speed, lr) * FRAME_PITCH_MM
+        err = (measured_pitch_lines - pred) / pred * 100.0
+        src += (f"; predicts {pred:.0f}-line pitch, measured "
+                f"{measured_pitch_lines:.0f} ({err:+.1f} %)")
     return ts, src
 
 
@@ -798,6 +897,106 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return pc.verify_lut(args.data_dir)
 
 
+def measure_pitch_lines(capture: Path | str) -> float | None:
+    """Measure a capture's frame pitch, streaming, without loading it whole.
+
+    Delegates the estimator to pakon_framing so there is exactly one of them.
+    Returns None when the strip has too little structure to measure.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import pakon_framing as pf                                   # noqa: PLC0415
+
+    raw = np.memmap(str(capture), dtype="<u2", mode="r")
+    n_lines = raw.size // WORDS_PER_LINE
+    if n_lines < 3:
+        return None
+    px = WORDS_PER_LINE // 3
+    trace = np.empty(n_lines, dtype=np.float64)
+    green = np.empty(n_lines, dtype=np.float64)
+    step = 20000
+    for i in range(0, n_lines, step):
+        j = min(n_lines, i + step)
+        blk = np.asarray(raw[i * WORDS_PER_LINE:j * WORDS_PER_LINE]
+                         ).reshape(j - i, px, 3).astype(np.float64)
+        trace[i:j] = blk.mean(axis=(1, 2))
+        green[i:j] = blk[:, :, 1].mean(axis=1)
+        del blk
+    present = pf.film_present(green, pf.DEFAULT_CLEAR_LEVEL)
+    idx = np.flatnonzero(present)
+    lo, hi = (int(idx[0]), int(idx[-1]) + 1) if idx.size else (0, n_lines)
+    ones = np.zeros(n_lines, dtype=bool)
+    ones[lo:hi] = trace[lo:hi] < pf._otsu(trace[lo:hi])
+    return pf.estimate_pitch(ones)
+
+
+def cmd_geometry(args: argparse.Namespace) -> int:
+    """Re-derive the transport geometry, and check it against real captures.
+
+    No scanner required. This is the offline proof for the anchor change; see
+    the comment block above CCD_ACROSS_PX for the argument it checks.
+    """
+    print("Anchor")
+    print(f"  across            {CCD_ACROSS_PX} px over {FILM_ACROSS_MM:g} mm "
+          f"= {ACROSS_PX_PER_MM:.3f} px/mm   [vendor FRAME_SIZES_000, docs/56 §2.7]")
+    print(f"  along @ base16    {TARGET_LINES_PER_FRAME} lines over "
+          f"{FRAME_IMAGE_MM:g} mm = "
+          f"{TARGET_LINES_PER_FRAME / FRAME_IMAGE_MM:.3f} lines/mm   [same table]")
+    print(f"  square speed      {SQUARE_MOTOR_SPEED} (DpiBase16 MotorSpeedPlus) "
+          f"at line_rate {REF_LINE_RATE}")
+    print(f"  triad             calibration/README.json says DpiBase16_35, "
+          f"which is what ties the two together")
+    ok = abs(ACROSS_PX_PER_MM - TARGET_LINES_PER_FRAME / FRAME_IMAGE_MM) < 1e-6
+    print(f"  square?           {'yes' if ok else 'NO — the anchor is inconsistent'}")
+    print()
+    print("Predicted pitch (38 mm) per hive speed, at our locked line_rate 60")
+    for base, sp in sorted(MOTOR_SPEED.items()):
+        lpm = along_lines_per_mm(sp)
+        print(f"  DpiBase{base:<3} speed {sp:>6}  "
+              f"scale {transport_scale(sp):6.4f}  "
+              f"{lpm:6.2f} lines/mm  pitch {lpm * FRAME_PITCH_MM:7.0f} lines")
+    print()
+
+    if not args.captures:
+        print("Pass captures to check the prediction against measured pitch, e.g.")
+        print("  python3 tools/pakon_decode.py geometry captures/gold400.bin")
+        return 0 if ok else 1
+
+    worst = 0.0
+    checked = 0
+    print(f"{'capture':<34}{'pitch':>8}{'speed src':>12}{'predicted':>11}"
+          f"{'resid':>9}")
+    for cap in args.captures:
+        p = Path(cap)
+        pitch = measure_pitch_lines(p)
+        meta = load_capture_sidecar(p) or {}
+        sp = meta.get("speed", (meta.get("config") or {}).get("speed"))
+        if pitch is None:
+            print(f"{p.name:<34}{'—':>8}{'':>12}   no measurable frame structure")
+            continue
+        if sp:
+            pred = along_lines_per_mm(float(sp)) * FRAME_PITCH_MM
+            resid = (pitch - pred) / pred * 100.0
+            worst = max(worst, abs(resid))
+            checked += 1
+            print(f"{p.name:<34}{pitch:>8.0f}{int(sp):>12}{pred:>11.0f}"
+                  f"{resid:>8.1f}%")
+        else:
+            print(f"{p.name:<34}{pitch:>8.0f}{'no sidecar':>12}"
+                  f"{'—':>11}  implies speed ≈ "
+                  f"{implied_motor_speed(pitch):.0f}")
+    if checked:
+        print()
+        print(f"worst residual on a capture with a recorded speed: {worst:.1f} %")
+        limit = args.tolerance
+        if worst > limit:
+            print(f"FAIL — over the {limit:g} % tolerance. The derivation and "
+                  f"the film disagree; do not paper over it with a fudge factor.")
+            return 1
+        print(f"PASS — within {limit:g} %.")
+    return 0 if ok else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -880,6 +1079,15 @@ def main() -> int:
     s.add_argument("--ansel-root", default=DEFAULT_ANSEL_ROOT,
                    help="anselinstalldir/dataPathItems (shasta/sba/fugc/profile)")
     s.set_defaults(func=cmd_strip)
+
+    g = sub.add_parser("geometry",
+                       help="re-derive the transport scale and check it "
+                            "against measured frame pitch (no scanner)")
+    g.add_argument("captures", nargs="*",
+                   help="captures to measure; sidecar speeds are used when present")
+    g.add_argument("--tolerance", type=float, default=5.0,
+                   help="max %% residual before this fails (default 5)")
+    g.set_defaults(func=cmd_geometry)
 
     v = sub.add_parser("verify-lut", help="check LUT against vendor table")
     v.add_argument("--data-dir", default=DEFAULT_DATA_DIR)

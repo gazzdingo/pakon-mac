@@ -52,8 +52,10 @@ file through ``to_rgb14`` reads 279.9/360.5/290.0. This module works in the
 raw wire domain, which is both where the calibration lives and the cheapest
 domain for a live capture loop — no shift, no reshape beyond the line split.
 
-(That mismatch is also a real bug in the *decode* path, which applies these
-tables to ``to_rgb14`` output. Not this module's to fix — see the report.)
+Decode path fix: ``pakon_decode.load_unit_calibration`` converts
+``dark_wire/4`` for post-``to_rgb14`` maths and leaves gain unchanged
+(``((w−d)·g)/4 ≡ (w>>2 − d/4)·g``). These ``.npy`` files stay wire-domain
+so this gate module keeps reading them without a shift.
 
 THE SECOND AXIS, AND WHY ONE NUMBER IS NOT ENOUGH
 -------------------------------------------------
@@ -395,16 +397,25 @@ class RunDetector:
     blank frame (one pitch) both fail it. And it does not arm until
     ``LEADER_FILM_LINES`` of film have gone past, so the clear leader at the
     head of a roll cannot stop a scan before the film arrives.
+
+    ``dark_stops=False`` exists for exactly one caller: the deliberate
+    lamp-off experiment, where the lamp is *known* to be off, every window is
+    therefore DARK by definition, and there is no lamp failure left to detect.
+    Classification is unaffected — the windows still read DARK and still say so
+    — only the stop is withheld, and the hard time limit becomes the sole
+    bound. Never set it for a scan carrying film.
     """
 
     def __init__(self, dark_confirm: int = DARK_CONFIRM_LINES,
                  roll_end: int = ROLL_END_LINES,
                  leader_film: int = LEADER_FILM_LINES,
-                 history: int = 512) -> None:
+                 history: int = 512,
+                 dark_stops: bool = True) -> None:
         self.dark_confirm = int(dark_confirm)
         self.roll_end = int(roll_end)
         self.leader_film = int(leader_film)
         self.max_history = int(history)
+        self.dark_stops = bool(dark_stops)
         self.s = RunState()
 
     def feed(self, v: Verdict) -> RunState:
@@ -437,7 +448,7 @@ class RunDetector:
             return s
 
         if s.stop is None:
-            if s.dark_run >= self.dark_confirm:
+            if s.dark_run >= self.dark_confirm and self.dark_stops:
                 s.stop = STOP_DARK
                 s.stop_detail = (
                     f"{s.dark_run} lines at the dark reference — "

@@ -972,6 +972,8 @@ class ScanResult:
     packets: list = field(default_factory=list)
     dx: dict = field(default_factory=dict)
     dx_log: str = ""
+    lamp_refresh: dict = field(default_factory=dict)
+    dark_stop_suppressed: bool = False
     ok: bool = False
 
     def to_json(self) -> dict:
@@ -1034,7 +1036,9 @@ def run_scan(out_path: str | Path,
              skip_lamp_health: bool = False,
              read_dx: bool = True,
              dx_log: str | Path | None = None,
-             lamp: bool = True) -> ScanResult:
+             lamp: bool = True,
+             lamp_refresh_s: float = LAMP_REFRESH_S,
+             lamp_refresh_mode: str = "full") -> ScanResult:
     """One scan, start to finish, with every guard armed.
 
     ``read_dx`` adds the DX poll to the capture loop: pure reads of light-board
@@ -1060,7 +1064,11 @@ def run_scan(out_path: str | Path,
     res = ScanResult(path=str(out_path), config=cfg.to_json())
 
     g = gate.Gate.from_calibration()
-    det = gate.RunDetector()
+    # With the lamp deliberately off every window is DARK by definition and
+    # there is no lamp failure left to detect, so the DARK stop would end the
+    # experiment in half a second. Classification still reports DARK; only the
+    # stop is withheld, and the hard time limit becomes the sole bound.
+    det = gate.RunDetector(dark_stops=bool(lamp))
     log("gate", **g.describe())
 
     if not dry_run and not _simulating() and LOCK_FILE.is_file():
@@ -1167,6 +1175,11 @@ def run_scan(out_path: str | Path,
         t0 = time.time()
         deadline = t0 + max_seconds
         next_lamp = t0 + LAMP_POLL_S
+        refresh_every = max(0.0, float(lamp_refresh_s)) if lamp else 0.0
+        next_refresh = (t0 + refresh_every) if (refresh_every and
+                                                lamp_refresh_mode != "off") else None
+        refreshes = 0
+        refresh_fails = 0
         last_data = t0
         buf = bytearray()
         phase = None
@@ -1190,6 +1203,15 @@ def run_scan(out_path: str | Path,
                 stop_reason = "size_limit"
                 stop_detail = f"{total} bytes written, cap {max_bytes}"
                 break
+
+            if next_refresh is not None and now >= next_refresh:
+                next_refresh = now + refresh_every
+                if lamp_refresh(link, cfg, lamp_refresh_mode):
+                    refreshes += 1
+                else:
+                    refresh_fails += 1
+                log("lamp_refresh", mode=lamp_refresh_mode, count=refreshes,
+                    failures=refresh_fails, elapsed=round(now - t0, 2))
 
             if not skip_lamp_health and now >= next_lamp:
                 next_lamp = now + LAMP_POLL_S
@@ -1268,6 +1290,13 @@ def run_scan(out_path: str | Path,
         res.detail = stop_detail
         res.mib_s = round((total / (1024 * 1024)) / max(res.seconds, 1e-6), 2)
         res.ok = stop_reason in ("roll_end", "cancelled", "time_limit", "dry_run")
+        res.lamp_refresh = {
+            "mode": lamp_refresh_mode if lamp else "off (lamp not lit)",
+            "every_s": refresh_every,
+            "count": refreshes,
+            "failures": refresh_fails,
+        }
+        res.dark_stop_suppressed = not lamp
     except ScanAborted as e:
         res.reason = res.reason or "aborted"
         res.detail = res.detail or str(e)
@@ -1448,7 +1477,9 @@ def cmd_run(a) -> int:
                        skip_lamp_health=a.no_lamp_health or a.no_lamp,
                        read_dx=not a.no_dx,
                        dx_log=a.dx_log,
-                       lamp=not a.no_lamp)
+                       lamp=not a.no_lamp,
+                       lamp_refresh_s=a.lamp_refresh,
+                       lamp_refresh_mode=a.lamp_refresh_mode)
     except ScanRefused as e:
         _emit("error", message=str(e))
         print(f"refused: {e}", file=sys.stderr)
@@ -1805,6 +1836,15 @@ def main() -> int:
     r.add_argument("--force", action="store_true",
                    help="scan even though the configuration does not match "
                         "the committed calibration")
+    r.add_argument("--lamp-refresh", type=float, default=LAMP_REFRESH_S,
+                   metavar="SECONDS",
+                   help="re-assert the lamp drive this often (0 disables). "
+                        "The lamp has died at ~60 s twice; the hypothesis is a "
+                        "light-board timeout the host is meant to kick.")
+    r.add_argument("--lamp-refresh-mode", default="full",
+                   choices=LAMP_REFRESH_MODES,
+                   help="full = 0x82+0x81+0x80 (default), drive = the vendor's "
+                        "own second LampOn, enable = 0x80 only, off = control")
     r.add_argument("--no-lamp-health", action="store_true",
                    help="do not poll the lamp. Only for bench work; this is "
                         "the check the overnight failure needed.")

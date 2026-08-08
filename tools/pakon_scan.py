@@ -490,6 +490,15 @@ class Link:
         except Exception:                                   # noqa: BLE001
             return None
 
+    def xfer(self, pkt: bytes, timeout: int = 2000) -> bytes | None:
+        """One packet out, the whole raw response back, or None.
+
+        Public because the DX poller (``tools/dx_read.py``) has to log the
+        complete response — status byte included — not just the payload
+        ``read_reg`` extracts. It sends reads only.
+        """
+        return self._xfer(pkt, timeout)
+
     def ack(self, pkt: bytes, label: str, required: bool = True) -> bytes:
         """Send a write/command packet and insist on a type-7 status-0 reply.
 
@@ -1302,6 +1311,32 @@ def cmd_run(a) -> int:
             print(f"  {i:>3}  {p}", file=sys.stderr)
         print(f"  ({len(res.packets)} packets; nothing was sent)",
               file=sys.stderr)
+    elif res.path and not a.dry_run:
+        # Sidecar for offline decode: transport scale depends on speed /
+        # line_rate (pakon_decode.transport_scale). Same numbers Pakon pairs
+        # at capture so pixels are already square.
+        try:
+            side = Path(res.path).with_suffix(".scan.json")
+            cfg = res.config if isinstance(res.config, dict) else {}
+            payload = {
+                "capture": res.path,
+                "speed": cfg.get("speed"),
+                "dpi_base": cfg.get("dpi_base"),
+                "line_rate_0x91": cfg.get("line_rate_0x91"),
+                "integration": cfg.get("integration"),
+                "lamp_n": cfg.get("lamp_n"),
+                "config": cfg,
+                "bytes": res.bytes,
+                "lines": res.lines,
+                "reason": res.reason,
+                "ok": res.ok,
+            }
+            side.write_text(json.dumps(payload, indent=2) + "\n")
+            if not a.json:
+                print(f"wrote sidecar {side}", file=sys.stderr)
+        except (OSError, TypeError, ValueError) as e:
+            print(f"warning: could not write .scan.json sidecar: {e}",
+                  file=sys.stderr)
     if not a.json:
         # In --json mode the `done` record above already carries all of this,
         # and a second pretty-printed document would break the NDJSON stream.

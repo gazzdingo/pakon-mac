@@ -756,10 +756,10 @@ def show_matrix(data_dir: str, model: str, source: str) -> int:
                 continue
             print(f"\n{label} -- this unit's 3x10, source {source}")
             names = ["R", "G", "B", "R2", "G2", "B2", "RG", "RB", "GB", "const"]
-            print("        " + "".join(f"{n:>12}" for n in names))
+            print("         " + " ".join(f"{n:>13}" for n in names))
             for k, ch in enumerate("RGB"):
                 row = coeffs[10 * k:10 * k + 10]
-                print(f"  out {ch}: " + "".join(f"{v:>12.8g}" for v in row))
+                print(f"  out {ch}: " + " ".join(f"{v:>13.6g}" for v in row))
         print("\nThe diagonal ~0.28 maps 14-bit onto ~0..4700, which the 0..4095")
         print("clamp truncates. The constants are a per-channel pedestal. The")
         print("three diagonal values differ by ~5%, which is the signature of a")

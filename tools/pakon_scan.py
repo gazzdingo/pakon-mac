@@ -8,6 +8,7 @@ is written to stop rather than to finish.
     python3 tools/pakon_scan.py stop            # panic button: motor + lamp off
     python3 tools/pakon_scan.py run out.bin     # a scan, with every guard armed
     python3 tools/pakon_scan.py run --dry-run   # print the sequence, send nothing
+    python3 tools/pakon_scan.py sensors         # DX photodiodes + film sense, no writes
 
 
 WHAT THIS IS GUARDING AGAINST
@@ -17,7 +18,15 @@ and the transport kept running for five more with the sensor reading darkness.
 Nothing was watching the lamp, and the roll-end detector tested one boundary
 ("bright enough to be a clear gate"), so darkness read as film present.
 
-Five independent things now have to fail before that can happen again:
+Six independent things now have to fail before that can happen again:
+
+  0. THE MACHINE'S OWN FILM SENSORS. Every DX packet reports whether film is
+     at the entry and exit sensors, and ``hardware_cb = 0xC0000000`` has been
+     in every sidecar this project ever wrote while nothing read it. They are
+     now the *primary* end-of-roll signal: sustained clear after film has been
+     seen ends the roll, and film still present vetoes an optical roll-end —
+     which is what stops a scan ending on the leader. See ``FilmSense``. They
+     never veto the DARK stop.
 
   1. THREE-STATE CLASSIFICATION (``pakon_gate``). Every window is CLEAR, FILM
      or DARK, from levels derived out of ``calibration/``. DARK stops the motor
@@ -266,6 +275,10 @@ LAMP_TEMP_FAULT_C = (25.0, 60.0)
 ENV_SIMULATE = "PAKON_SCAN_SIMULATE"
 ENV_TRACE = "PAKON_SCAN_TRACE"
 ENV_SIM_RATE = "PAKON_SCAN_SIM_RATE"
+#: Number of simulated DX packets after which the fake board stops reporting
+#: film at its sensors — i.e. the strip leaves the transport. Lets the
+#: film-sense end-of-roll path be run end to end without a scanner.
+ENV_SIM_FILM_OUT = "PAKON_SCAN_SIM_FILM_OUT"
 
 
 class FakeDev:
@@ -293,7 +306,8 @@ class FakeDev:
         # board reports film at both sensors while the strip is in the
         # transport; ``film_out_after`` is how many DX packets that lasts.
         self.dx_status = dxd.DXSTAT_FILM_SENSE
-        self.film_out_after: int | None = None
+        _out = os.environ.get(ENV_SIM_FILM_OUT)
+        self.film_out_after: int | None = int(_out) if _out else None
         self.dx_packets = 0
         # Illuminator state, set by command 0x98.
         self.dx_illum = pc.DX_ILLUM_BOTH
@@ -947,6 +961,170 @@ def lamp_refresh(link: Link, cfg: "ScanConfig", mode: str = "full") -> bool:
     return ok
 
 
+# --------------------------------------------------------------------------
+# film position — what the machine reports, rather than what we infer
+# --------------------------------------------------------------------------
+#
+# THE BITS HAVE BEEN ARRIVING ALL ALONG. Every DX packet's first record carries
+# a status nibble, and hardware_cb = 0xC0000000 -- film sensed at entry AND at
+# exit -- is in every scan sidecar this project has taken. Nothing read it.
+#
+# Meanwhile the optical end-of-roll detector has been wrong twice: once it read
+# a dead lamp as film, once it stopped on the leader. Both are inferences from
+# image brightness about a question the transport answers directly.
+#
+# So the sensors become the primary signal, in the two directions that are
+# actually safe:
+#
+#   * film sensed, then sustained-clear  ->  the roll has ended. Stop.
+#   * film sensed and still present      ->  VETO an optical roll-end. This is
+#                                            the "stopped on the leader" bug,
+#                                            and the veto is exactly what
+#                                            prevents it.
+#
+# and in the direction that is not safe, it does nothing:
+#
+#   * the DARK stop is never vetoed. Film present plus a dark sensor is a lamp
+#     that has died with the owner's film in the gate, which is the failure
+#     this whole module exists for. docs/53 s4.5 records that the vendor would
+#     have neither aborted nor warned; we abort.
+#
+# LIMITS, STATED PLAINLY. The status nibble only exists on packets that carry
+# at least one record (the board ORs it into record 0's type byte and nowhere
+# else, docs/57 s8.2). So when events stop arriving the sensors stop being
+# readable, and a stale reading must not be allowed to veto anything -- hence
+# FILM_SENSE_STALE_S. "Events stopped arriving" is itself a plausible
+# end-of-roll signal (docs/57 s7.3 suggests counting lines since the last
+# perforation) but that needs a lines-per-mm figure this file does not have,
+# so it is not implemented and not pretended to be.
+
+#: Both sensors must read clear for this long, continuously, before the roll is
+#: called ended. Film presence does not flicker with image content the way the
+#: optical detector's CLEAR does, so this can be far shorter than
+#: ``gate.ROLL_END_LINES`` -- but it is long enough that a single mis-read
+#: packet cannot end a roll. INFERRED: no vendor value corresponds to it.
+FILM_SENSE_CLEAR_S = 2.0
+
+#: After this long without a readable status nibble, the film sensors have no
+#: current opinion: they cannot end a roll and they cannot veto the optical
+#: detector. Without this, a DX board that went quiet while film was present
+#: would veto every optical roll-end for the rest of the scan.
+FILM_SENSE_STALE_S = 5.0
+
+
+@dataclass
+class FilmSense:
+    """Film position and mis-load warnings, from the DX status nibble.
+
+    Fed one :class:`dx_decode.DxPacket` at a time. Packets whose
+    ``status_valid`` is false are ignored entirely -- an empty queue is not a
+    report that the sensors are clear.
+    """
+
+    armed: bool = False                 # film has been sensed at least once
+    present: bool | None = None         # the last state actually reported
+    at_entry: bool = False
+    at_exit: bool = False
+    packets: int = 0                    # packets that carried a status nibble
+    last_report: float = 0.0            # monotonic-ish time of that report
+    clear_since: float | None = None
+    ended: bool = False
+    tail_first: bool = False
+    emulsion_down: bool = False
+    vetoed_optical: int = 0
+    warnings: list = field(default_factory=list)
+    pending: list = field(default_factory=list)   # drained by the caller
+
+    def feed(self, pkt, now: float) -> str | None:
+        """Absorb one packet. Returns a stop detail when the roll has ended."""
+        if pkt is None or not getattr(pkt, "status_valid", False):
+            return None
+        self.packets += 1
+        self.last_report = now
+        self.at_entry = pkt.film_at_entry
+        self.at_exit = pkt.film_at_exit
+        self.present = bool(pkt.film_present)
+
+        # Mis-load bits: warn, never abort. docs/53 s4.2 — "there is no code
+        # path in TLB.dll that aborts a scan on emulsion-down or tail-first";
+        # the bits are OR-ed into the hardware status word and the scan
+        # proceeds with corrected geometry. Warning once is more than the
+        # vendor's GUI does mid-scan and less than stopping the owner's roll.
+        if pkt.tail_first and not self.tail_first:
+            self.tail_first = True
+            self._warn("FILM TAIL FIRST — the strip is going through backwards. "
+                       "Scanning continues; frame numbering and the "
+                       "perforation offsets run the other way.")
+        if pkt.emulsion_down and not self.emulsion_down:
+            self.emulsion_down = True
+            self._warn("FILM EMULSION DOWN — the strip is upside down. "
+                       "Scanning continues; the frames will be mirrored.")
+
+        if self.present:
+            if not self.armed:
+                self.armed = True
+                self._warn("film sensed in the transport; the film sensors are "
+                           "now the primary end-of-roll signal", level="info")
+            self.clear_since = None
+            return None
+
+        # Clear. Only meaningful once film has actually been seen -- before
+        # that, "clear" is the empty transport before the leader arrives.
+        if not self.armed:
+            return None
+        if self.clear_since is None:
+            self.clear_since = now
+            return None
+        held = now - self.clear_since
+        if held >= FILM_SENSE_CLEAR_S and not self.ended:
+            self.ended = True
+            return (f"both film sensors have read clear for {held:.1f} s after "
+                    f"{self.packets} status reports. The machine says the film "
+                    f"has left the transport.")
+        return None
+
+    def _warn(self, text: str, level: str = "warn") -> None:
+        self.warnings.append(text)
+        self.pending.append((level, text))
+
+    def drain(self) -> list:
+        out, self.pending = self.pending, []
+        return out
+
+    def fresh(self, now: float) -> bool:
+        """Is there a current reading? A stale one must not decide anything."""
+        return self.packets > 0 and (now - self.last_report) <= FILM_SENSE_STALE_S
+
+    def vetoes_roll_end(self, now: float) -> bool:
+        """Should an optical roll-end be ignored right now?
+
+        Only when the machine is currently, freshly reporting film in the
+        transport. Anything else -- never armed, gone quiet, or reporting
+        clear -- and the optical detector has the floor.
+        """
+        return bool(self.armed and self.present and self.fresh(now))
+
+    def to_json(self) -> dict:
+        return {
+            "available": self.packets > 0,
+            "armed": self.armed,
+            "present": self.present,
+            "at_entry": self.at_entry,
+            "at_exit": self.at_exit,
+            "status_reports": self.packets,
+            "ended_roll": self.ended,
+            "tail_first": self.tail_first,
+            "emulsion_down": self.emulsion_down,
+            "optical_roll_ends_vetoed": self.vetoed_optical,
+            "warnings": list(self.warnings),
+            "clear_seconds_required": FILM_SENSE_CLEAR_S,
+            "stale_after_s": FILM_SENSE_STALE_S,
+            "source": "DX status nibble bits 0x20 (entry) / 0x10 (exit), "
+                      "docs/53 s4.1; HARDWARE_CB_FILM_SENSE_ENTRY 0x40000000 / "
+                      "_EXIT 0x80000000",
+        }
+
+
 @dataclass
 class LampHealth:
     ok: bool = True
@@ -1251,6 +1429,7 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
         "lamp": res.lamp,
         "lamp_refresh": res.lamp_refresh,
         "lamp_watchdog": res.lamp_watchdog,
+        "film_sense": res.film_sense,
         "stopped": res.stopped,
         "gate": gate_desc or {},
         "dx": res.dx,
@@ -1365,6 +1544,7 @@ class ScanResult:
     dx_log: str = ""
     lamp_refresh: dict = field(default_factory=dict)
     lamp_watchdog: dict = field(default_factory=dict)
+    film_sense: dict = field(default_factory=dict)
     dark_stop_suppressed: bool = False
     metadata: str | None = None
     ok: bool = False
@@ -1497,6 +1677,9 @@ def run_scan(out_path: str | Path,
 
     link = Link.open(dry_run=dry_run, log=log)
     health = LampHealth()
+    # Exists whether or not the DX poll runs. With no DX reader it simply never
+    # has an opinion, and every decision falls back to the optical detector.
+    film = FilmSense()
     started_motor = False
     fh = None
     dx = None
@@ -1663,13 +1846,23 @@ def run_scan(out_path: str | Path,
             # DX events, between image reads. Reads only, rate-limited by the
             # reader itself, and wrapped because a DX fault must never be able
             # to stop a scan that is otherwise fine.
+            #
+            # The packet is no longer thrown away: its status nibble is the
+            # machine's own answer to "is there film in the transport", which
+            # is the signal the optical detector has twice got wrong.
             if dx is not None:
                 try:
-                    dx.poll_if_due()
+                    ended = film.feed(dx.poll_if_due(), now)
                 except Exception as e:                      # noqa: BLE001
                     log("warn", message=f"DX poll failed, disabling: {e}")
                     dx.note(f"disabled after {e}")
                     dx = None
+                    ended = None
+                for level, text in film.drain():
+                    log(level, message=text)
+                if ended:
+                    stop_reason, stop_detail = "roll_end", ended
+                    break
 
             data = link.read_image(CHUNK)
             if data:
@@ -1712,6 +1905,21 @@ def run_scan(out_path: str | Path,
                     # Deliberate darkness. The whole point of the run.
                     st.stop = None
                     st.stop_detail = ""
+                if st.stop == gate.STOP_ROLL_END and film.vetoes_roll_end(now):
+                    # The gate looks clear but the machine says film is still
+                    # in the transport. That combination is the leader, a long
+                    # blank run or a clear stock -- not the end of the roll.
+                    # This is the corroboration step, and it is the one that
+                    # stops us ending a scan on the leader again.
+                    film.vetoed_optical += 1
+                    log("warn", message=(
+                        f"the image has been clear for {st.clear_run} lines, "
+                        f"but the film sensors still report film in the "
+                        f"transport (entry={film.at_entry}, "
+                        f"exit={film.at_exit}). Not ending the roll on that."))
+                    st.stop = None
+                    st.stop_detail = ""
+                    det.s.clear_run = 0
                 if st.stop:
                     stop_reason = st.stop
                     stop_detail = st.stop_detail
@@ -1734,6 +1942,11 @@ def run_scan(out_path: str | Path,
         }
         res.lamp_watchdog = wd.to_json()
         res.dark_stop_suppressed = not lamp
+        res.film_sense = film.to_json()
+        res.film_sense["ended_by"] = (
+            "film sensors" if film.ended else
+            "optical detector" if stop_reason == "roll_end" else
+            stop_reason or "not the end of a roll")
     except ScanAborted as e:
         res.reason = res.reason or "aborted"
         res.detail = res.detail or str(e)
@@ -1747,7 +1960,9 @@ def run_scan(out_path: str | Path,
         if dx is not None:
             try:
                 # Drain whatever the DX board queued between the last poll and
-                # the stop. A packet holds five events, so two reads empty it.
+                # the stop. A packet carries 4 to 9 events depending on their
+                # types (27 bytes of budget, records of 3 to 6), so three reads
+                # clear a full queue.
                 # Reads only, and the link is still open at this point.
                 dx.interval = 0.0
                 for _ in range(3):
@@ -1986,6 +2201,80 @@ def cmd_stop(_a) -> int:
     return 0 if out.get("motor") or out.get("absent") else 1
 
 
+def cmd_sensors(a) -> int:
+    """The two cheap experiments docs/57 asks for, with no film in the machine.
+
+    Register 0x93 returns the DX board's four live photodiode values and its
+    two digital sense inputs (docs/57 s8.3). Reading it repeatedly answers
+    "do the digital inputs track film?"; reading it while toggling the
+    illuminator bits with command 0x98 answers "are RC1 and RB0 the main lamp,
+    the DX emitters, or both?" — which the firmware cannot say, because
+    nothing in the image names a pin.
+
+    ``--toggle`` is the only part that writes, and what it writes is the
+    illuminator mask and nothing else. It restores both illuminators on the
+    way out. NOTE that command 0x98 also disarms the board's 10 s auto-off
+    permanently, so after this runs the illuminators will stay in whatever
+    state they were left in until something re-arms it — which is why the last
+    thing it sends is a deliberate one.
+    """
+    link = None
+    try:
+        link = Link.open()
+        link.clear_fault()
+    except Exception as e:                                  # noqa: BLE001
+        print(f"cannot reach the scanner: {e}", file=sys.stderr)
+        if link is not None:
+            link.close()
+        return 2
+
+    def read_sensors() -> list | None:
+        r = link.read_reg(pc.AD_LIGHT, pc.REG_DX_SENSORS, pc.DX_SENSORS_LEN)
+        return list(r) if r else None
+
+    out: dict = {"register": f"0x{pc.REG_DX_SENSORS:02X}",
+                 "layout_note": "four photodiodes then two digital inputs; "
+                                "the order within the six is INFERRED "
+                                "(docs/57 s8.3 does not spell it out)",
+                 "samples": [], "toggle": []}
+    try:
+        for i in range(max(1, a.samples)):
+            v = read_sensors()
+            out["samples"].append(v)
+            if v is None and i == 0:
+                out["error"] = (
+                    f"register 0x{pc.REG_DX_SENSORS:02X} did not answer. "
+                    f"docs/03 records this light board answering only "
+                    f"registers 0 and 1, so this may simply not be exposed.")
+                break
+            if a.samples > 1:
+                time.sleep(max(0.0, a.interval))
+
+        if a.toggle:
+            from write_guard import require_writes_unlocked
+            require_writes_unlocked(
+                "pakon_scan.py sensors --toggle",
+                "writes light-board register 0x98, the DX illuminator mask")
+            for mask in (pc.DX_ILLUM_OFF, pc.DX_ILLUM_RC1, pc.DX_ILLUM_RB0,
+                         pc.DX_ILLUM_BOTH):
+                acked = lamp_watchdog_disarm(link, mask)
+                time.sleep(0.2)
+                out["toggle"].append({"mask": f"0x{mask:02X}",
+                                      "acknowledged": acked,
+                                      "sensors": read_sensors()})
+    finally:
+        # Whatever happened, leave the board in the state it boots into.
+        try:
+            if a.toggle:
+                lamp_watchdog_disarm(link, pc.DX_ILLUM_BOTH)
+        except Exception:                                   # noqa: BLE001
+            pass
+        link.close()
+
+    print(json.dumps(out, indent=2))
+    return 0 if out.get("samples") and out["samples"][0] is not None else 1
+
+
 def cmd_status(a) -> int:
     p = probe()
     if a.json:
@@ -2053,6 +2342,159 @@ def _stop_after_run(events: list[dict]) -> bool:
     return last_run >= 0 and last_stop > last_run
 
 
+def _selftest_logic() -> int:
+    """The decision logic, offline: no scanner, no capture, no subprocesses.
+
+    Everything here is a rule that decides whether the owner's film keeps
+    moving, so each one is executed rather than asserted in a comment.
+    """
+    fails = 0
+
+    def check(label: str, got, want) -> None:
+        nonlocal fails
+        if got != want:
+            print(f"  FAIL {label}: got {got!r}, want {want!r}")
+            fails += 1
+
+    def pkt(status: int, records: int = 1):
+        """A DX packet whose first record carries `status`, or an empty one."""
+        b0, b1, b2 = dxd.encode_dx_full(96, 1, 3)
+        recs = [dxd.encode_record(dxd.EventType.DX_CODE_FULL,
+                                  bytes([b0, b1, b2]), flags=status)
+                for _ in range(min(records, 1))]
+        recs += [dxd.encode_record(dxd.EventType.PERF_LEADING, bytes([0, i]))
+                 for i in range(records - 1)]
+        return dxd.DxStream().feed(dxd.encode_packet(100, recs))
+
+    PRESENT = dxd.DXSTAT_FILM_SENSE
+    ENTRY_ONLY = dxd.DXSTAT_FILM_SENSE_ENTRY
+
+    # An empty packet says nothing. It must not arm, and must not end a roll.
+    f = FilmSense()
+    check("empty packet does not arm", f.feed(pkt(0, records=0), 0.0), None)
+    check("...and leaves no reading", f.packets, 0)
+    check("...so it cannot veto", f.vetoes_roll_end(0.0), False)
+
+    # Clear before any film has been seen is the empty transport, not the end
+    # of a roll. This is the "stopped on the leader" failure in miniature.
+    f = FilmSense()
+    for t in range(0, 20):
+        check(f"clear at t={t} before film never ends a roll",
+              f.feed(pkt(0x00), float(t)), None)
+    check("never armed", f.armed, False)
+
+    # Film sensed, then sustained clear, ends the roll -- but not before
+    # FILM_SENSE_CLEAR_S has actually elapsed.
+    f = FilmSense()
+    f.feed(pkt(PRESENT), 0.0)
+    check("armed by a film report", f.armed, True)
+    check("entry and exit both", (f.at_entry, f.at_exit), (True, True))
+    check("still present, no stop", f.feed(pkt(PRESENT), 1.0), None)
+    check("clear starts the clock", f.feed(pkt(0x00), 2.0), None)
+    check("under the hold time", f.feed(pkt(0x00), 2.0 + FILM_SENSE_CLEAR_S / 2),
+          None)
+    ended = f.feed(pkt(0x00), 2.0 + FILM_SENSE_CLEAR_S)
+    check("held long enough ends the roll", bool(ended), True)
+    check("and says so once", f.feed(pkt(0x00), 30.0), None)
+    check("ended is recorded", f.ended, True)
+
+    # A single clear packet in the middle of a roll must not end it, and the
+    # clock must restart when film comes back.
+    f = FilmSense()
+    f.feed(pkt(PRESENT), 0.0)
+    f.feed(pkt(0x00), 1.0)
+    f.feed(pkt(PRESENT), 1.5)
+    check("a blip resets the clear clock", f.clear_since, None)
+    check("no stop after the blip", f.feed(pkt(0x00), 2.0), None)
+
+    # One sensor is enough to mean film is present.
+    f = FilmSense()
+    f.feed(pkt(ENTRY_ONLY), 0.0)
+    check("entry alone is film present", f.present, True)
+    check("and it vetoes", f.vetoes_roll_end(0.0), True)
+
+    # A stale reading decides nothing. A DX board that went quiet with film in
+    # the gate must not veto optical roll-ends for the rest of the scan.
+    f = FilmSense()
+    f.feed(pkt(PRESENT), 100.0)
+    check("fresh reading vetoes", f.vetoes_roll_end(100.0 + FILM_SENSE_STALE_S / 2),
+          True)
+    check("stale reading does not",
+          f.vetoes_roll_end(100.0 + FILM_SENSE_STALE_S + 0.1), False)
+
+    # Mis-load bits warn and only warn.
+    f = FilmSense()
+    stop = f.feed(pkt(PRESENT | dxd.DXSTAT_TAIL_FIRST
+                      | dxd.DXSTAT_EMULSION_DOWN), 0.0)
+    check("mis-load does not stop a scan", stop, None)
+    check("tail first latched", f.tail_first, True)
+    check("emulsion down latched", f.emulsion_down, True)
+    warned = " ".join(t for _l, t in f.pending)
+    check("tail-first is surfaced", "TAIL FIRST" in warned, True)
+    check("emulsion-down is surfaced", "EMULSION DOWN" in warned, True)
+    f.drain()
+    f.feed(pkt(PRESENT | dxd.DXSTAT_TAIL_FIRST), 1.0)
+    check("warned once, not every packet", f.drain(), [])
+
+    # The bits that have been in every sidecar: 0xC0000000 is both sensors.
+    p = pkt(PRESENT)
+    check("hardware_cb of a film-present packet", p.hardware_cb, 0xC0000000)
+    check("...is entry | exit",
+          dxd.HARDWARE_CB_FILM_SENSE_ENTRY | dxd.HARDWARE_CB_FILM_SENSE_EXIT,
+          0xC0000000)
+
+    # The lamp watchdog modes have to differ in the one way that matters:
+    # whether the measured refresh keeps running.
+    check("auto keeps refreshing", LampWatchdog(mode="auto").refresh_still_needed,
+          True)
+    check("refresh keeps refreshing",
+          LampWatchdog(mode="refresh").refresh_still_needed, True)
+    check("off does nothing", LampWatchdog(mode="off").refresh_still_needed,
+          False)
+    w = LampWatchdog(mode="command")
+    check("command replaces the refresh", w.refresh_still_needed, False)
+    w.fell_back = True
+    check("...until the board declines 0x98", w.refresh_still_needed, True)
+
+    class _Deaf:
+        """A link whose every write is rejected, like a board without 0x98."""
+        dx_illuminator_on = False
+
+        def ack(self, _pkt, _label, required=True):
+            return b""
+
+    w = LampWatchdog(mode="command")
+    check("a rejected 0x98 reports failure", w.send(_Deaf()), False)
+    check("...and falls back", w.fell_back, True)
+    check("...and says why", "did not acknowledge" in w.note, True)
+
+    class _Live:
+        dx_illuminator_on = False
+
+        def ack(self, _pkt, _label, required=True):
+            return bytes([0x07, 0x02, pc.AD_LIGHT, 0x00])
+
+    live = _Live()
+    w = LampWatchdog(mode="command")
+    check("an accepted 0x98 reports success", w.send(live), True)
+    check("...does not fall back", w.fell_back, False)
+    check("...and marks the link so the stop turns them off again",
+          live.dx_illuminator_on, True)
+
+    # The decoded interval, end to end through pakon_commands.
+    check("watchdog is ten seconds", round(pc.DX_WATCHDOG_S, 3), 10.0)
+    check("0x98 both on", pc.dx_illuminator().hex(" "), "02 04 40 01 98 03")
+    check("0x98 all off", pc.dx_illuminator(pc.DX_ILLUM_OFF).hex(" "),
+          "02 04 40 01 98 00")
+
+    print(f"  {'decision-logic':<22} {'ok   ' if not fails else 'FAIL '} "
+          f"film sensing, the roll-end veto, the mis-load warnings and the "
+          f"0x98 fallback, offline")
+    print("      no scanner, no capture and no subprocess — these are the "
+          "rules that decide whether the film keeps moving")
+    return fails
+
+
 def cmd_selftest(a) -> int:
     """Run the dangerous exit paths for real, against a simulated scanner.
 
@@ -2078,11 +2520,14 @@ def cmd_selftest(a) -> int:
     def run_case(name: str, why: str, rate: float, args: list[str],
                  kill_after: float | None = None, kill_sig=signal.SIGTERM,
                  close_stdin_after: float | None = None,
-                 expect_stop: bool = True, expect_reason: str | None = None):
+                 expect_stop: bool = True, expect_reason: str | None = None,
+                 extra_env: dict | None = None,
+                 expect_in_detail: str | None = None):
         nonlocal ok
         trace = tmp / f"{name}.ndjson"
         out = tmp / f"{name}.bin"
         env = _sim_env(trace, capture, rate)
+        env.update(extra_env or {})
         cmd = [sys.executable, str(_TOOLS / "pakon_scan.py"), "run",
                str(out), "--json"] + args
         t0 = time.time()
@@ -2133,6 +2578,7 @@ def cmd_selftest(a) -> int:
                     elapsed = e["at"] - killed_at
                     break
         reason = None
+        detail = ""
         for line in (sout or b"").decode(errors="replace").splitlines():
             try:
                 r = json.loads(line)
@@ -2140,12 +2586,16 @@ def cmd_selftest(a) -> int:
                 continue
             if isinstance(r, dict) and r.get("t") == "done":
                 reason = r.get("reason")
+                detail = r.get("detail") or ""
 
         bad = []
         if expect_stop and not stopped:
             bad.append("the transport was never stopped")
         if expect_reason and reason != expect_reason:
             bad.append(f"reason {reason!r}, expected {expect_reason!r}")
+        if expect_in_detail and expect_in_detail not in detail:
+            bad.append(f"detail {detail!r} does not mention "
+                       f"{expect_in_detail!r}")
         if elapsed is not None and elapsed > 1.0:
             bad.append(f"stop took {elapsed:.2f} s, over the 1 s budget")
         tail = (f"stop {'via parent recovery' if recovered else 'by the scan'}"
@@ -2161,6 +2611,8 @@ def cmd_selftest(a) -> int:
 
     print("safety selftest — a simulated scanner replaying "
           f"{capture.name}\n")
+    if _selftest_logic():
+        ok = False
     try:
         run_case("dark-stops",
                  "the regression: the lamp dies 30 % in and the scan stops "
@@ -2170,6 +2622,14 @@ def cmd_selftest(a) -> int:
         run_case("time-limit",
                  "the backstop fires even though the film is fine", 40e6,
                  ["--max-seconds", "6"], expect_reason="time_limit")
+
+        run_case("film-sense-roll-end",
+                 "the machine says the film has left the transport, and that "
+                 "ends the roll — no inference from image brightness at all",
+                 40e6, ["--max-seconds", "60"],
+                 extra_env={ENV_SIM_FILM_OUT: "5"},
+                 expect_reason="roll_end",
+                 expect_in_detail="film sensors have read clear")
 
         run_case("sigterm",
                  "a polite kill; the finally must reach the motor", 20e6,
@@ -2236,6 +2696,18 @@ def main() -> int:
     c = sub.add_parser("check-stale", help="stop a scan orphaned by a crash")
     c.add_argument("--force", action="store_true")
 
+    n = sub.add_parser("sensors",
+                       help="read the DX board's raw sensors (register 0x93). "
+                            "Reads only unless --toggle.")
+    n.add_argument("--samples", type=int, default=1)
+    n.add_argument("--interval", type=float, default=0.5,
+                   help="seconds between samples")
+    n.add_argument("--toggle", action="store_true",
+                   help="WRITES 0x98: step the illuminator mask through "
+                        "off/RC1/RB0/both and sample after each, to find out "
+                        "which output is which lamp. Also disarms the board's "
+                        "10 s auto-off, permanently.")
+
     t = sub.add_parser("selftest",
                        help="exercise every stop path against a simulated "
                             "scanner, including SIGKILL")
@@ -2297,7 +2769,8 @@ def main() -> int:
 
     a = ap.parse_args()
     return {"status": cmd_status, "stop": cmd_stop, "run": cmd_run,
-            "check-stale": cmd_check_stale, "selftest": cmd_selftest}[a.cmd](a)
+            "check-stale": cmd_check_stale, "selftest": cmd_selftest,
+            "sensors": cmd_sensors}[a.cmd](a)
 
 
 if __name__ == "__main__":

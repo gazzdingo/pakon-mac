@@ -680,6 +680,11 @@ class ScanSupervisor:
             seconds=done.get("seconds", 0), mib_s=done.get("mib_s", 0),
             lamp=done.get("lamp") or {}, run=done.get("run") or {},
             lamp_refresh=done.get("lamp_refresh") or {},
+            lamp_watchdog=done.get("lamp_watchdog") or {},
+            # The machine's own film-position report, and the mis-load
+            # warnings that go with it. Warnings, not errors: the vendor has no
+            # abort path for tail-first or emulsion-down either (docs/53 s4.2).
+            film_sense=done.get("film_sense") or {},
             metadata=done.get("metadata"),
             stopped=stopped or {}, recovered=recovered,
             transport_stopped=bool(stopped.get("motor")

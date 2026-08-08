@@ -1104,6 +1104,29 @@ class FilmSense:
         """
         return bool(self.armed and self.present and self.fresh(now))
 
+    def veto(self, state, now: float) -> str | None:
+        """Withdraw an optical roll-end that the sensors contradict.
+
+        Mutates ``state`` (a :class:`pakon_gate.RunState`) in place, clearing
+        the stop and resetting the clear run so the optical detector has to
+        earn it again rather than re-firing on the next window. Returns the
+        message to log, or None if there was nothing to veto.
+
+        Only ``STOP_ROLL_END`` is ever withdrawn. ``STOP_DARK`` is not, and
+        that asymmetry is the point: see the note above this class.
+        """
+        if state.stop != gate.STOP_ROLL_END or not self.vetoes_roll_end(now):
+            return None
+        self.vetoed_optical += 1
+        msg = (f"the image has been clear for {state.clear_run} lines, but the "
+               f"film sensors still report film in the transport "
+               f"(entry={self.at_entry}, exit={self.at_exit}). Not ending the "
+               f"roll on that.")
+        state.stop = None
+        state.stop_detail = ""
+        state.clear_run = 0
+        return msg
+
     def to_json(self) -> dict:
         return {
             "available": self.packets > 0,
@@ -1415,6 +1438,7 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
                     "for this triad.",
         },
         "calibration_source": cfg.source,
+        "run_detector": res.run,
         "run": {
             "reason": res.reason,
             "detail": res.detail,
@@ -1905,21 +1929,14 @@ def run_scan(out_path: str | Path,
                     # Deliberate darkness. The whole point of the run.
                     st.stop = None
                     st.stop_detail = ""
-                if st.stop == gate.STOP_ROLL_END and film.vetoes_roll_end(now):
-                    # The gate looks clear but the machine says film is still
-                    # in the transport. That combination is the leader, a long
-                    # blank run or a clear stock -- not the end of the roll.
-                    # This is the corroboration step, and it is the one that
-                    # stops us ending a scan on the leader again.
-                    film.vetoed_optical += 1
-                    log("warn", message=(
-                        f"the image has been clear for {st.clear_run} lines, "
-                        f"but the film sensors still report film in the "
-                        f"transport (entry={film.at_entry}, "
-                        f"exit={film.at_exit}). Not ending the roll on that."))
-                    st.stop = None
-                    st.stop_detail = ""
-                    det.s.clear_run = 0
+                # The gate looks clear but the machine says film is still in
+                # the transport. That combination is the leader, a long blank
+                # run or a clear stock -- not the end of the roll. This is the
+                # corroboration step, and it is the one that stops us ending a
+                # scan on the leader again.
+                vetoed = film.veto(st, now)
+                if vetoed:
+                    log("warn", message=vetoed)
                 if st.stop:
                     stop_reason = st.stop
                     stop_detail = st.stop_detail
@@ -1942,11 +1959,6 @@ def run_scan(out_path: str | Path,
         }
         res.lamp_watchdog = wd.to_json()
         res.dark_stop_suppressed = not lamp
-        res.film_sense = film.to_json()
-        res.film_sense["ended_by"] = (
-            "film sensors" if film.ended else
-            "optical detector" if stop_reason == "roll_end" else
-            stop_reason or "not the end of a roll")
     except ScanAborted as e:
         res.reason = res.reason or "aborted"
         res.detail = res.detail or str(e)
@@ -1979,6 +1991,19 @@ def run_scan(out_path: str | Path,
             except OSError:
                 pass
         link.close()
+        # BEFORE write_capture_metadata, not after. These were assembled at the
+        # bottom of the finally, which meant the sidecar's "lamp" block was
+        # written from a ScanResult that had not been filled in yet and came
+        # out empty on every scan taken so far.
+        res.lamp = health.to_json()
+        res.run = det.s.to_json()
+        # In the finally rather than after the loop, so a scan that aborted
+        # during warm-up still records what the sensors said.
+        res.film_sense = film.to_json()
+        res.film_sense["ended_by"] = (
+            "film sensors" if film.ended else
+            "optical detector" if res.reason == "roll_end" else
+            res.reason or "not the end of a roll")
         if not dry_run and started_motor:
             # After the fsync above, so the sidecar can never describe a file
             # that is still being written. Written even on an abort: a scan cut
@@ -1991,8 +2016,6 @@ def run_scan(out_path: str | Path,
             log("warn", message="the transport stop was NOT acknowledged; "
                                 "leaving the in-flight marker so the next "
                                 "process retries it")
-        res.lamp = health.to_json()
-        res.run = det.s.to_json()
         if dry_run:
             res.packets = list(link.sent)
     return res
@@ -2435,6 +2458,34 @@ def _selftest_logic() -> int:
     f.drain()
     f.feed(pkt(PRESENT | dxd.DXSTAT_TAIL_FIRST), 1.0)
     check("warned once, not every packet", f.drain(), [])
+
+    # The veto, against a real RunState. An optical roll-end is withdrawn while
+    # film is sensed; a DARK stop never is; and the clear run is reset so the
+    # detector has to earn it again instead of re-firing next window.
+    f = FilmSense()
+    f.feed(pkt(PRESENT), 0.0)
+    st = gate.RunState(stop=gate.STOP_ROLL_END, stop_detail="d", clear_run=9000)
+    msg = f.veto(st, 0.0)
+    check("optical roll-end withdrawn", st.stop, None)
+    check("...detail cleared", st.stop_detail, "")
+    check("...clear run reset", st.clear_run, 0)
+    check("...counted", f.vetoed_optical, 1)
+    check("...and explained", "still report film" in (msg or ""), True)
+
+    dark = gate.RunState(stop=gate.STOP_DARK, stop_detail="lamp", dark_run=9000)
+    check("DARK is never vetoed", f.veto(dark, 0.0), None)
+    check("...and still stops", dark.stop, gate.STOP_DARK)
+
+    # No film sensed and no reading: the optical detector has the floor.
+    quiet = gate.RunState(stop=gate.STOP_ROLL_END, stop_detail="d")
+    check("nothing to veto with", FilmSense().veto(quiet, 0.0), None)
+    check("...so the optical stop stands", quiet.stop, gate.STOP_ROLL_END)
+
+    # Film sensed but the board has gone quiet: a stale reading cannot veto.
+    stale = gate.RunState(stop=gate.STOP_ROLL_END, stop_detail="d")
+    check("a stale reading cannot veto",
+          f.veto(stale, FILM_SENSE_STALE_S + 1.0), None)
+    check("...so the optical stop stands", stale.stop, gate.STOP_ROLL_END)
 
     # The bits that have been in every sidecar: 0xC0000000 is both sensors.
     p = pkt(PRESENT)

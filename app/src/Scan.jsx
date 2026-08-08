@@ -80,10 +80,15 @@ function Live({ job, onCancel, busy }) {
     <main className="scanstage">
       <div className="stagehead">
         <span className="title">{running ? 'Scanning' : job.message || 'Scan ended'}</span>
-        <Chip tone={gate.tone} dot>
-          {gate.label}
-        </Chip>
-        {lampBad ? <Chip tone="bad" dot>Lamp fault</Chip> : null}
+        {/* No state chip here. The classification is already the largest thing
+            on the screen and is in the capture lane as well; a third copy in a
+            pill said nothing and rendered badly. Only the exceptional case
+            gets a chip. */}
+        {lampBad ? (
+          <Chip tone="bad" dot>
+            Lamp fault
+          </Chip>
+        ) : null}
         <span className="sp" />
         <span className="quiet">{gate.note}</span>
       </div>

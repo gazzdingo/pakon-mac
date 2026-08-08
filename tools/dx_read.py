@@ -16,9 +16,11 @@ HOW THE HOST GETS DX DATA  (docs/53-edge-data.md s1.1, s6)
 
     Read the gate; if it has any of the bits 0xA4 set, read 0x90. Both packet
     layouts are transcribed from TLB.dll -- see tools/pakon_commands.py for the
-    addresses. The DX board queues at most five events per packet, so the poll
-    has to outrun their arrival or code words are silently dropped; the vendor
-    polls at 200 ms idle and 1 ms while scanning (0x1002ed2f).
+    addresses. A packet has 27 bytes of record budget and records are 3 to 6
+    bytes, so it carries between 4 and 9 events depending on their types -- not
+    the flat five a fixed stride implied. Either way the poll has to outrun
+    their arrival or code words are silently dropped; the vendor polls at
+    200 ms idle and 1 ms while scanning (0x1002ed2f).
 
     Nothing here starts the DX scan or moves film. ``PPB_START_DX_SCAN`` (0x91)
     is already issued by tools/pakon_scan.py on every scan, and pakon_scan is
@@ -26,12 +28,16 @@ HOW THE HOST GETS DX DATA  (docs/53-edge-data.md s1.1, s6)
     pure reads, so it is safe to run against a live scan or an idle scanner.
 
 WHAT IT REFUSES TO DO
-    It does not guess. dx_decode.py reports AMBIGUOUS when the byte window
-    (docs/53 s1.4) cannot be told apart on the evidence, and this module
-    propagates that verbatim: an ambiguous code contributes nothing to the
-    product vote. The per-window tallies in the summary are *evidence about the
-    window*, offered so a human can settle it -- they never promote an
-    ambiguous code to a reading.
+    It does not guess. Where dx_decode declines -- a type byte the board never
+    emits, a record that runs off the end of the packet, a word that fails
+    parity -- this module records the refusal and reads nothing. A code word
+    that did not validate contributes nothing to the product vote.
+
+    The byte-window question (docs/53 s1.4) is no longer one of those places:
+    docs/57 s10.2 resolved it to the `obj+0x08 == 0` window, structurally, and
+    dx_decode now decodes that one window. The tallies kept here are about
+    whether words *validate*, which is still the experiment that says whether
+    the read is right.
 
 RAW LOG
     JSON Lines, one object per line, written as it goes so a crash keeps what
@@ -126,42 +132,52 @@ def status_ok(raw: bytes) -> bool:
 
 @dataclass
 class WindowEvidence:
-    """Which of the two byte windows validated, over a whole roll.
+    """Whether code words validate under the resolved byte window.
 
-    docs/53 s1.4: the vendor picks the window from CiDxAndApsHole+0x08 and the
-    binary does not say which value 35 mm uses. The wrong window almost always
-    fails parity, so counting exclusive passes across many code words is the
-    experiment that settles it. This is a tally, not a decision: dx_decode
-    still refuses to read any individual ambiguous word.
+    This used to tally which of *two* byte windows passed, because docs/53
+    s1.4 could not say which one 35 mm uses. docs/57 s10.2 settled it: a
+    type-3 record carries exactly three payload bytes, so there is no d1,d2,d3
+    window to try, and dx_decode now decodes the one that exists.
+
+    What is left is still worth counting, and is still the experiment that says
+    whether the whole read is right: how many words pass parity and the
+    must-be-zero bit, and how many do not. A roll that produces dozens of
+    rejects and no passes means the front end, the framing or the table is
+    wrong -- it does not mean "try the other window", because there isn't one.
+
+    The field names are unchanged so that logs and sidecars written before this
+    can still be replayed and compared. ``window0_only`` is now simply
+    "validated"; ``window1_only`` and ``both`` can no longer be produced and
+    are kept at zero rather than removed.
     """
 
-    window0_only: int = 0
-    window1_only: int = 0
-    both: int = 0
-    neither: int = 0
+    window0_only: int = 0        # validated under the resolved window
+    window1_only: int = 0        # unreachable now; kept for log compatibility
+    both: int = 0                # unreachable now; kept for log compatibility
+    neither: int = 0             # rejected: parity or must-be-zero failed
 
-    def add(self, candidates: list) -> None:
-        valid = [c.window for c in candidates if c.valid]
-        if len(valid) == 2:
-            self.both += 1
-        elif not valid:
-            self.neither += 1
-        elif valid[0] == 0:
+    #: Words the decoder could not read at all -- a short or unframable record.
+    unreadable: int = 0
+
+    def add(self, code) -> None:
+        """Record one code-word outcome. ``code`` is a DxCode, or None."""
+        if code is None:
+            self.unreadable += 1
+        elif code.valid:
             self.window0_only += 1
         else:
-            self.window1_only += 1
+            self.neither += 1
 
     def verdict(self, need: int = 5) -> int | None:
-        """The window, or None. Deliberately hard to satisfy.
+        """The window, or None until enough words have actually validated.
 
-        Requires at least ``need`` code words that validated under one window
-        only, and *not one* that validated under the other only. Anything less
-        is not evidence, it is a preference.
+        Still deliberately hard to satisfy. The window is resolved on firmware
+        evidence, but this reports it only once ``need`` words have passed
+        validation *on this machine* -- so a summary cannot claim a settled
+        window off a roll where nothing decoded.
         """
-        if self.window0_only >= need and self.window1_only == 0:
+        if self.window0_only >= need:
             return 0
-        if self.window1_only >= need and self.window0_only == 0:
-            return 1
         return None
 
     def to_json(self) -> dict:
@@ -169,7 +185,11 @@ class WindowEvidence:
                 "window1_only": self.window1_only,
                 "both_valid_ambiguous": self.both,
                 "neither_valid": self.neither,
-                "verdict": self.verdict()}
+                "unreadable": self.unreadable,
+                "verdict": self.verdict(),
+                "resolved_by": "docs/57 s10.2 — a type-3 record carries three "
+                               "payload bytes, so the obj+0x08 != 0 window "
+                               "cannot be formed"}
 
 
 def anchor_vote(codes: list[tuple[int, int]], step: int) -> dict:
@@ -224,6 +244,16 @@ class DxRoll:
     tail_first: bool = False
     film_at_entry: bool = False
     film_at_exit: bool = False
+    #: Packets that carried a status nibble at all, i.e. that had >= 1 record.
+    #: A packet with none says nothing about the film sensors; see
+    #: dx_decode.DxPacket.status_valid.
+    status_packets: int = 0
+    #: The most recent status nibble that was actually reported, and when.
+    last_status: int | None = None
+    last_status_at: float | None = None
+    #: Packets whose record walk stopped early, with the first reason seen.
+    parse_errors: int = 0
+    first_parse_error: str = ""
     first_line: int | None = None
     last_line: int | None = None
     notes: list = field(default_factory=list)
@@ -261,6 +291,11 @@ class DxRoll:
             "tail_first": self.tail_first,
             "film_at_entry": self.film_at_entry,
             "film_at_exit": self.film_at_exit,
+            "status_packets": self.status_packets,
+            "last_status": (None if self.last_status is None
+                            else f"0x{self.last_status:02X}"),
+            "parse_errors": self.parse_errors,
+            "first_parse_error": self.first_parse_error,
             "hardware_cb": f"0x{self.hardware_cb:08X}",
             "line_span": [self.first_line, self.last_line],
             "product": winner[0] if winner else None,
@@ -450,17 +485,29 @@ class DxReader:
         if r.first_line is None:
             r.first_line = pkt.line_counter
         r.last_line = pkt.line_counter
-        r.hardware_cb |= pkt.hardware_cb
-        r.emulsion_down |= pkt.emulsion_down
-        r.tail_first |= pkt.tail_first
-        r.film_at_entry |= pkt.film_at_entry
-        r.film_at_exit |= pkt.film_at_exit
+        if pkt.parse_error:
+            r.parse_errors += 1
+            if not r.first_parse_error:
+                r.first_parse_error = pkt.parse_error
+                self.note(f"packet framing: {pkt.parse_error}")
+        # Status is only present when the packet carried a record. Accumulating
+        # from a packet without one would turn an idle queue into "sensors
+        # clear", which the film-sense end-of-roll signal must never see.
+        if pkt.status_valid:
+            r.status_packets += 1
+            r.last_status = pkt.status
+            r.last_status_at = self.elapsed
+            r.hardware_cb |= pkt.hardware_cb
+            r.emulsion_down |= pkt.emulsion_down
+            r.tail_first |= pkt.tail_first
+            r.film_at_entry |= pkt.film_at_entry
+            r.film_at_exit |= pkt.film_at_exit
 
         for ev in pkt.events:
             r.events += 1
             r.type_counts[ev.type] = r.type_counts.get(ev.type, 0) + 1
             if ev.type in (dxd.EventType.DX_CODE_FULL, dxd.EventType.DX_CODE_SHORT):
-                self.window.add(ev.candidates)
+                self.window.add(ev.code)
                 if ev.ambiguous:
                     r.ambiguous += 1
                 elif ev.code is not None and ev.code.valid:
@@ -593,10 +640,15 @@ def _print_summary(s: dict) -> None:
     print(f"  code words {s['code_words']}  ambiguous {s['ambiguous']}  "
           f"rejected {s['rejected']}  perforations {s['perforations']}")
     w = s["window_evidence"]
-    print(f"  byte window: window0-only {w['window0_only']}, "
-          f"window1-only {w['window1_only']}, both {w['both_valid_ambiguous']},"
-          f" neither {w['neither_valid']} -> "
-          f"{'window ' + str(w['verdict']) if w['verdict'] is not None else 'UNDECIDED'}")
+    print(f"  code words: {w['window0_only']} validated, "
+          f"{w['neither_valid']} rejected, {w['unreadable']} unreadable -> "
+          f"{'window 0 confirmed on this machine' if w['verdict'] is not None else 'NOT YET CONFIRMED on hardware'}")
+    if s.get("parse_errors"):
+        print(f"  packet framing: {s['parse_errors']} packet(s) stopped early "
+              f"— {s.get('first_parse_error', '')}")
+    print(f"  status packets {s['status_packets']} "
+          f"(last {s['last_status'] or 'none'}); "
+          f"a packet with no records carries no status")
     if s["emulsion_down"]:
         print("  FILM EMULSION DOWN")
     if s["tail_first"]:
@@ -767,13 +819,21 @@ def cmd_selftest(a) -> int:
 
     # Three half-frame codes at 100-line spacing, product 96 specifier 1
     # (Kodak Gold 400 Gen 9 -- the roll the owner is going to test with).
+    # Each packet is a code word followed by two perforations, which is the
+    # mix a real roll produces and the mix a fixed 5-byte stride cannot walk.
     packets = []
     for i, frame in enumerate((10, 11, 12)):
         b0, b1, b2 = dxd.encode_dx_full(96, 1, frame)
         line = 1000 + 100 * i
-        rec = bytes([0x00 | dxd.EventType.DX_CODE_FULL, b0, b1, b2, 0x00])
-        buf = bytes([line >> 8, line & 0xFF, 1]) + rec
-        packets.append(buf + bytes(30 - len(buf)))
+        recs = [
+            dxd.encode_record(dxd.EventType.DX_CODE_FULL, bytes([b0, b1, b2]),
+                              flags=dxd.DXSTAT_FILM_SENSE),
+            dxd.encode_record(dxd.EventType.PERF_LEADING,
+                              bytes([(line + 10) >> 8, (line + 10) & 0xFF])),
+            dxd.encode_record(dxd.EventType.PERF_TRAILING,
+                              bytes([(line + 20) >> 8, (line + 20) & 0xFF])),
+        ]
+        packets.append(dxd.encode_packet(line, recs))
 
     light = FakeLight(packets)
     with tempfile.TemporaryDirectory() as td:
@@ -792,6 +852,14 @@ def cmd_selftest(a) -> int:
         check("ambiguous", live["ambiguous"], 0)
         check("frames", live["frames"], [(10, 1000), (11, 1100), (12, 1200)])
         check("mean pitch", live["mean_code_pitch_lines"], 100.0)
+        # The mixed-type packets must walk to the end: 3 codes + 6 perfs.
+        check("all records framed", live["events"], 9)
+        check("perforations framed", live["perforations"], 6)
+        check("no framing errors", live["parse_errors"], 0)
+        check("status was reported", live["status_packets"], 3)
+        check("film sensed at entry", live["film_at_entry"], True)
+        check("film sensed at exit", live["film_at_exit"], True)
+        check("hardware_cb", live["hardware_cb"], "0xC0000000")
         check("anchor accepted", live["anchor_35mm_head_first"]["accepted"], True)
         check("anchor agrees", live["anchor_35mm_head_first"]["agree"], 3)
         check("tail-first anchor rejected",
@@ -828,20 +896,41 @@ def cmd_selftest(a) -> int:
 
     # A corrupted code word must be rejected, never voted on.
     b0, b1, b2 = dxd.encode_dx_full(96, 1, 10)
-    bad = bytes([dxd.EventType.DX_CODE_FULL, b0 ^ 0x04, b1, b2, 0x00])
+    bad = dxd.encode_record(dxd.EventType.DX_CODE_FULL, bytes([b0 ^ 0x04, b1, b2]))
     r3 = DxReader(lambda _p: None, interval=0.0)
-    r3.ingest(bytes([0x00, 0x64, 1]) + bad + bytes(30 - 3 - 5))
+    r3.ingest(dxd.encode_packet(0x64, [bad]))
     s3 = r3.summary()
     check("corrupt word yields no product", s3["product"], None)
     check("corrupt word counted", s3["code_words"], 0)
+    check("corrupt word is a rejection, not an unreadable",
+          s3["window_evidence"]["neither_valid"], 1)
 
-    # The window tally must refuse to decide on thin evidence.
+    # A packet the walker could not finish must be recorded as such, and the
+    # events before the break must still count. Type 9 does not exist.
+    r4 = DxReader(lambda _p: None, interval=0.0)
+    r4.ingest(dxd.encode_packet(
+        7, [dxd.encode_record(8, bytes([0, 3])), bytes([0x09, 0, 0])]))
+    s4 = r4.summary()
+    check("framing error recorded", s4["parse_errors"], 1)
+    check("events before the break kept", s4["events"], 1)
+    check("and the reason is in the summary", "type 9" in s4["first_parse_error"], True)
+
+    # An empty packet must not be read as "film sensors clear".
+    r5 = DxReader(lambda _p: None, interval=0.0)
+    r5.ingest(dxd.encode_packet(9, []))
+    s5 = r5.summary()
+    check("no status from an empty packet", s5["status_packets"], 0)
+    check("no hardware_cb from an empty packet", s5["hardware_cb"], "0x00000000")
+
+    # The window tally must refuse to claim a settled window on thin evidence.
     w = WindowEvidence(window0_only=4)
-    check("4 codes is not a verdict", w.verdict(), None)
+    check("4 validated words is not a verdict", w.verdict(), None)
     w.window0_only = 5
-    check("5 codes is", w.verdict(), 0)
-    w.window1_only = 1
-    check("one dissenter removes the verdict", w.verdict(), None)
+    check("5 is", w.verdict(), 0)
+    w2 = WindowEvidence()
+    w2.add(None)
+    check("an unreadable record is counted as such", w2.unreadable, 1)
+    check("and is not a validation", w2.verdict(), None)
 
     print("FAILED" if fails else "OK")
     return 1 if fails else 0

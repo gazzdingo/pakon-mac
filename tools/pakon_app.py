@@ -536,7 +536,11 @@ class ScanSupervisor:
         base = int(body.get("base") or 16)
         seconds = scan.clamp_seconds(
             float(body.get("max_seconds") or scan.DEFAULT_MAX_SECONDS))
-        speed = body.get("speed")
+        # Default to the calibrated MotorSpeedPlus for the base rather
+        # than leaving it None, so the job record and the UI show the
+        # speed the capture will actually be taken at.
+        speed = int(body.get("speed")
+                    or scan.MOTOR_SPEED.get(base, scan.MOTOR_SPEED[16]))
         name = (body.get("name") or "").strip()
         stem = "".join(c for c in name if c.isalnum() or c in "-_ ").strip()
         stem = stem.replace(" ", "-") or time.strftime("scan-%Y%m%d-%H%M%S")
@@ -553,13 +557,22 @@ class ScanSupervisor:
             cmd += ["--speed", str(int(speed))]
         if body.get("force"):
             cmd += ["--force"]
+        # The lamp has died at ~60 s twice; the refresh is the experiment that
+        # tests why, so it is a per-scan choice rather than a constant.
+        if body.get("lamp_refresh") is not None:
+            cmd += ["--lamp-refresh", str(float(body["lamp_refresh"]))]
+        mode = body.get("lamp_refresh_mode")
+        if mode in scan.LAMP_REFRESH_MODES:
+            cmd += ["--lamp-refresh-mode", mode]
 
         S.job_set(jid, kind="scan", status="running", phase="starting",
                   progress=0.0, message="starting the scan process",
                   path=str(out), base=base, max_seconds=seconds,
                   started=time.time(), lamp={}, window={}, run={},
                   bytes=0, lines=0, windows=0, sync_breaks=0,
-                  stopped={}, cancellable=True)
+                  stopped={}, cancellable=True, speed=speed,
+                  lamp_refresh={"mode": mode or "full",
+                                "every_s": body.get("lamp_refresh")})
         proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, bufsize=1, text=True)
@@ -666,6 +679,8 @@ class ScanSupervisor:
             sync_breaks=done.get("sync_breaks", 0),
             seconds=done.get("seconds", 0), mib_s=done.get("mib_s", 0),
             lamp=done.get("lamp") or {}, run=done.get("run") or {},
+            lamp_refresh=done.get("lamp_refresh") or {},
+            metadata=done.get("metadata"),
             stopped=stopped or {}, recovered=recovered,
             transport_stopped=bool(stopped.get("motor")
                                    or (recovered or {}).get("motor")
@@ -753,6 +768,8 @@ def hardware_state() -> dict:
     p["scan_job"] = SCAN.current()
     p["limits"] = {
         "default_seconds": scan.DEFAULT_MAX_SECONDS,
+        "lamp_refresh_s": scan.LAMP_REFRESH_S,
+        "lamp_refresh_modes": list(scan.LAMP_REFRESH_MODES),
         "hard_seconds": scan.HARD_MAX_SECONDS,
         "min_seconds": scan.MIN_MAX_SECONDS,
         "speeds": scan.MOTOR_SPEED,
@@ -1151,6 +1168,13 @@ def diagnostics() -> dict:
             "pixels_per_line": dec.PIXELS_PER_LINE,
             "raw14_max": dec.RAW14_MAX,
             "transport_scale": dec.DEFAULT_TRANSPORT_SCALE,
+            "transport_scale_note": (
+                f"derived: speed/{dec.SQUARE_MOTOR_SPEED} at line_rate "
+                f"{dec.REF_LINE_RATE}; legacy default speed "
+                f"{dec.LEGACY_DEFAULT_MOTOR_SPEED} → "
+                f"{dec.DEFAULT_TRANSPORT_SCALE:.4f}. gold400 @11467 → "
+                f"{dec.transport_scale(11467):.4f}"
+            ),
             "rpd_per_density": pr.RPD_PER_DENSITY,
         },
         "verified": {

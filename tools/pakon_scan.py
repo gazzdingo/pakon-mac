@@ -906,6 +906,101 @@ def emergency_stop(retries: int = 6, delay: float = 0.25) -> dict:
             "attempts": retries}
 
 
+# ---- what the capture was taken at ----
+
+def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
+                     gate_desc: dict | None = None) -> dict:
+    """Everything a decode needs that cannot be recovered from the .bin itself.
+
+    THE TRANSPORT SPEED IS THE POINT OF THIS FILE. Lines-per-mm along the
+    travel direction scales inversely with transport speed, so the resample
+    factor that makes pixels square is a property of *this capture*, not a
+    constant. ``pakon_decode.DEFAULT_TRANSPORT_SCALE`` is one number derived at
+    one speed; a capture taken at any other speed decodes geometrically
+    stretched, and nothing in the .bin records which speed that was. Tonight's
+    ``gold400.bin`` ran at 11467 and is affected.
+
+    So the speed and the line rate go in a sidecar next to the capture, and the
+    decode can call ``pakon_decode.transport_scale(speed, line_rate)`` instead
+    of assuming. Fixing the decode belongs to the colour task; making the
+    information exist belongs here.
+
+    The exposure triad is recorded for the same reason: it is what says which
+    dark and gain tables the capture is decodable with at all.
+    """
+    meta = {
+        "version": 1,
+        "capture": str(out),
+        "bytes": res.bytes,
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "written_by": "tools/pakon_scan.py",
+        "dpi_base": cfg.dpi_base,
+        "transport": {
+            "speed_reg_0xA5": cfg.speed,
+            "line_rate_0x91": cfg.line_rate_0x91,
+            "note": "lines/mm along travel goes as 1/speed, so the square-pixel "
+                    "resample factor is a property of this capture. Do not use "
+                    "a hardcoded scale.",
+        },
+        "exposure": {
+            "integration_0x82_idx6": cfg.integration,
+            "lamp_pwm_N": cfg.lamp_n,
+            "levels_R_G_B_Ir": list(cfg.levels),
+            "on_counts_R_G_B": list(cfg.on_counts),
+            "afe_gains": list(cfg.afe_gains),
+            "afe_offsets": list(cfg.afe_offsets),
+            "pixel_offset": cfg.pixel_offset,
+            "pixel_height": cfg.pixel_height,
+            "fpga_ctrl": f"0x{cfg.fpga_ctrl:04x}",
+            "note": "integration, N and 0x91 are one setting in three "
+                    "registers; the committed dark/gain tables are valid only "
+                    "for this triad.",
+        },
+        "calibration_source": cfg.source,
+        "run": {
+            "reason": res.reason,
+            "detail": res.detail,
+            "lines": res.lines,
+            "windows": res.windows,
+            "sync_breaks": res.sync_breaks,
+            "seconds": res.seconds,
+            "mib_s": res.mib_s,
+            "ok": res.ok,
+            "dark_stop_suppressed": res.dark_stop_suppressed,
+        },
+        "lamp": res.lamp,
+        "lamp_refresh": res.lamp_refresh,
+        "stopped": res.stopped,
+        "gate": gate_desc or {},
+    }
+    # Derived, and only if the decode module is importable. It is under active
+    # development by another task, so a failure to import it must never cost us
+    # the speed itself -- which is the part that cannot be recovered later.
+    try:
+        import pakon_decode as _dec
+        meta["transport"]["transport_scale"] = round(
+            _dec.transport_scale(cfg.speed, cfg.line_rate_0x91), 6)
+        meta["transport"]["scale_source"] = (
+            "pakon_decode.transport_scale(speed, line_rate)")
+        meta["transport"]["square_motor_speed"] = _dec.SQUARE_MOTOR_SPEED
+    except Exception as e:                                  # noqa: BLE001
+        meta["transport"]["transport_scale"] = None
+        meta["transport"]["scale_source"] = f"not computed: {e}"
+    return meta
+
+
+def write_capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
+                           gate_desc: dict | None = None) -> str | None:
+    """Write ``<capture>.meta.json``. Never raises; a scan is not lost over it."""
+    try:
+        p = out.with_suffix(".meta.json")
+        p.write_text(json.dumps(capture_metadata(out, cfg, res, gate_desc),
+                                indent=1))
+        return str(p)
+    except Exception:                                       # noqa: BLE001
+        return None
+
+
 # ---- the marker, for when both processes die ----
 
 def marker_write(info: dict) -> None:
@@ -974,6 +1069,7 @@ class ScanResult:
     dx_log: str = ""
     lamp_refresh: dict = field(default_factory=dict)
     dark_stop_suppressed: bool = False
+    metadata: str | None = None
     ok: bool = False
 
     def to_json(self) -> dict:
@@ -1327,6 +1423,12 @@ def run_scan(out_path: str | Path,
             except OSError:
                 pass
         link.close()
+        if not dry_run and started_motor:
+            # After the fsync above, so the sidecar can never describe a file
+            # that is still being written. Written even on an abort: a scan cut
+            # short still produced a capture, and it is still the only record of
+            # the speed it was taken at.
+            res.metadata = write_capture_metadata(out, cfg, res, g.describe())
         if res.stopped.get("motor") or dry_run or not started_motor:
             marker_clear()
         else:

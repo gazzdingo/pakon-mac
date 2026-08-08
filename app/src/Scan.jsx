@@ -215,6 +215,7 @@ function StartSheet({ open, hw, onClose, onStart }) {
   const [base] = React.useState(16);
   const [speed, setSpeed] = React.useState(String(cal?.speed ?? speeds[16] ?? 5917));
   const [secs, setSecs] = React.useState(String(hw?.limits?.default_seconds ?? 360));
+  const [refresh, setRefresh] = React.useState(true);
   const [name, setName] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
@@ -223,6 +224,7 @@ function StartSheet({ open, hw, onClose, onStart }) {
     if (open) {
       setSpeed(String(cal?.speed ?? speeds[16] ?? 5917));
       setSecs(String(hw?.limits?.default_seconds ?? 360));
+      setRefresh(true);
       setErr(null);
       setBusy(false);
     }
@@ -309,6 +311,25 @@ function StartSheet({ open, hw, onClose, onStart }) {
           </Field>
         </div>
 
+        <div style={{ marginBottom: 12 }}>
+          <Toggle
+            on={refresh}
+            onChange={setRefresh}
+            info={
+              <>
+                The lamp has died at about <span className="num">60 s</span> twice, at the same
+                point. This re-asserts the lamp drive every{' '}
+                <span className="num">{hw?.limits?.lamp_refresh_s ?? 20}</span> s, which is what{' '}
+                <span className="num">FN_bBeforeScan</span> appears to be doing when it calls{' '}
+                <span className="num">LampOn</span> twice a second apart. It never sends lamp-off, so
+                it cannot band the film. Turn it off to reproduce the failure.
+              </>
+            }
+          >
+            Lamp refresh
+          </Toggle>
+        </div>
+
         <div className="rows" style={{ marginBottom: 12, padding: '9px 11px', fontSize: 12 }}>
           <span className="quiet">
             Base {base} · integration <span className="num">{cal?.integration}</span> · lamp N{' '}
@@ -345,7 +366,14 @@ function StartSheet({ open, hw, onClose, onStart }) {
               setBusy(true);
               setErr(null);
               try {
-                await onStart({ base, speed: sN, max_seconds: tN, name: name.trim() });
+                await onStart({
+                  base,
+                  speed: sN,
+                  max_seconds: tN,
+                  name: name.trim(),
+                  lamp_refresh: refresh ? (hw?.limits?.lamp_refresh_s ?? 20) : 0,
+                  lamp_refresh_mode: refresh ? 'full' : 'off',
+                });
                 onClose();
               } catch (e) {
                 setErr(String(e.message || e));

@@ -428,25 +428,24 @@ class PowerCycleGuard:
 
     # -- witnesses in FX2 RAM -------------------------------------------
     def marker(self) -> dict | None:
-        """Our stamp, if this power cycle already produced a read."""
-        try:
-            raw = self.t.ram_read(MARKER_ADDR, MARKER_LEN)
-        except Exception:                                   # noqa: BLE001
-            return None
+        """Our stamp, if this power cycle already produced a read.
+
+        Raises on a failed probe rather than returning None: "I could not
+        look" must never be mistaken for "there is nothing there". See
+        check(), which refuses when the probe fails.
+        """
+        raw = self.t.ram_read(MARKER_ADDR, MARKER_LEN)
         if len(raw) < MARKER_LEN or not raw.startswith(MARKER_MAGIC):
             return None
         return {"nonce": raw[len(MARKER_MAGIC):].hex()}
 
     def code_resident(self) -> bool:
         """Is our dump firmware still in RAM? Then RAM was never cleared."""
-        try:
-            from pakon_load import HexImage                 # noqa: PLC0415
-            segs = list(HexImage.load(str(FIRMWARE)).segments())
-            addr, data = segs[-1]
-            want = data[:CODE_WITNESS_LEN]
-            return self.t.ram_read(addr, len(want)) == want
-        except Exception:                                   # noqa: BLE001
-            return False
+        from pakon_load import HexImage                     # noqa: PLC0415
+        segs = list(HexImage.load(str(FIRMWARE)).segments())
+        addr, data = segs[-1]
+        want = data[:CODE_WITNESS_LEN]
+        return self.t.ram_read(addr, len(want)) == want
 
     def stamp(self) -> str:
         nonce = os.urandom(16)
@@ -497,7 +496,25 @@ class PowerCycleGuard:
                         "this cycle. Power the scanner off and on, then try "
                         "again before anything else touches it.")}
 
-        mk = self.marker()
+        # Probe the two RAM witnesses. If we cannot read the scanner's RAM we
+        # cannot establish that this is a fresh power cycle -- and an
+        # unestablished fresh cycle must never be assumed. Fail closed.
+        try:
+            mk = self.marker()
+            resident = self.code_resident()
+        except Exception as e:                              # noqa: BLE001
+            return {"may_read": False, "state": state, "code": "probe-failed",
+                    "error": f"{e.__class__.__name__}: {e}",
+                    "reason": (
+                        "Could not read the scanner's memory to check whether "
+                        "it has already been read this power cycle "
+                        f"({e.__class__.__name__}). Refusing to read rather "
+                        "than guess: if it has already been read, reading "
+                        "again would corrupt calibration that cannot be "
+                        "recovered. Check the USB connection, power-cycle the "
+                        "scanner, and try again. Nothing was sent to the "
+                        "scanner.")}
+
         if mk is not None:
             return {"may_read": False, "state": state, "code": "already-read",
                     "nonce": mk["nonce"],
@@ -507,7 +524,7 @@ class PowerCycleGuard:
                         "returns corrupted data while still reporting success "
                         "-- that is how this hardware fails. The earlier read "
                         "is saved and is the good one.")}
-        if self.code_resident():
+        if resident:
             return {"may_read": False, "state": state, "code": "ram-not-clear",
                     "reason": (
                         "The scanner's RAM still holds the reader firmware "

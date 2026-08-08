@@ -146,6 +146,23 @@ def test_second_witness() -> None:
               r["code"])
 
 
+def test_probe_failure_fails_closed() -> None:
+    section("a failed RAM probe refuses (fail closed, never fail open)")
+    t = sim()
+
+    def boom(addr, length):
+        raise IOError("simulated USB failure")
+    t.ram_read = boom
+    with tempfile.TemporaryDirectory() as tmp:
+        r = cd.PowerCycleGuard(t, Path(tmp)).check()
+        check(not r["may_read"],
+              "cannot read the scanner's RAM -> refuses to read the EEPROM")
+        check(r["code"] == "probe-failed", "refusal cites the failed probe",
+              r["code"])
+        check("already been read" in r["reason"],
+              "and explains that guessing could destroy the calibration")
+
+
 def test_loaded_scanner_refused() -> None:
     section("a scanner that has been up is refused")
     t = sim(loaded=True)
@@ -420,6 +437,7 @@ def main() -> int:
     test_verify()
     test_read_once_guarantee()
     test_second_witness()
+    test_probe_failure_fails_closed()
     test_loaded_scanner_refused()
     test_degradation_is_real()
     test_no_writes()

@@ -341,6 +341,36 @@ def probe_channels(path: Path) -> dict:
     }
 
 
+def dx_sidecar(path: str | Path) -> dict:
+    """The ``<capture>.dx.json`` pakon_scan writes when the DX board answered.
+
+    Absent for every capture taken before the DX read path existed, and absent
+    for any scan where the board said nothing — so this returns {} far more
+    often than not, and callers must cope with that rather than assume a stock.
+    """
+    p = Path(path).with_suffix(".dx.json")
+    if not p.is_file():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def dx_from_sidecar(path: str | Path) -> str | None:
+    """``"96-1"`` from the DX sidecar, or None. Never a guess.
+
+    dx_read only fills in ``product``/``specifier`` when a code word passed
+    parity *and* was unambiguous under exactly one byte window; anything less
+    leaves them null and this returns None, which is the correct answer.
+    """
+    s = (dx_sidecar(path).get("summary") or {})
+    p1, p2 = s.get("product"), s.get("specifier")
+    if p1 is None or p2 is None:
+        return None
+    return f"{int(p1)}-{int(p2)}"
+
+
 def list_captures() -> list[dict]:
     out = []
     if CAPTURES.is_dir():
@@ -356,6 +386,7 @@ def list_captures() -> list[dict]:
                 1 for f in (side.get("frames") or [])
                 if pr.is_adjusted(f.get("params")))
             info["saved_name"] = side.get("name")
+            info["dx_read"] = dx_from_sidecar(p)
             out.append(info)
     return out
 
@@ -389,10 +420,16 @@ def job_open(jid: str, body: dict) -> None:
         def prog(phase, frac, msg):
             S.job_set(jid, phase=phase, progress=float(frac), message=msg)
 
+        # The scanner's own reading, if the scan that made this capture got
+        # one. A DX typed by the operator always wins over a decoded one.
+        dx_spec = body.get("dx") or None
+        if not dx_spec:
+            dx_spec = dx_from_sidecar(src)
+
         roll = pr.open_capture(
             src, WORKSPACE, roll_id,
             name=body.get("name"),
-            dx=body.get("dx") or None,
+            dx=dx_spec,
             film_path=body.get("film_path") or None,
             sba_key=body.get("sba_key") or None,
             sba_default=bool(body.get("sba_default")),
@@ -549,6 +586,11 @@ class ScanSupervisor:
                               message=ev.get("message") or "")
                 elif kind == "lamp":
                     S.job_set(jid, lamp=ev, phase="scanning")
+                elif kind == "dx":
+                    # One record, at the end of the scan. Carries the whole DX
+                    # summary including product/specifier, which are null
+                    # unless a code word was read unambiguously.
+                    S.job_set(jid, dx=ev)
                 elif kind == "window":
                     w, r = ev.get("window") or {}, ev.get("run") or {}
                     S.job_set(

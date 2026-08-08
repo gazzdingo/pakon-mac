@@ -372,6 +372,48 @@ def verify(data: bytes, addr7: int | None = None) -> dict:
     return result
 
 
+def cross_page_checks(devices: dict[int, bytes]) -> list[dict]:
+    """Checks that need more than one device. Still no re-reading.
+
+    Requested by the colour task in docs/59: the colour-reversal matrix starts
+    at 0x9D of the calibration page and needs 120 bytes, so elements 24..29
+    fall off the end of the 256-byte page and are currently zero-filled on an
+    assumption. If the pages are a flat address space those six values are the
+    first 24 bytes of the NEXT device.
+
+    The test is self-proving. PosMatrix is 0.25 on the diagonal and zero
+    everywhere else, and the last diagonal entry is already present at 0xF5 --
+    so all six continuation values must read 0.0. Six zeros confirms the
+    zero-fill AND that the pages are contiguous. Anything else means the pages
+    are not a flat address space and the layout needs its own look.
+
+    Costs nothing: it reads two buffers that are already in hand.
+    """
+    checks: list = []
+    cal_addr = next((a for a, d in sorted(devices.items())
+                     if verify(d, a)["kind"] == KIND_CALIBRATION), None)
+    if cal_addr is None:
+        return checks
+
+    nxt = devices.get(cal_addr + 1)
+    if nxt is None:
+        _check(checks, "reversal matrix continuation", None,
+               f"device 0x{cal_addr + 1:02x} did not answer, so the last six "
+               f"values of the reversal matrix remain unconfirmed "
+               f"(zero-filled by assumption)")
+        return checks
+
+    vals = [struct.unpack_from("<f", nxt, i * 4)[0] for i in range(6)]
+    all_zero = all(v == 0.0 for v in vals)
+    _check(checks, "reversal matrix continuation", all_zero,
+           ("six zeros on 0x%02x -- confirms the zero-fill AND that the pages "
+            "are contiguous" % (cal_addr + 1)) if all_zero else
+           ("expected six zeros, got " + " ".join(f"{v:g}" for v in vals) +
+            " -- the pages are NOT a flat address space; the layout needs its "
+            "own look before these values are trusted"))
+    return checks
+
+
 def describe(result: dict) -> str:
     """One-screen human summary. Used by the CLI and the app."""
     s = result["stats"]

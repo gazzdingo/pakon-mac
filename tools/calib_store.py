@@ -147,6 +147,7 @@ class CalibrationStore:
                 "crc": r["crc"],
             }
         meta = {
+            "cross_page": cv.cross_page_checks(devices),
             "stamp": d.name,
             "saved_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "source": source,

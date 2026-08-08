@@ -125,15 +125,51 @@ def lookup(dx_part1: int, dx_part2: int | None = None,
     )
 
 
+#: The whole key space. The DX film-edge barcode carries 21 bits, of which
+#: exactly 7 identify the product and 4 the specifier -- fcn.10013cd0
+#: 0x10013d0b-0x10013d2c, docs/53 s1.4. So Part 1 is 0-127, Part 2 is 0-15 and
+#: the composite is 0-2047. Nothing outside that can have come off a roll of
+#: film, and a number that does not fit is not a DX number at all.
+DX_PART1_MAX = 127
+DX_PART2_MAX = 15
+DX_COMPOSITE_MAX = DX_PART1_MAX * 16 + DX_PART2_MAX      # 2047
+
+
 def parse_dx(spec: str) -> tuple[int, int | None]:
-    """Parse '78-13', '78/13', '78', or composite '1261' (part1*16+part2)."""
+    """Parse '78-13', '78/13', '78', or composite '1261' (part1*16+part2).
+
+    Out-of-range input raises. It used to be accepted: ``parse_dx('91-5373')``
+    returned ``(91, 5373)``, ``lookup`` found no product with specifier 5373,
+    fell back to the Part 1 brand name, and reported *KODAK ADVANTIX* for a
+    roll of Kodak Gold 400. Splitting a number that is not a DX number until
+    some piece of it lands on a row is not a lookup, and a confidently wrong
+    film stock feeds wrong colour into everything downstream. See docs/53 s7.
+    """
     spec = spec.strip().lower().replace(" ", "")
     if "-" in spec or "/" in spec:
         a, b = re.split(r"[-/]", spec, maxsplit=1)
-        return int(a), int(b)
+        p1, p2 = int(a), int(b)
+        if not 0 <= p1 <= DX_PART1_MAX:
+            raise ValueError(
+                f"DX Part 1 = {p1} is outside 0-{DX_PART1_MAX}. Part 1 is a "
+                f"7-bit field in the barcode, so {p1} cannot have been read "
+                f"off film.")
+        if not 0 <= p2 <= DX_PART2_MAX:
+            raise ValueError(
+                f"DX Part 2 = {p2} is outside 0-{DX_PART2_MAX}. Part 2 is a "
+                f"4-bit field. '{spec}' is not a DX Part1-Part2 pair; if it "
+                f"is a number printed on the cartridge it is some other "
+                f"identifier, and there is no table here that maps one.")
+        return p1, p2
     n = int(spec)
-    if n <= 127:
+    if n <= DX_PART1_MAX:
         return n, None
+    if n > DX_COMPOSITE_MAX:
+        raise ValueError(
+            f"{n} is larger than the largest DX number there is "
+            f"({DX_COMPOSITE_MAX} = 127*16+15). The barcode carries 11 bits of "
+            f"film identity and nothing else, so no six-digit number can be "
+            f"one. See docs/53 s7.")
     # composite DX number
     return n // 16, n % 16
 
@@ -144,8 +180,14 @@ def main() -> int:
     ap.add_argument("dx", help="DX spec: PART1, PART1-PART2, or composite")
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     args = ap.parse_args()
-    p1, p2 = parse_dx(args.dx)
-    stock = lookup(p1, p2, args.db)
+    try:
+        p1, p2 = parse_dx(args.dx)
+        stock = lookup(p1, p2, args.db)
+    except (ValueError, KeyError) as e:
+        import sys
+        print(f"no such film stock: {e.args[0] if e.args else e}",
+              file=sys.stderr)
+        return 2
     print(f"DX {stock.dx_part1}"
           + (f"-{stock.dx_part2}" if stock.dx_part2 is not None else ""))
     print(f"  name:     {stock.name}")

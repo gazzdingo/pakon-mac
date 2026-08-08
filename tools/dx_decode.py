@@ -16,18 +16,55 @@ WHAT THIS IS NOT
     image decoder from this file. See docs/53-edge-data.md sections 0 and 5.
 
 PROVENANCE
-    Every field is transcribed from TLB.dll (F-135, base 0x10000000,
+    Field extraction is transcribed from TLB.dll (F-135, base 0x10000000,
     MD5 e7f21021e0140c1935a3ae4de7bd3498) with the address in a comment.
+    Record framing is transcribed from the DX board's own PIC16F877 image
+    (docs/57-dx-firmware.md), which is the side that *writes* the wire.
     Cross-check that holds: product is 7 bits (0-127) and specifier 4 bits
     (0-15), matching the PIMA/I3A Part 1 / Part 2 widths in docs/09.
 
-THE ONE UNKNOWN, AND HOW IT IS HANDLED
-    The vendor reads the code word from either payload bytes d0,d1,d2 or
-    d1,d2,d3, selected by CiDxAndApsHole+0x08. Which applies to 35 mm was NOT
-    determined from the binary. Rather than guess -- a wrong guess yields a
-    plausible but WRONG film stock, silently -- this module decodes BOTH
-    windows and reports a product only when exactly one passes validation.
-    When both or neither pass, it reports AMBIGUOUS and refuses to choose.
+RECORDS ARE VARIABLE LENGTH -- 3 TO 6 BYTES -- NOT A FIXED 5-BYTE STRIDE
+    This is the correction that matters most (docs/57 s8.1, s10.1). The board's
+    only event producer, FUNC_05eb, emits a payload whose length is fixed by
+    the event type: 4 bytes for type 1, 5 for type 2, 3 for type 3, 2 for
+    type 4 and 2 for types 5-8. The queue stores a length prefix but register
+    0x90 does NOT put it on the wire (0x09C0-0x09CA reads the length with the
+    pre-increment index and then copies from the type byte).
+
+    docs/53 s1.2 read a fixed 5-byte stride out of TLB.dll's parser. A fixed
+    stride desynchronises after the first record that is not type 1, which is
+    the most likely reason no code word has ever validated here. The firmware
+    is the authority on what is on the wire, so this module keys the stride off
+    the type byte, and refuses to walk past a type byte it does not recognise
+    rather than guess a length.
+
+THE BYTE WINDOW IS RESOLVED -- IT IS THE `obj+0x08 == 0` WINDOW
+    The vendor shifts the code word from either payload bytes d0,d1,d2 or
+    d1,d2,d3 (CiDxAndApsHole+0x08, 0x10013cd3-0x10013cf6), and docs/53 s1.4
+    could not say which 35 mm uses. The firmware settles it twice over
+    (docs/57 s10.2): a type-3 record carries *exactly three* payload bytes, so
+    there is no fourth byte for the d1,d2,d3 window to reach, and the
+    shift-register assembly order independently fixes 0x114 as b0, 0x115 as b1,
+    0x116 as b2. This module therefore decodes one window and no longer returns
+    AMBIGUOUS on that axis.
+
+    A consequence worth naming: `obj+0x08 == 0` also excludes the tail-first
+    frame-doubling path at 0x10013eb3, which only runs when it is non-zero.
+
+WHAT IT STILL REFUSES TO DO
+    Resolving the window did not turn this into a decoder that guesses. It
+    still declines, rather than inventing a reading, when:
+      * a type byte is outside 1..8 -- the stride is unknown, so the rest of
+        the packet is left unparsed and said to be unparsed;
+      * a record runs past the end of the buffer;
+      * parity or the must-be-zero bit fails -- the word is rejected, and
+        contributes a line position but no product;
+      * the packet carried no records, in which case the status nibble is
+        *absent*, not zero (see DxPacket.status_valid). The board ORs its flags
+        into record 0's type byte only, so a packet with N = 0 says nothing
+        about the film sensors and must not be read as "sensors clear".
+    Types 1 and 2 (APS) are framed and counted but not decoded: their
+    acceptance test is a modulo-2 division that is not transcribed here.
 
 STATUS
     NEVER VALIDATED AGAINST HARDWARE. Treat any product number as unconfirmed
@@ -50,9 +87,31 @@ PPB_START_DX_SCAN = 0x91  # 3-byte payload: speed_lo, speed_hi, format
 PPB_STOP_DX_SCAN = 0x92   # no payload
 
 DX_RESPONSE_LEN = 0x1E    # 30 bytes -- fcn.10009790 @ 0x100097c9
-DX_RECORD_STRIDE = 5      # fcn.10009790 @ 0x10009923 / 0x10009928
-DX_HEADER_LEN = 3
-DX_MAX_EVENTS = (DX_RESPONSE_LEN - DX_HEADER_LEN) // DX_RECORD_STRIDE  # 5
+DX_HEADER_LEN = 3         # [line hi][line lo][N], docs/57 s8.2 @ 0x099D
+
+#: Payload bytes carried by each event type, i.e. the record's wire length
+#: minus its one type byte. From the DX board's own event producer FUNC_05eb,
+#: docs/57 s8.1 (bit count -> type -> payload length, 0x05FF-0x061E):
+#:
+#:     bits 31 -> type 1 -> 4 payload bytes -> 5 on the wire   (APS id word)
+#:     bits 37 -> type 2 -> 5 payload bytes -> 6 on the wire   (APS cartridge)
+#:     bits 21 -> type 3 -> 3 payload bytes -> 4 on the wire   (DX + frame)
+#:     bits 12 -> type 4 -> 2 payload bytes -> 3 on the wire   (DX, no frame)
+#:     types 5,6,7,8      -> 2 payload bytes -> 3 on the wire   ({TMR1H,TMR1L})
+#:
+#: NOT a constant 5. docs/53 s1.2's `inc edi` / `add edi, 4` transcription is
+#: the thing this table replaces; see the module docstring.
+DX_RECORD_PAYLOAD = {1: 4, 2: 5, 3: 3, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2}
+
+#: Longest and shortest records, for sizing arguments about capacity.
+DX_RECORD_MIN = 1 + min(DX_RECORD_PAYLOAD.values())   # 3
+DX_RECORD_MAX = 1 + max(DX_RECORD_PAYLOAD.values())   # 6
+
+#: Ceiling on events per packet: all-shortest records in the 27-byte budget
+#: (0x09B1 sets budget = requested_n - 3). The old figure of 5 came from the
+#: fixed 5-byte stride and is wrong in both directions -- a packet of type-2
+#: records holds 4, a packet of perforations holds 9.
+DX_MAX_EVENTS = (DX_RESPONSE_LEN - DX_HEADER_LEN) // DX_RECORD_MIN  # 9
 
 # Only issue the 0x90 read when the light board's interrupt-status byte has
 # these bits set -- FN_bDrvGetPpbInterruptStatus @ 0x1000bf80.
@@ -60,19 +119,42 @@ DX_POLL_GATE_MASK = 0xA4
 
 # --------------------------------------------------------------------------
 # Status flags: high nibble of the FIRST record's type byte only
-# (fcn.10009790 @ 0x10009890 `cmp edi, 3`).
-# Translation is fcn.10014320 @ 0x10014320-0x10014343; constant names from
-# research/net/TLXLib.il lines 2996-2999.
+# (fcn.10009790 @ 0x10009890 `cmp edi, 3`; the board ORs them in at
+# 0x09f0 `iorwf 0x03e, F`, docs/57 s8.2).
+#
+# Translation is fcn.10014320 @ 0x10014320-0x10014343; constant names and
+# values from research/net/TLXLib.il lines 2996-2999.
+#
+# WHAT THE FIRMWARE CALLS THESE FOUR BITS IS NOT WHAT THE HOST CALLS THEM.
+# docs/57 s8.2 reads the board side as: bit 4 = live RC6 level, bit 5 = live
+# RC7 level, bits 6/7 = the two DX-activity latches set at 0x16BA/0x16BB.
+# docs/53 s4.1 reads the host side as: 0x10 -> FILM_SENSE_EXIT, 0x20 ->
+# FILM_SENSE_ENTRY, 0x40 -> FILM_EMULSION_DOWN, 0x80 -> FILM_TAIL_FIRST.
+# The bit *positions* agree; the meanings of bits 6 and 7 do not, and docs/57
+# s12 lists "what RC6 and RC7 sense" as still unknown. So the names below are
+# the host's, which is the vocabulary everything downstream speaks -- and the
+# mis-load bits are surfaced as warnings, never as an abort.
 # --------------------------------------------------------------------------
 DXSTAT_FILM_SENSE_EXIT = 0x10
 DXSTAT_FILM_SENSE_ENTRY = 0x20
 DXSTAT_EMULSION_DOWN = 0x40
 DXSTAT_TAIL_FIRST = 0x80
 
-HARDWARE_CB_FILM_EMULSION_DOWN = 0x10000000
-HARDWARE_CB_FILM_TAIL_FIRST = 0x20000000
-HARDWARE_CB_FILM_SENSE_ENTRY = 0x40000000
-HARDWARE_CB_FILM_SENSE_EXIT = 0x80000000
+#: Film-position bits, the pair that says whether film is in the transport.
+DXSTAT_FILM_SENSE = DXSTAT_FILM_SENSE_ENTRY | DXSTAT_FILM_SENSE_EXIT
+#: Mis-load bits. Warn on these; the vendor has no abort path for them
+#: (docs/53 s4.2: "no code path in TLB.dll aborts a scan on emulsion-down or
+#: tail-first").
+DXSTAT_MISLOAD = DXSTAT_EMULSION_DOWN | DXSTAT_TAIL_FIRST
+
+# HARDWARE_CB_FILM_* -- consecutive in the HARDWARE_CB_000 enum. Note that
+# ENTRY is bit 30 and EXIT is bit 31, i.e. the opposite order to the DX status
+# bits they come from (0x20 -> ENTRY, 0x10 -> EXIT). 0xC0000000, the value in
+# every scan sidecar taken so far, is therefore "film sensed at both ends".
+HARDWARE_CB_FILM_EMULSION_DOWN = 0x10000000     # from DX status 0x40
+HARDWARE_CB_FILM_TAIL_FIRST = 0x20000000        # from DX status 0x80
+HARDWARE_CB_FILM_SENSE_ENTRY = 0x40000000       # from DX status 0x20
+HARDWARE_CB_FILM_SENSE_EXIT = 0x80000000        # from DX status 0x10
 
 _STATUS_TO_HWCB = (
     (DXSTAT_EMULSION_DOWN, HARDWARE_CB_FILM_EMULSION_DOWN),
@@ -95,10 +177,20 @@ class EventType(IntEnum):
     PERF_LEADING = 8    # fcn.10014260
 
 
-# Types whose payload bytes d1,d2 hold the event's own 16-bit line number.
-# Types 3 and 4 instead use the packet-level counter and spend all four
-# payload bytes on code data. fcn.10009790 @ 0x1000992b-0x1000993d.
-_TYPES_WITH_OWN_LINE = frozenset({1, 2, 5, 6, 7, 8})
+# Types whose payload IS the event's own 16-bit line number, big-endian.
+#
+# CORRECTED, and this is a change of behaviour. docs/53 s1.2 said types 1, 2
+# and >4 carry a line number in payload bytes d1,d2. The firmware disagrees on
+# both counts (docs/57 s10.3): the `call 0x0531` that latches Timer1 sits at
+# 0x0624, on the `0x192 != 1` path only, and the code-word path jumps straight
+# past it (`061f goto 0x062d`). So ALL FOUR code-word types -- 1, 2, 3 and 4 --
+# spend their whole payload on code bits, and only 5, 6, 7 and 8 carry
+# {TMR1H, TMR1L}. Those types have a two-byte payload, so the line number is
+# payload[0..1]; there is no d1,d2 to read.
+_TYPES_WITH_OWN_LINE = frozenset({5, 6, 7, 8})
+
+#: Code-word types, the two this module actually decodes.
+_CODE_TYPES = frozenset({EventType.DX_CODE_FULL, EventType.DX_CODE_SHORT})
 
 INVALID_FRAME = -0x80000000  # sentinel stored on parity failure, 0x10013e99
 DX_NO_CODE_PRODUCT = -6      # < -6 renders as "DX_ERROR", fcn.10026430 @ 0x1002644c
@@ -119,7 +211,11 @@ class DxCode:
     valid: bool       # parity + must-be-zero both passed
     bit0: int         # meaning UNKNOWN
     bit1: int         # meaning UNKNOWN (tested as `b0 & 2` on the 24 mm path)
-    window: int       # which byte window produced this: 0 = d0d1d2, 1 = d1d2d3
+    #: Always 0. Kept as a field so logs and sidecars written before the window
+    #: was resolved stay comparable with ones written after. See the module
+    #: docstring: a type-3 record has three payload bytes and window 1 would
+    #: need a fourth.
+    window: int = 0
 
     @property
     def dx_number(self) -> int:
@@ -201,24 +297,22 @@ def decode_dx_short(b0: int, b1: int, window: int = 0) -> DxCode:
     )
 
 
-def decode_both_windows(payload: bytes, full: bool) -> tuple[DxCode | None, list[DxCode]]:
-    """Decode a code record under BOTH byte windows and refuse to guess.
+def decode_code_record(payload: bytes, full: bool) -> DxCode | None:
+    """Decode one type-3 or type-4 record's payload. One window, not two.
 
-    The vendor picks the window from CiDxAndApsHole+0x08 (fcn.10013cd0
-    @ 0x10013cd3-0x10013cf6). Its value for 35 mm is UNKNOWN, so we try both.
+    The payload is the record's own bytes -- 3 for type 3, 2 for type 4 -- so
+    b0,b1,b2 are payload[0],payload[1],payload[2] and there is no second window
+    to try. docs/57 s10.2 and the module docstring have why.
 
-    Returns (resolved, candidates). `resolved` is the single decode that
-    passed validation, or None when zero or two passed -- i.e. AMBIGUOUS.
-    Callers must treat None as "no reading", never as an excuse to pick one.
+    Returns None if the payload is short, which the record walker treats as a
+    record it could not read rather than one it read as zeroes.
     """
-    cands: list[DxCode] = []
-    for w in (0, 1):
-        if full:
-            cands.append(decode_dx_full(payload[w], payload[w + 1], payload[w + 2], w))
-        else:
-            cands.append(decode_dx_short(payload[w], payload[w + 1], w))
-    passed = [c for c in cands if c.valid]
-    return (passed[0] if len(passed) == 1 else None), cands
+    need = 3 if full else 2
+    if len(payload) < need:
+        return None
+    if full:
+        return decode_dx_full(payload[0], payload[1], payload[2])
+    return decode_dx_short(payload[0], payload[1])
 
 
 def encode_dx_full(product: int, specifier: int, frame: int, bit1: int = 0) -> tuple[int, int, int]:
@@ -247,13 +341,44 @@ def encode_dx_full(product: int, specifier: int, frame: int, bit1: int = 0) -> t
 # --------------------------------------------------------------------------
 # The 30-byte response.
 # --------------------------------------------------------------------------
+def encode_record(etype: int, payload: bytes, flags: int = 0) -> bytes:
+    """One event record as the board puts it on the wire: [type][payload...].
+
+    Refuses a payload that is not the length the firmware emits for that type,
+    so a test or a simulator cannot accidentally assert a stride the machine
+    would never produce.
+    """
+    want = DX_RECORD_PAYLOAD.get(int(etype))
+    if want is None:
+        raise ValueError(f"no wire length is known for event type {etype}")
+    if len(payload) != want:
+        raise ValueError(f"type {etype} carries {want} payload bytes, "
+                         f"got {len(payload)}")
+    return bytes([(int(etype) & 0x0F) | (int(flags) & 0xF0)]) + bytes(payload)
+
+
+def encode_packet(line: int, records: list[bytes],
+                  length: int = DX_RESPONSE_LEN) -> bytes:
+    """A whole 30-byte 0x90 response around some already-encoded records."""
+    body = b"".join(records)
+    buf = bytes([(line >> 8) & 0xFF, line & 0xFF, len(records)]) + body
+    if len(buf) > length:
+        raise ValueError(f"{len(buf)} bytes will not fit in {length}")
+    return buf + bytes(length - len(buf))
+
+
 @dataclass
 class DxEvent:
     type: int
     flags: int          # high nibble; only meaningful on the first record
-    payload: bytes      # 4 bytes d0..d3
+    payload: bytes      # 2..5 bytes, length fixed by `type` (DX_RECORD_PAYLOAD)
     line: int           # absolute scan line, rollover-extended
-    code: DxCode | None = None          # resolved decode, or None if AMBIGUOUS
+    code: DxCode | None = None
+    #: Retained for the refusal machinery. The byte-window axis no longer
+    #: produces candidates (see the module docstring), so this is empty in
+    #: practice; it is not removed because `ambiguous` is the shape callers use
+    #: to mean "the decoder had readings and declined to choose", and a future
+    #: unresolved axis should reuse it rather than invent a second one.
     candidates: list[DxCode] = field(default_factory=list)
 
     @property
@@ -267,6 +392,17 @@ class DxPacket:
     events: list[DxEvent] = field(default_factory=list)
     status: int = 0        # raw high nibble of the first record's type byte
     hardware_cb: int = 0   # translated HARDWARE_CB_FILM_* bits
+    #: True only when a first record existed to carry the status nibble. The
+    #: board ORs its flags into record 0's type byte and nowhere else
+    #: (0x09f0), so a packet with N = 0 carries NO status. Reading `status == 0`
+    #: on such a packet as "film sensors clear" would invent an end of roll out
+    #: of an idle queue; every consumer of the film-sense bits must gate on
+    #: this.
+    status_valid: bool = False
+    #: Records the header declared, and how many were actually framed.
+    records_declared: int = 0
+    #: Why the walk stopped early, if it did. Empty when the packet parsed out.
+    parse_error: str = ""
 
     @property
     def emulsion_down(self) -> bool:
@@ -283,6 +419,16 @@ class DxPacket:
     @property
     def film_at_exit(self) -> bool:
         return bool(self.status & DXSTAT_FILM_SENSE_EXIT)
+
+    @property
+    def film_present(self) -> bool | None:
+        """Film at either sensor, or None when this packet cannot say.
+
+        None is not False. See :attr:`status_valid`.
+        """
+        if not self.status_valid:
+            return None
+        return bool(self.status & DXSTAT_FILM_SENSE)
 
 
 class DxStream:
@@ -312,25 +458,46 @@ class DxStream:
         packet_line = (self.rollovers << 16) | counter16
 
         n = buf[2]                                      # 0x1000986d
-        pkt = DxPacket(line_counter=packet_line)
+        pkt = DxPacket(line_counter=packet_line, records_declared=n)
 
         off = DX_HEADER_LEN
         for i in range(n):
-            if off + DX_RECORD_STRIDE > len(buf):
+            if off >= len(buf):
+                pkt.parse_error = (
+                    f"packet declared {n} records; the buffer ran out after {i}")
                 break
             type_byte = buf[off]
             etype = type_byte & 0x0F                    # 0x1000988d
-            payload = bytes(buf[off + 1 : off + 5])
 
-            if i == 0:                                  # 0x10009890
+            # THE STRIDE COMES FROM THE TYPE. An unrecognised type means an
+            # unknown length, and guessing one would silently reframe every
+            # record after it -- exactly the failure mode a fixed stride has.
+            # So stop, and say so.
+            plen = DX_RECORD_PAYLOAD.get(etype)
+            if plen is None:
+                pkt.parse_error = (
+                    f"record {i} has type {etype}, which the board never emits;"
+                    f" its length is unknown so the rest of the packet was not"
+                    f" parsed")
+                break
+            if off + 1 + plen > len(buf):
+                pkt.parse_error = (
+                    f"record {i} (type {etype}) needs {plen} payload bytes but "
+                    f"only {len(buf) - off - 1} remain")
+                break
+            payload = bytes(buf[off + 1 : off + 1 + plen])
+
+            if i == 0:                                  # 0x10009890 `cmp edi, 3`
                 pkt.status = type_byte & 0xF0           # 0x1000989d-0x100098a5
+                pkt.status_valid = True
                 for bit, hwcb in _STATUS_TO_HWCB:
                     if pkt.status & bit:
                         pkt.hardware_cb |= hwcb
 
             if etype in _TYPES_WITH_OWN_LINE:
-                # (rollovers << 16) | (d1 << 8) | d2, 0x1000993d-0x10009950
-                line = (self.rollovers << 16) | (payload[1] << 8) | payload[2]
+                # The whole payload is {TMR1H, TMR1L}, big-endian, extended by
+                # the same rollover count. 0x1000993d-0x10009950.
+                line = (self.rollovers << 16) | (payload[0] << 8) | payload[1]
                 if line + 10000 < self.prev_line:       # 0x10009952-0x1000995d
                     line += 0x10000
             else:
@@ -339,15 +506,14 @@ class DxStream:
             if self.half_lines:
                 line >>= 1
 
-            ev = DxEvent(type=etype, flags=type_byte & 0xF0, payload=payload, line=line)
-
-            if etype == EventType.DX_CODE_FULL:
-                ev.code, ev.candidates = decode_both_windows(payload, full=True)
-            elif etype == EventType.DX_CODE_SHORT:
-                ev.code, ev.candidates = decode_both_windows(payload, full=False)
+            ev = DxEvent(type=etype, flags=type_byte & 0xF0,
+                         payload=payload, line=line)
+            if etype in _CODE_TYPES:
+                ev.code = decode_code_record(
+                    payload, full=(etype == EventType.DX_CODE_FULL))
 
             pkt.events.append(ev)
-            off += DX_RECORD_STRIDE
+            off += 1 + plen
 
         self.prev_line = packet_line
         return pkt
@@ -467,66 +633,149 @@ def _selftest() -> int:
                 fails += 1
     print("short-word round-trip: 2048 pairs")
 
-    # Packet framing, status nibble, rollover.
+    # ---- record framing: the wire lengths the board actually emits ----
+    check("payload lengths", DX_RECORD_PAYLOAD,
+          {1: 4, 2: 5, 3: 3, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2})
+    check("shortest record", DX_RECORD_MIN, 3)
+    check("longest record", DX_RECORD_MAX, 6)
+    check("type 3 is four bytes on the wire",
+          len(encode_record(EventType.DX_CODE_FULL, b"\x00\x00\x00")), 4)
+    try:
+        encode_record(EventType.DX_CODE_FULL, b"\x00\x00\x00\x00")
+        check("encode_record rejects a wrong length", "accepted", "raised")
+    except ValueError:
+        pass
+
+    # Packet framing, status nibble. A type-3 (4 bytes) followed by a type-8
+    # (3 bytes) is exactly the case a fixed 5-byte stride gets wrong: at stride
+    # 5 the second record would start one byte late and read type 0.
     st = DxStream()
     b0, b1, b2 = encode_dx_full(109, 9, 12)
-    rec3 = bytes([0x30 | EventType.DX_CODE_FULL, b0, b1, b2, 0x00])
-    rec8 = bytes([EventType.PERF_LEADING, 0x00, 0x12, 0x34, 0x00])
-    buf = bytes([0x00, 0x64, 2]) + rec3 + rec8
-    buf += b"\x00" * (DX_RESPONSE_LEN - len(buf))
+    rec3 = encode_record(EventType.DX_CODE_FULL, bytes([b0, b1, b2]), flags=0x30)
+    rec8 = encode_record(EventType.PERF_LEADING, bytes([0x12, 0x34]))
+    buf = encode_packet(0x64, [rec3, rec8])
     pkt = st.feed(buf)
     check("packet line", pkt.line_counter, 0x64)
     check("event count", len(pkt.events), 2)
+    check("no parse error", pkt.parse_error, "")
     check("status nibble", pkt.status, 0x30)
+    check("status is present", pkt.status_valid, True)
     check("film at entry", pkt.film_at_entry, True)
     check("film at exit", pkt.film_at_exit, True)
+    check("film present", pkt.film_present, True)
     check("emulsion down", pkt.emulsion_down, False)
     check("tail first", pkt.tail_first, False)
+    check("perf type", pkt.events[1].type, int(EventType.PERF_LEADING))
     check("perf line", pkt.events[1].line, 0x1234)
+    check("perf payload is two bytes", len(pkt.events[1].payload), 2)
 
-    # The window must resolve to exactly one candidate here.
-    ev = pkt.events[0]
-    check("window resolved", ev.code is not None, True)
-    if ev.code:
-        check("dx product", ev.code.product, 109)
-        check("dx specifier", ev.code.specifier, 9)
-        check("dx window", ev.code.window, 0)
-    check("not ambiguous", ev.ambiguous, False)
+    # The same two records at the old fixed stride desynchronise, and not
+    # harmlessly: at stride 5 the second record starts one byte late, inside the
+    # perforation's line number, and 0x12 reads as a type-2 APS cartridge word.
+    # Assert it, so the regression stays visible rather than remembered.
+    check("fixed stride misreads the second record's type",
+          buf[DX_HEADER_LEN + 5] & 0x0F, 2)
+    check("the real second record is a perforation",
+          buf[DX_HEADER_LEN + 4] & 0x0F, int(EventType.PERF_LEADING))
+
+    # One record of every type, back to back, in one packet. 4+5+... does not
+    # fit in 27 bytes, so this is split.
+    st_all = DxStream()
+    recs = [encode_record(1, bytes(4)), encode_record(2, bytes(5)),
+            encode_record(3, bytes([b0, b1, b2])), encode_record(4, bytes(2))]
+    p_all = st_all.feed(encode_packet(10, recs))
+    check("all four code types framed", [e.type for e in p_all.events],
+          [1, 2, 3, 4])
+    check("type 1 payload", len(p_all.events[0].payload), 4)
+    check("type 2 payload", len(p_all.events[1].payload), 5)
+    check("type 3 decoded through variable stride",
+          p_all.events[2].code.product if p_all.events[2].code else None, 109)
+
+    # Types 1 and 2 carry NO line number -- they take the packet's. docs/57
+    # s10.3 corrects docs/53 on this, and a type-1 record whose payload happens
+    # to look like a line number must not be read as one.
+    st_aps = DxStream()
+    p_aps = st_aps.feed(encode_packet(777, [encode_record(1, bytes([0, 0x12, 0x34, 0]))]))
+    check("type 1 uses the packet line", p_aps.events[0].line, 777)
+    st_perf = DxStream()
+    p_perf = st_perf.feed(encode_packet(777, [encode_record(7, bytes([0x12, 0x34]))]))
+    check("type 7 uses its own line", p_perf.events[0].line, 0x1234)
+
+    # Nine perforations fill a packet; a fixed stride of 5 could only see five.
+    st9 = DxStream()
+    nine = [encode_record(8, bytes([0, i])) for i in range(9)]
+    p9 = st9.feed(encode_packet(1, nine))
+    check("nine short records fit", len(p9.events), 9)
+    check("last of nine", p9.events[8].line, 8)
+    check("that is the ceiling", DX_MAX_EVENTS, 9)
+
+    # An unknown type must stop the walk, not guess a stride.
+    st_bad = DxStream()
+    p_bad = st_bad.feed(encode_packet(
+        5, [encode_record(8, bytes([0, 1])), bytes([0x09, 0, 0]),
+            encode_record(8, bytes([0, 2]))]))
+    check("stopped at the unknown type", len(p_bad.events), 1)
+    check("and said why", "type 9" in p_bad.parse_error, True)
+
+    # A record that runs off the end is refused, not zero-filled.
+    st_trunc = DxStream()
+    p_trunc = st_trunc.feed(bytes([0, 5, 1, EventType.APS_CARTRIDGE, 1, 2]))
+    check("truncated record refused", len(p_trunc.events), 0)
+    check("truncation explained", "remain" in p_trunc.parse_error, True)
 
     # Orientation bits.
-    buf2 = bytes([0x00, 0x65, 1]) + bytes([0xC0 | EventType.DX_CODE_FULL, b0, b1, b2, 0x00])
-    buf2 += b"\x00" * (DX_RESPONSE_LEN - len(buf2))
+    buf2 = encode_packet(0x65, [encode_record(
+        EventType.DX_CODE_FULL, bytes([b0, b1, b2]), flags=0xC0)])
     pkt2 = st.feed(buf2)
     check("emulsion down set", pkt2.emulsion_down, True)
     check("tail first set", pkt2.tail_first, True)
     check("hardware_cb", pkt2.hardware_cb,
           HARDWARE_CB_FILM_EMULSION_DOWN | HARDWARE_CB_FILM_TAIL_FIRST)
+    check("film sense clear here", pkt2.film_present, False)
+
+    # A packet with no records carries NO status. It must not read as
+    # "sensors clear", which would invent an end of roll out of an idle queue.
+    st_empty = DxStream()
+    p_empty = st_empty.feed(encode_packet(0x66, []))
+    check("empty packet has no status", p_empty.status_valid, False)
+    check("empty packet cannot say", p_empty.film_present, None)
+    check("empty packet has no hwcb", p_empty.hardware_cb, 0)
 
     # Rollover of the 16-bit line counter.
     st2 = DxStream()
-    st2.feed(bytes([0xFF, 0xF0, 0]) + b"\x00" * 27)
-    p = st2.feed(bytes([0x00, 0x10, 0]) + b"\x00" * 27)
+    st2.feed(encode_packet(0xFFF0, []))
+    p = st2.feed(encode_packet(0x0010, []))
     check("rollover", p.line_counter, 0x10010)
 
-    # Ambiguity must be reported, never silently resolved. Search for a payload
-    # where both windows validate; assert we return None rather than guessing.
-    found_ambiguous = False
-    for d3 in range(256):
-        payload = bytes([b0, b1, b2, d3])
-        resolved, cands = decode_both_windows(payload, full=True)
-        if sum(c.valid for c in cands) == 2:
-            found_ambiguous = True
-            check("both-valid returns None", resolved, None)
-            break
-    check("an ambiguous payload exists", found_ambiguous, True)
+    # The byte window is structural, not chosen: a type-3 payload is three
+    # bytes, so the d1,d2,d3 window has nothing to read.
+    check("type 3 payload is 3 bytes", DX_RECORD_PAYLOAD[3], 3)
+    check("short payload decodes to nothing",
+          decode_code_record(b"\x00\x00", full=True), None)
+    c_win = decode_code_record(bytes([b0, b1, b2]), full=True)
+    check("window is 0", c_win.window, 0)
+    check("window 0 decodes the product", c_win.product, 109)
 
-    # Vote ignores ambiguous events.
+    # Vote ignores ambiguous events, and the refusal path still exists.
     v = DxVote()
     for _ in range(3):
         v.add(decode_dx_full(*encode_dx_full(109, 9, 12)))
     v.add(decode_dx_full(*encode_dx_full(21, 3, 12)))
     check("vote winner", v.winner(), (109, 9))
     check("accepted", v.accepted, 4)
+    undecided = DxEvent(type=3, flags=0, payload=b"", line=0, code=None,
+                        candidates=[decode_dx_full(b0, b1, b2),
+                                    decode_dx_full(b0, b1, b2)])
+    v2 = DxVote()
+    v2.add(undecided)
+    check("an undecided event still votes for nothing", v2.winner(), None)
+    check("and is counted as such", v2.ambiguous, 1)
+
+    # A rejected word contributes a line but no frame index (0x10013e99).
+    bad_word = decode_dx_full(b0 ^ 0x04, b1, b2)
+    check("corrupt word invalid", bad_word.valid, False)
+    check("corrupt word has the sentinel frame", bad_word.frame, INVALID_FRAME)
+    check("and reports no frame number", bad_word.frame_number, None)
 
     print("FAILED" if fails else "OK")
     return 1 if fails else 0
@@ -548,12 +797,18 @@ def main() -> int:
     if args.hex:
         buf = bytes.fromhex(args.hex.replace(" ", "").replace(":", ""))
         pkt = DxStream(half_lines=args.half_lines).feed(buf)
-        print(f"line counter {pkt.line_counter}  status 0x{pkt.status:02X}"
-              f"  hwcb 0x{pkt.hardware_cb:08X}")
-        if pkt.emulsion_down:
-            print("  FILM EMULSION DOWN")
-        if pkt.tail_first:
-            print("  FILM TAIL FIRST")
+        print(f"line counter {pkt.line_counter}  "
+              f"records declared {pkt.records_declared} parsed {len(pkt.events)}")
+        if pkt.status_valid:
+            print(f"status 0x{pkt.status:02X}  hwcb 0x{pkt.hardware_cb:08X}  "
+                  f"film {'PRESENT' if pkt.film_present else 'absent'}")
+            if pkt.emulsion_down:
+                print("  FILM EMULSION DOWN")
+            if pkt.tail_first:
+                print("  FILM TAIL FIRST")
+        else:
+            print("status ABSENT — no records, so the board reported no flags. "
+                  "This is not 'sensors clear'.")
         for ev in pkt.events:
             name = (EventType(ev.type).name
                     if ev.type in EventType._value2member_map_ else f"?{ev.type}")
@@ -562,11 +817,13 @@ def main() -> int:
                 c = ev.code
                 line += (f"  product {c.product} specifier {c.specifier}"
                          f" dx {c.dx_number} frame {c.frame_number}"
-                         f" [window {c.window}]")
+                         f" {'OK' if c.valid else 'REJECTED (parity/mbz)'}")
             elif ev.candidates:
-                nvalid = sum(c.valid for c in ev.candidates)
-                line += f"  AMBIGUOUS ({nvalid} of 2 windows validate) -- no reading"
+                line += (f"  AMBIGUOUS ({len(ev.candidates)} readings, none "
+                         f"discriminated) -- no reading")
             print(line)
+        if pkt.parse_error:
+            print(f"  ! {pkt.parse_error}")
         return 0
 
     ap.print_help()

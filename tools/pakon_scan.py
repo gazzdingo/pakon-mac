@@ -102,6 +102,7 @@ sys.path.insert(0, str(_TOOLS))
 
 import pakon_commands as pc          # noqa: E402
 import pakon_gate as gate            # noqa: E402
+import dx_read as dxr                # noqa: E402
 
 VID, PID = 0x0F05, 0xF135
 EP_CMD_OUT, EP_CMD_IN, EP_IMAGE = 0x01, 0x81, 0x86
@@ -209,6 +210,22 @@ class FakeDev:
         self.streaming = False           # only after acquire + motor forward
         self.acquire = False
         self.motor = False
+        # A DX board that emits one half-frame code every 20 gate reads, so the
+        # scan loop's DX poll is exercised for real. Product 96 specifier 1 is
+        # "KODAK GOLD 400 GEN 9" in the vendor's own product table -- the roll
+        # this is going to be validated against.
+        self.dx_gate_reads = 0
+        self.dx_frame = 0
+        self.dx_ready = False
+
+    def _dx_packet(self) -> bytes:
+        import dx_decode as _dxd
+        line = 1000 + 100 * self.dx_frame
+        b0, b1, b2 = _dxd.encode_dx_full(96, 1, self.dx_frame)
+        self.dx_frame += 1
+        rec = bytes([_dxd.EventType.DX_CODE_FULL, b0, b1, b2, 0x00])
+        buf = bytes([(line >> 8) & 0xFF, line & 0xFF, 1]) + rec
+        return buf + bytes(pc.DX_RESPONSE_LEN - len(buf))
 
     def _note(self, kind: str, pkt: bytes) -> None:
         if not self.trace:
@@ -252,7 +269,15 @@ class FakeDev:
             if pkt[:1] == b"\x01":                      # a register read
                 n = pkt[3] if len(pkt) > 3 else 1
                 reg = pkt[4] if len(pkt) > 4 else 0
-                if board == pc.AD_LIGHT and reg == pc.REG_LIGHT_STATUS:
+                if board == pc.AD_LIGHT and reg == pc.REG_LIGHT_INTERRUPT_STATUS:
+                    self.dx_gate_reads += 1
+                    self.dx_ready = (self.streaming
+                                     and self.dx_gate_reads % 20 == 0)
+                    body = bytes([pc.DX_GATE_DX if self.dx_ready else 0x00])
+                elif board == pc.AD_LIGHT and reg == pc.REG_LIGHT_DX_CODE:
+                    body = self._dx_packet() if self.dx_ready else bytes(n)
+                    self.dx_ready = False
+                elif board == pc.AD_LIGHT and reg == pc.REG_LIGHT_STATUS:
                     body = bytes([0x08])                # temps valid, no fault
                 elif board == pc.AD_LIGHT and reg == REG_LIGHT_TEMPS:
                     t = int(40.06 * TEMP_UNITS_PER_C)
@@ -606,6 +631,67 @@ def lamp_off(link: Link) -> bool:
         return False
 
 
+LAMP_REFRESH_MODES = ("full", "drive", "enable", "off")
+#: How often to re-assert the lamp drive during a scan. See lamp_refresh().
+LAMP_REFRESH_S = 20.0
+
+
+def lamp_refresh(link: Link, cfg: "ScanConfig", mode: str = "full") -> bool:
+    """Re-assert the lamp drive mid-scan, without ever turning it off.
+
+    WHY THIS EXISTS. The lamp has now died at roughly sixty seconds, twice, at
+    the same point, which caps every scan at about a minute. The leading
+    hypothesis is a light-board safety timeout that expects the host to keep
+    saying the lamp should be on.
+
+    The evidence is a detail that never made sense as initialisation:
+    ``FN_bBeforeScan`` calls ``LampOn`` **twice, a second apart**. A second
+    ``FN_bDrvLampOn`` with an unchanged mask does not rewrite ``0x80`` — the
+    mask is cached host-side and skipped (docs/40 s12) — so what the vendor's
+    second call actually puts on the wire is ``0x81`` and ``0x82`` again, with
+    identical values. As re-initialisation that is a no-op. As a watchdog kick
+    it is not.
+
+    So this sends the same bytes the vendor's second call does, plus the enable
+    mask, because we do not yet know which of the two the board counts:
+
+      ``full``    0x82 PWM, 0x81 levels, 0x80 mask — a superset, the default,
+                  because the point is to settle the hypothesis in one run
+      ``drive``   0x82 and 0x81 only — exactly the vendor's second LampOn
+      ``enable``  0x80 only — the narrowest reading of the hypothesis
+      ``off``     nothing, to reproduce the failure as a control
+
+    What it never does is send ``0x80 = 0``. The lamp is not cycled: the proven
+    bring-up order starts with an off, and doing that here would put a black
+    band through the middle of the owner's roll.
+
+    Values come from ``cfg``, so a refresh cannot drift the exposure away from
+    the one the committed calibration is valid for.
+    """
+    if mode == "off":
+        return True
+    r_lvl, g_lvl, b_lvl, _ir = (list(cfg.levels) + [0, 0, 0, 0])[:4]
+    on_r, on_g, on_b = cfg.on_counts
+    ok = True
+    try:
+        if mode in ("full", "drive"):
+            ok &= bool(link.ack(pc.write_register(
+                pc.AD_LIGHT, pc.REG_LIGHT_LED_DUTY,
+                b"".join(v.to_bytes(2, "little")
+                         for v in (on_b, 0, on_r, 0, on_g, cfg.lamp_n))),
+                "lamp refresh 0x82 PWM", required=False))
+            ok &= bool(link.ack(pc.write_register(
+                pc.AD_LIGHT, pc.REG_LIGHT_LED_LEVELS,
+                bytes((b_lvl, 0, r_lvl, 0, g_lvl))),
+                "lamp refresh 0x81 levels", required=False))
+        if mode in ("full", "enable"):
+            ok &= bool(link.ack(pc.lamp_set_mask(pc.LAMP_VISIBLE),
+                                "lamp refresh 0x80 enable", required=False))
+    except Exception:                                       # noqa: BLE001
+        return False
+    return ok
+
+
 @dataclass
 class LampHealth:
     ok: bool = True
@@ -884,6 +970,8 @@ class ScanResult:
     run: dict = field(default_factory=dict)
     config: dict = field(default_factory=dict)
     packets: list = field(default_factory=list)
+    dx: dict = field(default_factory=dict)
+    dx_log: str = ""
     ok: bool = False
 
     def to_json(self) -> dict:
@@ -943,8 +1031,22 @@ def run_scan(out_path: str | Path,
              cancel: Cancel | None = None,
              log=None,
              dry_run: bool = False,
-             skip_lamp_health: bool = False) -> ScanResult:
-    """One scan, start to finish, with every guard armed."""
+             skip_lamp_health: bool = False,
+             read_dx: bool = True,
+             dx_log: str | Path | None = None,
+             lamp: bool = True) -> ScanResult:
+    """One scan, start to finish, with every guard armed.
+
+    ``read_dx`` adds the DX poll to the capture loop: pure reads of light-board
+    registers 0x02 and 0x90, logged raw beside the capture as ``.dx.jsonl``.
+    It cannot abort a scan and cannot move anything; if it fails it is noted
+    and the scan continues.
+
+    ``lamp=False`` is the DX-without-the-lamp experiment and nothing else. It
+    leaves the lamp off, which necessarily means every window classifies DARK,
+    so the DARK stop is suppressed for the duration — the hard time limit is
+    what stops it. Do not use it to scan film: the capture will be black.
+    """
     log = log or (lambda *a, **k: None)
     # NOT `cancel or Cancel()`. Cancel defines __bool__ so the loop can write
     # `if cancel:`, which makes an un-set Cancel falsy — so `or` would throw
@@ -979,30 +1081,36 @@ def run_scan(out_path: str | Path,
     health = LampHealth()
     started_motor = False
     fh = None
+    dx = None
     try:
         marker_write({"path": str(out), "max_seconds": max_seconds})
         log("phase", phase="connecting", message="clearing FX2 fault state")
         link.clear_fault()
 
-        log("phase", phase="lamp", message="light board thresholds")
-        lamp_init_thresholds(link)
-        lamp_on(link, cfg)
+        if not lamp:
+            log("warn", message="LAMP OFF: this is the DX-without-the-lamp "
+                                "experiment. The capture will be black and "
+                                "the DARK stop is suppressed.")
+        else:
+            log("phase", phase="lamp", message="light board thresholds")
+            lamp_init_thresholds(link)
+            lamp_on(link, cfg)
 
-        # Warm-up, then a health poll BEFORE any film moves. If the lamp is not
-        # healthy now, nothing else should happen at all.
-        log("phase", phase="lamp", message=f"settling {LAMP_WARMUP_S:.0f} s")
-        t_warm = time.time()
-        warm = 0.2 if (dry_run or _simulating()) else LAMP_WARMUP_S
-        while time.time() - t_warm < warm:
-            if cancel:
-                raise ScanAborted(cancel.reason or "cancelled")
-            time.sleep(0.1)
-        if not skip_lamp_health:
-            poll_lamp(link, health)
-            log("lamp", **health.to_json())
-            if not health.ok:
-                raise ScanAborted(f"lamp is not healthy before the scan: "
-                                  f"{health.fault}")
+            # Warm-up, then a health poll BEFORE any film moves. If the lamp is
+            # not healthy now, nothing else should happen at all.
+            log("phase", phase="lamp", message=f"settling {LAMP_WARMUP_S:.0f} s")
+            t_warm = time.time()
+            warm = 0.2 if (dry_run or _simulating()) else LAMP_WARMUP_S
+            while time.time() - t_warm < warm:
+                if cancel:
+                    raise ScanAborted(cancel.reason or "cancelled")
+                time.sleep(0.1)
+            if not skip_lamp_health:
+                poll_lamp(link, health)
+                log("lamp", **health.to_json())
+                if not health.ok:
+                    raise ScanAborted(f"lamp is not healthy before the scan: "
+                                      f"{health.fault}")
 
         log("phase", phase="sensor", message="CCD geometry and A/D")
         ccd_configure(link, cfg)
@@ -1015,10 +1123,29 @@ def run_scan(out_path: str | Path,
         # [speed u16][format u8]. Both are true of the same write, and it is
         # part of the triad the committed tables were captured at, so it is
         # sent at the recorded value and is not a setting.
-        link.ack(pc.write_register(
-            pc.AD_LIGHT, 0x91,
-            int(cfg.line_rate_0x91).to_bytes(2, "little") + b"\x00"),
-            f"0x91 DX/line rate {cfg.line_rate_0x91}", required=False)
+        link.ack(pc.dx_start(int(cfg.line_rate_0x91), pc.DX_FORMAT_DEFAULT),
+                 f"0x91 DX/line rate {cfg.line_rate_0x91}", required=False)
+
+        # The DX reader has been running on every scan this project has ever
+        # made; nothing has ever read its events back. This does. Reads only —
+        # it cannot abort the scan and cannot move anything.
+        if read_dx and not dry_run:
+            try:
+                dx = dxr.DxReader(
+                    link.xfer,
+                    log_path=(dx_log if dx_log is not None
+                              else out.with_suffix(".dx.jsonl")),
+                    interval=dxr.DEFAULT_INTERVAL_S,
+                    meta={"capture": str(out), "speed": speed,
+                          "dpi_base": cfg.dpi_base, "lamp": bool(lamp),
+                          "line_rate_0x91": cfg.line_rate_0x91})
+                res.dx_log = str(dx_log if dx_log is not None
+                                 else out.with_suffix(".dx.jsonl"))
+                log("phase", phase="dx",
+                    message=f"DX poll armed, logging to {res.dx_log}")
+            except OSError as e:
+                dx = None
+                log("warn", message=f"DX log could not be opened: {e}")
 
         # Twice here, never again. docs/45.
         reset_fifos(link)
@@ -1076,6 +1203,17 @@ def run_scan(out_path: str | Path,
                 stop_reason, stop_detail = "dry_run", "nothing was captured"
                 break
 
+            # DX events, between image reads. Reads only, rate-limited by the
+            # reader itself, and wrapped because a DX fault must never be able
+            # to stop a scan that is otherwise fine.
+            if dx is not None:
+                try:
+                    dx.poll_if_due()
+                except Exception as e:                      # noqa: BLE001
+                    log("warn", message=f"DX poll failed, disabling: {e}")
+                    dx.note(f"disabled after {e}")
+                    dx = None
+
             data = link.read_image(CHUNK)
             if data:
                 fh.write(data)
@@ -1113,6 +1251,10 @@ def run_scan(out_path: str | Path,
                 # rather than merged.
                 log("window", window=v.to_json(), run=st.to_json(),
                     bytes=total, elapsed=round(now - t0, 2))
+                if st.stop == gate.STOP_DARK and not lamp:
+                    # Deliberate darkness. The whole point of the run.
+                    st.stop = None
+                    st.stop_detail = ""
                 if st.stop:
                     stop_reason = st.stop
                     stop_detail = st.stop_detail
@@ -1136,6 +1278,18 @@ def run_scan(out_path: str | Path,
             res.stopped = safe_stop(link, log=log)
         except Exception as e:                              # noqa: BLE001
             res.stopped = {"motor": False, "errors": [str(e)]}
+        if dx is not None:
+            try:
+                # Drain whatever the DX board queued between the last poll and
+                # the stop. A packet holds five events, so two reads empty it.
+                # Reads only, and the link is still open at this point.
+                dx.interval = 0.0
+                for _ in range(3):
+                    dx.poll()
+                res.dx = dx.close()
+                log("dx", **res.dx)
+            except Exception as e:                          # noqa: BLE001
+                log("warn", message=f"DX summary failed: {e}")
         if fh is not None:
             try:
                 fh.flush()
@@ -1291,7 +1445,10 @@ def cmd_run(a) -> int:
                        max_bytes=a.max_bytes, cancel=cancel,
                        log=_emit if a.json else (lambda *x, **k: None),
                        dry_run=a.dry_run,
-                       skip_lamp_health=a.no_lamp_health)
+                       skip_lamp_health=a.no_lamp_health or a.no_lamp,
+                       read_dx=not a.no_dx,
+                       dx_log=a.dx_log,
+                       lamp=not a.no_lamp)
     except ScanRefused as e:
         _emit("error", message=str(e))
         print(f"refused: {e}", file=sys.stderr)
@@ -1330,12 +1487,30 @@ def cmd_run(a) -> int:
                 "lines": res.lines,
                 "reason": res.reason,
                 "ok": res.ok,
+                "dx": res.dx,
+                "dx_log": res.dx_log,
             }
-            side.write_text(json.dumps(payload, indent=2) + "\n")
+            side.write_text(json.dumps(payload, indent=2, default=str) + "\n")
             if not a.json:
                 print(f"wrote sidecar {side}", file=sys.stderr)
         except (OSError, TypeError, ValueError) as e:
             print(f"warning: could not write .scan.json sidecar: {e}",
+                  file=sys.stderr)
+        # The DX result on its own, next to the capture, so the app can pick a
+        # film stock without parsing the whole scan record.
+        try:
+            if res.dx:
+                dxside = Path(res.path).with_suffix(".dx.json")
+                stock = dxr.film_stock(res.dx.get("product"),
+                                       res.dx.get("specifier"))
+                dxside.write_text(json.dumps(
+                    {"capture": res.path, "log": res.dx_log,
+                     "summary": res.dx, "film_stock": stock},
+                    indent=2, default=str) + "\n")
+                if not a.json:
+                    print(f"wrote DX sidecar {dxside}", file=sys.stderr)
+        except (OSError, TypeError, ValueError) as e:
+            print(f"warning: could not write .dx.json sidecar: {e}",
                   file=sys.stderr)
     if not a.json:
         # In --json mode the `done` record above already carries all of this,
@@ -1633,6 +1808,17 @@ def main() -> int:
     r.add_argument("--no-lamp-health", action="store_true",
                    help="do not poll the lamp. Only for bench work; this is "
                         "the check the overnight failure needed.")
+    r.add_argument("--no-dx", action="store_true",
+                   help="do not poll the DX board. The poll is reads only and "
+                        "on by default.")
+    r.add_argument("--dx-log", default=None,
+                   help="where to write the raw DX log "
+                        "(default: <output>.dx.jsonl)")
+    r.add_argument("--no-lamp", action="store_true",
+                   help="EXPERIMENT ONLY: run the transport with the lamp "
+                        "off, to find out whether the DX board needs it. The "
+                        "capture will be black and the DARK stop is "
+                        "suppressed, so keep --max-seconds short.")
 
     a = ap.parse_args()
     return {"status": cmd_status, "stop": cmd_stop, "run": cmd_run,

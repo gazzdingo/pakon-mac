@@ -435,12 +435,54 @@ class PowerCycleGuard:
 # the read itself
 # --------------------------------------------------------------------------
 
+def _collect(transport: Transport) -> dict:
+    """Pull the status block and all eight buffers out of FX2 RAM.
+
+    Pure RAM reads -- no I2C happens here, so this is safe to call as often
+    as we like, including to salvage a read whose save was interrupted.
+    """
+    status = transport.ram_read(STATUS_ADDR, STATUS_LEN)
+    complete = len(status) >= 12 and status[8:12] == DONE_MARKER
+    devices, results = {}, {}
+    for n in range(NDEV):
+        a7 = ADDR_LO + n
+        code = status[n] if n < len(status) else None
+        data = transport.ram_read(BUF_BASE + n * BUF_STRIDE, 256)
+        results[a7] = {"code": code, "text": STATUS_TEXT.get(code, str(code)),
+                       "answered": code == 0}
+        if code == 0:
+            devices[a7] = data
+    return {"devices": devices, "results": results, "complete": complete,
+            "status_raw": bytes(status).hex()}
+
+
+def salvage_from_ram(transport: Transport) -> dict:
+    """Recover a read whose save was interrupted, WITHOUT touching I2C.
+
+    If a crash lands between the I2C read and the disk write, the first-read
+    bytes are still in FX2 RAM. Reading them back out is free and harmless.
+    Going to I2C again to recover would be the precise mistake this module
+    exists to prevent -- the recovery read would be the second read of the
+    power cycle, and therefore corrupt.
+    """
+    transport.reset_8051(True)
+    out = _collect(transport)
+    out["salvaged"] = True
+    return out
+
+
 def read_bus(transport: Transport, *, settle: float = 6.0,
-             poll: float = 0.1) -> dict:
+             poll: float = 0.1, before_run=None) -> dict:
     """Load the pinned firmware, let it read 0x50-0x57 ONCE, return the bytes.
 
     Waits for the firmware's completion marker rather than sleeping a guessed
     interval, so a slow bus cannot be mistaken for an empty one.
+
+    `before_run` is called after the firmware is in RAM but before the 8051 is
+    released -- the caller stamps the read-once marker there, so that the
+    marker is in place BEFORE any I2C transaction can occur. From the moment
+    of download the resident-code witness also applies, so the window in which
+    a crash could permit a second read is closed from both ends.
     """
     ok, why = firmware_ok()
     if not ok:
@@ -448,6 +490,8 @@ def read_bus(transport: Transport, *, settle: float = 6.0,
 
     transport.reset_8051(True)
     transport.download(FIRMWARE)
+    if before_run is not None:
+        before_run()
     transport.reset_8051(False)
 
     deadline = time.time() + settle
@@ -463,17 +507,7 @@ def read_bus(transport: Transport, *, settle: float = 6.0,
         time.sleep(poll)
 
     transport.reset_8051(True)
-    status = transport.ram_read(STATUS_ADDR, STATUS_LEN)
-    complete = len(status) >= 12 and status[8:12] == DONE_MARKER
-
-    devices, results = {}, {}
-    for n in range(NDEV):
-        a7 = ADDR_LO + n
-        code = status[n] if n < len(status) else None
-        data = transport.ram_read(BUF_BASE + n * BUF_STRIDE, 256)
-        results[a7] = {"code": code, "text": STATUS_TEXT.get(code, str(code)),
-                       "answered": code == 0}
-        if code == 0:
-            devices[a7] = data
-    return {"devices": devices, "results": results, "complete": complete,
-            "polled_done": done, "status_raw": bytes(status).hex()}
+    out = _collect(transport)
+    out["polled_done"] = done
+    out["salvaged"] = False
+    return out

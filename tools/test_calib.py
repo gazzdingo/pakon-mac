@@ -329,6 +329,63 @@ def test_save_before_interpret() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_orchestration() -> None:
+    section("orchestration: refuse when stored, salvage instead of re-reading")
+    import calib_read as cr
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        t = sim()
+        store = cs.CalibrationStore(tmp)
+        guard = cd.PowerCycleGuard(t, tmp / "journal")
+
+        res = cr.do_read(store, t, guard, source="test")
+        check(res["record"].is_good, "first read succeeds and is good")
+        check(t.reads[0x52] == 1, "0x52 was read exactly once")
+
+        # Second attempt, same installation. Must refuse on the store alone.
+        try:
+            cr.do_read(store, t, guard, source="test")
+            check(False, "a second read is refused when one is stored")
+        except cd.ReadRefused:
+            check(True, "a second read is refused when one is stored")
+        check(t.reads[0x52] == 1, "and no further I2C read happened")
+
+        # Connect report must not read either.
+        rep = cr.connect_report(store, t, guard)
+        check(rep["action"] == "none" and rep["have_calibration"],
+              "connect reports the stored calibration and takes no action")
+        check(t.reads[0x52] == 1, "connect caused no I2C traffic")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # A crash between reading and saving must NOT lead to a second read.
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        t = sim()
+        store = cs.CalibrationStore(tmp)
+        guard = cd.PowerCycleGuard(t, tmp / "journal")
+
+        # Read, stamp, journal -- then "crash" before save_read.
+        def _stamp():
+            guard.note("read", nonce=guard.stamp(), source="test")
+        cd.read_bus(t, before_run=_stamp)
+        check(t.reads[0x52] == 1, "the interrupted run read 0x52 once")
+        check(guard.unsaved_nonce() is not None, "journal shows an unsaved read")
+
+        # New process picks up the pieces.
+        guard2 = cd.PowerCycleGuard(t, tmp / "journal")
+        store2 = cs.CalibrationStore(tmp)
+        res = cr.do_read(store2, t, guard2, source="test")
+        check(res["salvaged"], "recovery salvaged from RAM rather than re-reading")
+        check(t.reads[0x52] == 1,
+              "CRUCIALLY: still exactly one I2C read of 0x52",
+              f"reads={t.reads[0x52]}")
+        check(res["record"].data(0x52) == GOOD52,
+              "the salvaged bytes are the good first read, not a degraded one")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> int:
     print("calibration read/backup self-tests -- no scanner required")
     test_verify()
@@ -340,6 +397,7 @@ def main() -> int:
     test_full_bus()
     test_store_append_only()
     test_save_before_interpret()
+    test_orchestration()
     print(f"\n{_count - len(_fails)}/{_count} checks passed")
     if _fails:
         print("FAILED:")

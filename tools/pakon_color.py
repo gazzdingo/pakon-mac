@@ -71,12 +71,26 @@ LUT_SIZE = 16384              # 14-bit input, direct-indexed, no interpolation
 # does not. So the *effective* scale differs by 2x between the models even
 # though the stored constant is the same.
 LUT_SCALE_BASE = 3500.0
-LUT_SCALE = {"f135": 3500.0, "f235": 7000.0}
+LUT_SCALE_BY_MODEL = {"f135": 3500.0, "f235": 7000.0}
 LUT_ZERO = {"f135": 16383, "f235": 32766}
 
 # Stage-2 output clamp. The F-135 clamps in float to 0..4095 (TLB 0x1000da11);
 # the TLA path clamps in MMX to 0..4092 (paddusw 0x7003 / psubusw 0xF003).
-RPD_MAX = {"f135": 4095, "f235": 4092}
+RPD_MAX_BY_MODEL = {"f135": 4095, "f235": 4092}
+
+# --- names kept for callers outside this task -----------------------------
+# `tools/pakon_decode.py` and `tools/pakon_render.py` import LUT_SCALE and
+# RPD_MAX as scalars, and both implement the TLA-style LUT-plus-matrix chain.
+# Their VALUES are deliberately unchanged, so nothing those modules produce
+# moves without their owners deciding to move it.
+#
+# Note the inherited inconsistency, which is docs/58 section 12.1 item 2: 3500
+# is TLB's scale, but it is being used here alongside a TLA-shaped pipeline,
+# whose own generator uses 7000. Rather than silently "fix" it under callers we
+# do not own, both are exposed by name above and this scalar stays put. See
+# `docs/59` item 3a -- those two modules should move to the f135 polynomial.
+LUT_SCALE = LUT_SCALE_BY_MODEL["f135"]      # 3500.0
+RPD_MAX = RPD_MAX_BY_MODEL["f235"]          # 4092
 
 COEFF_FIXED = 8192            # TLA int16 coefficient scale, cfg+0x28
 OFFSET_SCALE = 1              # TLA offset scale, cfg+0x2c
@@ -219,7 +233,7 @@ def build_density_lut(model: str = DEFAULT_MODEL, size: int = LUT_SIZE):
     is reached from both branches), so only the client *matrix* survives.
     docs/58 section 3.3.
     """
-    scale = LUT_SCALE[model]
+    scale = LUT_SCALE_BY_MODEL[model]
     lut = [LUT_ZERO[model]]
     for i in range(1, size):
         lut.append(ftol(-scale * math.log10(i * INV_16383)))
@@ -255,6 +269,11 @@ def load_vendor_lut(path: str):
             if len(parts) != 2:
                 raise ValueError(f"unexpected line in {path}: {line!r}")
             out.append(float(parts[1]))
+    if not out:
+        raise ValueError(f"{path}: no data block -- no line begins '0.0000'. "
+                         "The vendor locates the block by that literal string "
+                         "(TLA 0x10013360), so a file without it would also "
+                         "defeat the vendor's own reader.")
     return out
 
 
@@ -665,7 +684,7 @@ def render_raw(in_path: str, out_path: str, width: int, data_dir: str,
             print("no vendor matrix found; using identity", file=sys.stderr)
         stage2 = lambda px: render_pixel_f235(px, lut, coeff, offset)   # noqa: E731
 
-    rpd_max = RPD_MAX[model]
+    rpd_max = RPD_MAX_BY_MODEL[model]
     data = open(in_path, 'rb').read()
     n = len(data) // 6
     words = struct.unpack(f'<{n * 3}H', data[:n * 6])
@@ -797,6 +816,48 @@ class Check:
 
 def _checkpoint(n, title):
     print(f"\n[{n}] {title}")
+
+
+def verify_lut(data_dir: str, model: str = DEFAULT_MODEL) -> int:
+    """Check the generated table against the shipped template.
+
+    Kept because `tools/pakon_decode.py` calls it; `verify` is the fuller
+    version. The old implementation compared the FORMULA to the file and
+    reported a worst residual of 0.000050. That residual is the file's own
+    "%.4f" half-ULP, not an error -- so this now also compares the INTEGER
+    table, which is what the vendor actually stores.
+    """
+    path = os.path.join(data_dir, "_ClientColNegLut.txt")
+    if not os.path.exists(path):
+        print(f"missing {path}", file=sys.stderr)
+        return 1
+    vendor = load_vendor_lut(path)
+    ours = build_density_lut(model)
+    if len(vendor) != len(ours):
+        print(f"length mismatch: vendor {len(vendor)}, ours {len(ours)}")
+        return 1
+    scale = LUT_SCALE_BY_MODEL[model]
+    worst, worst_i = 0.0, 0
+    for i in range(1, len(vendor)):
+        d = abs(vendor[i] - (-LUT_SCALE_BASE * math.log10(i * INV_16383)))
+        if d > worst:
+            worst, worst_i = d, i
+    mism = [i for i in range(1, len(vendor)) if ftol(vendor[i]) != ours[i]]
+    print(f"density LUT: {len(vendor)} entries compared, model {model}")
+    print(f"  generated: LUT[i] = _ftol(-{scale:g} * log10(i/16383)), "
+          f"LUT[0] = {LUT_ZERO[model]}")
+    print(f"  worst |file - {LUT_SCALE_BASE:g} formula|: {worst:.6f} at index {worst_i}")
+    print(f"  integer mismatches vs the file: {len(mism)} {mism}")
+    if model == "f135":
+        print("  (295 and 2950 are where the file's %.4f rounds up across an "
+              "integer; the generated table is the one the vendor uses)")
+        ok = mism == [295, 2950]
+    else:
+        ok = True
+        print("  (the shipped template is TLB's table; TLA's is a different "
+              "table, not simply twice it -- expect wholesale mismatches)")
+    print(f"  => {'MATCH' if ok else 'MISMATCH'}")
+    return 0 if ok else 1
 
 
 def verify(data_dir: str, profile_dir: str) -> int:

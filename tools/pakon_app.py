@@ -69,6 +69,19 @@ try:
 except Exception:                       # noqa: BLE001
     film = None
 
+# The calibration read/backup path. Imported defensively so that a problem
+# here can never stop the app from opening someone's photographs -- but note
+# that its own refusals are deliberate and must NOT be swallowed as errors.
+try:
+    import calib_read as calib          # noqa: E402
+    import calib_store as calib_store   # noqa: E402
+    import calib_device as calib_dev    # noqa: E402
+except Exception as _e:                 # noqa: BLE001
+    print(f"note: calibration tools unavailable ({_e.__class__.__name__}: "
+          f"{_e}); the scanner's calibration will not be read or backed up",
+          file=sys.stderr)
+    calib = calib_store = calib_dev = None
+
 
 # --------------------------------------------------------------------------
 # where things live
@@ -898,6 +911,8 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
                 "captures_dir": str(CAPTURES),
                 "unavailable_controls": pr.UNAVAILABLE_CONTROLS,
                 "calibration": calibration_info(),
+                # Disk only -- this must not cause USB traffic on bootstrap.
+                "calibration_store": calibration_store_state(),
                 "vendor_data": {
                     "data_dir": pr.dec.DEFAULT_DATA_DIR,
                     "data_dir_ok": Path(pr.dec.DEFAULT_DATA_DIR).is_dir(),
@@ -910,6 +925,9 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
 
         if route == "hardware":
             return _json(self, hardware_state())
+
+        if route == "calibration":
+            return _json(self, calibration_state())
 
         if route == "captures":
             return _json(self, list_captures())
@@ -1001,6 +1019,13 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
 
         if route == "workspace/purge":
             return _json(self, purge(body))
+
+        # ---- calibration ----
+        if route == "calibration/read":
+            return _json(self, calibration_read(body))
+
+        if route == "calibration/select":
+            return _json(self, calibration_select(body))
 
         # ---- scanning ----
         if route == "scan":
@@ -1145,6 +1170,104 @@ def calibration_info() -> dict:
         out[n] = {"present": f.is_file(),
                   "bytes": f.stat().st_size if f.is_file() else 0}
     return out
+
+
+# --------------------------------------------------------------------------
+# scanner calibration -- the per-unit data that exists nowhere else
+#
+# The user should never have to know any of this. On first connect we read it
+# once, back it up, and say plainly what was saved and where; after that we
+# never read it again. The rules and the reasons are in
+# docs/60-calibration-safety.md; the enforcement is in tools/calib_device.py.
+#
+# Two things this layer must get right:
+#   * store state is answered from DISK ONLY. Asking "do we have calibration?"
+#     must never cause USB traffic, because the answer is on disk and the
+#     question is asked on every bootstrap.
+#   * nothing here probes USB while a scan is running -- the scan child owns
+#     the interface, exactly as hardware_state() already documents.
+# --------------------------------------------------------------------------
+
+def calibration_store_state() -> dict:
+    """Disk only. Safe to call as often as the UI likes."""
+    if calib is None:
+        return {"available": False,
+                "reason": "calibration tools unavailable"}
+    try:
+        store = calib_store.CalibrationStore()
+        sel = store.selection()
+        return {"available": True, "store": str(store.root),
+                "have_calibration": store.has_calibration(),
+                "selection": sel}
+    except Exception as e:                                  # noqa: BLE001
+        return {"available": False, "reason": str(e)}
+
+
+def _calib_parts():
+    transport = calib_dev.UsbTransport()
+    store = calib_store.CalibrationStore()
+    guard = calib_dev.PowerCycleGuard(transport, store.root / "journal")
+    return store, transport, guard
+
+
+def calibration_state() -> dict:
+    """Store state, plus -- only when it could matter and only when the USB
+    bus is free -- whether a first read is possible right now."""
+    out = calibration_store_state()
+    if not out.get("available"):
+        return out
+    out["scan_running"] = SCAN.running()
+    if out.get("have_calibration") or out["scan_running"]:
+        # Nothing to decide. Do not touch USB.
+        out["action"] = "none" if out.get("have_calibration") else "busy"
+        return out
+    try:
+        store, transport, guard = _calib_parts()
+        out.update(calib.connect_report(store, transport, guard))
+    except Exception as e:                                  # noqa: BLE001
+        out["action"] = "unknown"
+        out["error"] = str(e)
+    return out
+
+
+def calibration_read(_body: dict) -> dict:
+    """Deliberate, user-initiated. Refuses far more often than it proceeds."""
+    if calib is None:
+        return {"error": "calibration tools unavailable"}
+    if SCAN.running():
+        return {"error": "A scan is running. The calibration read needs the "
+                         "USB interface to itself; try again when it ends."}
+    try:
+        store, transport, guard = _calib_parts()
+        res = calib.do_read(store, transport, guard,
+                            force=bool(_body.get("force")), source="app")
+    except calib_dev.ReadRefused as e:
+        return {"refused": True, "reason": str(e),
+                "state": calibration_store_state()}
+    except calib_dev.UnsafeToolState as e:
+        return {"refused": True, "unsafe": True, "reason": str(e)}
+    except Exception as e:                                  # noqa: BLE001
+        return {"error": str(e)}
+    rec = res["record"]
+    return {"saved": True, "salvaged": res["salvaged"],
+            "stamp": rec.stamp, "dir": str(rec.path),
+            "summary": rec.summary(), "state": calibration_store_state()}
+
+
+def calibration_select(body: dict) -> dict:
+    """Use an earlier stored calibration. Selecting never deletes anything."""
+    if calib is None:
+        return {"error": "calibration tools unavailable"}
+    store = calib_store.CalibrationStore()
+    stamp = body.get("stamp")
+    try:
+        if stamp:
+            store.select(stamp)
+        else:
+            store.clear_selection()
+    except KeyError:
+        return {"error": f"no stored calibration named {stamp}"}
+    return calibration_store_state()
 
 
 def diagnostics() -> dict:

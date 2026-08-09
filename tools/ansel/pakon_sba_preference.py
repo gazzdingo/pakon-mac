@@ -109,6 +109,7 @@ SETSHIFTS_PIVOT_0x60E = 0x60E  # 1550
 # Golden vs DLL for hi=0x10 + lo∈{0,1,2,3,4} (pakon_preference_golden.py).
 # Host apply still goes through setShifts (1,2); hi≠0x10 UV aims open.
 PREFERENCE_SHIFTS_PORTED = True
+PREFERENCE_HI_UV_PORTED = True
 SBA_CORE_PORTED = False
 
 
@@ -270,6 +271,36 @@ def preference_shifts_from_combined(
     return ftol2_104ffe44(r), ftol2_104ffe44(g), ftol2_104ffe44(b)
 
 
+def preference_aim_uv(
+    hi: int,
+    opening_u: float,
+    opening_v: float,
+    *,
+    neu: Sequence[int] = (975, 975, 975),
+    lo42: float = 0.0,
+    hi44: float = 0.0,
+    fpo: Sequence[int] = (0, 0, 0),
+    arg1_2: int = 0,
+    arg1_4: int = 0,
+) -> tuple[float, float]:
+    """High-nibble ``aimU``, ``aimV`` @ ``0x1028c98e``.
+
+    Cite: docs/49-preference-fpu-binary.md
+    """
+    hi_n = hi & 0xF0
+    if hi_n == 0x10:
+        return opening_u, opening_v
+    if hi_n == 0x20:
+        opp = preference_rgb_to_opponent(int(neu[0]), int(neu[1]), int(neu[2]))
+        return opp.u, opp.v
+    if hi_n == 0x30:
+        return float(int(arg1_2)), float(int(arg1_4))
+    if hi_n == 0x40:
+        return float(int(lo42)), float(int(hi44))
+    # else
+    return float(int(fpo[1])), float(int(fpo[2]))
+
+
 def preference_aim_y(
     lo: int,
     opening_y: float,
@@ -366,6 +397,70 @@ def preference_shifts_mode_0x11(
         neu=neu,
         neo=neo,
         non_flash_adj=non_flash_adj,
+    )
+
+
+def preference_shifts_hiNN(
+    fpo: Sequence[int],
+    fpa: Sequence[int],
+    *,
+    hi: int,
+    lo: int,
+    lim46: float,
+    lo42: float,
+    hi44: float,
+    pcls: int = 0,
+    neu: Sequence[int] = (975, 975, 975),
+    neo: Sequence[int] = (1010, 1010, 1010),
+    non_flash_adj: int = 0,
+    param0: int = 0,
+    param_0x12: int = 0,
+    param_0x40: int = 0,
+    arg1_0: int = 0,
+    arg1_2: int = 0,
+    arg1_4: int = 0,
+) -> tuple[int, int, int]:
+    """Preference shifts for arbitrary ``hi`` and ``lo`` modes.
+    
+    Includes non-zero ``dU``/``dV`` UV aim computation for ``hi≠0x10``.
+    Cite: docs/49-preference-fpu-binary.md
+    """
+    opening = preference_rgb_to_opponent(int(fpo[0]), int(fpo[1]), int(fpo[2]))
+    fpa_opp = preference_rgb_to_opponent(int(fpa[0]), int(fpa[1]), int(fpa[2]))
+    aim_y = preference_aim_y(
+        lo,
+        opening.y,
+        param0=param0,
+        param_0x12=param_0x12,
+        param_0x40=param_0x40,
+        arg1_0=arg1_0,
+    )
+    aim_u, aim_v = preference_aim_uv(
+        hi,
+        opening.u,
+        opening.v,
+        neu=neu,
+        lo42=lo42,
+        hi44=hi44,
+        fpo=fpo,
+        arg1_2=arg1_2,
+        arg1_4=arg1_4,
+    )
+    w1e = float(int(pcls))
+    d_y = w1e + aim_y - opening.y
+    d_u = aim_u - opening.u
+    d_v = aim_v - opening.v
+    
+    helper_rgb = neo if d_y > 0.0 else neu
+    helper = helper_1028c540(
+        int(helper_rgb[0]), int(helper_rgb[1]), int(helper_rgb[2])
+    )
+    scale = float(int(non_flash_adj)) * SCALE_0_001
+    combined = preference_combine_yuv(
+        opening, fpa_opp, d_y, d_u, d_v, helper, scale
+    )
+    return preference_shifts_from_combined(
+        combined, w1e, lim46, lo42, hi44
     )
 
 

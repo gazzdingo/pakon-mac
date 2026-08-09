@@ -185,15 +185,18 @@ def run_preference(
     return eax, shifts
 
 
-def py_hi10(case: dict) -> tuple[int, int, int]:
+def py_hiNN(case: dict, mode: int) -> tuple[int, int, int]:
     lim46 = pref.lim46_from_neutral_balance_point(case["nbp"])
     lo42, hi44 = pref.clamp_limits_from_neutral_button(
         case["neutral_button"], case["under"], case["over"]
     )
-    return pref.preference_shifts_hi10(
+    hi = mode & 0xF0
+    lo = mode & 0x0F
+    return pref.preference_shifts_hiNN(
         case["fpo"],
         case["fpa"],
-        lo=case.get("lo", 1),
+        hi=hi,
+        lo=lo,
         lim46=lim46,
         lo42=lo42,
         hi44=hi44,
@@ -205,6 +208,8 @@ def py_hi10(case: dict) -> tuple[int, int, int]:
         param_0x12=case.get("param_0x12", 0),
         param_0x40=case.get("param_0x40", 0),
         arg1_0=case.get("arg1_0", 0),
+        arg1_2=case.get("arg1_2", 0),
+        arg1_4=case.get("arg1_4", 0),
     )
 
 
@@ -228,6 +233,13 @@ CASES_HI10_LO: list[dict] = [
     dict(CN_DEFAULT, lo=2, param_0x12=900, fpo=(100, 200, 300), fpa=(0, 0, 0)),
 ]
 
+CASES_HINN: list[dict] = [
+    dict(CN_DEFAULT, lo=1, hi=0x20, neu=(900, 1000, 1100), fpo=(100, 200, 300)),
+    dict(CN_DEFAULT, lo=1, hi=0x30, arg1_2=100, arg1_4=-100),
+    dict(CN_DEFAULT, lo=1, hi=0x40, neutral_button=150, under=-20.0, over=20.0),
+    dict(CN_DEFAULT, lo=1, hi=0x00, fpo=(100, 200, 300)),  # else case
+    dict(CN_DEFAULT, lo=3, hi=0x20, arg1_0=500, neu=(800, 800, 800)),
+]
 
 def main(argv: list[str]) -> int:
     dll_path = Path(argv[1]) if len(argv) > 1 else DEFAULT_DLL
@@ -248,8 +260,9 @@ def main(argv: list[str]) -> int:
 
     failures = 0
     all_cases: list[tuple[str, dict]] = [
-        *(("0x11", dict(c, lo=1)) for c in CASES_0x11),
-        *(("hi10", c) for c in CASES_HI10_LO),
+        *(("0x11", dict(c, lo=1, hi=0x10)) for c in CASES_0x11),
+        *(("hi10", dict(c, hi=0x10)) for c in CASES_HI10_LO),
+        *(("hiNN", c) for c in CASES_HINN),
     ]
     for i, (tag, case) in enumerate(all_cases):
         lim46 = pref.lim46_from_neutral_balance_point(case["nbp"])
@@ -268,14 +281,26 @@ def main(argv: list[str]) -> int:
             hi44=hi44,
         )
         lo = case.get("lo", 1)
-        mode = 0x10 | (lo & 0xF)
-        need_arg1 = lo in (3, 4)
+        hi = case.get("hi", 0x10)
+        mode = hi | (lo & 0xF)
+        need_arg1 = lo in (3, 4) or hi in (0x30, 0x40)
         param = build_param(
             param0=case.get("param0", 0),
             param_0x12=case.get("param_0x12", 0),
             param_0x40=case.get("param_0x40", 0),
         )
         arg1 = build_arg1(arg1_0=case.get("arg1_0", 0)) if need_arg1 else None
+        # We need arg1_2 and arg1_4 for hi=0x30
+        if hi == 0x30:
+            if arg1 is None:
+                arg1 = bytearray(0x20)
+            else:
+                arg1 = bytearray(arg1)
+            import struct
+            struct.pack_into("<h", arg1, 0x02, case.get("arg1_2", 0))
+            struct.pack_into("<h", arg1, 0x04, case.get("arg1_4", 0))
+            arg1 = bytes(arg1)
+        
         try:
             eax, dll_out = run_preference(
                 uc, mode=mode, blob=blob, param=param, arg1=arg1
@@ -284,7 +309,7 @@ def main(argv: list[str]) -> int:
             print(f"FAIL[{i}] emu: {e}")
             failures += 1
             continue
-        py_out = py_hi10(case)
+        py_out = py_hiNN(case, mode)
         ok = eax == 0 and dll_out == py_out
         status = "OK" if ok else "FAIL"
         if not ok:
@@ -300,8 +325,8 @@ def main(argv: list[str]) -> int:
         print(f"{failures} mismatch(es) — PREFERENCE_SHIFTS_PORTED stays False")
         return 1
     print(
-        "all hi=0x10 cases (lo∈{0,1,2,3,4}) match DLL — "
-        "safe to keep PREFERENCE_SHIFTS_PORTED=True"
+        "all cases (hi=0x10..0x40, lo∈{0,1,2,3,4}) match DLL — "
+        "safe to set PREFERENCE_HI_UV_PORTED=True"
     )
     return 0
 

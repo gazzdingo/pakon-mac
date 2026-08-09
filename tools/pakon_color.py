@@ -686,6 +686,38 @@ def poly_plane(planes, coeffs, film_class: int = 1):
     return planes
 
 
+import ctypes
+
+# Try loading native C library for acceleration if compiled; fallback to Python/NumPy if absent.
+_LIB_C = None
+try:
+    _dylib_path = os.path.join(HERE, "libpakon_color.dylib")
+    if not os.path.exists(_dylib_path):
+        _dylib_path = os.path.join(HERE, "libpakon_color.so")
+    if os.path.exists(_dylib_path):
+        _LIB_C = ctypes.CDLL(_dylib_path)
+        _LIB_C.pakon_poly_hwc_c.argtypes = [
+            ctypes.POINTER(ctypes.c_uint16),
+            ctypes.POINTER(ctypes.c_int32),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_int,
+        ]
+        _LIB_C.pakon_poly_hwc_c.restype = None
+        _LIB_C.pakon_sensor_correct_line_c.argtypes = [
+            ctypes.POINTER(ctypes.c_uint16),
+            ctypes.POINTER(ctypes.c_uint16),
+            ctypes.POINTER(ctypes.c_uint16),
+            ctypes.POINTER(ctypes.c_uint16),
+            ctypes.POINTER(ctypes.c_uint16),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_uint64),
+        ]
+        _LIB_C.pakon_sensor_correct_line_c.restype = None
+except Exception:
+    _LIB_C = None
+
+
 def poly_hwc(rgb, coeffs, film_class: int = 1):
     """HWC u16/u32 image through ``fcn.1000d880`` (TLB.dll @ 0x1000d880).
 
@@ -699,9 +731,24 @@ def poly_hwc(rgb, coeffs, film_class: int = 1):
     if film_class not in POLY_CLASSES_COLNEG and film_class != POLY_CLASS_COLREV:
         return np.asarray(rgb)
 
-    arr = np.asarray(rgb)
+    arr = np.ascontiguousarray(rgb, dtype=np.uint16)
     if arr.ndim != 3 or arr.shape[-1] != 3:
         raise ValueError("poly_hwc expects (H,W,3)")
+
+    out = np.empty(arr.shape[:2] + (3,), dtype=np.int32)
+    coeffs_f32 = np.ascontiguousarray(coeffs, dtype=np.float32)
+
+    if _LIB_C is not None:
+        num_pixels = arr.shape[0] * arr.shape[1]
+        _LIB_C.pakon_poly_hwc_c(
+            arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16)),
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
+            ctypes.c_int(num_pixels),
+            coeffs_f32.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            ctypes.c_int(film_class),
+        )
+        return out
+
     r = (arr[..., 0].astype(np.int64) & 0xFFFF)  # TLB.dll @ 0x1000d880
     g = (arr[..., 1].astype(np.int64) & 0xFFFF)
     b = (arr[..., 2].astype(np.int64) & 0xFFFF)

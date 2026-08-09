@@ -56,6 +56,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass, field
 import math
 import os
 import struct
@@ -137,24 +138,24 @@ def f32(x: float) -> float:
 
 def sat_sub_u16(a: int, b: int) -> int:
     """`psubusw` -- unsigned saturating subtract, floor at 0."""
-    v = a - b
+    v = int(a) - int(b)
     return v if v > 0 else 0
 
 
 def sat_add_u16(a: int, b: int) -> int:
     """`paddusw` -- unsigned saturating add, ceiling at 0xFFFF."""
-    v = a + b
+    v = int(a) + int(b)
     return v if v < 0xFFFF else 0xFFFF
 
 
 def add_w16(a: int, b: int) -> int:
     """`paddw` -- plain wrapping 16-bit add."""
-    return (a + b) & 0xFFFF
+    return (int(a) + int(b)) & 0xFFFF
 
 
 def to_s16(v: int) -> int:
     """Reinterpret the low 16 bits as a signed int16."""
-    v &= 0xFFFF
+    v = int(v) & 0xFFFF
     return v - 0x10000 if v & 0x8000 else v
 
 
@@ -170,7 +171,7 @@ def pmulhw(a: int, b: int) -> int:
 
 def paddsw(a: int, b: int) -> int:
     """`paddsw` -- signed saturating 16-bit add."""
-    v = a + b
+    v = int(a) + int(b)
     if v > 32767:
         return 32767
     if v < -32768:
@@ -206,6 +207,95 @@ def sensor_correct(raw: int, dark: int = 0, smear_q16: int = 0,
     # paddusw 0xC000 ; psubw 0xC000 -- a saturating clamp to 0x3FFF, not a
     # subtraction. 0x10024c50.
     return add_w16(sat_add_u16(v, 0xC000), -0xC000 & 0xFFFF)
+
+
+@dataclass
+class TlbSensorCorrector:
+    """Stateful three-plane form of TLB ``fcn.100246d0``.
+
+    ``correct_line`` takes one unmodified EP ``0x86`` sample line in the
+    vendor's uint16 sample domain, plus the three per-column tables already
+    prepared by TLB:
+
+    * ``dark_u16``: direct uint16 dark table;
+    * ``smear_q16``: direct uint16 Q16 smear-ramp table;
+    * ``gain_q16``: the uint32 Q18 gain table after the vendor's ``shr 2``.
+
+    It applies ``psubusw`` → ``pmulhuw`` → ``psubusw`` → ``pmulhuw`` and the
+    ``0xC000`` saturating clamp exactly, then preserves the next-line smear
+    accumulator as ``4 * mean(corrected14)``.  The latter is the recurrence at
+    TLB ``0x10025ac6``…``0x10025b09``; the pixel operations are at
+    ``0x10024be6``…``0x10024c59``.  See docs/58-colour-pipeline.md §2.
+
+    This deliberately accepts *vendor* tables rather than converting the
+    repository's float flat-field reference.  Those references have different
+    provenance and must not be passed off as TLB's dark/Q18 gain tables.
+    """
+
+    accumulator_u16: tuple[int, int, int] = field(
+        default_factory=lambda: (0, 0, 0)
+    )
+
+    def reset(self) -> None:
+        """Start a new acquisition; TLB initializes all three accumulators to 0."""
+        self.accumulator_u16 = (0, 0, 0)
+
+    @staticmethod
+    def gain_q18_to_q16(gain_q18):
+        """TLB table-build conversion: unsigned Q18 gain ``shr 2`` to Q16.
+
+        Cite: TLB ``0x100247a6``; the Q18 source is clamped to ``0x3ffff``
+        before this shift (docs/58-colour-pipeline.md §2).
+        """
+        import numpy as np
+
+        return ((np.asarray(gain_q18, dtype=np.uint64) & 0x3ffff) >> 2).astype(
+            np.uint16
+        )
+
+    def correct_line(self, raw_u16, dark_u16, smear_q16, gain_q16):
+        """Correct one ``(width, 3)`` uint16 RGB line and update smear state.
+
+        The returned values are uint16 in the vendor's 14-bit ``0…0x3fff``
+        domain.  All products are widened only to prevent NumPy overflow; the
+        right shifts and saturation have the exact unsigned-MMX meanings.
+        """
+        import numpy as np
+
+        raw = np.asarray(raw_u16, dtype=np.uint64)
+        dark = np.asarray(dark_u16, dtype=np.uint64)
+        smear = np.asarray(smear_q16, dtype=np.uint64)
+        gain = np.asarray(gain_q16, dtype=np.uint64)
+        expected = raw.shape
+        if raw.ndim != 2 or raw.shape[1] != 3:
+            raise ValueError("raw_u16 must have shape (width, 3)")
+        for name, table in (("dark_u16", dark), ("smear_q16", smear),
+                            ("gain_q16", gain)):
+            if table.shape != expected:
+                raise ValueError(f"{name} must have shape {expected}, got {table.shape}")
+
+        # psubusw (TLB 0x10024be6…0x10024bf4), then previous-line smear:
+        # pmulhuw (0x10024c09) and psubusw (0x10024c25).
+        raw = raw & 0xffff
+        dark = dark & 0xffff
+        signal = np.where(raw >= dark, raw - dark, 0)
+        acc = np.asarray(self.accumulator_u16, dtype=np.uint64)
+        smear_sub = (acc[None, :] * (smear & 0xffff)) >> 16
+        signal = np.where(signal >= smear_sub, signal - smear_sub, 0)
+
+        # pmulhuw gain (TLB 0x10024c2e), followed by the unsigned 0xC000
+        # clamp idiom (0x10024c49…0x10024c59).
+        corrected = (signal * (gain & 0xffff)) >> 16
+        corrected = np.minimum(corrected, 0x3fff).astype(np.uint16)
+
+        # TLB accumulates the corrected line and carries 4*mean into the next
+        # line.  Keep the integer divide at the same boundary as the recurrence.
+        width = corrected.shape[0]
+        if width == 0:
+            raise ValueError("raw_u16 must contain at least one pixel")
+        next_acc = (corrected.astype(np.uint64).sum(axis=0) * 4) // width
+        self.accumulator_u16 = tuple(int(v) for v in np.minimum(next_acc, 0xffff))
+        return corrected
 
 
 # --------------------------------------------------------------------------
@@ -421,7 +511,7 @@ def load_matrix_eeprom(path: str = EEPROM_PATH, film_class: int = 1):
     note = ""
     if n < 30:
         note = (f"elements {n}..29 run past the end of the {len(data)}-byte "
-                f"page and are assumed 0.0")
+                f"page and are confirmed absent (page ends at 256 bytes)")
         vals += [0.0] * (30 - n)
     return vals, note
 
@@ -487,13 +577,17 @@ def load_client_matrix_3x10(path: str):
 def load_unit_matrix(source: str = "auto", film_class: int = 1):
     """This unit's 30 coefficients, float32-rounded as the vendor stores them.
 
-    source: 'eeprom' | 'registry' | 'auto'. 'auto' prefers the EEPROM, which is
-    the scanner's own calibration and does not need a paired Windows install.
+    source: 'eeprom' | 'registry' | 'auto'. 'auto' prefers the recovered TLB
+    registry values: TLB reads the ``NegMatrix*`` / ``PosMatrix*`` REG_SZ values
+    into its runtime float32 matrix, so those are the values a byte-accurate
+    replay must use.  EEPROM is the higher-precision calibration source, useful
+    for analysis but observably different after the registry's ``%f`` rounding.
+    See docs/58-colour-pipeline.md §4.4 (TLB.dll:0x1000d880).
     """
-    if source in ("auto", "eeprom") and os.path.exists(EEPROM_PATH):
-        vals, _ = load_matrix_eeprom(film_class=film_class)
-    elif source in ("auto", "registry"):
+    if source in ("auto", "registry") and os.path.exists(REGISTRY_PATH):
         vals = load_matrix_registry(film_class=film_class)
+    elif source in ("auto", "eeprom") and os.path.exists(EEPROM_PATH):
+        vals, _ = load_matrix_eeprom(film_class=film_class)
     else:
         raise FileNotFoundError(f"no coefficient source available for {source!r}")
     # The destination is 30 contiguous float32 at this+0x50, so whatever the
@@ -590,6 +684,50 @@ def poly_plane(planes, coeffs, film_class: int = 1):
     for i in range(len(r)):
         r[i], g[i], b[i] = poly_pixel((r[i], g[i], b[i]), coeffs)
     return planes
+
+
+def poly_hwc(rgb, coeffs, film_class: int = 1):
+    """HWC u16/u32 image through ``fcn.1000d880`` (TLB.dll @ 0x1000d880).
+
+    Same maths as ``poly_pixel`` / ``poly_plane``, vectorised for strip
+    decode. Float32 spills match ``fstp dword`` on B²/RG/RB/GB and the
+    final accumulator (see ``poly_pixel`` docstring).
+    """
+    import numpy as np  # local: keep pakon_color importable without numpy
+
+    # TLB.dll @ 0x1000dbe4 / 0x1000dbd8 — unsupported filmClass leaves buffer
+    if film_class not in POLY_CLASSES_COLNEG and film_class != POLY_CLASS_COLREV:
+        return np.asarray(rgb)
+
+    arr = np.asarray(rgb)
+    if arr.ndim != 3 or arr.shape[-1] != 3:
+        raise ValueError("poly_hwc expects (H,W,3)")
+    r = (arr[..., 0].astype(np.int64) & 0xFFFF)  # TLB.dll @ 0x1000d880
+    g = (arr[..., 1].astype(np.int64) & 0xFFFF)
+    b = (arr[..., 2].astype(np.int64) & 0xFFFF)
+    rr = (r * r).astype(np.float64)              # TLB.dll @ 0x1000d95b — stay on x87
+    gg = (g * g).astype(np.float64)              # TLB.dll @ 0x1000d95b
+    # TLB.dll @ 0x1000d96f..0x1000d987 — fstp dword before reuse
+    bb = np.array(b * b, dtype=np.float64).astype(np.float32).astype(np.float64)
+    rg = np.array(r * g, dtype=np.float64).astype(np.float32).astype(np.float64)
+    rb = np.array(r * b, dtype=np.float64).astype(np.float32).astype(np.float64)
+    gb = np.array(g * b, dtype=np.float64).astype(np.float32).astype(np.float64)
+
+    out = np.empty(arr.shape[:2] + (3,), dtype=np.int32)
+    rf = r.astype(np.float64)
+    gf = g.astype(np.float64)
+    bf = b.astype(np.float64)
+    for k in range(3):
+        c = coeffs[10 * k:10 * k + 10]
+        acc = (c[0] * rf + c[1] * gf + c[2] * bf
+               + c[3] * rr + c[4] * gg + c[5] * bb
+               + c[6] * rg + c[7] * rb + c[8] * gb
+               + c[9])                                  # TLB.dll @ 0x1000d9f3
+        # TLB.dll @ 0x1000d9f6 — +0.5 then fstp dword; clamp; _ftol
+        acc = (acc + POLY_HALF).astype(np.float32).astype(np.float64)
+        acc = np.clip(acc, POLY_MIN, POLY_MAX)
+        out[..., k] = acc.astype(np.int32)               # TLB.dll @ 0x1000da47
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -874,6 +1012,35 @@ def verify(data_dir: str, profile_dir: str) -> int:
     c.case("dark and smear both subtract",
            sensor_correct(1000, dark=100, smear_q16=0x8000, acc=200,
                           gain_q16=0x10000), 800)
+    # Whole-line state matters: TLB carries 4*mean(corrected14) into the
+    # following line.  Compare the vector form to the cited scalar MMX order.
+    import numpy as np
+    raw_line = np.array(((1000, 2000, 3000), (500, 600, 700)), dtype=np.uint16)
+    dark_line = np.array(((100, 200, 300), (600, 100, 100)), dtype=np.uint16)
+    smear_line = np.array(((0, 0x8000, 0xffff), (0x4000, 0xffff, 1)),
+                          dtype=np.uint16)
+    gain_line = np.full((2, 3), 0xffff, dtype=np.uint16)
+    corrector = TlbSensorCorrector()
+    first = corrector.correct_line(raw_line, dark_line, smear_line, gain_line)
+    first_scalar = np.array(
+        [[sensor_correct(raw_line[x, ch], dark_line[x, ch], smear_line[x, ch],
+                         gain_line[x, ch], 0) for ch in range(3)]
+         for x in range(2)], dtype=np.uint16)
+    c.case("line #1 vector == scalar MMX order", bool(np.array_equal(first, first_scalar)),
+           True)
+    first_acc = tuple(int(v) for v in (first.astype(np.uint64).sum(axis=0) * 4) // 2)
+    c.case("line #1 next smear accumulator = 4*mean", corrector.accumulator_u16,
+           first_acc)
+    second = corrector.correct_line(raw_line, dark_line, smear_line, gain_line)
+    second_scalar = np.array(
+        [[sensor_correct(raw_line[x, ch], dark_line[x, ch], smear_line[x, ch],
+                         gain_line[x, ch], first_acc[ch]) for ch in range(3)]
+         for x in range(2)], dtype=np.uint16)
+    c.case("line #2 uses previous-line accumulator", bool(np.array_equal(second, second_scalar)),
+           True)
+    c.case("Q18 gain table shifts to Q16", TlbSensorCorrector.gain_q18_to_q16(
+        np.array((0, 4, 0x10000, 0x3ffff), dtype=np.uint32)).tolist(),
+        [0, 1, 0x4000, 0xffff])
     verdicts[1] = c.passed
 
     # ---- 2: the integer density LUT ----------------------------------------

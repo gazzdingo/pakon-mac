@@ -127,6 +127,28 @@ def setshifts_02(
     return _pivot(fos_opening_axes_inverse(y, c1, c2))
 
 
+import ctypes
+import os
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+_LIB_ANSEL = None
+try:
+    _dylib_path = os.path.join(HERE, "libpakon_ansel.dylib")
+    if not os.path.exists(_dylib_path):
+        _dylib_path = os.path.join(HERE, "libpakon_ansel.so")
+    if os.path.exists(_dylib_path):
+        _LIB_ANSEL = ctypes.CDLL(_dylib_path)
+        _LIB_ANSEL.pakon_apply_balance_shifts_c.argtypes = [
+            ctypes.POINTER(ctypes.c_int32),
+            ctypes.POINTER(ctypes.c_int32),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int16),
+        ]
+        _LIB_ANSEL.pakon_apply_balance_shifts_c.restype = None
+except Exception:
+    _LIB_ANSEL = None
+
+
 def apply_balance_shifts(rpd12: np.ndarray, shifts: tuple[int, int, int]) -> np.ndarray:
     """Pakon apply: ``out = clamp(code + shift, 0, 4095)`` per channel.
 
@@ -134,8 +156,20 @@ def apply_balance_shifts(rpd12: np.ndarray, shifts: tuple[int, int, int]) -> np.
     ``applyBalanceShifts`` (setShifts **OUT**, not raw ``+0x3a38`` for
     shipped CN). Host CN default calls this with ``setshifts_12(A, A)``.
     """
-    x = np.asarray(rpd12, dtype=np.int32)
+    x = np.ascontiguousarray(rpd12, dtype=np.int32)
     out = np.empty_like(x)
+    shifts_i16 = (ctypes.c_int16 * 3)(int(shifts[0]), int(shifts[1]), int(shifts[2]))
+
+    if _LIB_ANSEL is not None:
+        num_pixels = x.shape[0] * x.shape[1]
+        _LIB_ANSEL.pakon_apply_balance_shifts_c(
+            x.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
+            ctypes.c_int(num_pixels),
+            shifts_i16,
+        )
+        return out.astype(rpd12.dtype, copy=False)
+
     for c, s in enumerate(shifts):
         out[:, :, c] = np.clip(x[:, :, c] + int(s), 0, MASTER_MAX)
     return out.astype(rpd12.dtype, copy=False)

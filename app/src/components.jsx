@@ -12,10 +12,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { frameUrl, fmtBytes, fmtClock, GATE } from './api';
 
 export const MODES = [
-  ['scan', 'Scan'],
-  ['review', 'Review'],
+  ['review', 'Roll'],
+  ['scan', 'Scanner'],
+  ['config', 'Config'],
   ['export', 'Export'],
-  ['calibrate', 'Calibrate'],
   ['diagnostics', 'Diagnostics'],
 ];
 
@@ -337,7 +337,7 @@ export function Lanes({ exportJob, scanJob, onStopScan }) {
 
 /* ── the roll, along the floor ──────────────────────────────────────────── */
 
-export function Filmstrip({ roll, selected, onSelect, children }) {
+export function Filmstrip({ roll, selected, onSelect, onOpenFraming, onOpenContactSheet, children }) {
   const ref = useRef(null);
   useEffect(() => {
     ref.current?.querySelector(`[data-i="${selected}"]`)?.scrollIntoView({
@@ -358,6 +358,28 @@ export function Filmstrip({ roll, selected, onSelect, children }) {
         <span className="sp" />
         <Chip tone="ok">{accepted} accepted</Chip>
         {rejected ? <Chip>{rejected} rejected</Chip> : null}
+        {onOpenFraming ? (
+          <button
+            type="button"
+            className="action-circle-btn"
+            style={{ width: 28, height: 28 }}
+            onClick={onOpenFraming}
+            title="Fine Framing Alignment"
+          >
+            <svg viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/></svg>
+          </button>
+        ) : null}
+        {onOpenContactSheet ? (
+          <button
+            type="button"
+            className="action-circle-btn"
+            style={{ width: 28, height: 28 }}
+            onClick={onOpenContactSheet}
+            title="Contact Sheet Grid"
+          >
+            <svg viewBox="0 0 24 24"><path d="M4 4h4v4H4V4zm8 0h4v4h-4V4zm8 0h4v4h-4V4zM4 12h4v4H4v-4zm8 0h4v4h-4v-4zm8 0h4v4h-4v-4zM4 20h4v4H4v-4zm8 0h4v4h-4v-4zm8 0h4v4h-4v-4z" fill="currentColor"/></svg>
+          </button>
+        ) : null}
       </div>
       <div className="thumbs" ref={ref} role="listbox" aria-label="Frames in this roll">
         {roll.frames.map((f) => (

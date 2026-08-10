@@ -8,6 +8,9 @@ import { Btn, Chip, Info, Spinner, TopBar, Lanes, useTheme } from './components'
 import Review from './Review';
 import Scan from './Scan';
 import ExportScreen from './Export';
+import ConfigScreen from './Config';
+import FramingModal from './FramingModal';
+import ContactSheetModal from './ContactSheetModal';
 import { Calibration, Diagnostics } from './Info';
 import * as api from './api';
 
@@ -509,6 +512,8 @@ export default function App() {
   const [roll, setRoll] = useState(null);
   const [sel, setSel] = useState(0);
   const [openDlg, setOpenDlg] = useState(false);
+  const [framingOpen, setFramingOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   const [cleanup, setCleanup] = useState(null);
   const [exportJob, setExportJob] = useState(null);
   const [hw, setHw] = useState(null);
@@ -656,6 +661,8 @@ export default function App() {
           onPickRoll={(id) => api.roll(id).then(setRoll)}
           onOpen={() => setOpenDlg(true)}
           onGoExport={() => setMode('export')}
+          onOpenFraming={() => setFramingOpen(true)}
+          onOpenContactSheet={() => setContactOpen(true)}
           machine={[...machine.read, ...machine.unwired]}
         />
       ) : mode === 'scan' ? (
@@ -673,6 +680,8 @@ export default function App() {
           onCancelScan={cancelScan}
           onPickRoll={(id) => api.roll(id).then(setRoll)}
         />
+      ) : mode === 'config' ? (
+        <ConfigScreen boot={boot} hw={hw} />
       ) : mode === 'export' ? (
         <ExportScreen
           roll={roll}
@@ -687,6 +696,21 @@ export default function App() {
       ) : (
         <Calibration boot={boot} />
       )}
+
+      <FramingModal
+        open={framingOpen}
+        onClose={() => setFramingOpen(false)}
+        roll={roll}
+        sel={sel}
+        onStep={setSel}
+      />
+
+      <ContactSheetModal
+        open={contactOpen}
+        onClose={() => setContactOpen(false)}
+        roll={roll}
+        onSelectFrame={setSel}
+      />
 
       <OpenDialog
         open={openDlg}

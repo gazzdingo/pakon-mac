@@ -217,6 +217,8 @@ export default function Review({
   onPickRoll,
   onOpen,
   onGoExport,
+  onOpenFraming,
+  onOpenContactSheet,
   machine,
 }) {
   const [pending, setPending] = useState(null);
@@ -693,7 +695,13 @@ export default function Review({
           onClose={() => setBounds(false)}
         />
       ) : (
-        <Filmstrip roll={roll} selected={sel} onSelect={setSel}>
+        <Filmstrip
+          roll={roll}
+          selected={sel}
+          onSelect={setSel}
+          onOpenFraming={onOpenFraming}
+          onOpenContactSheet={onOpenContactSheet}
+        >
           {lowConf ? (
             <div className="flag" role="status">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

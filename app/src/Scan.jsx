@@ -430,12 +430,30 @@ function StartSheet({ open, hw, next, onClose, onStart }) {
         {/* Restated, not re-asked. These come from the settings rail and are
             what the capture will be decoded as the moment the transport
             stops — the whole reason nobody has to open a file afterwards. */}
-        <div className="rows" style={{ marginBottom: 12, padding: '9px 11px', fontSize: 12 }}>
-          <span className="quiet">
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 12,
+            padding: '9px 11px',
+            fontSize: 12,
+            background: 'var(--soft)',
+            borderRadius: 'var(--r-sm)',
+          }}
+        >
+          <span className="quiet" style={{ flex: 1 }}>
             Decodes as{' '}
             <span className="num">{next?.dx ? next.dx : next?.film_path || 'ColNeg'}</span>
-            {next?.stock ? ` · ${next.stock.name}` : ''} · opens in Roll when it ends
+            {next?.stock ? ` · ${next.stock.name}` : ''} · opens in Roll
           </span>
+          <Info side="left">
+            Unless the DX board reads a code off this roll, which outranks it —
+            a measurement beats a typed setting. It usually reads nothing:{' '}
+            <span className="num">dx_from_sidecar</span> only reports a code that
+            passed parity and was unambiguous, and the decoder has never been
+            validated against a real roll.
+          </Info>
         </div>
 
         {err ? (

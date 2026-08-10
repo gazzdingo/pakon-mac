@@ -87,25 +87,30 @@ export function machineRows(boot, roll, hw, scanJob, calState) {
   const present = hw?.present && hw?.state === 'ready';
   const stale = !scanning && hw?.cached;
   const age = stale ? ' · cached' : '';
-  const sim = !!hw?.simulated;
+  // `unreachable` outranks `simulated`: once the probe has stopped answering,
+  // "simulated" would be a claim about a machine we can no longer see, and the
+  // whole point of this rail is that it does not dress a stale reading as a
+  // live one.
+  const lost = hw?.state === 'unreachable';
+  const sim = !!hw?.simulated && !lost;
   return {
     read: [
       [
         'Scanner USB',
         scanning
           ? 'held by the scan'
-          : sim
-            ? 'simulated'
-            : present
-              ? `0f05:f135${age}`
-              : hw?.state === 'needs_firmware'
-                ? 'no firmware'
-                : hw?.state === 'error'
-                  ? 'not answering'
-                  : hw?.state === 'unreachable'
-                    ? 'unknown'
+          : lost
+            ? 'unknown'
+            : sim
+              ? 'simulated'
+              : present
+                ? `0f05:f135${age}`
+                : hw?.state === 'needs_firmware'
+                  ? 'no firmware'
+                  : hw?.state === 'error'
+                    ? 'not answering'
                     : 'absent',
-        scanning ? 'good' : sim ? 'warn' : present ? 'good' : hw?.present ? 'warn' : 'na',
+        scanning ? 'good' : lost ? 'warn' : sim ? 'warn' : present ? 'good' : hw?.present ? 'warn' : 'na',
         <>
           A scan runs in its own process and owns the handle for its duration, so
           this window can neither probe nor be the thing that fails to let go of
@@ -693,6 +698,7 @@ export default function App() {
             present: false,
             state: 'unreachable',
             lamp: null,
+            simulated: null,
             cached: true,
             hint: `The backend stopped answering the hardware probe: ${e.message || e}`,
           }));
@@ -722,6 +728,7 @@ export default function App() {
         present: false,
         state: 'unreachable',
         lamp: null,
+        simulated: null,
         hint: String(e.message || e),
       }));
     } finally {

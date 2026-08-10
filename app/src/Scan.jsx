@@ -23,6 +23,7 @@ import {
   Rail,
   RailHead,
   Seg,
+  Spinner,
   State,
   Toggle,
 } from './components';
@@ -30,19 +31,37 @@ import * as api from './api';
 
 const PERFS = Array.from({ length: 48 }, (_, i) => i);
 
-/* ── why Scan strip cannot run, in the order the user would hit them ────── */
+/* ── why Scan strip cannot run, in the order the user would hit them ──────
+ *
+ * Each entry carries a `fix`: what the user can do about it from here. Where
+ * that is "look again" the screen offers a live Recheck rather than a disabled
+ * button — the machine being switched on is the single most likely thing to
+ * change between one look and the next, and a button that cannot be pressed
+ * cannot say so. */
 
 function blockedReason(hw, scanJob) {
-  if (!hw) return ['Checking', 'The machine has not been probed yet.'];
-  if (scanJob?.status === 'running') return ['Scanning', 'A scan is already running.'];
-  if (!hw.present) return ['No scanner', 'Nothing at 0f05:f135 on USB.'];
+  if (!hw) return { title: 'Checking', why: 'The machine has not been probed yet.', fix: 'recheck' };
+  if (scanJob?.status === 'running') return { title: 'Scanning', why: 'A scan is already running.', fix: null };
+  if (hw.state === 'unreachable')
+    return { title: 'Backend silent', why: hw.hint || 'The hardware probe stopped answering.', fix: 'recheck' };
+  if (!hw.present)
+    return { title: 'No scanner', why: 'Nothing at 0f05:f135 on USB.', fix: 'recheck' };
   if (hw.state === 'needs_firmware')
-    return ['No firmware', 'Load it with tools/pakon_load.py.'];
+    return { title: 'No firmware', why: 'Load it with tools/pakon_load.py, then recheck.', fix: 'recheck' };
   if (hw.writes_locked)
-    return ['Writes locked', 'tools/WRITES_LOCKED refuses every register write. Lifting it is a deliberate act, and its own file says so.'];
+    return {
+      title: 'Writes locked',
+      why: 'tools/WRITES_LOCKED refuses every register write. Lifting it is a deliberate act, and its own file says so.',
+      fix: 'recheck',
+    };
   if (!hw.calibration)
-    return ['No calibration', 'calibration/README.json is the only record of the exposure the dark and gain tables are valid for.'];
-  if (hw.state !== 'ready') return ['Not answering', hw.hint || ''];
+    return {
+      title: 'No calibration',
+      why: 'calibration/README.json is the only record of the exposure the dark and gain tables are valid for.',
+      fix: null,
+    };
+  if (hw.state !== 'ready')
+    return { title: 'Not answering', why: hw.hint || '', fix: 'recheck' };
   return null;
 }
 
@@ -62,7 +81,58 @@ function Telem({ label, value, tone, info }) {
   );
 }
 
-function Live({ job, onCancel, busy }) {
+/** What happens after the transport stops.
+ *
+ *  The scan is the main path, so a finished scan does not end at a file on
+ *  disk with an instruction to go and open it. When the capture is worth
+ *  decoding the app is already decoding it and this reports progress; when it
+ *  is not, this says why, and offers to decode it anyway rather than deciding
+ *  on the owner's behalf that they may not look. */
+function AfterScan({ job, open, onOpenAnyway, onDismiss }) {
+  if (open && open.status === 'running')
+    return (
+      <div style={{ display: 'grid', gap: 8, justifyItems: 'center', width: '100%', maxWidth: 420 }}>
+        <Spinner>{open.phase || 'Opening'}</Spinner>
+        <div className="bar warnfill" style={{ width: '100%' }}>
+          <i style={{ width: `${(open.progress || 0) * 100}%` }} />
+        </div>
+        <span className="quiet num" style={{ fontSize: 11 }}>{open.message || ''}</span>
+      </div>
+    );
+
+  if (open && (open.status === 'error' || open.error))
+    return (
+      <div style={{ display: 'grid', gap: 10, justifyItems: 'center', maxWidth: '52ch' }}>
+        <span style={{ color: 'var(--danger-ink)', fontSize: 13 }}>Decode failed</span>
+        <span className="num quiet" style={{ fontSize: 11, textAlign: 'center' }}>
+          {open.error || open.message}
+        </span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Btn variant="primary" onClick={onOpenAnyway}>Try again</Btn>
+          <Btn variant="flat" onClick={onDismiss}>Dismiss</Btn>
+        </div>
+      </div>
+    );
+
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      {job.path && !job.openable ? (
+        <>
+          <Btn variant="primary" onClick={onOpenAnyway}>Decode anyway</Btn>
+          <Info side="left">
+            The capture was written, so it can be decoded. It is not opened
+            automatically because the scan did not end cleanly — on a{' '}
+            <span className="num">dark</span> stop the frames past that point are
+            a failed lamp, not photographs.
+          </Info>
+        </>
+      ) : null}
+      <Btn variant="flat" onClick={onDismiss}>Dismiss</Btn>
+    </div>
+  );
+}
+
+function Live({ job, onCancel, busy, open, onOpenAnyway, onDismiss }) {
   const running = job.status === 'running';
   const w = job.window || {};
   const r = job.run || {};
@@ -145,13 +215,27 @@ function Live({ job, onCancel, busy }) {
             {busy ? 'Stopping…' : 'Cancel scan'}
           </Btn>
         ) : (
-          <div style={{ maxWidth: '56ch', textAlign: 'center' }}>
-            <p className="quiet">{job.detail || ''}</p>
+          <div
+            style={{
+              maxWidth: '56ch',
+              textAlign: 'center',
+              display: 'grid',
+              gap: 12,
+              justifyItems: 'center',
+            }}
+          >
+            {job.detail ? <p className="quiet">{job.detail}</p> : null}
             {job.transport_stopped === false ? (
-              <p style={{ color: 'var(--danger-ink)', fontSize: 13, marginTop: 8 }}>
+              <p style={{ color: 'var(--danger-ink)', fontSize: 13 }}>
                 The transport stop was not acknowledged. Power the scanner off.
               </p>
             ) : null}
+            <AfterScan
+              job={job}
+              open={open}
+              onOpenAnyway={onOpenAnyway}
+              onDismiss={onDismiss}
+            />
           </div>
         )}
       </div>
@@ -214,7 +298,7 @@ function Live({ job, onCancel, busy }) {
 
 /* ── the confirm sheet: the last moment before film moves ───────────────── */
 
-function StartSheet({ open, hw, onClose, onStart }) {
+function StartSheet({ open, hw, next, onClose, onStart }) {
   const cal = hw?.calibration;
   const speeds = hw?.limits?.speeds || {};
   const [base] = React.useState(16);
@@ -343,6 +427,17 @@ function StartSheet({ open, hw, onClose, onStart }) {
           </span>
         </div>
 
+        {/* Restated, not re-asked. These come from the settings rail and are
+            what the capture will be decoded as the moment the transport
+            stops — the whole reason nobody has to open a file afterwards. */}
+        <div className="rows" style={{ marginBottom: 12, padding: '9px 11px', fontSize: 12 }}>
+          <span className="quiet">
+            Decodes as{' '}
+            <span className="num">{next?.dx ? next.dx : next?.film_path || 'ColNeg'}</span>
+            {next?.stock ? ` · ${next.stock.name}` : ''} · opens in Roll when it ends
+          </span>
+        </div>
+
         {err ? (
           <div
             style={{
@@ -376,6 +471,10 @@ function StartSheet({ open, hw, onClose, onStart }) {
                   speed: sN,
                   max_seconds: tN,
                   name: name.trim(),
+                  // Carried into the job record, so the capture decodes
+                  // itself with what was chosen here.
+                  film_path: next?.dx ? undefined : (next?.film_path || 'ColNeg'),
+                  dx: next?.dx || undefined,
                   lamp_refresh: refresh ? (hw?.limits?.lamp_refresh_s ?? 20) : 0,
                   lamp_refresh_mode: refresh ? 'full' : 'off',
                 });
@@ -403,10 +502,15 @@ export default function Scan({
   boot,
   machine,
   hw,
+  hwBusy,
   scanJob,
+  autoOpen,
   onOpen,
   onStartScan,
   onCancelScan,
+  onRecheckHw,
+  onDismissScan,
+  onOpenScanResult,
 }) {
   const cal = boot?.calibration?.readme;
   const cfg = cal?.config;
@@ -414,11 +518,47 @@ export default function Scan({
   const [sheet, setSheet] = React.useState(false);
   const [stopping, setStopping] = React.useState(false);
   const blocked = blockedReason(hw, scanJob);
+  const scanning = scanJob?.status === 'running';
   const live = scanJob && (scanJob.status === 'running' || scanJob.kind === 'scan');
+
+  /* What the next scan will be decoded as.
+     This rail is titled Capture settings and until now it fed the Open
+     dialog — changing the film path opened a file picker, which is exactly
+     backwards on the screen whose job is to make a capture. It is the next
+     scan's settings, held here and handed to the scan, which carries them
+     through to the decode. Seeded once from whatever is open so a second roll
+     of the same stock needs no input at all. */
+  const [next, setNext] = React.useState(() => ({
+    film_path: roll?.film_path || 'ColNeg',
+    dx: roll?.dx || '',
+  }));
+  const [stock, setStock] = React.useState(null);
+
+  React.useEffect(() => {
+    const dx = next.dx.trim();
+    if (!dx) return setStock(null);
+    let alive = true;
+    api
+      .lookupFilm(dx)
+      .then((f) => alive && setStock(f.error ? null : f))
+      .catch(() => alive && setStock(null));
+    return () => {
+      alive = false;
+    };
+  }, [next.dx]);
 
   React.useEffect(() => {
     if (scanJob?.status !== 'running') setStopping(false);
   }, [scanJob?.status]);
+
+  /* Base 4 and 8 are not options this screen withholds — they are line
+     lengths the decoder does not accept. `decodable_bases` is the backend's
+     own list, so if that ever grows this control grows with it instead of
+     needing to be remembered. */
+  const bases = hw?.limits?.decodable_bases?.length
+    ? hw.limits.decodable_bases.map(Number)
+    : [16];
+  const speeds = hw?.limits?.speeds || {};
 
   const window6 = roll
     ? roll.frames.slice(
@@ -439,41 +579,51 @@ export default function Scan({
               label="Film path"
               info={
                 <>
-                  No default. A capture carries no DX packets, so the stock is stated by hand and the
-                  decode path refuses to assume colour negative.
+                  What the capture this scan makes will be decoded as. No default is
+                  assumed from the film: a capture carries no DX packets, so the
+                  stock is stated here.
                 </>
               }
             >
               <Seg
                 ariaLabel="Film path"
-                value={roll?.film_path || 'ColNeg'}
+                value={next.film_path}
                 options={[
                   ['ColNeg', 'Colour neg'],
                   ['BnW', 'B&W'],
                   ['POSITIVE', 'Positive'],
                 ]}
-                onChange={() => onOpen()}
+                onChange={(v) => setNext((n) => ({ ...n, film_path: v, dx: '' }))}
               />
             </Field>
 
             <Field
               label="DX"
+              value={stock ? stock.path : next.dx.trim() ? 'no match' : null}
               info={
                 <>
-                  Typed, not read. Captures carry no DX packets, and{' '}
+                  Typed, not read — it overrides the film path above when it
+                  resolves. Captures carry no DX packets, and{' '}
                   <span className="num">tools/dx_decode.py</span> has never been validated against a
                   real roll.
                 </>
               }
             >
-              <div className="inp">
-                {roll?.dx || '—'}
-                <span className="sp" />
-                <span style={{ fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--mute)' }}>
-                  {roll?.stock?.name || roll?.film_path || 'not set'}
-                </span>
-              </div>
+              <input
+                className="inp"
+                value={next.dx}
+                spellCheck={false}
+                placeholder="78-13"
+                onChange={(e) => setNext((n) => ({ ...n, dx: e.target.value }))}
+              />
             </Field>
+
+            {stock ? (
+              <span className="quiet" style={{ fontSize: 12 }}>
+                {stock.name}
+                {stock.iso ? ` · ISO ${stock.iso}` : ''}
+              </span>
+            ) : null}
           </Grp>
 
           <Grp>
@@ -485,19 +635,26 @@ export default function Scan({
                   <b>Base 16 only.</b> The decoder accepts <span className="num">6000</span>-word
                   lines, and the committed calibration was captured at{' '}
                   <span className="num">{cfg?.dpi_base || 'DpiBase16_35'}</span>. Base 4 and 8 need
-                  their own dark and gain references and a decoder that handles their line length.
+                  their own dark and gain references and a decoder that handles their line length,
+                  so they are not offered rather than offered and refused.
                 </>
               }
             >
-              <Seg
-                ariaLabel="Resolution"
-                value="16"
-                options={[
-                  ['4', 'Base 4', true],
-                  ['8', 'Base 8', true],
-                  ['16', 'Base 16'],
-                ]}
-              />
+              {bases.length > 1 ? (
+                <Seg
+                  ariaLabel="Resolution"
+                  value="16"
+                  options={bases.map((b) => [String(b), `Base ${b}`])}
+                />
+              ) : (
+                <div className="inp">
+                  Base {bases[0]}
+                  <span className="sp" />
+                  <span className="num" style={{ fontSize: 11, color: 'var(--mute)' }}>
+                    {speeds[bases[0]] ?? hw?.calibration?.speed ?? '—'}
+                  </span>
+                </div>
+              )}
             </Field>
 
             <Field
@@ -505,64 +662,54 @@ export default function Scan({
               value={hw?.calibration?.speed ?? '—'}
               info={
                 <>
-                  Register <span className="num">0xA5</span>, set when a scan starts. Base 16 is the{' '}
-                  <b>slowest</b> of the three — highest resolution, so the film crawls.{' '}
-                  <span className="num">docs/43</span> has this table inverted; the recovered hive is
-                  the ground truth.
+                  Register <span className="num">0xA5</span>, set when a scan starts, and adjustable
+                  on the confirm sheet. Base 16 is the <b>slowest</b> of the three — highest
+                  resolution, so the film crawls. <span className="num">docs/43</span> has this table
+                  inverted; the recovered hive is the ground truth.
                 </>
               }
             >
-              <Seg
-                ariaLabel="Transport speed"
-                value="16"
-                options={[
-                  ['4', '25802', true],
-                  ['8', '11467', true],
-                  ['16', '5917'],
-                ]}
-              />
+              <div className="inp">
+                {hw?.calibration?.speed ?? '—'}
+                <span className="sp" />
+                <span style={{ fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--mute)' }}>
+                  calibrated
+                </span>
+              </div>
             </Field>
-
-            <Toggle
-              on
-              disabled
-              info={
-                <>
-                  The Ansel preference path. It is a <b>stand-in</b> —{' '}
-                  <span className="num">SETSHIFTS_12_PORTED = False</span> — so its tone is not yet
-                  Kodak's, and it cannot be switched off from here.
-                </>
-              }
-            >
-              Premium colour path
-            </Toggle>
-
-            <Toggle
-              on={false}
-              disabled
-              info={
-                <>
-                  Calibrated on this unit — <span className="num">Ir 4</span>, duty{' '}
-                  <span className="num">0.887</span>, clamp <span className="num">≤ 8</span> — and
-                  never run. A four-channel line is <span className="num">8000</span> words; the
-                  decoder takes <span className="num">6000</span>.
-                </>
-              }
-            >
-              Digital ICE
-            </Toggle>
           </Grp>
 
+          {/* Premium colour path and Digital ICE used to sit here as toggles
+              that could never move: the Ansel path cannot be switched off, and
+              nothing applies ICE to pixels — the decoder takes 6000-word lines
+              and a four-channel line is 8000. Neither is a capture setting, so
+              neither is a control. Both facts are still reported, by the
+              screens that own them: Diagnostics for the colour path
+              (`pipeline ≠ Kodak`), docs/54 §2.5 for ICE. */}
+
           <div className="railfoot">
-            {blocked ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Btn variant="flat big" disabled style={{ flex: 1 }}>
-                  Scan strip
+            {scanning ? (
+              <Btn variant="flat big" disabled title="A scan is already running">
+                Scanning…
+              </Btn>
+            ) : blocked ? (
+              <>
+                {/* Not a disabled Scan button. The reason is on screen and the
+                    action is the one that can change it. */}
+                <Btn
+                  variant={blocked.fix === 'recheck' ? 'primary big' : 'flat big'}
+                  disabled={hwBusy || blocked.fix !== 'recheck'}
+                  onClick={onRecheckHw}
+                >
+                  {hwBusy ? 'Checking…' : 'Recheck scanner'}
                 </Btn>
-                <Info side="left">
-                  <b>{blocked[0]}.</b> {blocked[1]}
-                </Info>
-              </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                  <span className="quiet" style={{ flex: 1, fontSize: 12 }}>
+                    {blocked.title}
+                  </span>
+                  <Info side="left">{blocked.why}</Info>
+                </div>
+              </>
             ) : (
               <Btn variant="primary big" onClick={() => setSheet(true)}>
                 Scan strip
@@ -579,6 +726,9 @@ export default function Scan({
           <Live
             job={scanJob}
             busy={stopping}
+            open={autoOpen}
+            onOpenAnyway={onOpenScanResult}
+            onDismiss={onDismissScan}
             onCancel={() => {
               setStopping(true);
               onCancelScan();
@@ -587,14 +737,14 @@ export default function Scan({
         ) : (
           <main className="scanstage">
             <div className="stagehead">
-              <span className="title">{roll ? roll.name : 'No roll open'}</span>
-              {hw?.state === 'ready' && !hw?.writes_locked ? (
-                <Chip tone="ok" dot>
-                  Scanner ready
+              <span className="title">{roll ? roll.name : 'Ready to scan'}</span>
+              {blocked ? (
+                <Chip tone="warn" dot>
+                  {blocked.title}
                 </Chip>
               ) : (
-                <Chip tone="warn" dot>
-                  {blocked ? blocked[0] : 'Scanner'}
+                <Chip tone="ok" dot>
+                  {hw?.simulated ? 'Simulated scanner' : 'Scanner ready'}
                 </Chip>
               )}
               <span className="sp" />
@@ -663,7 +813,22 @@ export default function Scan({
 
         {/* ── the machine, always answerable ── */}
         <Rail side="r" aria-label="Machine state">
-          <RailHead title="Machine" />
+          {/* No Recheck button during a scan. The child process owns the USB
+              handle and no button may take it away, so the rail says who has
+              it rather than offering a control that would be refused. */}
+          <RailHead title="Machine">
+            {scanning ? (
+              <span className="quiet" style={{ fontSize: 11 }}>held by the scan</span>
+            ) : (
+              <Btn
+                style={{ height: 24, padding: '0 8px', fontSize: 12 }}
+                disabled={hwBusy}
+                onClick={onRecheckHw}
+              >
+                {hwBusy ? 'Checking…' : 'Recheck'}
+              </Btn>
+            )}
+          </RailHead>
 
           <Grp title="Read now">
             <State rows={machine.read} />
@@ -704,6 +869,7 @@ export default function Scan({
       <StartSheet
         open={sheet}
         hw={hw}
+        next={{ ...next, stock }}
         onClose={() => setSheet(false)}
         onStart={onStartScan}
       />

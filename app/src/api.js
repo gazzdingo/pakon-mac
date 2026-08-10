@@ -34,12 +34,25 @@ export const get = (p) => req(p);
 export const post = (p, body) => req(p, { method: 'POST', body: JSON.stringify(body ?? {}) });
 
 export const bootstrap = () => get('/api/app/bootstrap');
-export const hardware = () => get('/api/app/hardware');
+/** `fresh` is the user pressing Recheck: skip the backend's 3 s probe cache.
+ *  It still refuses to probe while a scan owns the USB handle, and says so in
+ *  `recheck_refused` rather than returning a stale answer silently. */
+export const hardware = (fresh) => get(`/api/app/hardware${fresh ? '?fresh=1' : ''}`);
 export const workspace = () => get('/api/app/workspace');
 export const sessionState = () => get('/api/app/session');
 export const rolls = () => get('/api/app/rolls');
 export const roll = (id) => get(`/api/app/roll/${id}`);
 export const diagnostics = () => get('/api/app/diagnostics');
+/** The per-unit calibration store, and — only when there is nothing stored
+ *  yet and no scan is running — whether a first read is possible now.
+ *
+ *  NEVER call this on boot or as part of hardware detection. The scanner's
+ *  EEPROM answers correctly only on the first read after a power cycle, so
+ *  the one good read of a cycle is a resource that can be spent. This
+ *  endpoint does not spend it — `connect_report` is USB enumeration and FX2
+ *  RAM only, no I2C — but the read it reports on does, and the rule is
+ *  cheapest to keep at the call site. User-initiated only. */
+export const calibration = () => get('/api/app/calibration');
 export const job = (id) => get(`/api/app/job/${id}`);
 export const openCapture = (body) => post('/api/app/open', body);
 export const setParams = (id, i, params) => post(`/api/app/roll/${id}/frame/${i}`, { params });

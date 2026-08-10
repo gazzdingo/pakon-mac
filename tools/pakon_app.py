@@ -626,12 +626,28 @@ class ScanSupervisor:
         if mode in scan.LAMP_REFRESH_MODES:
             cmd += ["--lamp-refresh-mode", mode]
 
+        # What the capture this scan is about to make should be decoded as.
+        #
+        # The scan is the main path, so nobody should have to answer "which
+        # film is this" twice — once to start the scan and again to a file
+        # dialog afterwards. It is recorded on the job rather than held in the
+        # window that started it, because the scan outlives that window: a
+        # relaunched app adopting a scan in flight has to be able to finish
+        # the job properly, and that includes knowing how to open the result.
+        #
+        # Not `dx`: the child emits a `dx` event carrying the DX *board's*
+        # reading, and a typed lookup must never be able to overwrite a
+        # measurement under the same name.
+        open_with = {"film_path": (body.get("film_path") or None),
+                     "dx": ((body.get("dx") or "").strip() or None),
+                     "name": name or None}
         S.job_set(jid, kind="scan", status="running", phase="starting",
                   progress=0.0, message="starting the scan process",
                   path=str(out), base=base, max_seconds=seconds,
                   started=time.time(), lamp={}, window={}, run={},
                   bytes=0, lines=0, windows=0, sync_breaks=0,
                   stopped={}, cancellable=True, speed=speed,
+                  open_with=open_with,
                   lamp_refresh={"mode": mode or "full",
                                 "every_s": body.get("lamp_refresh")})
         proc = subprocess.Popen(
@@ -714,6 +730,14 @@ class ScanSupervisor:
         size = out.stat().st_size if out.is_file() else 0
         reason = done.get("reason") or ("killed" if code < 0 else "unknown")
         ok = bool(done.get("ok")) and size > 0
+        lines = int(done.get("lines") or 0)
+        # Whether the capture is worth decoding, decided here so that the one
+        # rule lives in one place. A cancelled scan counts: the film that did
+        # go past the sensor is real and the owner should see it rather than
+        # be told to go and find the file. A scan stopped on DARK does not —
+        # the lamp had failed, so the frames after that point are not
+        # photographs of anything.
+        openable = bool(ok and size and lines)
         # A scan that stopped on DARK is not a failure of this software — it is
         # the software working — but it is not a usable roll either.
         friendly = {
@@ -727,6 +751,13 @@ class ScanSupervisor:
             "size_limit": "Stopped at the size limit.",
             "killed": "The scan process was killed.",
         }.get(reason, reason)
+        # A scan refused before anything moved never emits a `done` event, so
+        # `reason` is "unknown" and the lane read `unknown` — the least useful
+        # word available for the most common outcome there is, a scanner that
+        # is not plugged in. The child's own refusal text is right there.
+        detail = done.get("detail") or err.strip()
+        if reason == "unknown" and detail:
+            friendly = detail.split("\n")[0][:160]
 
         S.job_set(
             jid,
@@ -734,8 +765,9 @@ class ScanSupervisor:
                                                "time_limit", "stalled"))
                    else "error",
             progress=1.0, phase="done", reason=reason, ok=ok,
-            message=friendly, detail=done.get("detail") or err.strip(),
-            bytes=size, lines=done.get("lines", 0),
+            openable=openable,
+            message=friendly, detail=detail,
+            bytes=size, lines=lines,
             windows=done.get("windows", 0),
             sync_breaks=done.get("sync_breaks", 0),
             seconds=done.get("seconds", 0), mib_s=done.get("mib_s", 0),
@@ -809,17 +841,30 @@ _HW_CACHE: dict = {"at": 0.0, "value": None}
 _HW_TTL = 3.0
 
 
-def hardware_state() -> dict:
+def hardware_state(fresh: bool = False) -> dict:
     """One place the UI can ask what the machine is, without writing to it.
 
     Two guards. While a scan is running the child process owns the USB
     interface, so this must not try to claim it — it reports the last known
     state instead. And the probe is cached briefly, because several screens ask
     for it and each live probe is a USB round trip.
+
+    ``fresh`` is the user pressing Recheck: it skips the cache but not the
+    scan-in-progress guard, because no button may take the USB handle away
+    from a running scan. Asked during a scan it says so — ``cached`` stays
+    true and ``recheck_refused`` explains why — rather than quietly returning
+    a stale answer to someone who just asked for a current one.
+
+    The polled path is deliberately cheap and the on-demand path deliberately
+    is not: a scanner that was switched off ten seconds ago should show as
+    gone within one poll, and someone who has just plugged one in should not
+    have to wait for one.
     """
     running = SCAN.running()
     now = time.time()
-    if running or (_HW_CACHE["value"] and now - _HW_CACHE["at"] < _HW_TTL):
+    warm = bool(_HW_CACHE["value"]) and now - _HW_CACHE["at"] < _HW_TTL
+    refused = fresh and running
+    if running or (warm and not fresh):
         p = dict(_HW_CACHE["value"] or {"present": False, "state": "unknown",
                                         "hint": "not probed yet"})
         p["cached"] = True
@@ -830,6 +875,11 @@ def hardware_state() -> dict:
             p = {"present": False, "state": "error", "hint": str(e)}
         p["cached"] = False
         _HW_CACHE.update(at=now, value=dict(p))
+    p["probed_at"] = _HW_CACHE["at"] or None
+    p["age_s"] = round(now - _HW_CACHE["at"], 2) if _HW_CACHE["at"] else None
+    if refused:
+        p["recheck_refused"] = ("a scan owns the USB interface; the machine "
+                                "cannot be probed until it ends")
     p["scan_running"] = running
     p["scan_job"] = SCAN.current()
     p["limits"] = {
@@ -972,7 +1022,8 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
             })
 
         if route == "hardware":
-            return _json(self, hardware_state())
+            return _json(self, hardware_state(
+                fresh=(q.get("fresh") or ["0"])[0] not in ("0", "", "false")))
 
         if route == "calibration":
             return _json(self, calibration_state())
@@ -1322,21 +1373,49 @@ def edit_boundary(roll, body: dict) -> dict:
 
 
 def purge(body: dict) -> dict:
-    """Delete workspace directories. Never touches sidecars or exports."""
+    """Delete workspace directories. Never touches sidecars or exports.
+
+    This is the only delete in the application, and the quit path calls it
+    with ``all``. What it must never be able to reach is calibration: those
+    tables are per-unit, they exist nowhere else, and on this machine a
+    re-read is not always available to replace them. Two things keep that
+    true — the calibration store is a different tree entirely
+    (``Application Support`` versus this ``Caches`` workspace) and
+    ``calib_store`` has no delete path at all, being append-only with its
+    saved images chmod 0444.
+
+    Neither of those is checked here, so this checks it: every path is
+    resolved and proven to sit under the workspace before anything is
+    removed. A name that escapes is skipped and reported rather than
+    deleted. The cost is a stat; the thing it makes impossible is
+    unrecoverable.
+    """
     ids = body.get("ids")
     if body.get("all"):
         ids = [d.name for d in WORKSPACE.glob("*") if d.is_dir()]
     freed = 0
+    refused: list[str] = []
+    root = WORKSPACE.resolve()
     for rid in ids or []:
         d = WORKSPACE / rid
-        if not d.is_dir() or ".." in rid or "/" in rid:
+        if not d.is_dir() or ".." in rid or "/" in rid or "\\" in rid:
+            continue
+        try:
+            if d.resolve().parent != root:
+                refused.append(rid)
+                continue
+        except OSError:
+            refused.append(rid)
             continue
         freed += dir_size(d)
         with S.lock:
             S.rolls.pop(rid, None)
         S.cache_drop(f"{rid}:")
         shutil.rmtree(d, ignore_errors=True)
-    return {"freed": freed, "workspace": workspace_state()}
+    out = {"freed": freed, "workspace": workspace_state()}
+    if refused:
+        out["refused"] = refused
+    return out
 
 
 def calibration_info() -> dict:

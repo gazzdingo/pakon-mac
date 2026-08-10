@@ -219,6 +219,10 @@ export default function Review({
   onGoExport,
   onOpenFraming,
   onOpenContactSheet,
+  hw,
+  hwBusy,
+  onRecheckHw,
+  onGoScan,
   machine,
 }) {
   const [pending, setPending] = useState(null);
@@ -315,12 +319,36 @@ export default function Review({
   }, [roll, sel, params, chan, clipboard, commit, setSel]);
 
   if (!roll) {
+    /* This is the screen the app lands on when there is no scanner, so it has
+       to answer the question that puts someone here: where is my scanner. It
+       says what is missing and offers to look again, rather than leaving the
+       absence to be inferred from a Scan tab nobody was sent to. */
+    const ready = hw?.present && hw?.state === 'ready' && !hw?.writes_locked;
+    const missing = !hw
+      ? 'Not probed yet'
+      : hw.state === 'unreachable'
+        ? 'Hardware probe not answering'
+        : !hw.present
+          ? 'No scanner on USB'
+          : hw.state === 'needs_firmware'
+            ? 'Scanner present, firmware not loaded'
+            : hw.writes_locked
+              ? 'Writes locked'
+              : hw.state !== 'ready'
+                ? 'Scanner not answering'
+                : null;
+
     return (
       <div className="body" style={{ gridTemplateColumns: '280px minmax(0,1fr)' }}>
         <Rail side="l">
           <RailHead title="Rolls" />
           <div className="railfoot">
-            <Btn variant="primary big" onClick={onOpen}>
+            {ready ? (
+              <Btn variant="primary big" onClick={onGoScan}>
+                Scan strip
+              </Btn>
+            ) : null}
+            <Btn variant={ready ? 'flat big' : 'primary big'} onClick={onOpen}>
               Open capture…
             </Btn>
           </div>
@@ -328,6 +356,21 @@ export default function Review({
         <div className="stage" style={{ flexDirection: 'column', gap: 14 }}>
           <span className="title">No roll open</span>
           <span className="quiet">Frames are rendered from a capture on demand.</span>
+          {missing ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Chip tone="warn" dot>
+                {missing}
+              </Chip>
+              <Btn
+                style={{ height: 24, padding: '0 8px', fontSize: 12 }}
+                disabled={hwBusy}
+                onClick={onRecheckHw}
+              >
+                {hwBusy ? 'Checking…' : 'Recheck'}
+              </Btn>
+              {hw?.hint ? <Info side="left">{hw.hint}</Info> : null}
+            </div>
+          ) : null}
         </div>
       </div>
     );

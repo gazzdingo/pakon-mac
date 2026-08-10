@@ -25,6 +25,15 @@ This project includes two separate imaging pipelines for processing the raw scan
 1. **Python Pipeline**: The original research and reference implementation (`tools/pakon_render.py`). Uses NumPy for processing.
 2. **Go Pipeline**: The newer, production-oriented implementation (`analysis/pipeline/`). This is significantly faster than the Python version due to being a compiled language with better multi-threading and memory management for heavy image operations.
 
+## Hardware Backups & Repair (`backups/`)
+
+This repository contains raw hardware dumps from a Pakon scanner in the `backups/` folder. These are preserved here for anyone attempting to repair a bricked scanner:
+- **`eeprom-i2c/`**: Dumps of the I2C EEPROM chips. `eeprom_52.bin` contains the irreplaceable per-unit optical/motor calibration data, while `eeprom_51.bin` holds the FX2 boot personality.
+- **`u11-picl/`**: PIC18 firmware dumps of the U11 Light Control chip. Critically, this contains a real, un-patched Kodak factory bootloader.
+- **`u34-picm/`**: PIC18 firmware dumps of the U34 Motor Control chip. 
+
+*See the `README.md` inside each subfolder for exact memory maps, SHA256 checksums, and flashing notes.*
+
 The Windows kernel drivers (`F235Ldr.sys`, `F235Lib.sys`, `F135usb2.sys`) are
 generic USB plumbing — a firmware loader and a bulk-pipe passthrough. None of
 the scanner logic lives in kernel space; it all lives in userspace DLLs

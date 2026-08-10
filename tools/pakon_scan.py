@@ -1619,6 +1619,35 @@ def marker_clear() -> None:
         pass
 
 
+def marker_should_clear(stopped: dict) -> bool:
+    """May the in-flight marker be removed, given what the stop achieved?
+
+    ONE RULE, IN ONE PLACE, BECAUSE THREE COPIES OF IT DISAGREED. ``run_scan``
+    keeps the marker when the transport stop was not acknowledged -- that is
+    the module docstring's "the next process to start cleans up" guarantee, and
+    it is the only thing that makes a failed stop get retried. The recovery
+    paths did the opposite: ``emergency_stop()`` followed by an unconditional
+    ``marker_clear()``. So when a recovery exhausted its six attempts and
+    stopped nothing, the marker was deleted anyway and no process would ever
+    try again -- the one situation the marker exists for.
+
+    Two things license removal:
+
+      ``motor``   the board acknowledged the stop. The machine is stopped.
+      ``absent``  the scanner is not on the bus at all, so there is nothing
+                  left to stop and a marker would be retried forever.
+    """
+    return bool(stopped.get("motor") or stopped.get("absent"))
+
+
+def marker_clear_if_stopped(stopped: dict) -> bool:
+    """Apply :func:`marker_should_clear`. Returns whether it was removed."""
+    if not marker_should_clear(stopped):
+        return False
+    marker_clear()
+    return True
+
+
 def check_stale(force: bool = False) -> dict:
     """A marker with no live owner means a scan died without a confirmed stop.
 
@@ -1642,8 +1671,12 @@ def check_stale(force: bool = False) -> dict:
     if alive and not force:
         return {"stale": False, "owner_pid": pid, "running": True}
     out = emergency_stop()
-    marker_clear()
-    return {"stale": True, "owner_pid": pid, "stopped": out, "marker": info}
+    # Only if it worked. A recovery that stopped nothing has to leave the
+    # marker behind, or the next process has no reason to try.
+    cleared = marker_clear_if_stopped(out)
+    return {"stale": True, "owner_pid": pid, "stopped": out, "marker": info,
+            "marker_cleared": cleared,
+            "retry_pending": not cleared}
 
 
 # --------------------------------------------------------------------------
@@ -2122,8 +2155,11 @@ def run_scan(out_path: str | Path,
             # short still produced a capture, and it is still the only record of
             # the speed it was taken at.
             res.metadata = write_capture_metadata(out, cfg, res, g.describe())
-        if res.stopped.get("motor") or dry_run or not started_motor:
+        # Nothing was ever commanded to move, or nothing was ever sent at all.
+        if dry_run or not started_motor:
             marker_clear()
+        elif marker_clear_if_stopped(res.stopped):
+            pass
         else:
             log("warn", message="the transport stop was NOT acknowledged; "
                                 "leaving the in-flight marker so the next "
@@ -2346,9 +2382,12 @@ def cmd_run(a) -> int:
 
 def cmd_stop(_a) -> int:
     out = emergency_stop()
-    marker_clear()
+    # Same rule as run_scan's finally and check_stale: a stop that was not
+    # acknowledged leaves the marker, so the next process retries it.
+    out["marker_cleared"] = marker_clear_if_stopped(out)
+    out["retry_pending"] = not out["marker_cleared"]
     print(json.dumps(out, indent=2))
-    return 0 if out.get("motor") or out.get("absent") else 1
+    return 0 if marker_should_clear(out) else 1
 
 
 def cmd_sensors(a) -> int:
@@ -2752,6 +2791,23 @@ def _selftest_logic() -> int:
     check("a recovery stop sends the 0x98 off-mask on a link that never "
           "disarmed anything", OFF98 in recovery.sent, True)
 
+    # ---- the marker survives a stop that did not work ----
+    #
+    # check_stale, `pakon_scan.py stop` and the app's post-mortem all used to
+    # delete the marker unconditionally, so a recovery that exhausted its six
+    # attempts and stopped nothing left no reason for anything to try again.
+    check("an acknowledged stop releases the marker",
+          marker_should_clear({"motor": True, "lamp": True}), True)
+    check("a stop that reached nothing keeps it",
+          marker_should_clear({"motor": False, "lamp": False,
+                               "errors": ["could not open the scanner"]}),
+          False)
+    check("...even when the lamp went off",
+          marker_should_clear({"motor": False, "lamp": True}), False)
+    check("a scanner that is not on the bus releases it, or it is retried "
+          "forever", marker_should_clear({"motor": False, "absent": True}),
+          True)
+
     # The decoded interval, end to end through pakon_commands.
     check("watchdog is ten seconds", round(pc.DX_WATCHDOG_S, 3), 10.0)
     check("0x98 both on", pc.dx_illuminator().hex(" "), "02 04 40 01 98 03")
@@ -2948,6 +3004,32 @@ def cmd_selftest(a) -> int:
             ok = False
         print("      pakon_app calls this at startup, so a crash mid-scan "
               "cannot leave the transport running past the next launch")
+
+        # ...and the other half of that: a recovery that could NOT stop the
+        # machine must leave the marker behind. Deleting it there is the one
+        # case where nothing ever retries, so it is run rather than reasoned
+        # about. The stop is replaced wholesale because the simulated scanner
+        # acknowledges everything and there is no hardware to fail against.
+        marker_write({"path": "selftest-failed-stop", "max_seconds": 1})
+        _real_stop = globals()["emergency_stop"]
+        globals()["emergency_stop"] = lambda *a, **k: {
+            "motor": False, "lamp": False, "acquire": False, "attempts": 6,
+            "errors": ["selftest: the scanner could not be opened to stop it"]}
+        try:
+            st2 = check_stale(force=True)
+        finally:
+            globals()["emergency_stop"] = _real_stop
+        kept = MARKER.is_file()
+        good2 = kept and st2.get("retry_pending") and not st2.get("marker_cleared")
+        print(f"  {'failed-stop-retries':<22} {'ok   ' if good2 else 'FAIL '} "
+              f"a recovery that stopped nothing leaves the marker for the next "
+              f"process (marker kept={kept}, "
+              f"retry_pending={st2.get('retry_pending')})")
+        if not good2:
+            ok = False
+        print("      deleting it here was the one failure with no second "
+              "chance: transport possibly running, stop failed, marker gone")
+        marker_clear()
     finally:
         os.environ.pop(ENV_SIMULATE, None)
         os.environ.pop(ENV_TRACE, None)

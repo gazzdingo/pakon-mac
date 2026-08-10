@@ -202,7 +202,7 @@ func (p *ColorProfile) ApplyMath(r, g, b float32) (float32, float32, float32) {
 	return finalR, finalG, finalB
 }
 
-func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, srgb *IccMft2, model string, coeffs []float32, band3 *ThreeBandLut) error {
+func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, srgb *IccMft2, model string, coeffs []float32, band3 *ThreeBandLut, sel *FilmSelection) error {
 	f, err := os.Open(inputPath)
 	if err != nil {
 		return err
@@ -316,16 +316,18 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 		}
 	}
 	
-	// Kodak Gold 400 (DX code 96) SBA parameters from sba-CN-default-96-1.dpi
-	fpo := [3]int{879, 1250, 1386} // Film Printing Offset (orange-mask aim density)
-	fpa := [3]int{-75, -50, -25}   // Film Preference Adjustment (Kodak Gold 400 specific)
+	// SBA preference fields come from the dpi that sba.map selected for this
+	// DX — nothing film-specific is hardcoded here.
+	//
 	// nbp is neutralBalancePoint, not a button count. It was 18 here, which
 	// flipped the sign of every preference shift: lim46 = round(nbp*sqrt3)
 	// came out 31 instead of 2685, so sPrime = lim46 - Y went negative.
 	// tools/ansel/pakon_sba_preference.py (PREFERENCE_SHIFTS_PORTED, docs/49)
 	// passes the dpi's neutralBalancePoint and yields prefA (746, 350, 189).
-	nbp := 1550 // neutralBalancePoint
-	nb  := 130  // neutralButton
+	fpo := sel.Sba.Fpo
+	fpa := sel.Sba.Fpa
+	nbp := sel.Sba.NeutralBalancePoint
+	nb := sel.Sba.NeutralButton
 
 	// --- F-135 negative -> positive -------------------------------------
 	// PROVENANCE: F135InvertPorted is false. Every table and constant below
@@ -355,7 +357,8 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	// -setshifts is what lets the SBA stage below do its documented job: carry
 	// the frame's measured base onto the DPI's fpo aim, without any value
 	// crossing zero and being clamped away.
-	prefA := PreferenceShiftsFromDpiFields(fpo, fpa, nbp, nb, -16.0, 16.0, 0)
+	prefA := PreferenceShiftsFromDpiFields(fpo, fpa, nbp, nb,
+		sel.Sba.NeutralUnderConstraint, sel.Sba.NeutralOverConstraint, sel.Sba.Pcls)
 	setshiftsOut := SetShifts12(prefA, prefA, band3.Planar, band3.NumLut)
 
 	if model == "f135" {
@@ -442,7 +445,7 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	// shasta.map selects for CN-Premium).
 	shasted := fugcOut
 	if model == "f135" {
-		shasted = ShastaToneRpd(fugcOut, ShastaRpdParams())
+		shasted = ShastaToneRpd(fugcOut, sel.ShastaParams())
 	}
 
 	var sum [3]float64
@@ -491,6 +494,11 @@ func main() {
 	modelFlag := flag.String("model", "f135", "Pipeline model: f135 (polynomial) or f235 (matrix/LUT)")
 	coeffsFlag := flag.String("coeffs", "/Users/guy/www/pakon-mac/research/windows-registry/pakon_registry_full.txt", "Path to the registry .txt or EEPROM file containing coefficients (for f135)")
 	deskewFlag := flag.String("ccd-deskew", "8,0,-8", "Trilinear CCD row spacing in scan lines, R,G,B. \"0,0,0\" disables.")
+	dxFlag := flag.String("dx", "96-1", "DX film product PART1[-PART2], e.g. 96-1 (Kodak Gold/UltraMax 400), 82-4, 78-13")
+	isoFlag := flag.Int("iso", 400, "Film speed, used by fugc-lutMap.map's film→contrast table")
+	anselPathFlag := flag.String("ansel-path", "CN-Premium", "Ansel path: CN-Premium, CN-Fps, DC-Premium")
+	sourceTypeFlag := flag.Int("source-type", 1, "Ansel sourceType (1 = ANS_NEGATIVE_35, per sba.map)")
+	anselRootFlag := flag.String("ansel-root", "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/anselinstalldir/dataPathItems", "anselinstalldir/dataPathItems")
 	flag.Parse()
 
 	if parts := strings.Split(*deskewFlag, ","); len(parts) == 3 {
@@ -512,13 +520,21 @@ func main() {
 	inputPath := args[0]
 	outputPath := args[1]
 
+	items := *anselRootFlag
 	lutPath := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/Config/ColorCorrection/_ClientColNegLut.txt"
 	matPath := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/Config/ColorCorrection/_ClientColNegMat.txt"
-	fugcPath := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/anselinstalldir/dataPathItems/fugc/fugc-generic0225.lut"
-	rpd2pcsPath := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/anselinstalldir/dataPathItems/profile/Rpd2Pcs_HR200_QS_v5s10.pf"
-	srgbPath := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/anselinstalldir/dataPathItems/profile/Srgb_v2.pf"
-	sraPath := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/anselinstalldir/dataPathItems/common/common-sraFwdLut-metric-rom12.lut"
-	band3Path := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/anselinstalldir/dataPathItems/common/luts6_postROMM_equalRGBshort.lut"
+	rpd2pcsPath := items + "/profile/Rpd2Pcs_HR200_QS_v5s10.pf"
+	srgbPath := items + "/profile/Srgb_v2.pf"
+	sraPath := items + "/common/common-sraFwdLut-metric-rom12.lut"
+	band3Path := items + "/common/luts6_postROMM_equalRGBshort.lut"
+
+	// --- Film selection, the way the vendor's .map files do it -----------
+	sel, err := SelectFilm(items, *dxFlag, *isoFlag, *anselPathFlag, *sourceTypeFlag)
+	if err != nil {
+		log.Fatalf("Film selection: %v", err)
+	}
+	sel.Print()
+	fugcPath := items + "/fugc/" + sel.FugcLut
 
 	profile, err := LoadProfile(lutPath, matPath, fugcPath, sraPath)
 	if err != nil {
@@ -548,7 +564,7 @@ func main() {
 		log.Fatalf("Error loading 3band lut: %v", err)
 	}
 	
-	err = processImage(inputPath, outputPath, profile, rpd2pcs, srgb, *modelFlag, coeffs, band3)
+	err = processImage(inputPath, outputPath, profile, rpd2pcs, srgb, *modelFlag, coeffs, band3, sel)
 	if err != nil {
 		log.Fatalf("Failed to process image: %v", err)
 	}

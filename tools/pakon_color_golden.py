@@ -21,6 +21,8 @@ Requires the vendor DLL, which is not in the repo:
     ./pakon_color_golden.py term-order
     ./pakon_color_golden.py vectors
     ./pakon_color_golden.py random --count 4000
+    ./pakon_color_golden.py handoff   # Ansel handoff stand-in (docs/58 §3.5)
+    ./pakon_color_golden.py dmin-prime  # TLB AddScene dmin poly @ 0x10034b9b
 """
 from __future__ import annotations
 
@@ -99,14 +101,23 @@ class PolyGolden:
         self.uc.mem_write(code_at, code)
         self.uc.emu_start(code_at, code_at + len(code), count=1)
 
-    def run(self, coeffs, pixels, film_class: int = 1):
-        """coeffs: 30 floats, row-major 3x10. pixels: [(r,g,b), ...] 14-bit."""
+    def run(self, coeffs, pixels, film_class: int = 1,
+            width: int | None = None, height: int = 1):
+        """coeffs: 30 floats, row-major 3x10. pixels: [(r,g,b), ...] 14-bit.
+
+        Layout matches TLB.dll @ 0x1000d8ce… — planar R|G|B of ``width*height``
+        uint16 words. Default ``width=len(pixels), height=1``.
+        """
         if len(coeffs) != 30:
             raise ValueError("need exactly 30 coefficients")
         off = MATRIX_COLREV if film_class == 2 else MATRIX_COLNEG
         self.uc.mem_write(THIS_OBJ + off, struct.pack("<30f", *coeffs))
 
         n = len(pixels)
+        w = int(width) if width is not None else n
+        h = int(height)
+        if w * h != n:
+            raise ValueError(f"width*height ({w}*{h}) != len(pixels) ({n})")
         planes = [bytearray(), bytearray(), bytearray()]
         for px in pixels:
             for c in range(3):
@@ -114,7 +125,8 @@ class PolyGolden:
         self.uc.mem_write(IMAGE_BUF, bytes(planes[0] + planes[1] + planes[2]))
 
         # thiscall, ret 0x14: (unused, image, filmClass, width, height)
-        args = (0, IMAGE_BUF, film_class, n, 1)
+        # TLB.dll @ 0x1000d880
+        args = (0, IMAGE_BUF, film_class, w, h)
         esp = STACK_BASE + STACK_SIZE - 0x2000
         self._set_fpu_control_word()
         # arg1 lowest: [ret][arg1][arg2]... -- not reversed
@@ -214,6 +226,131 @@ def cmd_random(g: PolyGolden, count: int, seed: int) -> int:
     return 0 if not bad else 1
 
 
+def cmd_handoff(g: PolyGolden, width: int, height: int, seed: int) -> int:
+    """Ansel handoff stand-in (docs/58 §3.5 residual) — deferred Wine dump.
+
+    Control flow after stage 2 on F-135 ColNeg (docs/58 §1 / §7):
+
+        fcn.1000d880 poly → rotate → PIAnsel*  (no dens LUT)
+
+    Wine/Frida ``PIAnselAddScene`` sample dump is parked for later (macOS
+    attach to Wine PE32 failed; use Parallels when convenient). Until then
+    this golden is the bit-exact close of the *same claim for strip pixels*:
+    the planar buffer leaving ``TLB.dll:fcn.1000d880`` matches host
+    ``poly_hwc`` (decode/render feed Ansel from that).
+    """
+    try:
+        import numpy as np
+    except ImportError:                                         # pragma: no cover
+        print("need numpy for handoff (poly_hwc)", file=sys.stderr)
+        return 2
+
+    rng = random.Random(seed)
+    n = width * height
+    pixels = [(rng.randrange(16384), rng.randrange(16384), rng.randrange(16384))
+              for _ in range(n)]
+    # corners on first few slots so clamp paths are covered in-plane
+    for i, px in enumerate(
+            [(0, 0, 0), (16383, 16383, 16383), (1, 8192, 16383),
+             (16383, 0, 0), (0, 16383, 0)]):
+        if i < n:
+            pixels[i] = px
+
+    coeffs = pakon_color.load_unit_matrix()
+    print(f"handoff: Unicorn fcn.1000d880 planar {width}x{height} "
+          f"vs pakon_color.poly_hwc (film_class=1)")
+    print(f"  coeffs diag {coeffs[0]:.6f} {coeffs[11]:.6f} {coeffs[22]:.6f}")
+
+    # TLB.dll @ 0x1000d880 — width×height planar in place
+    emu = g.run(coeffs, pixels, film_class=1, width=width, height=height)
+
+    hwc = np.zeros((height, width, 3), dtype=np.uint16)
+    for i, (r, g, b) in enumerate(pixels):
+        y, x = divmod(i, width)
+        hwc[y, x] = (r, g, b)
+    host = pakon_color.poly_hwc(hwc, coeffs, film_class=1)
+
+    bad = 0
+    for i, got in enumerate(emu):
+        y, x = divmod(i, width)
+        ours = tuple(int(v) for v in host[y, x])
+        if got != ours:
+            bad += 1
+            if bad <= 8:
+                print(f"  [{x},{y}] raw={pixels[i]} emu={got} poly_hwc={ours}")
+    if bad > 8:
+        print(f"  ... and {bad - 8} more")
+    print(f"  => {bad} mismatches out of {n}")
+    if bad == 0:
+        print("  PASS — post-poly planar ≡ poly_hwc "
+              "(Wine AddScene dump still deferred)")
+        return 0
+    print("  FAIL — host handoff does not match vendor stage-2 buffer")
+    return 1
+
+
+def cmd_dmin_prime(g: PolyGolden, count: int, seed: int) -> int:
+    """F-135 AddScene/dmin ColNeg prime — Unicorn vs host (docs/58 §7).
+
+    Roll driver calls ``fcn.1000d880`` @ ``TLB.dll:0x10034b9b`` on the
+    seeded frame dmin words before packing the AddScene desc. Host port:
+    ``pakon_scene_context.addscene_colneg_remap_dmin_rgb_f135``.
+    """
+    import sys
+    from pathlib import Path
+
+    ansel = Path(__file__).resolve().parent / "ansel"
+    if str(ansel) not in sys.path:
+        sys.path.insert(0, str(ansel))
+    import pakon_scene_context as sc  # noqa: E402
+
+    rng = random.Random(seed)
+    coeffs = pakon_color.load_unit_matrix()
+    pixels = [(rng.randrange(16384), rng.randrange(16384), rng.randrange(16384))
+              for _ in range(count)]
+    pixels += [(0, 0, 0), (16383, 16383, 16383), (100, 200, 300),
+               (8000, 4000, 12000), (1, 1, 1)]
+
+    print(f"dmin-prime: Unicorn fcn.1000d880 vs "
+          f"addscene_colneg_remap_dmin_rgb_f135 ({len(pixels)} pixels)")
+    print(f"  cite TLB.dll @ {sc.TLB_ADDSCENE_POLY_PRIME:#010x} → "
+          f"{sc.TLB_COLOR_CORRECT_POLY:#010x}")
+    print(f"  ADDSCENE_COLNEG_REMAP_F135_PORTED="
+          f"{sc.ADDSCENE_COLNEG_REMAP_F135_PORTED}")
+
+    emu = g.run(coeffs, pixels, film_class=1)
+    bad = 0
+    for px, got in zip(pixels, emu):
+        # same leaf the roll driver feeds after seed from +0x6cac
+        host = sc.addscene_colneg_remap_dmin_rgb_f135(*px, coeffs)
+        if got != host:
+            bad += 1
+            if bad <= 8:
+                print(f"  {px}: emu={got} host={host}")
+    if bad > 8:
+        print(f"  ... and {bad - 8} more")
+    print(f"  => {bad} mismatches out of {len(pixels)}")
+    if bad:
+        return 1
+
+    # compose: frame seed → f135 remap → desc pack
+    fr = (1234, 2345, 3456)
+    remapped = sc.addscene_dmin_rgb_from_frame(*fr, model="f135", coeffs=coeffs)
+    expect = sc.addscene_colneg_remap_dmin_rgb_f135(*fr, coeffs)
+    ok = remapped == expect == g.run(coeffs, [fr])[0]
+    print(f"  compose seed→f135→poly: {fr} → {remapped} "
+          f"{'OK' if ok else 'FAIL'}")
+    if not ok:
+        return 1
+    skipped = sc.addscene_dmin_rgb_from_frame(*fr, film_flags=2, model="f135")
+    ok = skipped == fr
+    print(f"  ColRev bit skips poly: {skipped} {'OK' if ok else 'FAIL'}")
+    if not ok:
+        return 1
+    print("  PASS — F-135 AddScene dmin prime matches Unicorn poly")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -225,6 +362,18 @@ def main() -> int:
     r = sub.add_parser("random", help="fuzz Python against the emulator")
     r.add_argument("--count", type=int, default=2000)
     r.add_argument("--seed", type=int, default=20260807)
+    h = sub.add_parser(
+        "handoff",
+        help="Ansel residual: Unicorn post-poly planar ≡ poly_hwc "
+             "(Wine AddScene dump deferred)")
+    h.add_argument("--width", type=int, default=64)
+    h.add_argument("--height", type=int, default=48)
+    h.add_argument("--seed", type=int, default=20260808)
+    d = sub.add_parser(
+        "dmin-prime",
+        help="F-135 AddScene dmin poly prime @ TLB 0x10034b9b")
+    d.add_argument("--count", type=int, default=500)
+    d.add_argument("--seed", type=int, default=20260808)
     args = ap.parse_args()
 
     if not os.path.exists(args.dll):
@@ -237,6 +386,10 @@ def main() -> int:
         return cmd_term_order(g)
     if args.cmd == "vectors":
         return cmd_vectors(g)
+    if args.cmd == "handoff":
+        return cmd_handoff(g, args.width, args.height, args.seed)
+    if args.cmd == "dmin-prime":
+        return cmd_dmin_prime(g, args.count, args.seed)
     return cmd_random(g, args.count, args.seed)
 
 

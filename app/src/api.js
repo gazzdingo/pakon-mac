@@ -57,8 +57,24 @@ export const job = (id) => get(`/api/app/job/${id}`);
 export const openCapture = (body) => post('/api/app/open', body);
 export const setParams = (id, i, params) => post(`/api/app/roll/${id}/frame/${i}`, { params });
 export const resetFrame = (id, i) => post(`/api/app/roll/${id}/frame/${i}`, { reset: true });
-export const applyToRoll = (id, from, keys) =>
+/** Copy one frame's corrections onto the whole roll. Two calls, never one.
+ *
+ *  Without `confirm` the backend does not act: it returns a `needs_confirm`
+ *  payload naming what would be lost — how many frames change and which of
+ *  them already carry hand adjustments. That payload is NOT a roll (the roll
+ *  is nested under `.roll`), and treating it as one is what used to blank the
+ *  window: `roll.frames.find(...)` on a payload with no `frames`.
+ *
+ *  So the plan is a distinct call with a distinct return, and applying is the
+ *  second call with `confirm: true`. Undo is taken by the backend first. */
+export const planApplyToRoll = (id, from, keys) =>
   post(`/api/app/roll/${id}/apply-to-roll`, { from, keys });
+export const applyToRoll = (id, from, keys) =>
+  post(`/api/app/roll/${id}/apply-to-roll`, { from, keys, confirm: true });
+/** Undo the last destructive edit — apply-to-roll, a boundary move, a
+ *  redetect, a frame reset. In-memory and per session; `roll.undo` says
+ *  whether there is anything to undo and what it was. */
+export const undoRoll = (id) => post(`/api/app/roll/${id}/undo`, {});
 export const boundary = (id, body) => post(`/api/app/roll/${id}/boundary`, body);
 export const renameRoll = (id, name) => post(`/api/app/roll/${id}/rename`, { name });
 export const closeRoll = (id) => post(`/api/app/roll/${id}/close`, {});

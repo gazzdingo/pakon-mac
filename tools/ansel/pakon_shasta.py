@@ -182,7 +182,9 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
   Live Laplacian ``collectData`` leaf ``0x1027fc80`` and box ``0x102804e0``
   are host-ported (``pakon_ane_collect``; Unicorn-golden). Preference
   assemble wires dens→mid-aims via fc80→``e9d0`` when
-  ``SHASTA_ANALYZE_PORTED``. COM portfolio wrap still open. Contrast /
+  ``SHASTA_ANALYZE_PORTED``. collectData host orch
+  (``ANE_COLLECT_DATA_PORTED`` / ``ANE_COLLECT_QI_INSERT_PORTED`` /
+  ``ANE_COLLECT_CONVERT_PORTED``). Cap wrap ``0x101ed9b0`` open. Contrast /
   float-LUT side paths. Do **not** invent percentile tone from dpi
   ``shadowPercent`` / ``highlightPercent``.
 
@@ -365,8 +367,8 @@ import numpy as np
 
 # Explicit markers — do not invent analyze → toneLut.
 # True when Preference can build mid-aims from live fc80 sample/residual
-# dens (shipped Laplacian / useAvg=0). Box 804e0 leaf ported; portfolio
-# COM wrap remains open but unused on ane-CN-Fps.dpi.
+# dens (shipped Laplacian / useAvg=0). Box 804e0 + collectData host orch
+# + QI insert + convert stamp/size ported; Cap wrap 0x101ed9b0 open.
 SHASTA_ANALYZE_PORTED = True
 # Table assemble (935d0 + builder + Cap setToneLut) Unicorn-golden.
 SHASTA_TONE_LUT_PORTED = True

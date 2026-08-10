@@ -72,7 +72,9 @@ Host ``PIAnselAddScene`` / TLA desc pack (VERIFIED + Unicorn)
 
 ``ADDSCENE_DESC_PACK_PORTED = True``.
 ``FRAME_DMIN_RGB_PORTED = True`` (FindDmin ``0x10009250`` hist leaf).
-``ADDSCENE_COLNEG_REMAP_PORTED = True`` (1px ColNeg path).
+``ADDSCENE_COLNEG_REMAP_PORTED = True`` (TLA 1px ColNeg ``JT+0x44``).
+``ADDSCENE_COLNEG_REMAP_F135_PORTED = True`` (TLB ``fcn.1000d880`` @
+``0x10034b9b`` — roll prime before AddScene; docs/58 §7).
 
 Frame ``+0x6cac`` producer — ``FN_bFindDmin`` / ``0x10009250`` (VERIFIED)
 -----------------------------------------------------------------------
@@ -147,6 +149,8 @@ ADDSCENE_DESC_PACK_PORTED = True
 PATH_DMIN_FROM_BAG_PORTED = True
 FRAME_DMIN_RGB_PORTED = True
 ADDSCENE_COLNEG_REMAP_PORTED = True
+# TLB.dll @ 0x10034b9b — ColNeg dmin prime via fcn.1000d880 (not JT+0x44)
+ADDSCENE_COLNEG_REMAP_F135_PORTED = True
 
 SCENE_CONTEXT_FIND = 0x10022A40
 SCENE_CONTEXT_INSERT = 0x10023F10
@@ -179,6 +183,9 @@ TLA_ADDSCENE_SEED_FRAME = 0x1003F7DB  # mov dx,[ebx+0x6cac]…
 TLA_ADDSCENE_COLNEG_CALL = 0x1003F85E  # call [JT+0x44]
 TLA_ADDSCENE_COLREV_CALL = 0x1003F843  # call [JT+0x4c]
 TLA_ADDSCENE_FILM_BIT2 = 0x1003F820  # test al,2 → ColRev else ColNeg
+# TLB.dll roll driver: prime ColNeg dmin through poly before AddScene
+TLB_ADDSCENE_POLY_PRIME = 0x10034B9B  # call fcn.1000d880
+TLB_COLOR_CORRECT_POLY = 0x1000D880
 GET_CN_CONTEXT = 0x100F8620
 GET_CN_CONTEXT_DMIN_FIND = 0x100F8BD6  # lea path+0x3c; find dmin
 GET_CN_CONTEXT_DMIN_ZERO = 0x100F8C6F  # empty → zero +0x3c/3e/40
@@ -402,17 +409,20 @@ def addscene_colneg_remap_dmin_rgb(
     coeff: Sequence[Sequence[int]],
     offset: Sequence[int],
 ) -> tuple[int, int, int]:
-    """1px ColNeg remap of frame dmin words @ ``0x1003f848…`` (JT+0x44).
+    """1px ColNeg remap of frame dmin words — TLA ``JT+0x44`` path.
 
     DLL builds a planar ``width=4`` / ``height=1`` buffer with only pixel0
     of each plane set (``+0/+8/+16``), then runs
     ``PIColorCorrectColNegPlanarScan``. Host applies the verified stage-2
     closed form (LUT → 3×4 → clamp ``0…4092``) to that single pixel —
-    same arithmetic as ``pakon_color.render_pixel`` / TLA ``0x1001c470``.
+    same arithmetic as ``pakon_color.render_pixel_f235`` / TLA ``0x1001c470``.
 
     ColRev (``JT+0x4c``) shares this kernel then applies extra
     ``ColRevLut*`` stages — **not** included here; use
     ``addscene_film_uses_colrev`` for dispatch only.
+
+    F-135 / TLB does **not** use this leaf for roll prime — see
+    ``addscene_colneg_remap_dmin_rgb_f135`` (``TLB.dll @ 0x10034b9b``).
     """
     raw = (int(r) & (_COLNEG_LUT_SIZE - 1), int(g) & (_COLNEG_LUT_SIZE - 1), int(b) & (_COLNEG_LUT_SIZE - 1))
     dens = [float(lut[c]) for c in raw]
@@ -428,26 +438,58 @@ def addscene_colneg_remap_dmin_rgb(
     return out[0], out[1], out[2]
 
 
+def addscene_colneg_remap_dmin_rgb_f135(
+    r: int,
+    g: int,
+    b: int,
+    coeffs: Sequence[float] | None = None,
+) -> tuple[int, int, int]:
+    """F-135 ColNeg dmin prime — ``TLB.dll:fcn.1000d880`` @ ``0x10034b9b``.
+
+    Roll driver ``fcn.10034a60`` calls poly on the seeded frame dmin words
+    (``+0x6cac…``) before packing the AddScene desc (docs/58 §7). Not the
+    TLA dens-LUT MMX leaf. Host closed form is ``pakon_color.poly_pixel``.
+    """
+    import os
+    import sys
+
+    _tools = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    if _tools not in sys.path:
+        sys.path.insert(0, _tools)
+    import pakon_color as pc  # noqa: E402
+
+    c = list(coeffs) if coeffs is not None else pc.load_unit_matrix()
+    # TLB.dll @ 0x10034b9b → fcn.1000d880
+    return pc.poly_pixel((int(r), int(g), int(b)), c)
+
+
 def addscene_dmin_rgb_from_frame(
     frame_r: int,
     frame_g: int,
     frame_b: int,
     *,
     film_flags: int = 0,
+    model: str = "f135",
+    coeffs: Sequence[float] | None = None,
     lut: Sequence[float] | Sequence[int] | None = None,
     coeff: Sequence[Sequence[int]] | None = None,
     offset: Sequence[int] | None = None,
 ) -> tuple[int, int, int]:
     """Seed from frame ``+0x6cac`` RGB, optionally ColNeg-remap for desc pack.
 
-    When ``lut``/``coeff``/``offset`` are provided and film is not ColRev,
-    apply ``addscene_colneg_remap_dmin_rgb``. ColRev bit returns the
-    seeded words unchanged (extra ColRev stages not host-ported).
+    ``model='f135'`` (default): TLB poly prime ``0x10034b9b``.
+    ``model='f235'``: TLA dens LUT+3×4 when ``lut``/``coeff``/``offset`` given.
+    ColRev bit returns the seeded words unchanged (extra ColRev stages not
+    host-ported).
     """
     seeded = addscene_seed_from_frame_dmin(frame_r, frame_g, frame_b)
-    if lut is None or coeff is None or offset is None:
-        return seeded
     if addscene_film_uses_colrev(film_flags):
+        return seeded
+    if model == "f135":
+        if not ADDSCENE_COLNEG_REMAP_F135_PORTED:
+            return seeded
+        return addscene_colneg_remap_dmin_rgb_f135(*seeded, coeffs)
+    if lut is None or coeff is None or offset is None:
         return seeded
     return addscene_colneg_remap_dmin_rgb(*seeded, lut, coeff, offset)
 
@@ -517,7 +559,8 @@ def main() -> None:
         f"ADDSCENE_DESC={ADDSCENE_DESC_PACK_PORTED} "
         f"PATH_FROM_BAG={PATH_DMIN_FROM_BAG_PORTED} "
         f"FRAME_DMIN={FRAME_DMIN_RGB_PORTED} "
-        f"COLNEG_REMAP={ADDSCENE_COLNEG_REMAP_PORTED}"
+        f"COLNEG_REMAP={ADDSCENE_COLNEG_REMAP_PORTED} "
+        f"COLNEG_REMAP_F135={ADDSCENE_COLNEG_REMAP_F135_PORTED}"
     )
     demo = frame_dmin_rgb_from_planes(
         [100, 100, 5000, 5000],

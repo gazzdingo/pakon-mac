@@ -94,19 +94,27 @@ Ported below
 ------------
 DPI ASCII parse + enum/bool normalization matching ``readAscii``
 tokens / range checks only; ``pass_choice_to_word`` for ntd/ctd;
-3-band LUT ASCII → planar (for setShifts ``(1,2)``). Analyze /
-``SCP_LUT_BALANCE_PORTED`` still False. setShifts ``(1,2)`` is
-DLL-golden in ``pakon_sba_apply`` / ``pakon_setshifts_golden``
-(``SETSHIFTS_12_PORTED=True``).
+3-band LUT ASCII → planar (for setShifts ``(1,2)``). Analyze worker
+``0x10287eb0`` leaves: opponent ``0x1028c4e0``, slopeDist, LUT index
+clamp (``SCP_LUT_ANALYZE_LEAVES_PORTED``). Full
+``SCP_LUT_BALANCE_PORTED`` still False until worker end-to-end golden.
+setShifts ``(1,2)`` is DLL-golden in ``pakon_sba_apply`` /
+``pakon_setshifts_golden`` (``SETSHIFTS_12_PORTED=True``).
 """
 from __future__ import annotations
 
+import math
+import struct
 from dataclasses import dataclass
 from pathlib import Path
+
+import numpy as np
 
 SCP_LUT_BALANCE_PORTED = False
 SCP_LUT_DPI_PARSE_PORTED = True  # ASCII surface only
 THREE_BAND_LUT_ASCII_PORTED = True  # file → planar only
+# Opponent / slopeDist / LUT index+clamp leaves of 0x10287eb0 / 0x10212899
+SCP_LUT_ANALYZE_LEAVES_PORTED = True
 
 SHIPPED_3BAND_LUT_NAME = "luts6_postROMM_equalRGBshort.lut"
 SHIPPED_3BAND_INDEX_DPI = "common-3BandLuts.dpi"
@@ -136,7 +144,38 @@ SCP_CAP_SET_ANALYZED = 0x1012286B  # mov byte [ebx+0xf], 1
 SCP_CAP_ACQUIRE = 0x10122B10
 SCP_IMPL_INITIALIZE = 0x10212130
 SCP_IMPL_ANALYZE = 0x102128F0
+SCP_IMPL_ANALYZE_WORKER = 0x102127D0  # packs args → 0x10287eb0
+SCP_IMPL_CORE = 0x10287EB0  # slopes/offsets + LUT fill
+SCP_IMPL_OPPONENT = 0x1028C4E0  # RGB→opponent (Preference consts)
+SCP_IMPL_SLOPE_DIST = 0x10212899  # sqrt(R²+G²+B²−RG−RB−GB)
 SCP_DPI_READ_ASCII = 0x101D03B0
+
+# Layout / constants (cite core)
+SCP_IMPL_FLAG_4C = 0x4C  # gate byte @ 0x10212937
+SCP_CHANNEL_COUNT = 0x1000  # push $0x1000 @ 0x10212965
+SCP_LUT_CLAMP_MAX = 0xFFF  # cmp ax,0xfff @ 0x10288256
+SCP_F64_0 = 0.0  # 0x10573c40
+SCP_F64_1 = 1.0  # 0x10574f50
+SCP_F64_0_5 = 0.5  # 0x10574f40
+SCP_F64_1E_4 = 0.0001  # 0x105a69e8
+SCP_F64_SQRT3 = 1.7320508  # 0x105a69e0
+# visual-gamma weights when mode word == 1 @ 0x10288065…
+SCP_F64_VG_R = 0.414  # 0x105a69d8
+SCP_F64_VG_G = 0.079  # 0x105a69d0
+SCP_F64_VG_B = 0.507  # 0x105a69c8
+# opponent matrix (same rdata as Preference)
+SCP_INV_SQRT3 = 0.5773502717125849  # 0x105a6f38
+SCP_INV_SQRT6 = 0.40824829759439285  # 0x105a6f30
+SCP_INV_SQRT2 = 0.7071067623730956  # 0x105a6f28
+SCP_SQRT_2_OVER_3 = 0.8164965951887857  # 0x105a6f40
+# Result store offs on Impl after worker (@ 0x10212848…)
+SCP_RES_RED_SLOPE = 0x68
+SCP_RES_GREEN_SLOPE = 0x70
+SCP_RES_BLUE_SLOPE = 0x78
+SCP_RES_RED_OFFSET = 0x80
+SCP_RES_GREEN_OFFSET = 0x88
+SCP_RES_BLUE_OFFSET = 0x90
+SCP_RES_SLOPE_DIST = 0xB0
 
 # Fos Cap helpers used by the disable-log / dump prelude
 FOS_CAP_GET_RESULTS_PTR = 0x1013C4E0  # → 0x1023fc70
@@ -219,6 +258,91 @@ def _bool(d: dict[str, str], key: str, default: bool) -> bool:
 
 def _norm_token(s: str) -> str:
     return s.strip().upper()
+
+
+def scp_lut_analyze_gate(impl_flag_4c: int, arg_flag: int) -> bool:
+    """Impl analyze uses live args when both flags non-zero @ ``0x10212937…47``.
+
+    Else pushes seven zeros before ``0x102127d0`` (@ ``0x1021299c``).
+    """
+    if not SCP_LUT_ANALYZE_LEAVES_PORTED:
+        raise NotImplementedError("ScpLut analyze leaves not marked ported")
+    # PakonIMAu.dll @ 0x10212937 / @ 0x10212942
+    return int(impl_flag_4c) != 0 and int(arg_flag) != 0
+
+
+def scp_lut_opponent_transform(
+    r: float, g: float, b: float
+) -> tuple[float, float, float]:
+    """``0x1028c4e0`` — Preference-const opponent from RGB doubles.
+
+    ``o0 = R·INV_√3 − G·INV_√6 − B·INV_√2``;
+    ``o1 = R·INV_√3 + G·√(2/3)``;
+    ``o2 = R·INV_√3 − G·INV_√6 + B·INV_√2``.
+    """
+    if not SCP_LUT_ANALYZE_LEAVES_PORTED:
+        raise NotImplementedError("ScpLut analyze leaves not marked ported")
+    # PakonIMAu.dll @ 0x1028c4e4…0x1028c53c
+    o0 = r * SCP_INV_SQRT3 - g * SCP_INV_SQRT6 - b * SCP_INV_SQRT2
+    o1 = r * SCP_INV_SQRT3 + g * SCP_SQRT_2_OVER_3
+    o2 = r * SCP_INV_SQRT3 - g * SCP_INV_SQRT6 + b * SCP_INV_SQRT2
+    return o0, o1, o2
+
+
+def scp_lut_slope_dist(red: float, green: float, blue: float) -> float:
+    """``sqrt(R²+G²+B² − RG − RB − GB)`` @ ``0x10212899…0x102128bb``."""
+    if not SCP_LUT_ANALYZE_LEAVES_PORTED:
+        raise NotImplementedError("ScpLut analyze leaves not marked ported")
+    r, g, b = float(red), float(green), float(blue)
+    # PakonIMAu.dll @ 0x10212899…0x102128bb
+    return math.sqrt(r * r + g * g + b * b - r * g - r * b - g * b)
+
+
+def scp_lut_ftol2(x: float) -> int:
+    """``0x104ffe44`` chop toward zero (same as Preference)."""
+    # PakonIMAu.dll @ 0x104ffe44 — C cast / trunc toward 0
+    return int(float(x))  # Python trunc toward 0 for finite floats
+
+
+def scp_lut_index_sample(slope: float, offset: float, i: int) -> int:
+    """One channel sample ``ftol2(slope·i − offset + 0.5)`` @ ``0x102881fa…``."""
+    if not SCP_LUT_ANALYZE_LEAVES_PORTED:
+        raise NotImplementedError("ScpLut analyze leaves not marked ported")
+    # PakonIMAu.dll @ 0x102881fa — fmul i; @ 0x10288200 fsub offset; @ 0x10288204 fadd 0.5
+    return scp_lut_ftol2(float(slope) * float(i) - float(offset) + SCP_F64_0_5)
+
+
+def scp_lut_clamp_i16(v: int) -> int:
+    """Clamp to ``[0, 0xfff]`` @ ``0x10288249…0x10288296``."""
+    if not SCP_LUT_ANALYZE_LEAVES_PORTED:
+        raise NotImplementedError("ScpLut analyze leaves not marked ported")
+    x = int(v)
+    if x < 0:  # @ 0x1028824c
+        return 0
+    if x > SCP_LUT_CLAMP_MAX:  # @ 0x10288256
+        return SCP_LUT_CLAMP_MAX
+    return x
+
+
+def scp_lut_fill_channel(
+    slope: float, offset: float, n: int = SCP_CHANNEL_COUNT
+) -> list[int]:
+    """``0x102881e6…0x102882af`` host face for one output plane."""
+    if not SCP_LUT_ANALYZE_LEAVES_PORTED:
+        raise NotImplementedError("ScpLut analyze leaves not marked ported")
+    out: list[int] = []
+    for i in range(int(n)):
+        out.append(scp_lut_clamp_i16(scp_lut_index_sample(slope, offset, i)))
+    return out
+
+
+def scp_lut_visual_gamma_scale(r: float, g: float, b: float) -> float:
+    """``1 / (0.414·R + 0.079·G + 0.507·B)`` when mode word==1 @ ``0x10288065``."""
+    if not SCP_LUT_ANALYZE_LEAVES_PORTED:
+        raise NotImplementedError("ScpLut analyze leaves not marked ported")
+    # PakonIMAu.dll @ 0x10288065…0x10288085 — fdivr 1.0
+    den = SCP_F64_VG_R * float(r) + SCP_F64_VG_G * float(g) + SCP_F64_VG_B * float(b)
+    return SCP_F64_1 / den if den != 0.0 else 0.0
 
 
 def pass_choice_to_word(token: str) -> int:
@@ -354,9 +478,16 @@ def main() -> None:
     print(f"  Path::analyzeScpLutBalance {PATH_ANALYZE_SCP_LUT_BALANCE:#010x}")
     print(f"  Cap::analyze               {SCP_CAP_ANALYZE:#010x}")
     print(f"  Impl::analyze              {SCP_IMPL_ANALYZE:#010x}")
+    print(f"  core 0x10287eb0            {SCP_IMPL_CORE:#010x}")
+    print(f"  ANALYZE_LEAVES={SCP_LUT_ANALYZE_LEAVES_PORTED} BALANCE={SCP_LUT_BALANCE_PORTED}")
     print(f"  zero +0x4b6/4b8/4ba        {PATH_SCP_ZERO_FUGC_AIMS:#010x}")
     print(f"  DPI readAscii              {SCP_DPI_READ_ASCII:#010x}")
-    print(f"  setShifts ctrl (shipped)   {SHIPPED_SETSHIFTS_CTRL}")
+    # leaf smoke
+    o = scp_lut_opponent_transform(1.0, 1.0, 1.0)
+    print(f"  opponent(1,1,1)={o}")
+    print(f"  slopeDist(1,1,1)={scp_lut_slope_dist(1,1,1)}")
+    print(f"  fill identity mid={scp_lut_fill_channel(1.0, 0.0, 8)}")
+
     print(f"  SCP_LUT_BALANCE_PORTED={SCP_LUT_BALANCE_PORTED}")
     print(f"  SCP_LUT_DPI_PARSE_PORTED={SCP_LUT_DPI_PARSE_PORTED}")
 

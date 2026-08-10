@@ -34,3 +34,15 @@ analysis/pipeline/pakonpipeline
 /output_authentic.png
 /output_authentic.png_bypass.png
 /f135_stages.png
+
+# Compiled C artefacts (built from tracked source)
+*.o
+*.dylib
+tools/inspect_line_active
+tools/inspect_line_channels
+tools/inspect_line_sync
+tools/pakon_color_cli
+tools/pakon_pipeline_cli
+tools/pakon_raw_decoder
+tools/parse_raw_bin
+tools/test_icc_c

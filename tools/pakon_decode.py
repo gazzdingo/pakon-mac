@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Decode Pakon EP 0x86 strip dumps into coloured frames.
 
-Host-side pipeline (docs/11) — scanner sends raw; we render:
+Host-side pipeline (docs/58) — scanner sends raw; we render:
 
   raw strip → sync/unpack → unit dark×gain (calibration/) → 14-bit
-            → density LUT + 3×4 matrix → 12-bit RPD
+            → stage 2 (default F-135 / TLB 3×10 poly; opt. F-235 LUT+3×4)
             → Ansel stand-in (tools/ansel/):
                  roll FPO → per-scene SBA/Shasta → FUGC lut → Rpd2Pcs→sRGB
 
@@ -316,21 +316,34 @@ def load_true_lut(data_dir: str) -> np.ndarray:
 
 
 def render_rpd(rgb14: np.ndarray, data_dir: str,
-               offsets: str = "dmin") -> np.ndarray:
+               offsets: str = "dmin",
+               model: str = pc.DEFAULT_MODEL,
+               source: str = "auto") -> np.ndarray:
     """(n, w, 3) uint14 → (n, w, 3) uint16 scaled from 12-bit RPD.
 
-    Stage-2 kernel (docs/11 §2):
+    Stage 2 depends on scanner family (docs/58):
 
-        and 0x3fff → density LUT → 3×4 matrix → clamp 0..4092
+      f135 (default) — TLB.dll ``fcn.1000d880`` 3×10 float poly → clamp 0..4095
+      f235           — density LUT + 3×4 matrix → clamp 0..4092 (TLA / docs/11)
 
-    LUT + 3×3 always come from the shipped vendor files. Offset column:
+    F-235 offset column (``offsets``) is ignored on the F-135 path:
 
-      dmin      (default) — rebuild from measured film-base Dmin of this
-                  strip. Needed for already flat-fielded captures like
-                  strip_cal.bin; the template −83/−587/−708 assumes raw
-                  orange-mask data and crushes G/B to zero on balanced strips.
-      template  — verbatim `_ClientColNegMat.txt` column 3.
+      dmin      — rebuild from measured film-base Dmin (flat-fielded strips)
+      template  — verbatim `_ClientColNegMat.txt` column 3
     """
+    if model == "f135":
+        # TLB.dll @ 0x1000d880 — F-135 colour-negative stage 2
+        coeffs = pc.load_unit_matrix(source)
+        print(f"  model: f135 (TLB 3×10 poly, source={source})")
+        print(f"  coeffs diagonal "
+              f"{coeffs[0]:.6f} {coeffs[11]:.6f} {coeffs[22]:.6f}")
+        rpd12 = pc.poly_hwc(rgb14, coeffs, film_class=1)
+        rpd_max = pc.RPD_MAX_BY_MODEL["f135"]
+        print(f"  RPD mean RGB = {rpd12.mean(axis=(0, 1)).round(1)}  "
+              f"max = {rpd12.max(axis=(0, 1))}")
+        return (rpd12 * (65535.0 / rpd_max)).astype(np.uint16)
+
+    # F-235 / F-335 path (PakonIMAu MMX + TLA LUT/matrix)
     lut = load_true_lut(data_dir)
     mat_path = os.path.join(data_dir, "_ClientColNegMat.txt")
     if not os.path.exists(mat_path):
@@ -338,6 +351,7 @@ def render_rpd(rgb14: np.ndarray, data_dir: str,
     matrix = pc.load_vendor_matrix(mat_path)
     coeff, template_offset = pc.quantise_matrix(matrix)
     coeff = np.asarray(coeff, dtype=np.float64)
+    print(f"  model: f235 (LUT + 3×4)")
     print(f"  matrix: {mat_path}")
 
     idx = rgb14.astype(np.int32) & 0x3FFF
@@ -959,12 +973,20 @@ def cmd_strip(args: argparse.Namespace) -> int:
     raw_u8 = raw14_preview_u8(rgb)
     write_png(out / "strip_raw14.png", raw_u8, ts)
     print(f"wrote {out / 'strip_raw14.png'}")
+    if want_tiff:
+        write_tiff16(out / "strip_raw14.tiff", rgb, ts)
+        print(f"wrote {out / 'strip_raw14.tiff'}")
 
     rpd = None
     rpd_u8 = None
     if want_color:
-        print(f"colour-correcting via {args.data_dir} …")
-        rpd = render_rpd(rgb, args.data_dir, offsets=args.offsets)
+        model = getattr(args, "model", pc.DEFAULT_MODEL)
+        print(f"colour-correcting model={model} "
+              f"{'(unit EEPROM/registry poly)' if model == 'f135' else args.data_dir}"
+              f" …")
+        rpd = render_rpd(
+            rgb, args.data_dir, offsets=args.offsets, model=model,
+        )
         if args.balance:
             print("  pre-Ansel channel balance")
             rpd = roll_balance_rpd(rpd)
@@ -998,7 +1020,8 @@ def cmd_strip(args: argparse.Namespace) -> int:
                 iso=stock.iso,
             )
         elif film_path:
-            scene = ansel.scene_from_filmstock(path=film_path)
+            metric = ansel.maps.METRIC_ROM12 if args.model == "f135" else ansel.maps.METRIC_PD12
+            scene = ansel.scene_from_filmstock(path=film_path, metric=metric)
         else:
             # --sba-default or --sba-key: CN-Premium / Neg35 scene for
             # Shasta/FUGC maps; SBA dpi comes from override or CN-default key.
@@ -1085,6 +1108,8 @@ def cmd_strip(args: argparse.Namespace) -> int:
             n = b - a
             prefix = frames_dir / f"{i:02d}"
             write_png(Path(str(prefix) + "_raw14.png"), raw_u8[a:b], ts)
+            if want_tiff:
+                write_tiff16(Path(str(prefix) + "_raw14.tiff"), rgb[a:b], ts)
             if rpd_u8 is not None:
                 write_png(Path(str(prefix) + "_rpd.png"), rpd_u8[a:b], ts)
             if want_tiff and rpd is not None:
@@ -1281,7 +1306,11 @@ def main() -> int:
                         "measures it from the strip (default); out_test "
                         "measures 8,0,-8. 'off' leaves the channels skewed.")
     s.add_argument("--color", action="store_true",
-                   help="apply density LUT + 3×4 matrix → 12-bit RPD")
+                   help="stage-2 colour → 12-bit RPD (default F-135 poly; "
+                        "see --model)")
+    s.add_argument("--model", choices=pc.MODELS, default=pc.DEFAULT_MODEL,
+                   help="stage-2 family: f135 = TLB 3×10 poly (this scanner), "
+                        "f235 = TLA LUT + 3×4 matrix (default: f135)")
     s.add_argument("--icc", action="store_true",
                    help="Ansel stand-in (SBA/Shasta/FUGC) + Rpd2Pcs→sRGB")
     s.add_argument("--legacy-tone", action="store_true",

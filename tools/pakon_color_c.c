@@ -22,9 +22,11 @@
  */
 static inline void poly_pixel_c(uint16_t r_in, uint16_t g_in, uint16_t b_in,
                                 const float* coeffs, int32_t out[3]) {
-    double r = (double)(r_in & 0xFFFF);
-    double g = (double)(g_in & 0xFFFF);
-    double b = (double)(b_in & 0xFFFF);
+    /* Stage 0 outputs 14-bit (0..0x3FFF). If input contains unshifted 16-bit raw counts (>0x3FFF), shift to 14-bit.
+     * Cite: docs/58-colour-pipeline.md §2 */
+    double r = (double)(r_in > 0x3FFF ? (r_in >> 2) : r_in);
+    double g = (double)(g_in > 0x3FFF ? (g_in >> 2) : g_in);
+    double b = (double)(b_in > 0x3FFF ? (b_in >> 2) : b_in);
 
     double rr = r * r;
     double gg = g * g;
@@ -72,6 +74,60 @@ void pakon_poly_hwc_c(const uint16_t* in_rgb, int32_t* out_rgb,
     for (int i = 0; i < num_pixels; i++) {
         int idx = i * 3;
         poly_pixel_c(in_rgb[idx], in_rgb[idx + 1], in_rgb[idx + 2], coeffs, &out_rgb[idx]);
+    }
+}
+
+#define DEF_POLY_MAP(name, a, b, c) \
+void pakon_poly_##name##_hwc_c(const uint16_t* in_raw, int32_t* out_rgb, \
+                          int num_pixels, const float* coeffs, int film_class) { \
+    for (int i = 0; i < num_pixels; i++) { \
+        int idx = i * 3; \
+        poly_pixel_c(in_raw[idx + a], in_raw[idx + b], in_raw[idx + c], coeffs, &out_rgb[idx]); \
+    } \
+}
+
+DEF_POLY_MAP(rgb, 0, 1, 2)
+DEF_POLY_MAP(rbg, 0, 2, 1)
+DEF_POLY_MAP(grb, 1, 0, 2)
+DEF_POLY_MAP(gbr, 1, 2, 0)
+DEF_POLY_MAP(brg, 2, 0, 1)
+DEF_POLY_MAP(bgr, 2, 1, 0)
+
+/*
+ * Process Planar uint16 image buffer of shape (3, height * width):planes are contiguous:
+ * [R0..RN-1], [G0..GN-1], [B0..BN-1].
+ * Writes HWC int32_t array of shape (num_pixels * 3).
+ * Cite: docs/58-colour-pipeline.md §2 (Stage 0 outputs contiguous planes).
+ */
+void pakon_poly_planar_c(const uint16_t* in_planar, int32_t* out_rgb,
+                        int num_pixels, const float* coeffs, int film_class) {
+    const uint16_t* r_plane = in_planar;
+    const uint16_t* g_plane = in_planar + num_pixels;
+    const uint16_t* b_plane = in_planar + num_pixels * 2;
+
+    for (int i = 0; i < num_pixels; i++) {
+        int idx = i * 3;
+        poly_pixel_c(r_plane[i], g_plane[i], b_plane[i], coeffs, &out_rgb[idx]);
+    }
+}
+
+/*
+ * Process Line-Planar uint16 image buffer of shape (height, 3, width):
+ * For each line y: [R0..RW-1], [G0..GW-1], [B0..BW-1].
+ * Writes HWC int32_t array of shape (height * width * 3).
+ * Cite: docs/58-colour-pipeline.md §2 (Stage 0 outputs line-planar contiguous planes).
+ */
+void pakon_poly_line_planar_c(const uint16_t* in_raw, int32_t* out_rgb,
+                             int width, int height, const float* coeffs, int film_class) {
+    for (int y = 0; y < height; y++) {
+        const uint16_t* r_line = in_raw + ((size_t)y * 3 + 0) * (size_t)width;
+        const uint16_t* g_line = in_raw + ((size_t)y * 3 + 1) * (size_t)width;
+        const uint16_t* b_line = in_raw + ((size_t)y * 3 + 2) * (size_t)width;
+        int32_t* out_line = out_rgb + (size_t)y * (size_t)width * 3;
+
+        for (int x = 0; x < width; x++) {
+            poly_pixel_c(r_line[x], g_line[x], b_line[x], coeffs, &out_line[x * 3]);
+        }
     }
 }
 

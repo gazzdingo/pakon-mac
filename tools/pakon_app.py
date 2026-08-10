@@ -1130,6 +1130,12 @@ def roll_json(roll: "pr.Roll") -> dict:
     } for f in roll.frames]
     d["ir"] = getattr(roll, "ir", {})
     d["unavailable_controls"] = pr.UNAVAILABLE_CONTROLS
+    # Snapshots have been taken before every destructive edit since undo was
+    # added, and POST roll/<id>/undo has served them, but no roll payload ever
+    # carried the fact that one existed -- so no screen could offer it, and
+    # apply-to-roll's own confirmation text promised "This can be undone"
+    # beside no way to do it. This is the missing half.
+    d["undo"] = S.undo_state(roll.id)
     cv = 75.0
     try:
         cv = float(roll.engine().shasta.code_values_per_button)

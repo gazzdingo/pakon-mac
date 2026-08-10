@@ -31,21 +31,16 @@ What that does and does not establish:
                   must not be read as claiming it.
 
 Ownership: this module *calls* the colour work in ``tools/pakon_decode.py``
-and ``tools/ansel/`` — it does not modify or duplicate it. The two narrow
-places it re-expresses vendor arithmetic, both using ``pakon_color``'s own
-LUT/matrix/quantisation so the kernel is not duplicated:
+and ``tools/ansel/`` — it does not modify or duplicate it. Stage 2 follows
+``Roll.model`` (default ``f135`` = TLB 3×10 poly; ``f235`` = TLA LUT+3×4):
 
-  * ``_rpd16`` — ``pakon_decode.render_rpd`` recomputes Dmin per call and
-    prints to stdout. The UI needs the *roll* Dmin held fixed while one
-    frame's offsets change (docs/11 §5: per-frame-only balancing breaks the
-    look), so the offset column has to be an argument. The accumulate, the
-    rounding and the 0..4092 clamp are the same expressions in the same order.
-  * ``roll_offsets_from`` — computes the same p99 Dmin as ``render_rpd``, but
-    from an exact 14-bit histogram so it can be taken over the whole strip
-    without materialising it. Integer inputs make the histogram exact, not an
-    approximation.
+  * ``_rpd16`` (f135) — ``pakon_color.poly_hwc`` (TLB.dll @ 0x1000d880). The
+    poly carries its own c9 pedestals; the Auto offset column is unused.
+  * ``_rpd16`` (f235) — LUT + 3×4 with an explicit offset column so the UI can
+    hold *roll* Dmin fixed while one frame's offsets move (docs/11 §5).
+  * ``roll_offsets_from_hist`` — f235 only; f135 returns ``[0,0,0]``.
 
-Pipeline per frame (docs/11):
+Pipeline per frame (docs/58; F-135 default):
 
     capture .bin
       → segment_lines → to_rgb14                     (once, cached as memmap)
@@ -104,6 +99,7 @@ sys.path.insert(0, str(_TOOLS / "ansel"))
 import pakon_decode as dec      # noqa: E402  (theirs — call, do not modify)
 import pakon_color as pc        # noqa: E402
 import pakon_filmstock as film  # noqa: E402
+import pakon_framing as pf      # noqa: E402
 import pakon_ansel as ansel     # noqa: E402
 
 # --------------------------------------------------------------------------
@@ -246,7 +242,7 @@ def _quiet(fn, *a, **kw):
 
 
 def load_kernel(data_dir: str):
-    """(lut, coeff, matrix3x3, template_offset) from the shipped vendor files."""
+    """F-235 only: (lut, coeff, matrix3x3, template_offset) from vendor files."""
     with _kernel_lock:
         hit = _kernel_cache.get(data_dir)
         if hit is not None:
@@ -262,6 +258,18 @@ def load_kernel(data_dir: str):
     with _kernel_lock:
         _kernel_cache[data_dir] = val
     return val
+
+
+def load_poly_coeffs(source: str = "auto"):
+    """F-135 NegMatrix 3×10 (TLB.dll @ 0x1000d880 destination this+0x50)."""
+    with _kernel_lock:
+        hit = _kernel_cache.get(("poly", source))
+        if hit is not None:
+            return hit
+    coeffs = pc.load_unit_matrix(source)
+    with _kernel_lock:
+        _kernel_cache[("poly", source)] = coeffs
+    return coeffs
 
 
 def load_engine(ansel_root: str, scene_key: str, scene,
@@ -301,12 +309,16 @@ def _p99_linear(hist: np.ndarray, total: int) -> float:
 
 
 def roll_offsets_from_hist(hist: np.ndarray, total: int,
-                           data_dir: str) -> np.ndarray:
-    """The Auto column: offset = -(M3x3 . Dmin)/8 so clear film base -> RPD 0.
+                           data_dir: str,
+                           model: str = pc.DEFAULT_MODEL) -> np.ndarray:
+    """F-235 Auto column: offset = -(M3x3 · Dmin)/8. F-135: zeros (poly c9).
 
-    Same expression as ``pakon_decode.render_rpd(offsets="dmin")``; taken once
-    per roll and then held fixed while a single frame's offsets move.
+    Same expression as ``pakon_decode.render_rpd(offsets="dmin", model=f235)``;
+    taken once per roll and held fixed while a frame's offsets move.
     """
+    if model == "f135":
+        # TLB.dll @ 0x1000d880 — pedestal is poly c9; no separate Auto column
+        return np.zeros(3, dtype=np.float64)
     lut, _coeff, m33, _tmpl = load_kernel(data_dir)
     dmin = np.array(
         [float(lut[int(_p99_linear(hist[c], total)) & 0x3FFF]) for c in range(3)],
@@ -314,13 +326,16 @@ def roll_offsets_from_hist(hist: np.ndarray, total: int,
     return -(m33 @ dmin) / 8.0
 
 
-def _rpd16(rgb14: np.ndarray, data_dir: str, offset: np.ndarray) -> np.ndarray:
-    """14-bit -> 16-bit-scaled 12-bit RPD, with an explicit offset column.
+def _rpd16(rgb14: np.ndarray, data_dir: str, offset: np.ndarray,
+           model: str = pc.DEFAULT_MODEL) -> np.ndarray:
+    """14-bit → 16-bit-scaled 12-bit RPD (matches ``pakon_decode.render_rpd``)."""
+    if model == "f135":
+        # TLB.dll @ 0x1000d880 — F-135 ColNeg stage 2
+        coeffs = load_poly_coeffs()
+        rpd12 = pc.poly_hwc(rgb14, coeffs, film_class=1)
+        rpd_max = pc.RPD_MAX_BY_MODEL["f135"]
+        return (rpd12 * (65535.0 / rpd_max)).astype(np.uint16)
 
-    Identical expression, order, rounding and clamp to
-    ``pakon_decode.render_rpd``; only the offset column is an argument instead
-    of being recomputed. LUT, matrix and quantisation come from pakon_color.
-    """
     lut, coeff, _m33, _t = load_kernel(data_dir)
     idx = rgb14.astype(np.int32) & 0x3FFF
     d = lut[idx].astype(np.float64)
@@ -342,6 +357,15 @@ class Frame:
     confidence: str = "good"        # good | low
     params: dict = field(default_factory=dict)
     exported: str | None = None
+
+    # --- framing provenance, from pakon_framing's five-phase cascade.
+    # The vendor records which pass placed each frame precisely because not
+    # all placements are equal, and the operator has to know which to check.
+    # "" means the boundary did not come from the cascade at all — it was
+    # hand-edited, restored from a sidecar, or found by the legacy detector.
+    phase: str = ""                 # LookForNicePictures | ... | "" | manual
+    framing_risk: int = 0           # TLXLib.FRAMING_RISK_000: 0 ok, 1 fair, 4 blind
+    scan_warning: int = 0           # TLXLib.SCAN_WARNINGS_000 for this frame
 
 
 @dataclass
@@ -367,7 +391,18 @@ class Roll:
     created: float = 0.0
     data_dir: str = dec.DEFAULT_DATA_DIR
     ansel_root: str = dec.DEFAULT_ANSEL_ROOT
+    # Stage-2 family: f135 = TLB 3×10 poly (this scanner); f235 = TLA LUT+3×4.
+    model: str = pc.DEFAULT_MODEL
     transport_scale: float = dec.DEFAULT_TRANSPORT_SCALE
+    #: how transport_scale was arrived at, in words. Shown in the UI, because
+    #: "we do not know the speed" and "the sidecar says 11467" are different
+    #: situations and the geometry is only trustworthy in the second.
+    transport_source: str = ""
+    #: pakon_framing's report for this roll: per-phase counts, the acceptance
+    #: window, the pitch and where it came from, and the binarisation level.
+    framing: dict = field(default_factory=dict)
+    #: Operator override for the INFERRED binarisation threshold. None = Otsu.
+    ones_threshold: float | None = None
 
     # runtime only
     _rgb: object = field(default=None, repr=False, compare=False)
@@ -386,7 +421,8 @@ class Roll:
     JSON_FIELDS = ("id", "name", "capture", "workspace", "lines", "stock",
                    "dx", "film_path", "sba_key", "sba_default", "sync",
                    "auto_offsets", "roll_scale", "trace", "created",
-                   "data_dir", "ansel_root", "transport_scale")
+                   "data_dir", "ansel_root", "model", "transport_scale",
+                   "transport_source", "framing", "ones_threshold")
 
     def to_json(self) -> dict:
         d = {k: getattr(self, k) for k in self.JSON_FIELDS}
@@ -540,7 +576,12 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
     # the Dmin offsets, and the render would no longer match the pipeline.
     progress("analysing", 0.55, "roll Dmin and frame boundaries")
     hist = np.zeros((3, 1 << 14), dtype=np.int64)
-    green = np.empty((n, dec.PIXELS_PER_LINE), dtype=np.uint16)
+    # The vendor's framing sees per-line scalars and nothing else (docs/53
+    # §4.2.1), so these two arrays are the whole of its input. Accumulating
+    # them here costs 0.5 MB for a 31k-line roll; the full green plane the old
+    # detector needed cost 125 MB.
+    trace_1d = np.empty(n, dtype=np.float64)
+    green_1d = np.empty(n, dtype=np.float64)
     CH = 4096
     for a0 in range(0, n, CH):
         b0 = min(n, a0 + CH)
@@ -548,21 +589,17 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
             np.asarray(strip[a0:b0]), roll._dark, roll._gain)
         for c in range(3):
             hist[c] += np.bincount(blk[:, :, c].ravel(), minlength=1 << 14)
-        green[a0:b0] = blk[:, :, 1]
+        trace_1d[a0:b0] = blk.mean(axis=(1, 2))
+        green_1d[a0:b0] = blk[:, :, 1].mean(axis=1)
         progress("analysing", 0.55 + 0.12 * (b0 / n), f"line {b0} of {n}")
     del blk
 
     roll.auto_offsets = [float(v) for v in roll_offsets_from_hist(
-        hist, n * dec.PIXELS_PER_LINE, roll.data_dir)]
+        hist, n * dec.PIXELS_PER_LINE, roll.data_dir, model=roll.model)]
 
-    progress("frames", 0.70, "detecting frame boundaries")
-    # find_frames_rpd only reads channel 1, so a broadcast view costs nothing
-    spans = dec.find_frames(
-        np.broadcast_to(green[:, :, None], (n, dec.PIXELS_PER_LINE, 3)))
-    del green
-    roll.frames = [Frame(index=i, a=int(a), b=int(b))
-                   for i, (a, b) in enumerate(spans)]
-    _flag_confidence(roll)
+    progress("frames", 0.70, "framing (five-phase cascade)")
+    _frame_roll(roll, trace_1d, green_1d, src)
+    del trace_1d, green_1d
 
     if dx:
         try:
@@ -586,7 +623,8 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
     nf = max(1, len(roll.frames))
     for i, f in enumerate(roll.frames):
         seg = roll.slice14(f.a, f.b, 1)
-        rpd12 = ansel.rpd16_to_rpd12(_rpd16(seg, roll.data_dir, off))
+        rpd12 = ansel.rpd16_to_rpd12(
+            _rpd16(seg, roll.data_dir, off, model=roll.model))
         # analyze_roll_scales averages over the scenes it is given, so calling
         # it per scene and averaging here is the same number it would return
         # for the whole list — but bounded to one frame of memory.
@@ -604,16 +642,118 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
     return roll
 
 
+def _frame_roll(roll: Roll, trace: np.ndarray, green: np.ndarray,
+                capture: Path | str | None = None) -> None:
+    """Run the vendor's framing cascade and settle the roll's geometry.
+
+    WHY THE CASCADE AND NOT ``dec.find_frames``
+    -------------------------------------------
+    ``dec.find_frames`` is one brightness-gap pass and its own comment says so.
+    Kodak runs five passes and *records which one placed each frame*, because
+    the placements are not equally trustworthy and the operator is expected to
+    check the weak ones. Its last resort, ``FramingBlindlyPlacePictures``,
+    gives up on detection entirely and spaces frames evenly — so wrong
+    boundaries are a designed-for outcome here, not an edge case. Carrying the
+    phase through to the UI is the whole point: without it every boundary
+    looks equally confident and the operator has no idea where to look.
+
+    Order matters. The transport scale wants the measured frame pitch, and the
+    pitch comes out of framing, so framing runs first — and framing itself
+    prefers its own measurement to the geometry (see
+    ``pakon_framing.estimate_pitch``), which makes the dependency one-way.
+    """
+    n = int(trace.size)
+    try:
+        frames, report = pf.find_frames_traces(
+            trace, green,
+            speed=_sidecar_speed(capture),
+            ones_threshold=roll.ones_threshold)
+    except Exception as e:                                      # noqa: BLE001
+        # Never lose a roll to a framing failure: fall back to the single-pass
+        # detector on the 1-D trace, and say in the report that we did.
+        spans = _fallback_spans(trace)
+        roll.frames = [Frame(index=i, a=int(a), b=int(b), phase="fallback")
+                       for i, (a, b) in enumerate(spans)]
+        roll.framing = {"error": f"{type(e).__name__}: {e}",
+                        "detector": "fallback (single-pass gap split)",
+                        "total": len(roll.frames)}
+        _flag_confidence(roll)
+        return
+
+    roll.frames = [Frame(index=i, a=int(f.start), b=int(f.stop),
+                         phase=f.phase.vendor_name,
+                         framing_risk=f.phase.risk,
+                         scan_warning=int(f.phase))
+                   for i, f in enumerate(frames)]
+    report["detector"] = "pakon_framing five-phase cascade"
+    # The binarisation level is the one part of the cascade that is not the
+    # vendor's (docs/56 §7.4 — untraced). Label it at every layer that shows
+    # it, so nobody downstream mistakes it for recovered behaviour.
+    report["ones_threshold_inferred"] = roll.ones_threshold is None
+    report["ones_threshold_source"] = (
+        "operator override" if roll.ones_threshold is not None
+        else "Otsu over the film-present region [INFERRED — vendor's rule is "
+             "untraced, docs/56 §7.4]")
+    roll.framing = report
+    _flag_confidence(roll)
+
+    # Geometry, now that a measured pitch exists.
+    pitch = report.get("pitch") if report.get("pitch_source") == "measured" else None
+    ts, ts_src = dec.resolve_transport_scale(
+        capture=capture, measured_pitch_lines=pitch)
+    roll.transport_scale = float(ts)
+    roll.transport_source = ts_src
+
+
+def _sidecar_speed(capture: Path | str | None) -> float | None:
+    """The recorded transport speed, or None. Never raises."""
+    if capture is None:
+        return None
+    try:
+        meta = dec.load_capture_sidecar(capture) or {}
+        cfg = meta.get("config") if isinstance(meta.get("config"), dict) else {}
+        raw = meta.get("speed", cfg.get("speed"))
+        return float(raw) if raw is not None else None
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+def _fallback_spans(trace: np.ndarray) -> list[tuple[int, int]]:
+    """Last-ditch frame split from the 1-D trace alone.
+
+    Only reached when the cascade itself raises. Deliberately crude: an even
+    split of the film-present region at the median run pitch beats returning
+    no frames, because a roll with no frames cannot be corrected by hand
+    whereas a roll with wrong frames can.
+    """
+    n = int(trace.size)
+    if n < 2:
+        return [(0, max(1, n))]
+    ones, _ = pf.ones_array(trace)
+    runs = [(a, b) for a, b in pf._runs(ones) if b - a >= 200]
+    if len(runs) >= 2:
+        return runs
+    return [(0, n)]
+
+
 def _flag_confidence(roll: Roll) -> None:
     """Mark boundaries that look wrong so Review can annotate them (amber,
-    never modal — design/index.html 'warnings that don't abort')."""
+    never modal — design/index.html 'warnings that don't abort').
+
+    Two signals now, and the stronger one wins. The framing phase is a direct
+    statement from the detector about how the boundary was arrived at, so a
+    frame the cascade extrapolated or placed blind is low-confidence however
+    plausible its width is. The width heuristic still runs, because a frame
+    can be placed by ``LookForNicePictures`` and still be a merge of two.
+    """
     if not roll.frames:
         return
     widths = np.array([f.b - f.a for f in roll.frames], dtype=np.float64)
     med = float(np.median(widths))
     for f in roll.frames:
         w = f.b - f.a
-        f.confidence = "low" if (med > 0 and abs(w - med) / med > 0.22) else "good"
+        odd = med > 0 and abs(w - med) / med > 0.22
+        f.confidence = "low" if (odd or int(f.framing_risk or 0) > 0) else "good"
 
 
 # --------------------------------------------------------------------------
@@ -681,7 +821,8 @@ def render_frame(roll: Roll, index: int, params: dict | None = None,
 
     seg = roll.slice14(f.a, f.b, step)
     rpd16 = _rpd16(seg, roll.data_dir,
-                   np.asarray(roll.auto_offsets, dtype=np.float64))
+                   np.asarray(roll.auto_offsets, dtype=np.float64),
+                   model=roll.model)
     rpd12 = ansel.rpd16_to_rpd12(rpd16)
 
     eng = roll.engine()
@@ -776,9 +917,102 @@ def depth_options(colour: str) -> list[int]:
     return [16, 8] if colour == "linear" else [8]
 
 
+#: What to do when the file an export would write already exists.
+#:
+#: There used to be no such policy: export opened the path and wrote. A second
+#: export of the same roll silently replaced the first, and — worse, because it
+#: is invisible in the destination folder — any two frames whose template
+#: renders to the same name overwrote each other *within a single export*, so a
+#: 24-frame roll could quietly produce one file.
+#:
+#: "overwrite" stays available because replacing your own earlier export after
+#: a re-grade is a real and common intention. It is just no longer the only
+#: behaviour, and never the unasked-for one: the app plans the whole export
+#: first, and will not start one that would destroy a file without being told
+#: which of these to do.
+ON_EXIST = ("ask", "skip", "overwrite", "unique")
+
+
+def export_path(roll: Roll, index: int, dest: Path, fmt: str,
+                colour: str, template: str) -> Path:
+    """Where ``export_frame`` would write. Pure — touches no file."""
+    ext = {"tiff": "tif", "jpeg": "jpg", "png": "png"}.get(fmt, "tif")
+    out = dest / render_name(template, roll, index, ext)
+    return out.with_suffix(".tif") if colour == "linear" else out
+
+
+def unique_path(out: Path, taken: set | None = None) -> Path:
+    """``name.tif`` → ``name-2.tif`` → ``name-3.tif``, first one free."""
+    taken = taken or set()
+    if not out.exists() and out not in taken:
+        return out
+    stem, suffix, parent = out.stem, out.suffix, out.parent
+    n = 2
+    while True:
+        cand = parent / f"{stem}-{n}{suffix}"
+        if not cand.exists() and cand not in taken:
+            return cand
+        n += 1
+
+
+def plan_export(roll: Roll, indexes: list[int], dest: Path, fmt: str = "tiff",
+                colour: str = "linear",
+                template: str = "{roll}_{frame:02}_{stock}",
+                on_exist: str = "ask") -> dict:
+    """Work out every path this export would write, before writing any.
+
+    Returns the plan plus the two kinds of collision, separately, because they
+    need different words in the UI: ``existing`` is "you will replace files
+    you already have", ``duplicates`` is "your filename template does not
+    distinguish these frames and they will replace each other".
+    """
+    if on_exist not in ON_EXIST:
+        raise ValueError(f"on_exist must be one of {ON_EXIST}")
+    items, existing, duplicates = [], [], []
+    seen: dict[Path, int] = {}
+    taken: set = set()
+    for i in indexes:
+        out = export_path(roll, i, dest, fmt, colour, template)
+        dup_of = seen.get(out)
+        exists = out.exists()
+        action = "write"
+        if dup_of is not None or exists:
+            if on_exist == "unique":
+                out = unique_path(out, taken)
+                action = "write"
+            elif on_exist == "skip":
+                action = "skip"
+            elif on_exist == "overwrite":
+                action = "overwrite"
+            else:
+                action = "blocked"
+        if dup_of is not None:
+            duplicates.append({"frame": i, "collides_with": dup_of,
+                               "path": str(out)})
+        elif exists:
+            existing.append({"frame": i, "path": str(out),
+                             "bytes": out.stat().st_size})
+        seen.setdefault(out, i)
+        taken.add(out)
+        items.append({"frame": i, "path": str(out), "action": action,
+                      "exists": exists, "duplicate_of": dup_of})
+    return {
+        "dest": str(dest),
+        "items": items,
+        "existing": existing,
+        "duplicates": duplicates,
+        "on_exist": on_exist,
+        "needs_confirm": bool((existing or duplicates) and on_exist == "ask"),
+        "will_write": sum(1 for it in items if it["action"] != "blocked"
+                          and it["action"] != "skip"),
+        "will_skip": sum(1 for it in items if it["action"] == "skip"),
+    }
+
+
 def export_frame(roll: Roll, index: int, dest: Path, fmt: str = "tiff",
                  depth: int = 16, colour: str = "linear",
-                 template: str = "{roll}_{frame:02}_{stock}") -> dict:
+                 template: str = "{roll}_{frame:02}_{stock}",
+                 out: Path | None = None) -> dict:
     """Render at full quality and write one file — the only act that keeps a
     file (design/index.html: 'Export is the only moment files are written').
 
@@ -786,12 +1020,19 @@ def export_frame(roll: Roll, index: int, dest: Path, fmt: str = "tiff",
     user operations that reach them are the matrix offset column (density and
     colour balance, which is the vendor's own per-frame control) and geometry,
     which selects pixels without altering their values.
+
+    ``out`` overrides the destination path, and is how ``plan_export``'s
+    decision reaches the write: the plan is made once, up front, for the whole
+    batch, and each frame is then written exactly where the plan said. Working
+    the path out again here would let the two disagree.
     """
     f = roll.frames[index]
     p = merged_params(f.params)
-    ext = {"tiff": "tif", "jpeg": "jpg", "png": "png"}.get(fmt, "tif")
     dest.mkdir(parents=True, exist_ok=True)
-    out = dest / render_name(template, roll, index, ext)
+    out = Path(out) if out is not None else export_path(
+        roll, index, dest, fmt, colour, template)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    replaced = out.is_file()
 
     if colour == "linear":
         # The vendor's "Save As Raw": 16-bit RPD, no Ansel, no ICC hop.
@@ -801,7 +1042,8 @@ def export_frame(roll: Roll, index: int, dest: Path, fmt: str = "tiff",
         # conversion across the Shasta/FUGC LUTs, so it is not attempted.
         seg = roll.slice14(f.a, f.b, 1)
         rpd16 = _rpd16(seg, roll.data_dir,
-                       np.asarray(roll.auto_offsets, dtype=np.float64))
+                       np.asarray(roll.auto_offsets, dtype=np.float64),
+                       model=roll.model)
         img16 = _apply_geometry(
             dec.to_frame_image(rpd16, roll.transport_scale), p)
         out = out.with_suffix(".tif")

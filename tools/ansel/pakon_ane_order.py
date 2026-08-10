@@ -9,7 +9,8 @@ ported; neighbor-hist merge ``0x102a82a0`` + finalize knot
 ported; sample/residual dens-hist accumulate ``0x102a84d0`` + build
 orch ``0x1027e9d0`` (shipped ``useAvg=0`` path) ported →
 ``ANE_ORDER_PORTED = True``. ``useAvg≠0`` color-correlation second
-pass (``0x102a8950`` / ``0x102a8600``) remains open.
+pass (``0x102a8950`` / ``0x102a8600``) ported →
+``ANE_ANALYZE_CORR_MASK_PORTED`` / ``ANE_ANALYZE_ACCUM_8600_PORTED``.
 
 VERIFIED call chain
 ===================
@@ -30,7 +31,7 @@ Order-wide analyze
      finalize ``0x102a8770``. When AneParams ``useAvg``
      (Ane ``+0x29`` = params ``+0x21``) is set, a second pass runs
      ``color_correlation_mask`` ``0x102a8950`` + masked accum
-     ``0x102a8600`` — **not** on shipped CN dpi (``useAvg=0``).
+     ``0x102a8600`` — ported; shipped CN dpi keeps ``useAvg=0``.
 
 * Cap ``getResults`` @ ``0x10110830`` → Impl ``0x101ebe90``
   (string ``0x1059b3a4``)
@@ -130,20 +131,26 @@ Build orch ``0x1027e9d0`` (PORTED — shipped ``useAvg=0``)
 2. Clear dens-hists ``0x1027e3a0``; zero ``[obj+0xbc]``.
 3. For each pair: wrap (``0x1014cc20``) → accumulate ``0x102a84d0`` →
    destroy wrappers; ``inc [obj+0xbc]``.
-4. ``useAvg`` (Ane ``+0x29``): shipped ``ane-CN-Fps.dpi`` /
-   ``ane-default.dpi`` set ``useAvg=0`` → skip correlation pass;
-   finalize ``0x102a8770(scaleFactor @ +0x18, useMasking @ +0x28,
+  4. ``useAvg`` (Ane ``+0x29``): shipped ``ane-CN-Fps.dpi`` /
+   ``ane-default.dpi`` set ``useAvg=0`` → finalize
+   ``0x102a8770(scaleFactor @ +0x18, useMasking @ +0x28,
    tau @ +0x20)``. Knot scale = ``alpha`` @ ``+0x10``.
-5. ``useAvg≠0`` second pass (``0x102a8950`` / ``0x102a8600``) **open**.
+5. ``useAvg≠0`` (PORTED): finalize once (``do_adjust=1``; adjust
+   reads Ane ``+0x20``), clear hists ``0x1027e3a0``, per pair
+   ``color_correlation_mask`` ``0x102a8950`` then masked accum
+   ``0x102a8600``, then final ``0x102a8770`` with normal masking.
 
 Host ``ane_build_noise_table_e9d0`` composes accumulate → finalize →
-curve rows → ``getResults`` fill for the shipped path.
+curve rows → ``getResults`` fill; ``use_avg=True`` when both
+``ANE_ANALYZE_CORR_MASK_PORTED`` and ``ANE_ANALYZE_ACCUM_8600_PORTED``.
 
-``ANE_ORDER_PORTED = True`` (``useAvg=0`` path). Live Laplacian
-``collectData`` pixel leaf ``0x1027fc80`` and box ``0x102804e0`` are
-ported (``ANE_COLLECT_FC80_PORTED`` / ``ANE_COLLECT_804E0_PORTED``);
-COM portfolio wrap remains open. ``SHASTA_ANALYZE_PORTED`` wires fc80
-dens into Preference mid-aims.
+``ANE_ORDER_PORTED = True``. Live Laplacian ``collectData`` pixel
+leaf ``0x1027fc80`` and box ``0x102804e0`` are ported
+(``ANE_COLLECT_FC80_PORTED`` / ``ANE_COLLECT_804E0_PORTED``);
+collectData host orch ``0x101ee590`` ported
+(``ANE_COLLECT_DATA_PORTED`` / ``ANE_COLLECT_QI_INSERT_PORTED`` /
+``ANE_COLLECT_CONVERT_PORTED``).
+``SHASTA_ANALYZE_PORTED`` wires fc80 dens into Preference mid-aims.
 
 ``NoiseMethods::getNoiseTable`` @ ``0x10112980``
 -----------------------------------------------
@@ -218,12 +225,15 @@ Flags
 * ``ANE_ANALYZE_ACCUM_84D0_PORTED = True`` — sample/residual dens-hist
   loop as leaf-compose of golden bin-index + dens-hist ``inc`` (full
   Unicorn ``0x102a84d0`` harness open).
-* ``ANE_ORDER_PORTED = True`` — ``0x1027e9d0`` shipped ``useAvg=0`` orch;
-  ``useAvg≠0`` correlation pass open.
+* ``ANE_ANALYZE_CORR_MASK_PORTED = True`` — ``0x102a8950`` mask.
+* ``ANE_ANALYZE_ACCUM_8600_PORTED = True`` — ``0x102a8600`` masked dens.
+* ``ANE_ORDER_PORTED = True`` — ``0x1027e9d0`` orch (``useAvg=0`` and
+  ``useAvg≠0`` when both correlation flags True).
 """
 from __future__ import annotations
 
 import math
+import struct
 from dataclasses import dataclass
 from typing import MutableSequence, Sequence
 
@@ -239,6 +249,8 @@ ANE_ANALYZE_FINALIZE_ADJUST_PORTED = True
 ANE_ANALYZE_NEIGHBOR_MERGE_PORTED = True
 ANE_CURVE_ROWS_FROM_DOUBLES_PORTED = True
 ANE_ANALYZE_ACCUM_84D0_PORTED = True
+ANE_ANALYZE_CORR_MASK_PORTED = True
+ANE_ANALYZE_ACCUM_8600_PORTED = True
 
 PATH_ANALYZE_ANE_ORDER = 0x100FAD90
 ANE_ORDER_CAP_ANALYZE = 0x10110540
@@ -250,8 +262,10 @@ ANE_ANALYZE_BUILD_CURVES = 0x1027E9D0  # Ane.cpp from Impl+0xc0
 ANE_ANALYZE_BUILD_CURVES_END = 0x1027EC4A  # ret 8 (useAvg=0 exit)
 ANE_ANALYZE_ACCUM_84D0 = 0x102A84D0  # sample/residual dens-hist loop
 ANE_ANALYZE_ACCUM_84D0_END = 0x102A85F4  # ret 8
-ANE_ANALYZE_ACCUM_8600 = 0x102A8600  # masked accum (useAvg≠0; open)
-ANE_ANALYZE_CORR_MASK = 0x102A8950  # color_correlation_mask (open)
+ANE_ANALYZE_ACCUM_8600 = 0x102A8600  # masked accum (useAvg≠0)
+ANE_ANALYZE_ACCUM_8600_END = 0x102A8763  # ret 0xc
+ANE_ANALYZE_CORR_MASK = 0x102A8950  # color_correlation_mask
+ANE_ANALYZE_CORR_MASK_END = 0x102A8C41  # ret 0xc
 ANE_ANALYZE_BIN_INDEX = 0x102A8555  # leaf inside 0x102a84d0 accumulate
 ANE_ANALYZE_BIN_INDEX_END = 0x102A857C  # before call 0x101ed810
 ANE_ANALYZE_HIST_ACCUM = 0x104F56E0  # dens-hist bin + inc
@@ -326,6 +340,197 @@ NOISE_TABLE_DENS_OFF = 0x4C
 
 # FLT_EPSILON at 0x1059b344 (fcomp gate on dx)
 ANE_FILL_FLT_EPSILON = 1.1920928955078125e-07
+
+# color_correlation_mask score scale (``fmul`` @ 0x102a8b98)
+ANE_CORR_ONE_THIRD = struct.unpack("<d", bytes.fromhex("555555555555d53f"))[
+    0
+]  # PakonIMAu.dll @ 0x105943c0
+ANE_OBJ_CORR_RATIO_OFF = 0x90  # filled-ratio double @ 0x102a8c34
+
+
+def _ane_imul32(a: int, b: int) -> int:
+    """MSVC ``imul`` dword product (trunc to signed 32) @ ``0x102a8b55``."""
+    return ((int(a) * int(b)) + (1 << 31)) % (1 << 32) - (1 << 31)
+
+
+def ane_corr_score_8950(
+    res0: int,
+    res1: int,
+    res2: int,
+    knot0: float,
+    knot1: float,
+    knot2: float,
+) -> float:
+    """Per-pixel correlation score inside ``0x102a8950`` (FPU @ ``0x102a8b6a…``).
+
+    ``score = (1/3) * (r0·r1/(k1·k0) + r0·r2/(k2·k0) + r1·r2/(k2·k1))``
+    with ``imul`` products then ``fild``. Requires MSVC 53-bit FPU PC for
+    bit-exact float64 vs DLL (Unicorn golden sets ``FCW=0x027F``).
+    """
+    k0 = float(knot0)
+    k1 = float(knot1)
+    k2 = float(knot2)
+    # IEEE div (Python raises on /0; numpy matches x87→inf/nan)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t1 = float(
+            np.float64(_ane_imul32(res0, res1))
+            / (np.float64(k1) * np.float64(k0))
+        )  # PakonIMAu.dll @ 0x102a8b6a
+        t2 = float(
+            np.float64(_ane_imul32(res0, res2))
+            / (np.float64(k2) * np.float64(k0))
+        )  # PakonIMAu.dll @ 0x102a8b78
+        t3 = float(
+            np.float64(_ane_imul32(res1, res2))
+            / (np.float64(k2) * np.float64(k1))
+        )  # PakonIMAu.dll @ 0x102a8b8a
+        return float(
+            np.float64(t1 + t2 + t3) * np.float64(ANE_CORR_ONE_THIRD)
+        )  # PakonIMAu.dll @ 0x102a8b98
+
+
+def ane_color_correlation_mask_8950(
+    sample: Sequence[np.ndarray] | np.ndarray,
+    residual: Sequence[np.ndarray] | np.ndarray,
+    plane_doubles: Sequence[Sequence[float]],
+    *,
+    pixel_offset: int,
+    bin_divisor: int,
+    max_bin: int,
+    tau: float,
+) -> tuple[list[np.ndarray], float]:
+    """``color_correlation_mask`` @ ``0x102a8950`` (Unicorn-golden).
+
+    Requires ≥3 planes. For each pixel: bin sample RGB via
+    ``ane_bin_index``, look up finalize knots ``plane_doubles[0..2]``,
+    compute score; when ``fabs(score) ≤ tau`` (Ane ``+0x20``) set all
+    three mask planes to 1. Returns ``(mask_planes uint8 HxW×3,
+    filled_ratio)`` where ratio is matches / (h·w) → Ane ``+0x90``.
+    """
+    samp = _ane_planes_i16(sample)
+    resid = _ane_planes_i16(residual)
+    if len(samp) < 3 or len(resid) < 3:
+        raise ValueError(
+            "color_correlation_mask(): x must have 3 channels"  # cite 0x105a87f8
+        )
+    if len(plane_doubles) < 3:
+        raise ValueError("plane_doubles needs ≥3 planes")
+    h, w = samp[0].shape
+    for p in range(3):
+        if samp[p].shape != (h, w) or resid[p].shape != (h, w):
+            raise ValueError("sample/residual planes must share HxW")
+        if len(plane_doubles[p]) <= int(max_bin):
+            raise ValueError(
+                f"plane_doubles[{p}] length {len(plane_doubles[p])} "
+                f"≤ max_bin={max_bin}"
+            )
+    masks = [
+        np.zeros((h, w), dtype=np.uint8),
+        np.zeros((h, w), dtype=np.uint8),
+        np.zeros((h, w), dtype=np.uint8),
+    ]
+    matches = 0
+    thr = float(tau)
+    for y in range(h):
+        for x in range(w):
+            b0 = ane_bin_index(
+                int(samp[0][y, x]), pixel_offset, bin_divisor, max_bin
+            )  # PakonIMAu.dll @ 0x102a8a5f
+            b1 = ane_bin_index(
+                int(samp[1][y, x]), pixel_offset, bin_divisor, max_bin
+            )  # PakonIMAu.dll @ 0x102a8a9d
+            b2 = ane_bin_index(
+                int(samp[2][y, x]), pixel_offset, bin_divisor, max_bin
+            )  # PakonIMAu.dll @ 0x102a8adb
+            k0 = float(plane_doubles[0][b0])  # PakonIMAu.dll @ 0x102a8b10
+            k1 = float(plane_doubles[1][b1])  # PakonIMAu.dll @ 0x102a8b27
+            k2 = float(plane_doubles[2][b2])  # PakonIMAu.dll @ 0x102a8b3e
+            r0 = int(resid[0][y, x])  # PakonIMAu.dll @ 0x102a89fe
+            r1 = int(resid[1][y, x])  # PakonIMAu.dll @ 0x102a8a1d
+            r2 = int(resid[2][y, x])  # PakonIMAu.dll @ 0x102a8a3c
+            score = ane_corr_score_8950(r0, r1, r2, k0, k1, k2)
+            # fabs via fcom/fchs @ 0x102a8b9e…; fcomp tau @ 0x102a8bad
+            if abs(score) <= thr:  # PakonIMAu.dll @ 0x102a8bad
+                matches += 1  # PakonIMAu.dll @ 0x102a8bbe
+                masks[0][y, x] = 1  # PakonIMAu.dll @ 0x102a8bd9
+                masks[1][y, x] = 1  # PakonIMAu.dll @ 0x102a8bf3
+                masks[2][y, x] = 1  # PakonIMAu.dll @ 0x102a8c0a
+    total = h * w  # PakonIMAu.dll @ 0x102a89e4 (Σ width)
+    ratio = (float(matches) / float(total)) if total else float("nan")
+    # PakonIMAu.dll @ 0x102a8c28 → +0x90
+    return masks, ratio
+
+
+def ane_accumulate_masked_8600(
+    plane_dens_hists: Sequence[Sequence[MutableSequence[int]]],
+    sample: Sequence[np.ndarray] | np.ndarray,
+    residual: Sequence[np.ndarray] | np.ndarray,
+    mask: Sequence[np.ndarray],
+    *,
+    pixel_offset: int,
+    bin_divisor: int,
+    max_bin: int,
+    hist_offset: float,
+    hist_divisor: float,
+) -> None:
+    """Masked dens-hist accumulate @ ``0x102a8600`` (Unicorn-golden).
+
+    Per plane/row/col: when ``mask[plane][y,x] ≠ 0``, bin sample and
+    ``inc`` residual dens-hist at ``+0xa4`` slot (same as ``84d0``).
+    Plane ImgHistogram ``+0xa8`` / ``+0xb0`` side paths omitted (not on
+    dens→``getResults`` path).
+    """
+    samp = _ane_planes_i16(sample)
+    resid = _ane_planes_i16(residual)
+    n_planes = len(samp)
+    if len(resid) != n_planes:
+        raise ValueError(
+            f"residual planes {len(resid)} != sample planes {n_planes}"
+        )
+    if len(mask) < n_planes:
+        raise ValueError(f"mask planes {len(mask)} < {n_planes}")
+    if len(plane_dens_hists) != n_planes:
+        raise ValueError(
+            f"dens-hists planes {len(plane_dens_hists)} != {n_planes}"
+        )
+    stride = len(plane_dens_hists[0]) if n_planes else 0
+    if stride <= 0:
+        raise ValueError("each plane must have ≥1 code-bin dens-hist")
+    for p in range(n_planes):
+        if samp[p].shape != resid[p].shape:
+            raise ValueError(
+                f"plane {p} sample shape {samp[p].shape} != "
+                f"residual {resid[p].shape}"
+            )
+        m = np.asarray(mask[p])
+        if m.shape != samp[p].shape:
+            raise ValueError(
+                f"plane {p} mask shape {m.shape} != sample {samp[p].shape}"
+            )
+        if len(plane_dens_hists[p]) != stride:
+            raise ValueError(
+                f"plane {p} has {len(plane_dens_hists[p])} bins; "
+                f"expected {stride}"
+            )
+    for p in range(n_planes):
+        sp = samp[p]
+        rp = resid[p]
+        mp = np.asarray(mask[p])
+        h, w = sp.shape
+        for y in range(h):
+            for x in range(w):
+                if int(mp[y, x]) == 0:  # PakonIMAu.dll @ 0x102a86ae
+                    continue
+                pix = int(sp[y, x])
+                b = ane_bin_index(
+                    pix, pixel_offset, bin_divisor, max_bin
+                )  # PakonIMAu.dll @ 0x102a86b4
+                ane_dens_hist_accum(
+                    plane_dens_hists[p][b],
+                    int(rp[y, x]),
+                    offset=hist_offset,
+                    divisor=hist_divisor,
+                )  # PakonIMAu.dll @ 0x102a86fa → 0x104ea370
 
 
 def noise_table_alloc_nbytes(n: int, n_channels: int) -> int:
@@ -535,14 +740,16 @@ def ane_build_noise_table_e9d0(
     merge_min_count: int = 50,
     merge_max_radius: int = 3,
 ) -> "NoiseTable":
-    """Build orch ``0x1027e9d0`` → ``NoiseTable`` (shipped ``useAvg=0``).
+    """Build orch ``0x1027e9d0`` → ``NoiseTable``.
 
     Defaults match ``ane-default.dpi`` / AneParams ctor where cited.
-    ``use_avg=True`` raises — correlation pass ``0x102a8950``/``8600``
-    is not host-ported. ``n`` is dens table length (``NoiseTable+0x44`` /
-    Impl ``+0xf8``).
+    ``use_avg=True`` runs correlation pass ``0x102a8950``/``8600`` when
+    both leaf flags are True. ``n`` is dens table length
+    (``NoiseTable+0x44`` / Impl ``+0xf8``).
     """
-    if use_avg:
+    if use_avg and not (
+        ANE_ANALYZE_CORR_MASK_PORTED and ANE_ANALYZE_ACCUM_8600_PORTED
+    ):
         raise NotImplementedError(
             "0x1027e9d0 useAvg≠0 path open: color_correlation_mask "
             "0x102a8950 + masked accum 0x102a8600"
@@ -555,6 +762,10 @@ def ane_build_noise_table_e9d0(
     n_planes = len(_ane_planes_i16(samp0))
     if n_planes < 2:
         raise ValueError("need ≥2 planes for curve rows (x + ≥1 y)")
+    if use_avg and n_planes < 3:
+        raise ValueError(
+            "color_correlation_mask(): x must have 3 channels"  # cite 0x105a87f8
+        )
     # Ane init: divisor = (max−min+1)/bins; max_bin = bins−1 (0x1027e570…)
     span = int(code_value_max) - int(code_value_min) + 1
     bins = int(code_value_bins)
@@ -577,6 +788,40 @@ def ane_build_noise_table_e9d0(
             hist_offset=hist_off,
             hist_divisor=hist_div,
         )
+    if use_avg:
+        # First finalize @ 0x1027eae9: do_adjust=1; adjust reads +0x20.
+        pre_doubles = ane_finalize_plane_doubles_from_hists(
+            plane_hists,
+            knot_scale=float(alpha),
+            merge_min_count=int(merge_min_count),
+            merge_max_radius=int(merge_max_radius),
+            do_adjust=True,  # PakonIMAu.dll @ 0x1027eade
+            adjust_limit=float(tau),  # object +0x20 @ 0x102a88ae
+            scale=float(scale_factor),
+        )
+        # Clear dens-hists @ 0x1027eaf0 → 0x1027e3a0
+        plane_hists = ane_empty_plane_dens_hists(n_planes, bins, n_res)
+        for sample, residual in sample_residual_pairs:
+            masks, _ratio = ane_color_correlation_mask_8950(
+                sample,
+                residual,
+                pre_doubles,
+                pixel_offset=int(code_value_min),
+                bin_divisor=bin_divisor,
+                max_bin=max_bin,
+                tau=float(tau),
+            )
+            ane_accumulate_masked_8600(
+                plane_hists,
+                sample,
+                residual,
+                masks,
+                pixel_offset=int(code_value_min),
+                bin_divisor=bin_divisor,
+                max_bin=max_bin,
+                hist_offset=hist_off,
+                hist_divisor=hist_div,
+            )
     return noise_table_from_dens_hists(
         plane_hists,
         n,
@@ -1005,6 +1250,8 @@ def main() -> None:
         f"FINALIZE_ADJUST_PORTED={ANE_ANALYZE_FINALIZE_ADJUST_PORTED} "
         f"CURVE_ROWS_PORTED={ANE_CURVE_ROWS_FROM_DOUBLES_PORTED} "
         f"ACCUM_84D0_PORTED={ANE_ANALYZE_ACCUM_84D0_PORTED} "
+        f"CORR_MASK_PORTED={ANE_ANALYZE_CORR_MASK_PORTED} "
+        f"ACCUM_8600_PORTED={ANE_ANALYZE_ACCUM_8600_PORTED} "
         f"ANE_ORDER_PORTED={ANE_ORDER_PORTED}"
     )
     nt = NoiseTable.zeros(64, 1)

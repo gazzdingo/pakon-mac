@@ -279,6 +279,15 @@ ENV_SIM_RATE = "PAKON_SCAN_SIM_RATE"
 #: film at its sensors — i.e. the strip leaves the transport. Lets the
 #: film-sense end-of-roll path be run end to end without a scanner.
 ENV_SIM_FILM_OUT = "PAKON_SCAN_SIM_FILM_OUT"
+#: Comma-separated packet prefixes, as hex, that the simulated board answers
+#: with a NAK — status byte 1, "no acknowledgement, board absent" — instead of
+#: an acceptance. The board still *acts* on them, because that is the case
+#: worth testing: the command arrived and the reply did not.
+#:
+#: There is no other way to reach the lost-acknowledgement paths without a
+#: scanner, and those are the paths that decide whether the transport can be
+#: left running with the marker deleted. ``04 03 44 00 a1`` is motor forward.
+ENV_SIM_NAK = "PAKON_SCAN_SIM_NAK"
 
 
 class FakeDev:
@@ -313,6 +322,12 @@ class FakeDev:
         self.dx_illum = pc.DX_ILLUM_BOTH
         self.dx_illum_armed = True
         self.dx_illum_writes = 0
+        # Packets this board acts on but refuses to acknowledge. See
+        # ENV_SIM_NAK.
+        self.nak = tuple(
+            bytes.fromhex(p.strip().replace(" ", ""))
+            for p in (os.environ.get(ENV_SIM_NAK) or "").split(",")
+            if p.strip())
 
     def _dx_packet(self) -> bytes:
         """One 0x90 response: a code word and two perforations.
@@ -387,10 +402,15 @@ class FakeDev:
         self._note(kind, pkt)
         return len(pkt)
 
+    def _status_for(self, pkt: bytes) -> int:
+        """0 = acknowledged, 1 = "no acknowledgement, board absent"."""
+        return 1 if any(pkt.startswith(p) for p in self.nak) else 0
+
     def read(self, ep, size, _timeout=0):
         pkt = getattr(self, "_pending", b"\x00\x00\x00")
         if ep == EP_CMD_IN:
             board = pkt[2] if len(pkt) > 2 else 0
+            status = self._status_for(pkt)
             if pkt[:1] == b"\x01":                      # a register read
                 n = pkt[3] if len(pkt) > 3 else 1
                 reg = pkt[4] if len(pkt) > 4 else 0
@@ -419,8 +439,8 @@ class FakeDev:
                                   1 if self.dx_status else 0])
                 else:
                     body = bytes(n)
-                return bytearray(bytes([0x07, 0x02, board, 0x00]) + body)
-            return bytearray(bytes([0x07, 0x02, board, 0x00]))
+                return bytearray(bytes([0x07, 0x02, board, status]) + body)
+            return bytearray(bytes([0x07, 0x02, board, status]))
         if ep == EP_IMAGE:
             if self.fh is None or not self.streaming:
                 raise _SimTimeout("no data")
@@ -1938,8 +1958,17 @@ def run_scan(out_path: str | Path,
         if not dry_run:
             fh = out.open("wb")
         log("phase", phase="transport", message=f"starting transport at {speed}")
-        link.ack(pc.motor_forward(), f"TRANSPORT FORWARD at {speed}")
+        # BEFORE the acknowledgement, not after. `ack(required=True)` raises
+        # ScanAborted when the reply is lost or refused, but the board acts on
+        # a command when it receives it: a lost acknowledgement is not evidence
+        # that the transport did not start. Setting the flag afterwards meant
+        # that on exactly that failure the abort unwound, safe_stop's own
+        # retries also failed, and the finally then read `not started_motor`
+        # and cleared the marker -- motor possibly running, stop failed, and
+        # nothing left to tell the next process. The flag records that the
+        # command went out, which is the thing the marker is about.
         started_motor = True
+        link.ack(pc.motor_forward(), f"TRANSPORT FORWARD at {speed}")
 
         # ---------------- the capture loop ----------------
         t0 = time.time()

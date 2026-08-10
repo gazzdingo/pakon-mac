@@ -1484,23 +1484,42 @@ def main() -> int:
         lut = [float(int(v)) for v in pc.load_vendor_lut(str(lut_path))]
         coeff, offset = pc.quantise_matrix(pc.load_vendor_matrix(str(mat_path)))
         remapped = sc.addscene_colneg_remap_dmin_rgb(*seeded, lut, coeff, offset)
-        expect = pc.render_pixel(seeded, lut, coeff, offset)
+        expect = pc.render_pixel_f235(seeded, lut, coeff, offset)
         ok = remapped == expect
         print(
-            f"  colneg_1px remap {seeded} → {remapped} (pakon_color={expect}) "
+            f"  colneg_1px remap TLA {seeded} → {remapped} (pakon_color={expect}) "
             f"{'OK' if ok else 'FAIL'}"
         )
         if not ok:
             fail += 1
+        # F-135 poly prime (TLB 0x10034b9b)
+        coeffs = pc.load_unit_matrix()
+        rem_f135 = sc.addscene_colneg_remap_dmin_rgb_f135(*seeded, coeffs)
+        expect_f135 = pc.poly_pixel(seeded, coeffs)
+        ok = rem_f135 == expect_f135
+        print(
+            f"  colneg_1px remap F135 {seeded} → {rem_f135} "
+            f"(poly_pixel={expect_f135}) {'OK' if ok else 'FAIL'}"
+        )
+        if not ok:
+            fail += 1
+        composed = sc.addscene_dmin_rgb_from_frame(
+            *frame_rgb, model="f135", coeffs=coeffs
+        )
+        ok = composed == rem_f135
+        print(f"  f135 from_frame compose: {composed} {'OK' if ok else 'FAIL'}")
+        if not ok:
+            fail += 1
         # ColRev bit skips host ColNeg remap (extra ColRev stages open)
         skipped = sc.addscene_dmin_rgb_from_frame(
-            *frame_rgb, film_flags=2, lut=lut, coeff=coeff, offset=offset
+            *frame_rgb, film_flags=2, model="f135", coeffs=coeffs,
+            lut=lut, coeff=coeff, offset=offset
         )
         ok = skipped == seeded
         print(f"  colrev bit skips ColNeg remap: {skipped} {'OK' if ok else 'FAIL'}")
         if not ok:
             fail += 1
-        # Full seed→ColNeg→desc pack compose
+        # Full seed→ColNeg→desc pack compose (TLA numbers)
         desc = sc.addscene_pack_desc(2, *remapped)
         ok = sc.addscene_desc_dmin_rgb(desc) == tuple(int(x) & 0xFFFF for x in remapped)
         print(f"  frame→ColNeg→desc pack: {sc.addscene_desc_dmin_rgb(desc)} {'OK' if ok else 'FAIL'}")
@@ -1522,6 +1541,7 @@ def main() -> int:
         f"PATH_FROM_BAG={sc.PATH_DMIN_FROM_BAG_PORTED} "
         f"FRAME_DMIN={sc.FRAME_DMIN_RGB_PORTED} "
         f"COLNEG_REMAP={sc.ADDSCENE_COLNEG_REMAP_PORTED} "
+        f"COLNEG_REMAP_F135={sc.ADDSCENE_COLNEG_REMAP_F135_PORTED} "
         f"NOISE_LAYOUT={ane.ANE_NOISE_TABLE_LAYOUT_PORTED} "
         f"GET_RESULTS_FILL={ane.ANE_GET_RESULTS_FILL_PORTED} "
         f"ANE_BIN_INDEX={ane.ANE_ANALYZE_BIN_INDEX_PORTED} "

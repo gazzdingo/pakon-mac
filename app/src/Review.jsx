@@ -206,6 +206,97 @@ function Boundaries({ roll, selected, onSelect, onEdit, busy, onClose }) {
   );
 }
 
+/* ── apply to roll: the confirmation, which is the whole point of it ─────── */
+
+/** The backend plans this operation before it does it, and names what will be
+ *  lost. A count of frames is not enough — "12 frames, 5 of them already
+ *  adjusted" is the sentence that makes someone stop — so the plan's own
+ *  numbers are shown rather than a generic "are you sure". */
+function ApplySheet({ plan, busy, onCancel, onConfirm }) {
+  if (!plan) return null;
+  const changing = plan.frames_changing || [];
+  const overwriting = plan.frames_overwriting_adjustments || [];
+
+  return (
+    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !busy && onCancel()}>
+      <div className="sheet">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <span className="title">Apply to roll</span>
+          <span className="sp" />
+          <Info side="left">
+            This replaces the colour of every other frame in the roll. It is
+            snapshotted first, so Undo puts it back — but only for this
+            session, and only until another destructive edit pushes it off the
+            stack.
+          </Info>
+        </div>
+
+        <p style={{ marginBottom: 12, fontSize: 13 }}>{plan.message}</p>
+
+        <div className="rows" style={{ marginBottom: 12, padding: '9px 11px', fontSize: 12.5 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ flex: 1 }}>From frame</span>
+            <span className="num">{(plan.from ?? 0) + 1}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ flex: 1 }}>Copying</span>
+            <span className="num">{(plan.keys || []).join(', ')}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ flex: 1 }}>Frames changed</span>
+            <span className="num">
+              {changing.length} of {(plan.frames_total ?? 1) - 1}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ flex: 1, color: overwriting.length ? 'var(--danger-ink)' : undefined }}>
+              Hand adjustments replaced
+            </span>
+            <span className="num" style={{ color: overwriting.length ? 'var(--danger-ink)' : undefined }}>
+              {overwriting.length}
+            </span>
+          </div>
+        </div>
+
+        {overwriting.length ? (
+          <div
+            style={{
+              background: 'var(--danger-flat)',
+              color: 'var(--danger-ink)',
+              borderRadius: 'var(--r-sm)',
+              padding: '9px 11px',
+              marginBottom: 12,
+              fontSize: 12,
+            }}
+          >
+            Frames{' '}
+            <span className="num">
+              {overwriting.slice(0, 12).map((i) => i + 1).join(', ')}
+              {overwriting.length > 12 ? ` +${overwriting.length - 12} more` : ''}
+            </span>{' '}
+            have been graded by hand. Their density and colour will be replaced.
+          </div>
+        ) : null}
+
+        {!changing.length ? (
+          <p className="quiet" style={{ marginBottom: 12 }}>
+            Nothing would change — every other frame already carries these values.
+          </p>
+        ) : null}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Btn variant="flat" disabled={busy} onClick={onCancel}>
+            Cancel
+          </Btn>
+          <Btn variant="primary" disabled={busy || !changing.length} onClick={onConfirm}>
+            {busy ? 'Applying…' : `Apply to ${changing.length} frames`}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── screen ─────────────────────────────────────────────────────────────── */
 
 export default function Review({
@@ -233,6 +324,7 @@ export default function Review({
   const [clipboard, setClipboard] = useState(null);
   const [hist, setHist] = useState(null);
   const [bounds, setBounds] = useState(false);
+  const [applyPlan, setApplyPlan] = useState(null);
   const settle = useRef(null);
 
   const frame = roll?.frames?.[sel];
@@ -283,6 +375,44 @@ export default function Review({
     },
     [roll, setRoll],
   );
+
+  const APPLY_KEYS = ['density', 'red', 'green', 'blue'];
+
+  /* Ask the backend what this would do, and show that. The reply is a plan,
+     not a roll — handing it to setRoll is what used to unmount the tree. */
+  const askApply = useCallback(async () => {
+    setBusy(true);
+    try {
+      const plan = await api.planApplyToRoll(roll.id, sel, APPLY_KEYS);
+      if (plan.needs_confirm) setApplyPlan(plan);
+      // A backend that answered with a roll has already applied it; that is
+      // not a shape this UI asks for, but it is a shape it must not misread.
+      else if (plan.frames) setRoll(plan);
+    } finally {
+      setBusy(false);
+    }
+  }, [roll, sel]);
+
+  const doApply = useCallback(async () => {
+    setBusy(true);
+    try {
+      const r = await api.applyToRoll(roll.id, sel, APPLY_KEYS);
+      if (r.frames) setRoll(r);
+      setApplyPlan(null);
+    } finally {
+      setBusy(false);
+    }
+  }, [roll, sel, setRoll]);
+
+  const undo = useCallback(async () => {
+    setBusy(true);
+    try {
+      const r = await api.undoRoll(roll.id);
+      if (r.frames) setRoll(r);
+    } finally {
+      setBusy(false);
+    }
+  }, [roll, setRoll]);
 
   useEffect(() => {
     if (!roll) return undefined;

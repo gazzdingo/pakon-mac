@@ -136,7 +136,7 @@ UNKNOWN / blockers
 ------------------
 * Preference / ``+0x4d0e`` → no alternate ``+0x3a38`` writer.
 * pass1 / FOS / pass2 bodies; FPO/scale memory layout.
-* FUGC mode==2 metrics / histogram bodies.
+* FUGC ``generateHistogram`` COM/ROI wrap (pixel leaf + metrics ported).
 * ``AnsOrder`` ``[edx+8]`` → OrderWide vtable slot.
 """
 from __future__ import annotations

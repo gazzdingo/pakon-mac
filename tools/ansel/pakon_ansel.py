@@ -10,7 +10,8 @@ sampling (``0x1027b970``/``0x1027b3c0``) + I16 ``ImaShastaOp`` apply are
 ported (`SHASTA_TONE_LUT_PORTED` / `SHASTA_APPLY_PORTED`). Full analyze
 aim producers closed (`SHASTA_ANALYZE_PORTED=True`; Ane Laplacian
 collect ``0x1027fc80`` → dens orch). ColorAdjust: contrast LUT +
-default-skip leaves ported; ``SpCombine`` / unsharp apply still open.
+default-skip / unsharp apply / SpCombine wrapper+ConnectEx prologue leaves
+ported; ``COLOR_ADJUST_PORTED=True``; ``PT_MERGE_BODY=True``.
 
 **SRA** (``pakon_sra.py``): shipped ``common-sraFwdLut-metric-*.lut`` is
 ``AnsCommonSraFwdLutDPI`` — a real Pakon table, but **not** Shasta's
@@ -19,7 +20,7 @@ stand-in. Preference path assembles ``engine.tone_lut`` from the scene
 image when flags allow; else linked-percentile STAND-IN.
 
 Also: FUGC seed + ``setLutInfo`` on Preference when
-``FUGC_ANALYZE_PORTED`` (``ebp+0x14`` = setShifts OUT @ ``scene+0x4b6``;
+``FUGC_ANALYZE_PORTED`` / ``FUGC_METRICS_PORTED`` (``ebp+0x14`` = setShifts OUT @ ``scene+0x4b6``;
 ``ebp+0x18`` = FindDmin; ``aFilmAimDmin``; seed ``aTableDmin``). SBA:
 Preference mode-``0x11`` fragment → ``setshifts_12(A, A)`` (CN second
 pass; A≡B from same Sba Cap) → ``apply_balance_shifts``. Preference
@@ -33,7 +34,7 @@ Pipeline here (I16 0..4095 until ICC):
           scene (``7b970``/``7b3c0``→``935d0``→builder→Cap) when
           ``SHASTA_TONE_LUT_PORTED`` → ``ImaShastaOp`` I16 apply when
           ``SHASTA_APPLY_PORTED``, else linked percentile STAND-IN →
-          FUGC ``setLutInfo``+apply (mode≠2) → ColorAdjust leaf
+          FUGC ``setLutInfo``+apply (mode≠2) / metrics+bias LUT (mode==2) → ColorAdjust leaf
           (factory-zero → skip; contrast LUT if non-zero) → Rpd2Pcs→Srgb
     No SRA, no ``aim_medians`` / per-channel re-equalize
     (those cancelled Preference OUT or crushed contrast on Gold 400).
@@ -428,6 +429,9 @@ class AnselEngine:
     tone_lut: object = field(default=None, repr=False)  # np.int32 work/Cap table
     fugc_a_table_dmin: tuple[int, int, int] = (500, 500, 500)
     fugc_afilm_aim_dmin: tuple[int, int, int] = fugc_mod.AFILM_AIM_DMIN_DEFAULT
+    # Cap +0x60e8: 2 → metrics path; else setLutInfo (analyze @ 0x101fc518…).
+    fugc_mode: int = 1
+    fugc_work_pct: tuple[float, float, float] | None = None
     # TLA CiImage+0xc8 ColorAdjust (ctor zeros) — UI sliders unset by default.
     color_adjust: color_adjust.ColorAdjustParams = field(
         default_factory=color_adjust.ColorAdjustParams
@@ -646,12 +650,23 @@ class AnselEngine:
                     highlight_percent=self.shasta.highlight_percent,
                     max_value=self.shasta.max_value,
                 )
-            # FUGC setLutInfo (mode≠2): ebp14 = setShifts OUT @ +0x4b6;
-            # ebp18 = FindDmin on post-balance RPD (bag dmin stand-in).
+            # FUGC: ebp14 = setShifts OUT @ +0x4b6; ebp18 = FindDmin on
+            # post-balance RPD (bag dmin stand-in). Mode≠2 → setLutInfo;
+            # mode==2 → bias @ 0x101f79b0 + plane LUT + work metrics.
             if (
-                fugc_mod.FUGC_SET_LUT_INFO_PORTED
-                and fugc_mod.FUGC_AIM_PROVENANCE_PORTED
+                fugc_mod.FUGC_AIM_PROVENANCE_PORTED
                 and self.setshifts_out is not None
+                and (
+                    (
+                        self.fugc_mode != 2
+                        and fugc_mod.FUGC_SET_LUT_INFO_PORTED
+                    )
+                    or (
+                        self.fugc_mode == 2
+                        and fugc_mod.FUGC_METRICS_PORTED
+                        and fugc_mod.FUGC_MODE2_LUT_PORTED
+                    )
+                )
             ):
                 bal16 = np.clip(balanced, 0, SHASTA_MAX).astype(np.int16)
                 ebp18 = scene_ctx.frame_dmin_rgb_from_planes(
@@ -659,13 +674,29 @@ class AnselEngine:
                     bal16[:, :, 1].ravel(),
                     bal16[:, :, 2].ravel(),
                 )
-                apply_lut, _offs, _aims = fugc_mod.build_setlutinfo_apply_lut(
-                    self.fugc_lut.astype(np.int32, copy=False),
-                    a_table_dmin=self.fugc_a_table_dmin,
-                    arg_ebp14=self.setshifts_out,
-                    arg_ebp18=ebp18,
-                    cap_params_aim=self.fugc_afilm_aim_dmin,
-                )
+                if self.fugc_mode == 2:
+                    apply_lut, _bias, _aims = fugc_mod.build_mode2_apply_lut(
+                        self.fugc_lut.astype(np.int32, copy=False),
+                        a_table_dmin=self.fugc_a_table_dmin,
+                        arg_ebp14=self.setshifts_out,
+                        arg_ebp18=ebp18,
+                        cap_params_aim=self.fugc_afilm_aim_dmin,
+                    )
+                    # Work % from R-plane dens hist (Cap work channel stand-in).
+                    hist = np.zeros(fugc_mod.FUGC_N, dtype=np.int32)
+                    fugc_mod.fugc_hist_accum_i16(bal16[:, :, 0], hist)
+                    _metrics = fugc_mod.calc_fugc_metrics_from_hist(
+                        hist, bias=_bias
+                    )
+                    self.fugc_work_pct = _metrics["pct"]  # type: ignore[assignment]
+                else:
+                    apply_lut, _offs, _aims = fugc_mod.build_setlutinfo_apply_lut(
+                        self.fugc_lut.astype(np.int32, copy=False),
+                        a_table_dmin=self.fugc_a_table_dmin,
+                        arg_ebp14=self.setshifts_out,
+                        arg_ebp18=ebp18,
+                        cap_params_aim=self.fugc_afilm_aim_dmin,
+                    )
                 x = apply_1d_lut(x, apply_lut)
             # ColorAdjust after FUGC (IMAu save-path contrast/unsharp gate).
             # Factory-zero params → skip (DEFAULT_SKIP). Contrast LUT when

@@ -572,6 +572,20 @@ def clamp_seconds(v: float, speed: int | None = None) -> float:
 # the USB link
 # --------------------------------------------------------------------------
 
+def acknowledged(r: bytes | None) -> bool:
+    """Did the board *acknowledge*, as opposed to merely answer?
+
+    A type-7 status-0 reply and nothing else. ``07 02 40 01`` is a response —
+    it is the board saying "no acknowledgement, board absent" — and so is a
+    truncated frame. ``Link.ack(required=False)`` hands back whatever came
+    without judging it, so every caller that tested its return value with
+    ``bool()`` was counting a NAK as a yes. That is the same mistake
+    ``init_ccd.py`` made for a day of writes to a dead board, and it is the
+    single expression this module now uses everywhere it asks the question.
+    """
+    return bool(r) and len(r) > 3 and r[0] == 0x07 and r[3] == 0x00
+
+
 class Link:
     """Command and image endpoints. Every write goes through :meth:`ack`."""
 
@@ -678,7 +692,7 @@ class Link:
         that is not acknowledged aborts before the film moves.
         """
         r = self._xfer(pkt)
-        ok = bool(r) and len(r) > 3 and r[0] == 0x07 and r[3] == 0x00
+        ok = acknowledged(r)
         self.log("packet", label=label, pkt=pkt.hex(" "),
                  resp=(r.hex(" ") if r else None), ok=ok)
         if not ok and required:
@@ -769,12 +783,41 @@ def lamp_on(link: Link, cfg: ScanConfig) -> None:
     link.ack(pc.lamp_set_mask(pc.LAMP_VISIBLE), "0x80 lamp ENABLE (visible)")
 
 
-def lamp_off(link: Link) -> bool:
-    try:
-        link.ack(pc.lamp_off(), "lamp off", required=False)
-        return True
-    except Exception:                                       # noqa: BLE001
-        return False
+#: How many times ``lamp_off`` re-sends ``0x80 := 0`` before giving up. The
+#: motor stop in ``safe_stop`` uses the same count for the same reason.
+LAMP_OFF_ATTEMPTS = 4
+
+
+def lamp_off(link: Link, attempts: int = LAMP_OFF_ATTEMPTS) -> bool:
+    """Turn the lamp off, and return whether the board said it did.
+
+    THIS RETURN VALUE IS PUBLISHED. ``safe_stop`` stores it as ``out["lamp"]``,
+    which reaches the capture sidecar, the job record and the UI as a statement
+    that the lamp is off. It used to be ``return True`` with the response never
+    read: ``ack(required=False)`` does not raise on a NAK, and ``Link._xfer``
+    swallows a USB error, a timeout and a dead handle alike and returns
+    ``None``. So the one function whose job is "always turn the lamp off when
+    done" reported success on every way of failing, in exactly the conditions —
+    aborts, USB errors, a busy board — under which ``safe_stop`` is called.
+
+    So it now does what the motor stop beside it has always done: read the
+    acknowledgement, retry, and report the truth. A ``False`` here is not a
+    reason to raise — the caller is already stopping — but it is a reason for
+    everything downstream to say the lamp was NOT confirmed off.
+    """
+    attempts = max(1, attempts)
+    for attempt in range(attempts):
+        try:
+            r = link.ack(pc.lamp_off(),
+                         f"lamp off (attempt {attempt + 1}/{attempts})",
+                         required=False)
+        except Exception:                                   # noqa: BLE001
+            r = None
+        if acknowledged(r):
+            return True
+        if attempt + 1 < attempts:
+            time.sleep(0.05)
+    return False
 
 
 LAMP_REFRESH_MODES = ("full", "drive", "enable", "off")
@@ -1309,6 +1352,12 @@ def safe_stop(link: Link, log=None) -> dict:
     Order matters: film movement is the thing that damages film, so the stop
     packet goes out before anything else is attempted, and it is retried. The
     lamp and the sensor can wait a few milliseconds.
+
+    EVERY FLAG IN THE RETURNED DICT IS A MEASUREMENT. ``motor`` and ``lamp``
+    are true only when the board acknowledged, because this dict is what the
+    sidecar, the job record and the UI quote when they tell the owner the
+    machine is safe. ``acquire`` is the exception and says so: it records that
+    the write was attempted without raising.
     """
     log = log or (lambda *a, **k: None)
     out = {"motor": False, "lamp": False, "acquire": False,
@@ -1317,7 +1366,7 @@ def safe_stop(link: Link, log=None) -> dict:
         try:
             r = link.ack(pc.motor_stop(), f"MOTOR STOP (attempt {attempt + 1})",
                          required=False)
-            if r and len(r) > 3 and r[0] == 0x07 and r[3] == 0x00:
+            if acknowledged(r):
                 out["motor"] = True
                 break
         except Exception as e:                              # noqa: BLE001
@@ -2546,6 +2595,60 @@ def _selftest_logic() -> int:
     check("...does not fall back", w.fell_back, False)
     check("...and marks the link so the stop turns them off again",
           live.dx_illuminator_on, True)
+
+    # ---- the stop reports what happened, not what was attempted ----
+    #
+    # `lamp_off` used to `return True` without reading the response, so the
+    # sidecar, the job record and the UI all stated the lamp was off after a
+    # NAK, a timeout or a dead USB handle -- the exact conditions under which
+    # `safe_stop` runs. These run the failure rather than trusting the fix.
+    ACK = bytes([0x07, 0x02, pc.AD_LIGHT, 0x00])
+    NAK = bytes([0x07, 0x02, pc.AD_LIGHT, 0x01])   # "no ack, board absent"
+
+    class _FakeLink:
+        """A link whose answer to every packet is scripted."""
+
+        def __init__(self, answer):
+            self.answer = answer
+            self.sent: list[bytes] = []
+            self.dx_illuminator_on = False
+            self.ctrl_shadow = 0
+
+        def ack(self, pkt, label, required=True):
+            self.sent.append(bytes(pkt))
+            r = self.answer(bytes(pkt))
+            if required and not acknowledged(r):
+                raise ScanAborted(f"{label}: not acknowledged")
+            return r or b""
+
+    check("a NAK is not an acknowledgement", acknowledged(NAK), False)
+    check("no response at all is not an acknowledgement", acknowledged(None),
+          False)
+    check("a truncated frame is not an acknowledgement",
+          acknowledged(b"\x07\x02"), False)
+    check("a type-7 status-0 reply is", acknowledged(ACK), True)
+
+    check("lamp off on a NAKing board reports failure",
+          lamp_off(_FakeLink(lambda p: NAK), attempts=2), False)
+    check("lamp off through a dead USB handle reports failure",
+          lamp_off(_FakeLink(lambda p: None), attempts=2), False)
+    check("lamp off on a live board reports success",
+          lamp_off(_FakeLink(lambda p: ACK)), True)
+    deaf_lamp = _FakeLink(lambda p: NAK)
+    lamp_off(deaf_lamp, attempts=3)
+    check("...and it retried instead of believing the first try",
+          len(deaf_lamp.sent), 3)
+    once = _FakeLink(lambda p: ACK)
+    lamp_off(once)
+    check("an acknowledged lamp off is sent once", len(once.sent), 1)
+
+    dead = safe_stop(_FakeLink(lambda p: NAK))
+    check("a stop that reached nothing does not claim the motor stopped",
+          dead["motor"], False)
+    check("...and does not claim the lamp is off", dead["lamp"], False)
+    alive = safe_stop(_FakeLink(lambda p: ACK))
+    check("a stop the board acknowledged says so", alive["motor"], True)
+    check("...for the lamp too", alive["lamp"], True)
 
     # The decoded interval, end to end through pakon_commands.
     check("watchdog is ten seconds", round(pc.DX_WATCHDOG_S, 3), 10.0)

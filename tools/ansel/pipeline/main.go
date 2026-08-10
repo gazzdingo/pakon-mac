@@ -24,9 +24,45 @@ import (
 // own. Treat the rendered colour as provisional.
 const F135InvertPorted = false
 
-// ccdLineOffsets is the trilinear CCD row spacing in scan lines, R/G/B.
-// Measured, not from a vendor table — see the deskew block in processImage.
-var ccdLineOffsets = [3]int{8, 0, -8}
+// ccdLineOffsets is the trilinear CCD row spacing, R/G/B, in PIXELS of the
+// input image along the transport axis. Measured, not from a vendor table —
+// see the deskew block in processImage.
+//
+// Pixels, not scan lines: the decoder resamples the transport axis by the
+// transport scale before it writes the TIFF, so the two are equal only at
+// scale 1.0. captures/out_test was decoded at 1.0, which is why its measured
+// 8 scan lines and the 8 that nulls the lag here are the same number. On
+// strip_cal (scale 2.1801) the decoder measures 4 scan lines and it takes 8
+// pixels here — 4 x 2.1801 = 8.7, and 8 is what actually nulls it.
+//
+// Default off, because the raw14 TIFFs this tool is fed have already been
+// deskewed by tools/pakon_decode.py: correcting twice is worse than not at
+// all. Pass -ccd-deskew 8,0,-8 for a TIFF decoded with --ccd-deskew off.
+var ccdLineOffsets = [3]int{0, 0, 0}
+
+// rotate180 turns the input through 180° before anything else looks at it.
+//
+// The scanner's lens inverts the image it projects onto the CCD, so a capture
+// is upside-down and back-to-front relative to the scene — a rotation, not a
+// mirror. docs/46 §5 listed orientation as open ("six variants tried, all
+// judged wrong"); it is settled now from legible text, see
+// tools/pakon_decode.py's ROTATE_180_FOR_LENS. That decoder applies the
+// rotation when it writes the raw14 TIFF, so by default there is nothing left
+// to do here. Set this for a TIFF written before that fix (captures/out_test/
+// and anything else decoded with the old rot90(k=1)).
+var rotate180 bool
+
+// rotated180 presents an image turned through 180°, without copying it.
+// It touches no pixel value, so nothing downstream — deskew, poly, ICC —
+// measures anything different; only the axis directions change.
+type rotated180 struct{ src image.Image }
+
+func (r rotated180) ColorModel() color.Model { return r.src.ColorModel() }
+func (r rotated180) Bounds() image.Rectangle { return r.src.Bounds() }
+func (r rotated180) At(x, y int) color.Color {
+	b := r.src.Bounds()
+	return r.src.At(b.Min.X+b.Max.X-1-x, b.Min.Y+b.Max.Y-1-y)
+}
 
 type ColorProfile struct {
 	NegLut [16384]float32
@@ -221,7 +257,15 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	if err != nil {
 		return err
 	}
-	
+
+	if rotate180 {
+		img = rotated180{img}
+	}
+	fmt.Printf("orientation: lens 180° %s\n", map[bool]string{
+		true:  "applied here (-rotate180)",
+		false: "already carried by the input (tools/pakon_decode.py)",
+	}[rotate180])
+
 	bounds := img.Bounds()
 	outImg := image.NewRGBA(bounds)
 	bypassImg := image.NewRGBA(bounds)
@@ -243,6 +287,20 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	// The transport axis here is x (the long axis of the strip), so the
 	// correction is a shift along x. It is in *scan lines*, so it is only
 	// valid for the transport speed and line rate this capture was made at.
+	//
+	// SIGN. The offsets keep the sense tools/pakon_decode.py's
+	// measure_ccd_line_offsets reports — R leads G, B trails it — and that
+	// decoder corrects with np.roll(+off) on the capture's own (lines, ccd)
+	// axes, before it rotates. By the time an image reaches this tool the lens
+	// 180° has been applied, by the decoder or by -rotate180 above, so x runs
+	// *against* increasing scan-line number and the same correction is x+off
+	// here where it is x-off there.
+	//
+	// Measured, not argued: on an undeskewed frame 03 of strip_cal the R/B lag
+	// against G along x is -8/+8 px. -ccd-deskew 8,0,-8 takes it to 0/0;
+	// -8,0,8 takes it to -12/+12. Get the sign backwards and every vertical
+	// edge picks up half again the rainbow fringing instead of none, which
+	// reads as a colour bug rather than an ordering one.
 	sample := func(x, y, c int) int {
 		if x < bounds.Min.X {
 			x = bounds.Min.X
@@ -260,12 +318,19 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 		return int(b)
 	}
 	ccdPixel := func(x, y int) (int, int, int) {
-		return sample(x-ccdLineOffsets[0], y, 0),
-			sample(x-ccdLineOffsets[1], y, 1),
-			sample(x-ccdLineOffsets[2], y, 2)
+		return sample(x+ccdLineOffsets[0], y, 0),
+			sample(x+ccdLineOffsets[1], y, 1),
+			sample(x+ccdLineOffsets[2], y, 2)
 	}
-	fmt.Printf("CCD deskew: R %+d / G %+d / B %+d scan lines\n",
-		ccdLineOffsets[0], ccdLineOffsets[1], ccdLineOffsets[2])
+	if ccdLineOffsets == [3]int{0, 0, 0} {
+		fmt.Printf("CCD deskew: off here — the input is already deskewed\n")
+	} else {
+		fmt.Printf("CCD deskew: R %+d / G %+d / B %+d transport px "+
+			"(sampled at x%+d/x%+d/x%+d — x runs against scan-line order "+
+			"after the lens 180°)\n",
+			ccdLineOffsets[0], ccdLineOffsets[1], ccdLineOffsets[2],
+			ccdLineOffsets[0], ccdLineOffsets[1], ccdLineOffsets[2])
+	}
 
 	rpd12 := make([][][3]float64, height)
 	var planeR, planeG, planeB []int
@@ -551,7 +616,8 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 func main() {
 	modelFlag := flag.String("model", "f135", "Pipeline model: f135 (polynomial) or f235 (matrix/LUT)")
 	coeffsFlag := flag.String("coeffs", "/Users/guy/www/pakon-mac/research/windows-registry/pakon_registry_full.txt", "Path to the registry .txt or EEPROM file containing coefficients (for f135)")
-	deskewFlag := flag.String("ccd-deskew", "8,0,-8", "Trilinear CCD row spacing in scan lines, R,G,B. \"0,0,0\" disables.")
+	deskewFlag := flag.String("ccd-deskew", "0,0,0", "Trilinear CCD row spacing, R,G,B, in input pixels along the transport axis (= capture scan lines only at transport scale 1.0). Off by default: raw14 TIFFs from tools/pakon_decode.py are already deskewed. Pass 8,0,-8 for one decoded with --ccd-deskew off.")
+	rotateFlag := flag.Bool("rotate180", false, "Apply the lens 180° here. Off by default: raw14 TIFFs from tools/pakon_decode.py already carry it. Pass this for a TIFF written before that fix.")
 	dxFlag := flag.String("dx", "96-1", "DX film product PART1[-PART2], e.g. 96-1 (Kodak Gold/UltraMax 400), 82-4, 78-13")
 	isoFlag := flag.Int("iso", 400, "Film speed, used by fugc-lutMap.map's film→contrast table")
 	anselPathFlag := flag.String("ansel-path", "CN-Premium", "Ansel path: CN-Premium, CN-Fps, DC-Premium")
@@ -570,6 +636,7 @@ func main() {
 	} else {
 		log.Fatalf("-ccd-deskew: want three comma-separated integers, got %q", *deskewFlag)
 	}
+	rotate180 = *rotateFlag
 
 	args := flag.Args()
 	if len(args) < 2 {

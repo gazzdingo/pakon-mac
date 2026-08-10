@@ -877,7 +877,22 @@ def lamp_watchdog_disarm(link: Link, mask: int = pc.DX_ILLUM_BOTH) -> bool:
     Records on the link that the illuminators were commanded on, because the
     disarm is unconditional: once 0x98 has been sent they will not switch
     themselves off again, so ``safe_stop`` has to switch them off explicitly.
+
+    THE FLAG IS SET BEFORE THE PACKET GOES OUT, and cleared only on an
+    acknowledged off. The board acts on 0x98 when it receives it, not when we
+    hear about it, so a lost acknowledgement is not evidence that the auto-off
+    is still armed. Recording the disarm we did not get told about costs one
+    extra off-mask packet at the stop; not recording one that happened leaves
+    the illuminators on with nothing left in the system to switch them off.
+
+    ``ok`` is a real acknowledgement, not "a response came back". A board
+    NAKing every 0x98 used to read as acceptance here, which in
+    ``--lamp-watchdog command`` mode kept ``LampWatchdog.fell_back`` false and
+    so suppressed the 20 s refresh -- the only mechanism ever measured to keep
+    the lamp alive -- for the whole run.
     """
+    if mask:
+        link.dx_illuminator_on = True
     try:
         r = link.ack(pc.dx_illuminator(mask),
                      f"0x98 DX illuminators 0x{mask:02X}, auto-off disarmed "
@@ -885,10 +900,8 @@ def lamp_watchdog_disarm(link: Link, mask: int = pc.DX_ILLUM_BOTH) -> bool:
                      required=False)
     except Exception:                                       # noqa: BLE001
         return False
-    ok = bool(r)
-    if ok and mask:
-        link.dx_illuminator_on = True
-    elif ok:
+    ok = acknowledged(r)
+    if ok and not mask:
         link.dx_illuminator_on = False
     return ok
 
@@ -1346,7 +1359,7 @@ def reset_fifos(link: Link) -> None:
 # the stop, which is the only part that absolutely must work
 # --------------------------------------------------------------------------
 
-def safe_stop(link: Link, log=None) -> dict:
+def safe_stop(link: Link, log=None, dx_illuminators: bool | None = None) -> dict:
     """Motor first, then lamp, then acquire. Never raises.
 
     Order matters: film movement is the thing that damages film, so the stop
@@ -1358,6 +1371,15 @@ def safe_stop(link: Link, log=None) -> dict:
     sidecar, the job record and the UI quote when they tell the owner the
     machine is safe. ``acquire`` is the exception and says so: it records that
     the write was attempted without raising.
+
+    ``dx_illuminators`` decides whether the 0x98 off-mask is sent:
+
+      ``None``   ask this link -- it is the process that disarmed the auto-off,
+                 so ``link.dx_illuminator_on`` is a real answer.
+      ``True``   send it regardless. For a recovery process, whose Link is
+                 fresh and whose flag is therefore always ``False`` even though
+                 the dead process may well have disarmed the board.
+      ``False``  never send it.
     """
     log = log or (lambda *a, **k: None)
     out = {"motor": False, "lamp": False, "acquire": False,
@@ -1379,9 +1401,20 @@ def safe_stop(link: Link, log=None) -> dict:
     # If 0x98 was sent, the DX board's 10 s auto-off is disarmed and its
     # illuminators will now stay on forever unless told otherwise. Sending
     # 0x98 with an empty mask is the only way back -- 0x08 would turn them on
-    # again and re-arm the timer. Only sent if we are the ones who disarmed it,
-    # so a stop from a different process leaves an untouched board alone.
-    if getattr(link, "dx_illuminator_on", False):
+    # again and re-arm the timer.
+    #
+    # A RECOVERY PROCESS CANNOT KNOW, SO IT SENDS IT ANYWAY. `dx_illuminator_on`
+    # lives on the Link object, and `emergency_stop` opens a brand new one; the
+    # flag there is False by construction, so this was skipped by every path
+    # that runs after the scanning process is gone -- `pakon_scan.py stop`,
+    # `check_stale` at app start, the parent's recovery and POST scan/stop. The
+    # cost of sending it when nothing was disarmed is one packet that turns the
+    # illuminators off and leaves them off; the cost of not sending it is
+    # leaving them on indefinitely, and docs/57 s6/s9/s12 cannot yet rule out
+    # that RC1/RB0 are the main lamp. Off is the state to fail into.
+    if dx_illuminators is None:
+        dx_illuminators = bool(getattr(link, "dx_illuminator_on", False))
+    if dx_illuminators:
         try:
             out["dx_illuminators"] = lamp_watchdog_disarm(link, pc.DX_ILLUM_OFF)
         except Exception as e:                              # noqa: BLE001
@@ -1406,6 +1439,14 @@ def emergency_stop(retries: int = 6, delay: float = 0.25) -> dict:
     Retried, because if the scanning process was just killed the kernel may
     still be tearing down its claim on the interface; the handle frees within
     a moment and then this gets through.
+
+    THE DX OFF-MASK IS UNCONDITIONAL HERE. This Link is new, so its
+    ``dx_illuminator_on`` is False whatever the dead process did, and the
+    marker file records only the path and the time limit. There is therefore no
+    way for a recovery process to *learn* that the 10 s auto-off was disarmed
+    -- and it is disarmed on every application-driven scan, because
+    ``LAMP_WATCHDOG_DEFAULT`` is ``auto`` and ``pakon_app`` passes no override.
+    So it is sent every time. See ``safe_stop``.
     """
     last = ""
     for i in range(retries):
@@ -1413,7 +1454,7 @@ def emergency_stop(retries: int = 6, delay: float = 0.25) -> dict:
         try:
             link = Link.open()
             link.clear_fault()
-            out = safe_stop(link)
+            out = safe_stop(link, dx_illuminators=True)
             out["attempts"] = i + 1
             return out
         except ScanRefused as e:
@@ -1550,6 +1591,18 @@ def write_capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
 
 
 # ---- the marker, for when both processes die ----
+#
+# THE MARKER IS THE ONLY THING ONE PROCESS CAN TELL THE NEXT. It used to carry
+# the capture path and the time limit, which is enough to say "a scan was in
+# flight" and nothing at all about what state the machine was left in. In
+# particular it could not say that command 0x98 had disarmed the DX board's
+# 10 s illuminator auto-off -- which every application-driven scan does, since
+# LAMP_WATCHDOG_DEFAULT is "auto" -- so the recovery paths had no way to know
+# the illuminators would never switch themselves off again.
+#
+# `safe_stop(dx_illuminators=True)` in `emergency_stop` is what actually fixes
+# that, because it does not need to know. This field exists so the recovery is
+# explicable rather than blind: it says why the off-mask was warranted.
 
 def marker_write(info: dict) -> None:
     try:
@@ -1757,7 +1810,17 @@ def run_scan(out_path: str | Path,
     fh = None
     dx = None
     try:
-        marker_write({"path": str(out), "max_seconds": max_seconds})
+        marker_write({
+            "path": str(out),
+            "max_seconds": max_seconds,
+            # Recorded BEFORE the 0x98 is sent, and from the mode rather than
+            # from the result, for the same reason `lamp_watchdog_disarm` sets
+            # its flag before the packet: this file exists precisely for the
+            # case where this process does not survive to correct it, and a
+            # 0x98 whose acknowledgement was lost still disarmed the board.
+            "dx_auto_off_disarmed": bool(lamp) and wd.mode in ("auto", "command"),
+            "lamp_watchdog_mode": wd.mode,
+        })
         log("phase", phase="connecting", message="clearing FX2 fault state")
         link.clear_fault()
 
@@ -2650,6 +2713,45 @@ def _selftest_logic() -> int:
     check("a stop the board acknowledged says so", alive["motor"], True)
     check("...for the lamp too", alive["lamp"], True)
 
+    # ---- the DX auto-off, and the process that did not disarm it ----
+    #
+    # 0x98 clears the arm bit on receipt, so what we heard back afterwards
+    # cannot tell us whether the board is now disarmed. The flag therefore
+    # follows the packet, not the reply.
+    d = _FakeLink(lambda p: NAK)
+    check("a NAKed 0x98 is not an acceptance", lamp_watchdog_disarm(d), False)
+    check("...but the disarm is recorded, because the board acted on receipt",
+          d.dx_illuminator_on, True)
+    d = _FakeLink(lambda p: None)
+    lamp_watchdog_disarm(d)
+    check("a 0x98 whose reply was lost still records the disarm",
+          d.dx_illuminator_on, True)
+    d = _FakeLink(lambda p: ACK)
+    lamp_watchdog_disarm(d)
+    check("an accepted 0x98 records it too", d.dx_illuminator_on, True)
+    check("...and an acknowledged off-mask clears it",
+          (lamp_watchdog_disarm(d, pc.DX_ILLUM_OFF), d.dx_illuminator_on),
+          (True, False))
+    d = _FakeLink(lambda p: NAK)
+    d.dx_illuminator_on = True
+    lamp_watchdog_disarm(d, pc.DX_ILLUM_OFF)
+    check("an off-mask that was not acknowledged leaves it set, so the next "
+          "stop tries again", d.dx_illuminator_on, True)
+
+    # A recovery process opens a fresh Link, so `dx_illuminator_on` is False
+    # there whatever the dead process did, and the marker cannot tell it
+    # either. It sends the off-mask regardless; the scanning process, which
+    # knows, still only sends it when it applies.
+    OFF98 = pc.dx_illuminator(pc.DX_ILLUM_OFF)
+    own = _FakeLink(lambda p: ACK)
+    safe_stop(own)
+    check("a stop by the process that disarmed nothing sends no off-mask",
+          OFF98 in own.sent, False)
+    recovery = _FakeLink(lambda p: ACK)
+    safe_stop(recovery, dx_illuminators=True)
+    check("a recovery stop sends the 0x98 off-mask on a link that never "
+          "disarmed anything", OFF98 in recovery.sent, True)
+
     # The decoded interval, end to end through pakon_commands.
     check("watchdog is ten seconds", round(pc.DX_WATCHDOG_S, 3), 10.0)
     check("0x98 both on", pc.dx_illuminator().hex(" "), "02 04 40 01 98 03")
@@ -2830,11 +2932,19 @@ def cmd_selftest(a) -> int:
         os.environ[ENV_TRACE] = str(trace)
         st = check_stale(force=True)
         ev = _trace_events(trace)
-        got = any(e.get("kind") == "MOTOR_STOP" for e in ev)
-        print(f"  {'stale-marker':<22} {'ok   ' if got and st.get('stale') else 'FAIL '} "
+        kinds = {e.get("kind") for e in ev}
+        got = "MOTOR_STOP" in kinds
+        # The lamp and the DX illuminators, not just the transport. The
+        # off-mask is the one the recovery paths never used to send, because
+        # `dx_illuminator_on` lives on a Link this process did not have.
+        lamp_out = "LAMP_OFF" in kinds
+        dx_out = "DX_ILLUM_OFF" in kinds
+        good = got and lamp_out and dx_out and st.get("stale")
+        print(f"  {'stale-marker':<22} {'ok   ' if good else 'FAIL '} "
               f"a marker left by a killed scan makes the next process stop the "
-              f"machine (stale={st.get('stale')}, motor stop sent={got})")
-        if not (got and st.get("stale")):
+              f"machine (stale={st.get('stale')}, motor stop={got}, "
+              f"lamp off={lamp_out}, DX illuminators off={dx_out})")
+        if not good:
             ok = False
         print("      pakon_app calls this at startup, so a crash mid-scan "
               "cannot leave the transport running past the next launch")

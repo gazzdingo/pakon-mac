@@ -29,3 +29,8 @@ app/dist/
 # Go pipeline build artefacts
 analysis/pipeline/pipeline_test
 analysis/pipeline/pakonpipeline
+
+# F-135 pipeline renders (derived from captures/ - personal photographs)
+/output_authentic.png
+/output_authentic.png_bypass.png
+/f135_stages.png

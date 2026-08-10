@@ -1,7 +1,7 @@
 # pakon-mac
 
-> ⚠️ **Work in Progress** — this project is under active development. Nothing
-> here is production-ready. APIs, protocols, and tools may change without notice.
+**⚠️ WARNING ⚠️**
+The application and some of the image processing pipelines are **NOT working 100% yet**. This repository is highly experimental and in active development. Please do not run this or attempt to interface with your scanner unless you know exactly what you are doing.
 
 Native macOS support for Kodak/Pakon F-135, F-235 and F-335 film scanners.
 
@@ -11,8 +11,13 @@ and reimplements the host side in userspace on macOS.
 
 ## Status
 
-**Active development / research phase.** See [`docs/06-roadmap.md`](docs/06-roadmap.md)
-for where things currently stand.
+Active development. See [`docs/06-roadmap.md`](docs/06-roadmap.md) for where things stand.
+
+## Telemetry
+
+This application collects basic, anonymous telemetry (OS version, app version, and unhandled errors) to help identify bugs and crashes. It does **not** collect any personal data, IP addresses, capture imagery, or paths to your files.
+
+**To opt out:** Set the `PAKON_TELEMETRY_OPT_OUT=1` environment variable when running the app.
 
 ## Why this is feasible
 
@@ -60,27 +65,12 @@ established the command packet framing, the address enum, and the identification
 of `F235Ldr.sys` as Anchor Chips' ezloader. Facts taken from it are tagged
 **[EXTERNAL]**.
 
-## Legal Disclaimer
+## Legal
 
-**This project is not affiliated with, endorsed by, or in any way connected to
-Kodak, Eastman Kodak Company, Pakon Inc., or any of their successors, assigns,
-or affiliates.** Kodak, Pakon, and related product names are trademarks of their
-respective owners. Use of these names is purely for descriptive purposes to
-identify the hardware this software is designed to interoperate with.
+Not affiliated with Kodak, Eastman Kodak Company, or Pakon in any way.
+Kodak and Pakon are trademarks of their respective owners.
 
-This software is provided **"as is", without warranty of any kind**, express or
-implied, including but not limited to the warranties of merchantability, fitness
-for a particular purpose, and non-infringement. In no event shall the author or
-contributors be liable for any claim, damages, or other liability — whether in
-an action of contract, tort, or otherwise — arising from, out of, or in
-connection with this software or the use of it. **Use at your own risk.**
+This is hobby reverse engineering. I'm not responsible for damage to your
+scanner, your film, or anything else. Use it at your own risk.
 
-This includes but is not limited to: damage to scanning hardware, loss of film
-or photographs, data loss, system instability, or any other direct, indirect,
-incidental, special, exemplary, or consequential damages.
 
-Reverse engineering conducted for interoperability purposes under applicable
-law — enabling hardware you own to work on an operating system its vendor
-abandoned. No vendor binaries or firmware images are redistributed in this
-repository; the documentation describes interfaces only, and the tools operate
-on files you supply from your own licensed copy of the vendor distribution.

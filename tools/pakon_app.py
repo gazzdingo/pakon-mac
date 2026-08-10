@@ -83,6 +83,67 @@ except Exception as _e:                 # noqa: BLE001
           file=sys.stderr)
     calib = calib_store = calib_dev = None
 
+import urllib.request
+import urllib.error
+
+def send_telemetry(event: str, error_type: str = None, error_message: str = None) -> None:
+    if os.environ.get("PAKON_TELEMETRY_OPT_OUT") == "1":
+        return
+    
+    # Scrub local file paths from error messages if present
+    if error_message:
+        import re
+        error_message = re.sub(r'(/Users|C:\\Users|/home)[^\s"\']+', '[REDACTED_PATH]', error_message)
+        
+    data = {
+        "os_platform": sys.platform,
+        "app_version": "1.0.0",
+        "event": event,
+        "session_id": getattr(send_telemetry, "session_id", None),
+        "timestamp": time.time(),
+    }
+    
+    if not data.get("session_id"):
+        data["session_id"] = send_telemetry.session_id = uuid.uuid4().hex
+        
+    if error_type:
+        data["error_type"] = error_type
+    if error_message:
+        data["error_message"] = error_message
+        
+    req = urllib.request.Request(
+        "https://langford-lee.com/pakon-mac/telemetry",
+        data=json.dumps(data).encode("utf-8"),
+        headers={"Content-Type": "application/json"}
+    )
+    
+    def _send():
+        try:
+            urllib.request.urlopen(req, timeout=3.0)
+        except Exception:
+            pass # Fire and forget, don't crash the app if telemetry fails
+            
+    threading.Thread(target=_send, daemon=True).start()
+
+# Send startup telemetry
+send_telemetry("startup")
+
+# Hook into global exceptions to report unhandled crashes
+_orig_excepthook = sys.excepthook
+def _telemetry_excepthook(exc_type, exc_value, exc_traceback):
+    err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    send_telemetry("crash", error_type=exc_type.__name__, error_message=err_msg)
+    _orig_excepthook(exc_type, exc_value, exc_traceback)
+sys.excepthook = _telemetry_excepthook
+
+_orig_thread_excepthook = getattr(threading, "excepthook", None)
+if _orig_thread_excepthook:
+    def _telemetry_thread_excepthook(args):
+        err_msg = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
+        send_telemetry("thread_crash", error_type=args.exc_type.__name__, error_message=err_msg)
+        _orig_thread_excepthook(args)
+    threading.excepthook = _telemetry_thread_excepthook
+
 
 # --------------------------------------------------------------------------
 # where things live

@@ -152,6 +152,69 @@ def to_rgb14(lines: np.ndarray) -> np.ndarray:
     return np.clip(rgb, 0, RAW14_MAX).astype(np.uint16)
 
 
+# --------------------------------------------------------------------------
+# trilinear CCD deskew
+# --------------------------------------------------------------------------
+
+# The sensor senses R, G and B on three physically separate pixel rows, so each
+# channel crosses a given point on the film at a different time and the three
+# records land on different scan lines. docs/30 has the sensor as trilinear
+# [VERIFIED — F-135 Service Manual p.7] but records the row spacing as UNKNOWN;
+# docs/46 asks whether a +3 line shift is real. Measured on out_test it is
+# +8 / 0 / -8 relative to G, unanimous across frames 02…08 (peak correlations
+# 0.91…0.998). Uncorrected, every vertical edge carries rainbow fringing.
+#
+# The value is in scan lines, so it depends on transport speed and line rate —
+# it is not a constant of the sensor. Measure rather than assume: "auto" does.
+CCD_LINE_OFFSETS_DEFAULT = (8, 0, -8)
+CCD_DESKEW_PORTED = False  # measured here, not read from a vendor table
+
+
+def measure_ccd_line_offsets(rgb14: np.ndarray,
+                             search: int = 24) -> tuple[int, int, int]:
+    """Cross-correlate R and B against G along the line axis (axis 0).
+
+    Works in log space so the large per-channel gain differences of a colour
+    negative do not dominate the correlation.
+    """
+    x = np.log(np.clip(rgb14.astype(np.float64), 1, None))
+    # a detail-rich middle slab; blank leader correlates on noise
+    n = x.shape[0]
+    a, b = n // 4, max(n // 4 + 1, 3 * n // 4)
+    x = x[a:b]
+    x = x - x.mean(axis=(0, 1))
+    g = x[:, :, 1]
+    out = [0, 0, 0]
+    for c in (0, 2):
+        ch = x[:, :, c]
+        best = None
+        for d in range(-search, search + 1):
+            s = np.roll(ch, d, axis=0)[search + 1:-(search + 1)]
+            gv = g[search + 1:-(search + 1)]
+            den = np.sqrt((gv * gv).sum() * (s * s).sum())
+            if den <= 0:
+                continue
+            corr = float((gv * s).sum() / den)
+            if best is None or corr > best[0]:
+                best = (corr, d)
+        if best is not None:
+            out[c] = best[1]
+    return (out[0], 0, out[2])
+
+
+def ccd_deskew(rgb14: np.ndarray,
+               offsets: tuple[int, int, int]) -> np.ndarray:
+    """Shift each channel along the line axis to put the three records back
+    on the same piece of film."""
+    if not any(offsets):
+        return rgb14
+    out = rgb14.copy()
+    for c, d in enumerate(offsets):
+        if d:
+            out[:, :, c] = np.roll(rgb14[:, :, c], d, axis=0)
+    return out
+
+
 def average_profile(path: str | Path, max_lines: int = 64) -> np.ndarray:
     """Mean (2000, 3) profile from a short calibration capture."""
     words = load_u16(path)
@@ -797,6 +860,28 @@ def cmd_strip(args: argparse.Namespace) -> int:
                       f"p01={np.percentile(ch, 1):.0f}  "
                       f"p99={np.percentile(ch, 99):.0f}")
 
+    # Trilinear CCD deskew — before any colour, since it is a registration
+    # fault: the three channel records are of different pieces of film.
+    spec = str(getattr(args, "ccd_deskew", "auto")).strip().lower()
+    if spec in ("off", "none", "0"):
+        print("CCD deskew: off")
+    else:
+        if spec == "auto":
+            offs = measure_ccd_line_offsets(rgb)
+            print(f"CCD deskew: measured R {offs[0]:+d} / G {offs[1]:+d} / "
+                  f"B {offs[2]:+d} scan lines")
+        else:
+            try:
+                parts = [int(p) for p in spec.split(",")]
+            except ValueError:
+                raise SystemExit(f"--ccd-deskew: bad value {spec!r}")
+            if len(parts) != 3:
+                raise SystemExit("--ccd-deskew: want R,G,B or auto or off")
+            offs = (parts[0], parts[1], parts[2])
+            print(f"CCD deskew: R {offs[0]:+d} / G {offs[1]:+d} / "
+                  f"B {offs[2]:+d} scan lines")
+        rgb = ccd_deskew(rgb, offs)
+
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
     frames_dir = out / "frames"
@@ -1093,6 +1178,10 @@ def main() -> int:
     s.add_argument("output", help="output directory")
     s.add_argument("--all", action="store_true",
                    help="write every product type + frames + 16-bit TIFFs")
+    s.add_argument("--ccd-deskew", default="auto", metavar="R,G,B|auto|off",
+                   help="trilinear CCD row spacing in scan lines. 'auto' "
+                        "measures it from the strip (default); out_test "
+                        "measures 8,0,-8. 'off' leaves the channels skewed.")
     s.add_argument("--color", action="store_true",
                    help="apply density LUT + 3×4 matrix → 12-bit RPD")
     s.add_argument("--icc", action="store_true",

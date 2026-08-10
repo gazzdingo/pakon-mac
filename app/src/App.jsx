@@ -854,10 +854,20 @@ export default function App() {
     } catch { /* the panic button below is the fallback */ }
   }, [scanJob?.id]);
 
+  /* The panic button. Returns its verdict instead of swallowing it: the one
+     press that most needs an answer is the one made when nothing else on
+     screen is responding, and "did that reach the motor" is not a question the
+     user should have to infer from a lane that goes on saying Idle. */
   const stopScanner = useCallback(async () => {
     try {
-      await api.stopScanner();
-    } catch { /* nothing more this window can do; the child has its own limit */ }
+      const r = await api.stopScanner();
+      // The stop can change what the machine is, and does clear the in-flight
+      // marker, so re-read rather than wait for the next 15 s poll.
+      api.hardware().then(setHw).catch(() => {});
+      return r;
+    } catch (e) {
+      return { error: `The backend did not answer the stop: ${e.message || e}` };
+    }
   }, []);
 
   /* Put the last scan's result away. Only ever reachable once the job has

@@ -701,9 +701,16 @@ class ScanSupervisor:
             return self.job if (self.proc and self.proc.poll() is None) else None
 
     def child_pid(self) -> int | None:
+        """Our scan child's pid, for as long as we own it.
+
+        Deliberately not gated on ``poll()``. Between the child exiting and
+        ``_pump`` reaping it the pid is a zombie, and ``os.kill(pid, 0)`` on a
+        zombie succeeds — so a poll-gated answer would briefly report our own
+        just-finished scan as a *foreign* one and refuse to probe. The pid is
+        ours until we drop the handle, which ``_pump`` does in its finally.
+        """
         with self.lock:
-            return (self.proc.pid
-                    if (self.proc and self.proc.poll() is None) else None)
+            return self.proc.pid if self.proc else None
 
     # ---- start ----
     def start(self, jid: str, body: dict) -> dict:
@@ -1033,6 +1040,40 @@ def hardware_state(fresh: bool = False) -> dict:
     return p
 
 
+def emergency_stop_now() -> dict:
+    """Stop the machine, from any state, whoever owns it.
+
+    Three moves, in the only order that can work:
+
+    1. Cancel our own scan child, which stops the transport properly — it
+       still holds the interface and can talk to the board.
+    2. If the marker names a *live foreign* owner, signal it and wait. This is
+       the case ``emergency_stop`` alone cannot handle: it opens the device
+       from scratch, so while another process holds the interface it burns all
+       six retries on a claim that macOS refuses and reports failure. Asking
+       the owner to stop is both faster and the only thing that actually stops
+       the film.
+    3. Then, and only then, open the device ourselves and stop it — for the
+       case where the owner is already dead and the transport is still turning.
+
+    The marker is cleared only once nothing live holds it and the stop was
+    confirmed (or there is no scanner), so a panic press cannot leave the app
+    permanently convinced someone else is scanning.
+    """
+    out: dict = {"cancelled": SCAN.cancel()}
+    other = foreign_scan()
+    if other:
+        out["foreign"] = stop_foreign_scan()
+    out.update(scan.emergency_stop())
+    st = scan_marker_state()
+    if st["present"] and not (st["alive"] and not st["mine"]):
+        if out.get("motor") or out.get("absent"):
+            scan.marker_clear()
+            out["marker_cleared"] = True
+    out["marker"] = scan_marker_state()
+    return out
+
+
 def scan_startup_check() -> dict:
     """A scan orphaned by a crash is still driving film. Look, at every start."""
     try:
@@ -1278,8 +1319,7 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
         if route == "scan/stop":
             # The panic button. Always allowed, never queued, and it does not
             # care whether this process thinks a scan is running.
-            SCAN.cancel()
-            return _json(self, scan.emergency_stop())
+            return _json(self, emergency_stop_now())
 
         parts = route.split("/")
         if parts[0] == "roll" and len(parts) >= 3:

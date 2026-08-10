@@ -265,13 +265,38 @@ export function TopBar({ mode, setMode, roll, dark, setDark }) {
   );
 }
 
+/** What came back from the panic stop, in one line. */
+function stopNote(r) {
+  if (!r) return null;
+  if (r.error) return { tone: 'bad', text: String(r.error).slice(0, 90) };
+  if (r.absent) return { tone: '', text: 'No scanner on USB — nothing to stop.' };
+  if (r.motor)
+    return {
+      tone: 'ok',
+      text: `Transport stopped${r.lamp ? ', lamp off' : ''}${
+        r.foreign?.signalled ? ` (pid ${r.foreign.owner_pid})` : ''
+      }.`,
+    };
+  return {
+    tone: 'bad',
+    text: (r.errors && r.errors[0]) || 'The stop was not acknowledged.',
+  };
+}
+
 /** Twin lanes. Capture is live: it runs while the transport does, and its Stop
  *  reaches the motor — see Scan.jsx for why that is a separate process. */
 export function Lanes({ exportJob, scanJob, onStopScan }) {
+  const [stopping, setStopping] = useState(false);
+  const [stopped, setStopped] = useState(null);
   const running = exportJob && exportJob.status === 'running';
   const pct = running || exportJob?.status === 'done' ? Math.round((exportJob.progress || 0) * 100) : null;
 
   const scanning = scanJob && scanJob.status === 'running';
+  // A new scan replaces the last stop's verdict; it is no longer the truth.
+  useEffect(() => {
+    if (scanning) setStopped(null);
+  }, [scanning]);
+  const note = stopNote(stopped);
   const elapsed = scanJob?.elapsed ?? (scanJob?.seconds || 0);
   const cap = scanJob?.max_seconds || 0;
   const spct = scanning && cap ? Math.min(100, Math.round((elapsed / cap) * 100)) : null;
@@ -283,20 +308,34 @@ export function Lanes({ exportJob, scanJob, onStopScan }) {
         <span className="what">
           <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             Capture
-            {scanning ? null : (
-              <Info side="left">
-                Idle until a scan runs. The transport is driven by a separate
-                process that owns the USB handle, so Stop reaches the motor even
-                if this window stops responding.
-              </Info>
-            )}
+            <Info side="left">
+              The transport is driven by a separate process that owns the USB
+              handle, so <b>Stop reaches the motor even if this window stops
+              responding</b>.
+              <br />
+              <br />
+              Stop is never disabled. It used to grey out unless this window
+              believed a scan was running — which is exactly backwards: the
+              moment the backend stops answering, this window marks the job{' '}
+              <span className="num">error</span> and stops believing, and that
+              is precisely when you want to press it. The server route is
+              unconditional, so the button is too. Pressed with nothing running
+              it says so and stops nothing.
+            </Info>
           </span>
-          <b>
-            {scanning
-              ? `${fmtClock(elapsed)} · ${gate.label} · ${fmtBytes(scanJob.bytes)}`
-              : scanJob?.status === 'done'
-                ? scanJob.message || 'Done'
-                : 'Idle'}
+          <b
+            style={
+              !scanning && !stopping && note
+                ? { color: note.tone === 'bad' ? 'var(--danger-ink)' : 'var(--mute)' }
+                : undefined
+            }
+          >
+            {stopping
+              ? 'Stopping…'
+              : scanning
+                ? `${fmtClock(elapsed)} · ${gate.label} · ${fmtBytes(scanJob.bytes)}`
+                : note?.text ||
+                  (scanJob?.status === 'done' ? scanJob.message || 'Done' : 'Idle')}
           </b>
         </span>
         <div className={`bar${scanning ? ' warnfill' : ''}`}>
@@ -305,11 +344,18 @@ export function Lanes({ exportJob, scanJob, onStopScan }) {
         <span className="pc">{scanning ? fmtClock(Math.max(0, cap - elapsed)) : '—'}</span>
         <Btn
           variant={scanning ? 'danger' : ''}
-          disabled={!scanning}
-          onClick={onStopScan}
-          title={scanning ? 'Stop the transport now' : undefined}
+          onClick={async () => {
+            setStopping(true);
+            setStopped(null);
+            try {
+              setStopped((await onStopScan?.()) || {});
+            } finally {
+              setStopping(false);
+            }
+          }}
+          title="Stop the transport now. Always available, whatever this window thinks the machine is doing."
         >
-          Stop
+          {stopping ? 'Stopping…' : 'Stop'}
         </Btn>
       </div>
       <div className="lane">

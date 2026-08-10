@@ -15,6 +15,12 @@ import (
 	"golang.org/x/image/tiff"
 )
 
+// F135InvertPorted records that the F-135 negative->positive step in
+// processImage has no DLL call site behind it. docs/58 s3.5 is [VERIFIED] that
+// no density LUT is applied between fcn.1000d880 and Ansel, and s15.1 leaves
+// where the inversion happens open. Treat the rendered colour as provisional.
+const F135InvertPorted = false
+
 type ColorProfile struct {
 	NegLut [16384]float32
 	Matrix [3][3]float32
@@ -280,6 +286,14 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	nb  := 130  // neutralButton
 
 	// --- F-135 negative -> positive -------------------------------------
+	// PROVENANCE: F135InvertPorted is false. Every table and constant below
+	// is the vendor's, but the arrangement is not: no call site in TLB.dll or
+	// PakonIMAu.dll has been shown to compute this. docs/58 s3.5 is [VERIFIED]
+	// that no log-density LUT is applied between the polynomial and Ansel, and
+	// leaves where the F-135 inverts as unresolved. This is the smallest step
+	// that turns the frame the right way up using only vendor numbers; it is
+	// not evidence of what the vendor does.
+	//
 	// The SRA forward LUT does NOT invert: it is monotonically increasing
 	// (0 -> 0, 4095 -> 2441) and its own sibling DPI, ansel-color-rom12.dpi,
 	// describes it as "ROMM to an RPD-like space" — an encoding change, not a
@@ -413,6 +427,11 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	}
 	n := float64(width * height)
 	fmt.Printf("OUTPUT mean sRGB per channel: R=%.1f G=%.1f B=%.1f\n", sum[0]/n, sum[1]/n, sum[2]/n)
+	if model == "f135" {
+		fmt.Printf("PROVENANCE: F135InvertPorted=%v ShastaAnalyzePorted=%v "+
+			"— the inversion and the tone scale are stand-ins, not vendor call sites\n",
+			F135InvertPorted, ShastaAnalyzePorted)
+	}
 
 	outBypass, _ := os.Create(outputPath + "_bypass.png")
 	png.Encode(outBypass, bypassImg)

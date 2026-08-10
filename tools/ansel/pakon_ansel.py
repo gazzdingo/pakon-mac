@@ -273,6 +273,9 @@ def aim_medians(rpd12: np.ndarray, aim: float) -> np.ndarray:
     return np.clip(x, 0, SHASTA_MAX)
 
 
+SHASTA_TWO_ANCHOR_PORTED = False  # shape is ours; only the aims are vendor
+
+
 def shasta_two_anchor_tone(rpd12: np.ndarray,
                            shasta: "ShastaParams") -> np.ndarray:
     """Two-anchor stand-in for ``AnsShastaCapabilityImpl::analyze``.
@@ -280,12 +283,29 @@ def shasta_two_anchor_tone(rpd12: np.ndarray,
     ``pakon_shasta.py`` carries the toneLut *assembly* but not the scene
     ``analyze`` that chooses its aims (``ANALYZE`` is False), so on the
     colour-negative path the assembled LUT does not land the scene on the
-    dpi's aims. This reproduces only the two anchors the dpi states
-    outright — ``shadowPercent`` → ``black``, median → ``metricGray`` —
-    with a straight line between them, clamped to ``[minValue, maxValue]``.
+    dpi's aims.
 
-    Every number comes from the selected ``shasta-*.dpi``. Nothing here is
-    fitted to an image.
+    The vendor builds its curve from five measured statistics
+    (``extShadowPercent`` 0.1, ``shadowPercent`` 1.0, the scene grey,
+    ``highlightPercent`` 99.0, ``extHighlightPercent`` 99.9) moved toward
+    aims placed in *buttons* either side of ``metricGray``
+    (``blackButtons`` 10.466, ``shadowButtons`` 6.67, ``highlightButtons``
+    3.67, ``extHighlightButtons`` 7.68, ``codeValuesPerButton`` 75.0) by
+    per-knot aggressiveness factors, with exponential slope limits and
+    white-point compression. None of that is reproduced here.
+
+    This reproduces two anchors only — ``shadowPercent`` → ``black``,
+    median → ``metricGray``, straight line between them, clamped to
+    ``[minValue, maxValue]``. Constants are the dpi's; the shape is not.
+
+    It also runs per channel, which a vendor tone scale does not. That is
+    load-bearing here because the data reaching it does not have matched
+    channel contrast: on ``08_raw14.tiff`` the negative's own optical
+    density spans 0.894/1.061/1.185 decades, but after the polynomial and
+    the SRA forward LUT the spans are 462/236/144 code values
+    (R:G:B = 1.00:0.51:0.31). A per-channel stretch hides that. The real
+    fix is upstream, in the unported ``AnsColorNegativePath`` /
+    ``AnsSraCapabilityImpl::makeSRALUTS``.
     """
     x = rpd12.astype(np.float64)
     black = float(getattr(shasta.dpi, "black", 0.0) or 0.0)

@@ -5,6 +5,13 @@ import (
 	"sort"
 )
 
+// ShastaAnalyzePorted records that AnsShastaCapabilityImpl::analyze is NOT
+// ported — not here, and not in tools/ansel/pakon_shasta.py either, which
+// carries the toneLut assembly but sets ANALYZE False. ShastaToneRpd below is
+// a stand-in, not the vendor's curve. Same convention as the *_PORTED flags in
+// the Python modules.
+const ShastaAnalyzePorted = false
+
 // ShastaParams are the fields of anselinstalldir/dataPathItems/shasta/
 // shasta-rpd.dpi — the DPI shasta.map selects for the colour-negative
 // ("CN-Premium") path.
@@ -44,11 +51,30 @@ func histPercentile(hist []int, nPix int, pct float64) float64 {
 // ShastaToneRpd is a stand-in for AnsShastaCapabilityImpl::analyze, which is
 // not ported (see tools/ansel/README.md — Shasta ANALYZE is False).
 //
-// The vendor builds a per-scene tone LUT that lands the scene's shadow point on
-// `black` and its grey point on `metricGray`, then blends the ends with the
-// aggressiveness/exposure-slope fields. This reproduces only the two anchors:
-// shadowPercent → black, median → metricGray, straight line between them,
-// clamped to [minValue, maxValue]. Everything it uses comes from shasta-rpd.dpi.
+// The vendor builds a per-scene tone LUT from five measured statistics
+// (extShadowPercent 0.1, shadowPercent 1.0, the scene grey, highlightPercent
+// 99.0, extHighlightPercent 99.9) moved toward aims placed in "buttons" either
+// side of metricGray (blackButtons 10.466, shadowButtons 6.67, highlightButtons
+// 3.67, extHighlightButtons 7.68, codeValuesPerButton 75.0) by per-knot
+// aggressiveness factors, with exponential slope limits and white-point
+// compression. None of that is reproduced here.
+//
+// This reproduces only two anchors — shadowPercent → black, median →
+// metricGray, straight line between them, clamped to [minValue, maxValue].
+// Every constant comes from shasta-rpd.dpi, but the SHAPE is not the vendor's.
+//
+// It also runs PER CHANNEL, and that is load-bearing in a way it should not be.
+// A vendor tone scale is one curve applied to all three channels; the reason a
+// per-channel one is needed here is that the data reaching it does not have
+// matched channel contrast. Measured on 08_raw14.tiff: the negative's own
+// optical density spans 0.894 / 1.061 / 1.185 decades (1…99.9 %), a normal
+// colour negative, but after PolyPixel → SraLut the spans are 462 / 236 / 144
+// code values — R : G : B = 1.00 : 0.51 : 0.31. Dropping the polynomial's
+// constant term overshoots the other way (557 / 738 / 911, 1.00 : 1.32 : 1.64).
+// So the F-135 stage-2 → Ansel hand-off is still wrong, and a per-channel
+// stretch here is hiding it. That is the next thing to fix, and it is what
+// AnsColorNegativePath / AnsSraCapabilityImpl::makeSRALUTS (also unported)
+// would be doing.
 func ShastaToneRpd(rpd12 [][][3]float64, p ShastaParams) [][][3]float64 {
 	height := len(rpd12)
 	if height == 0 {

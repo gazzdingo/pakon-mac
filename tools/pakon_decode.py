@@ -380,6 +380,13 @@ def rpd12_to_u16(rpd12: np.ndarray) -> np.ndarray:
 # F-135 negative → positive (docs/58 §3.5 / §15.1)
 # --------------------------------------------------------------------------
 
+# No DLL call site computes what f135_rom12_to_rpd12 computes. docs/58 §3.5 is
+# [VERIFIED] that no density LUT is applied between fcn.1000d880 and Ansel, and
+# §15.1 leaves where the F-135 inverts open. Every table and constant used
+# below is the vendor's; the arrangement is ours. Rendered F-135 colour is
+# provisional until AnsColorNegativePath is traced.
+F135_INVERT_PORTED = False
+
 def _film_base_code(plane: np.ndarray, n_bins: int = 4096) -> int:
     """FindDmin on one plane, histogrammed with numpy for strip-sized data.
 

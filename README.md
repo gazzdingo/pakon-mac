@@ -85,5 +85,3 @@ Kodak and Pakon are trademarks of their respective owners.
 
 This is hobby reverse engineering. I'm not responsible for damage to your
 scanner, your film, or anything else. Use it at your own risk.
-
-

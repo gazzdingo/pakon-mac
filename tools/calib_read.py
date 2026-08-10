@@ -21,6 +21,11 @@ WHAT IT DOES, AND WHY IN THIS ORDER
    a second read is not a retry -- it destroys the thing it is checking.
 3. Ask the scanner, via its own volatile RAM, whether this power cycle has
    already produced a read. Refuse unless a fresh cycle is positively seen.
+   --force overrides step 2 and only step 2. It makes this step STRICTER, not
+   weaker: an additional read must witness the scanner's RAM losing a marker
+   we ourselves planted, because "no marker" alone is not evidence of a power
+   cycle. If that cannot be shown, refuse and mark the scanner so that the
+   next attempt, after a power cycle, can show it.
 4. Load the pinned read-only firmware; stamp the read-once marker BEFORE the
    8051 is released, so the marker precedes any I2C transaction.
 5. Read every device on the bus, 0x50-0x57, exactly once each.
@@ -178,19 +183,28 @@ def do_read(store: cs.CalibrationStore, transport: cd.Transport,
             f"re-reading risks the only copy that exists and gains nothing. "
             f"Nothing was sent to the scanner.\n\n"
             f"If you genuinely need another read -- a different scanner, or "
-            f"to compare across power cycles -- power-cycle the machine and "
-            f"pass --force. The existing read is kept either way; nothing is "
-            f"ever overwritten or deleted.")
+            f"to compare across power cycles -- pass --force. That does not "
+            f"skip the power cycle: it still requires this software to SEE "
+            f"the scanner's memory cleared before it will read. The existing "
+            f"read is kept either way; nothing is ever overwritten or deleted.")
 
     # Everything from the decision to the stamp happens under one lock. Two
     # instances started together would otherwise both see a fresh cycle and
     # both read -- the second corrupting what the first captured.
     with cd.ReadLock(store.root / "journal" / "read.lock"):
-        chk = guard.check()
+        # --force overrides "one is already stored". It does NOT override the
+        # power cycle, which is a fact about the hardware and not a policy:
+        # forcing a read at the wrong moment is what produced 256 bytes of
+        # 0xFF from 0x52 on 2026-08-08. Under force the freshness test gets
+        # STRICTER, not weaker -- it must positively witness the cycle.
+        chk = guard.check(require_power_cycle_witness=force)
         if not chk["may_read"]:
             # A read taken but never saved? Its bytes are still in FX2 RAM.
             if chk["code"] == "already-read" and guard.unsaved_nonce():
                 return _salvage(store, transport, guard, source)
+            if chk["code"] == "no-witness":
+                raise cd.ReadRefused(
+                    chk["reason"] + "\n\n" + _arm_for_force(guard, source))
             raise cd.ReadRefused(chk["reason"])
 
         nonce_box = {}
@@ -222,6 +236,31 @@ def do_read(store: cs.CalibrationStore, transport: cd.Transport,
         guard.note("saved", nonce=nonce_box.get("nonce"), stamp=rec.stamp,
                    dir=str(rec.path))
         return {"record": rec, "raw": out, "salvaged": False}
+
+
+def _arm_for_force(guard: cd.PowerCycleGuard, source: str) -> str:
+    """Leave the user able to satisfy the requirement, not merely refused.
+
+    Freshness could not be established because there is no nonce of ours known
+    to have been in this scanner's RAM. Put one there, so that after a power
+    cycle its absence proves what an empty region cannot.
+    """
+    try:
+        guard.arm(source=source)
+    except Exception as e:                                  # noqa: BLE001
+        return (f"A witness could not be placed in the scanner's memory "
+                f"({e.__class__.__name__}: {e}), so the next attempt cannot "
+                f"prove a power cycle either. Check the USB connection. "
+                f"Nothing was sent to the scanner's EEPROM.")
+    return ("A witness has now been placed in the scanner's volatile memory. "
+            "That is one write to FX2 RAM: no I2C transaction happened, and "
+            "nothing on any EEPROM was read, written or disturbed.\n\n"
+            "Now power the scanner OFF, wait a few seconds, power it ON, and "
+            "run the same command again. Its memory will have forgotten the "
+            "witness, and that -- rather than an assumption -- is what will "
+            "prove the power cycle. Do not load firmware or run any other "
+            "tool in between; the read must be the first transaction of the "
+            "new cycle.")
 
 
 def _salvage(store: cs.CalibrationStore, transport: cd.Transport,
@@ -270,8 +309,12 @@ def main() -> int:
     sub.add_parser("status")
     r = sub.add_parser("read")
     r.add_argument("--force", action="store_true",
-                   help="permit an additional read in a NEW power cycle even "
-                        "though a calibration is already stored")
+                   help="permit an additional read even though a calibration "
+                        "is already stored. It does NOT skip the power cycle: "
+                        "the read still waits until this software has "
+                        "positively witnessed the scanner's memory being "
+                        "cleared, which usually takes two runs -- one to mark "
+                        "the scanner, then power-cycle, then this one again")
     u = sub.add_parser("use"); u.add_argument("stamp")
     sub.add_parser("auto")
     a = ap.parse_args()

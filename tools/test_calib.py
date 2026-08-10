@@ -432,6 +432,100 @@ def test_concurrent_read_locked() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_force_still_requires_a_proven_power_cycle() -> None:
+    section("--force does not skip the power cycle (2026-08-08 bug)")
+    import calib_read as cr
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        t = sim()
+        store = cs.CalibrationStore(tmp)
+        guard = cd.PowerCycleGuard(t, tmp / "journal")
+
+        # The owner's machine at 15:28:46. A calibration is already stored, so
+        # only --force can get past it; the scanner has already given up its
+        # one good read of this power cycle; and nothing in its RAM says so,
+        # because whatever read it left the witness region clean. Absence of a
+        # marker is therefore absence of information, not evidence of freshness.
+        store.save_read({0x51: ERASED51, 0x52: GOOD52}, source="earlier read",
+                        stamp="2026-08-08T15-27-44Z")
+        cd.read_bus(t)                        # this cycle's one good read
+        t.ram = bytearray(0x2000)             # RAM wiped; power NOT cycled
+        check(t.reads[0x52] == 1, "this power cycle's good read is spent")
+        check(cd.PowerCycleGuard(t, tmp / "journal").check()["may_read"],
+              "and the ordinary check cannot tell -- it sees a clean RAM")
+
+        try:
+            cr.do_read(store, t, guard, force=True, source="test")
+            check(False, "--force refuses when the power cycle is unproven")
+        except cd.ReadRefused as e:
+            check("power" in str(e).lower(),
+                  "--force refuses when the power cycle is unproven",
+                  str(e)[:90])
+        check(t.reads[0x52] == 1,
+              "CRUCIALLY: --force took no second I2C read",
+              f"reads={t.reads[0x52]}")
+        check(len(store.list_reads()) == 1,
+              "and stored no all-0xFF record beside the good one")
+
+        # It must also leave the user able to satisfy it, so it marks the
+        # scanner -- and must then hold that line while the mark is still there.
+        check(guard.marker() is not None, "the scanner was marked for next time")
+        check(any(e["event"] == "armed" for e in guard.entries()),
+              "and the journal says so")
+        try:
+            cr.do_read(store, t, guard, force=True, source="test")
+            check(False, "refuses again while its own mark is still in RAM")
+        except cd.ReadRefused as e:
+            check("has NOT been cycled" in str(e),
+                  "refuses again while its own mark is still in RAM",
+                  str(e)[:90])
+        check(t.reads[0x52] == 1, "still no second read")
+
+        # The power cycle actually happens. Now the mark is gone from RAM,
+        # which is the positive evidence, and the read is allowed.
+        t.power_cycle()
+        chk = cd.PowerCycleGuard(t, tmp / "journal").check(
+            require_power_cycle_witness=True)
+        check(chk["may_read"] and chk.get("witnessed"),
+              "a witnessed power cycle permits the forced read", str(chk))
+        res = cr.do_read(store, t, guard, force=True, source="test")
+        check(res["record"].is_good,
+              "the forced read is now the first transaction of a fresh cycle")
+        check(res["record"].data(0x52) == GOOD52, "and returns the true bytes")
+        check(t.reads[0x52] == 1, "exactly one I2C read in the new cycle")
+        check(len(store.list_reads()) == 2,
+              "both reads kept -- the store still deletes nothing")
+
+        # A witness from the other world proves nothing about this one.
+        import json
+        with tempfile.TemporaryDirectory() as j:
+            g = cd.PowerCycleGuard(sim(), Path(j))
+            Path(j).mkdir(parents=True, exist_ok=True)
+            (Path(j) / "read-journal.jsonl").write_text(
+                json.dumps({"event": "read", "nonce": "de" * 16,
+                            "utc": "2026-08-08T15:27:44Z"}) + "\n")
+            check(g.last_witness() is None,
+                  "a real scanner's nonce is not a witness for a simulated one")
+            check(not g.check(require_power_cycle_witness=True)["may_read"],
+                  "so a forced read is still refused")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # What the refusal prevented, on a throwaway simulator: the read --force
+    # used to take in that state is the degraded one, and the hardware says
+    # "ok" while returning it.
+    t2 = sim()
+    cd.read_bus(t2)
+    t2.ram = bytearray(0x2000)
+    out = cd.read_bus(t2)
+    got = out["devices"][0x52]
+    check(cv.verify(got)["state"] != cv.GOOD,
+          "what --force used to do in that state returns a corrupt page",
+          cv.verify(got)["state"])
+    check(out["results"][0x52]["text"] == "ok",
+          "while the I2C status still reports 'ok'")
+
+
 def _listing(root: Path) -> dict:
     """Every file under root, with its exact bytes. Byte-identical or not."""
     import hashlib
@@ -542,6 +636,7 @@ def main() -> int:
     test_save_before_interpret()
     test_orchestration()
     test_concurrent_read_locked()
+    test_force_still_requires_a_proven_power_cycle()
     test_simulate_never_touches_the_real_store()
     print(f"\n{_count - len(_fails)}/{_count} checks passed")
     if _fails:

@@ -55,6 +55,36 @@ we want it to -- the FX2's own RAM.
     to the nonce records what happened, so a crash between reading and saving
     is detectable.
 
+A DELIBERATE SECOND READ, IN A LATER CYCLE
+------------------------------------------
+There is one legitimate reason to read again: a different scanner, or a
+comparison across power cycles, which is the only comparison that means
+anything here. That is what --force is for, and it is where the fail-safe rule
+above needs saying twice, because --force is exactly the moment somebody is
+determined to proceed.
+
+Absence of a marker is not proof of a power cycle. It is proof of nothing: any
+program that loads firmware into this FX2 overwrites scratch RAM, and the
+scanner offers no readable identity before its EEPROM is read. So a forced read
+demands POSITIVE evidence, via check(require_power_cycle_witness=True):
+
+  * we must find, in the journal, a nonce this software itself planted in this
+    scanner's RAM -- from the last read, or from arm() below; and
+  * that nonce must now be absent from RAM.
+
+RAM that has forgotten a token we watched go in has been cleared, and the only
+thing that clears it is losing power. That is an affirmative observation of a
+power cycle rather than an assumption of one.
+
+When no such nonce exists -- a fresh install, a lost journal, a record that
+came from somewhere else -- freshness cannot be established at all, so the read
+is refused and arm() plants a witness for next time. One 0xA0 RAM write, no I2C
+traffic, nothing on any EEPROM touched. The user powers the scanner off and on,
+runs the same command, and the missing witness proves the cycle. Refusing costs
+a power cycle; proceeding on an assumption costs the calibration, which is what
+happened on 2026-08-08: a forced read taken in a cycle that was never shown to
+be fresh returned 256 bytes of 0xFF from 0x52.
+
 SALVAGE INSTEAD OF RE-READ
 --------------------------
 If the marker says we already read this cycle but the journal says the save
@@ -425,6 +455,10 @@ class PowerCycleGuard:
         self.t = transport
         self.dir = Path(journal_dir)
         self.journal = self.dir / "read-journal.jsonl"
+        # Which world this guard's nonces belong to. A rehearsal's witness must
+        # never license a read of real hardware, nor the other way round, so
+        # every journal entry records it and last_witness() insists on a match.
+        self.simulated = isinstance(transport, SimTransport)
 
     # -- witnesses in FX2 RAM -------------------------------------------
     def marker(self) -> dict | None:
@@ -452,11 +486,31 @@ class PowerCycleGuard:
         self.t.ram_write(MARKER_ADDR, MARKER_MAGIC + nonce)
         return nonce.hex()
 
+    def arm(self, source: str = "") -> str:
+        """Plant a witness now so that the NEXT power cycle can be PROVEN.
+
+        Called when a forced read has been asked for and freshness cannot be
+        established, because no nonce of ours is known to have been in this
+        scanner's RAM. After this, RAM holds a token we watched go in; when it
+        is gone, the machine has been off. That is the whole trick, and it is
+        the same marker mechanism the read path already relies on.
+
+        Costs one 0xA0 write to volatile RAM. No I2C transaction occurs, so no
+        EEPROM is read, written, or disturbed. While the token is there every
+        path refuses -- correctly, since it is only planted at a moment when we
+        have just established that we cannot show the cycle is fresh.
+        """
+        nonce = self.stamp()
+        self.note("armed", nonce=nonce, source=source)
+        return nonce
+
     # -- journal ---------------------------------------------------------
     def note(self, event: str, **kw) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
         rec = {"utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                "event": event, **kw}
+        if self.simulated:
+            rec["simulated"] = True
         with open(self.journal, "a") as fh:
             fh.write(json.dumps(rec, sort_keys=True) + "\n")
 
@@ -471,6 +525,29 @@ class PowerCycleGuard:
                 pass
         return out
 
+    def last_witness(self) -> dict | None:
+        """The last nonce this software put into THIS scanner's RAM.
+
+        Only "read" and "armed" write the marker, so only those two events name
+        a nonce that was ever in RAM. The simulated/real flag must match: a
+        rehearsal's nonce says nothing about a real scanner's power, and vice
+        versa.
+
+        Its value is as a comparison. If the nonce is no longer in RAM, RAM was
+        cleared, and only losing power clears it -- so its ABSENCE is the
+        positive evidence, which is why this is safe to trust in a way that
+        "no marker at all" is not.
+        """
+        for e in reversed(self.entries()):
+            if e.get("event") not in ("read", "armed"):
+                continue
+            if not e.get("nonce"):
+                continue
+            if bool(e.get("simulated")) != self.simulated:
+                continue
+            return e
+        return None
+
     def unsaved_nonce(self) -> str | None:
         """A nonce that was stamped but whose save never completed."""
         saved = {e.get("nonce") for e in self.entries() if e.get("event") == "saved"}
@@ -480,8 +557,16 @@ class PowerCycleGuard:
         return None
 
     # -- the decision ----------------------------------------------------
-    def check(self) -> dict:
-        """Fail-safe: permit only when a fresh power cycle is positively seen."""
+    def check(self, *, require_power_cycle_witness: bool = False) -> dict:
+        """Fail-safe: permit only when a fresh power cycle is positively seen.
+
+        With require_power_cycle_witness (what --force passes), "positively"
+        is taken at its word: an empty witness region is not accepted as
+        evidence of anything, and the cycle must be shown to have happened by
+        a nonce of ours having disappeared from RAM. See the module docstring.
+        This method never writes: it is called on every UI poll, and arming is
+        a deliberate act by the read path, not a side effect of asking.
+        """
         state = self.t.state()
         if state == DEVICE_ABSENT:
             return {"may_read": False, "state": state, "code": "absent",
@@ -516,6 +601,24 @@ class PowerCycleGuard:
                         "scanner.")}
 
         if mk is not None:
+            w = self.last_witness()
+            if (w is not None and w.get("event") == "armed"
+                    and w.get("nonce") == mk["nonce"]):
+                # Our own "prove the next power cycle" token, still sitting
+                # there. Saying "already read" here would be a lie, and the
+                # user needs to be told the one thing that clears it.
+                return {"may_read": False, "state": state,
+                        "code": "armed-not-cycled", "nonce": mk["nonce"],
+                        "reason": (
+                            "This scanner is marked ready for a forced read, "
+                            "and the mark is still in its memory -- which "
+                            "means the power has NOT been cycled since it was "
+                            "put there. That memory is wiped by a power cycle "
+                            "and by nothing else, so the mark still being "
+                            "present is proof that the moment for a good read "
+                            "has not arrived.\n\nPower the scanner OFF, wait a "
+                            "few seconds, power it ON, and run the same "
+                            "command again. Nothing was sent to the scanner.")}
             return {"may_read": False, "state": state, "code": "already-read",
                     "nonce": mk["nonce"],
                     "reason": (
@@ -532,7 +635,36 @@ class PowerCycleGuard:
                         "cycled since. Refusing to read rather than risk a "
                         "second read in one power cycle. Power the scanner "
                         "off and on if you need a fresh read.")}
+        if require_power_cycle_witness:
+            w = self.last_witness()
+            if w is None:
+                return {"may_read": False, "state": state, "code": "no-witness",
+                        "reason": (
+                            "This would be an ADDITIONAL read, and nothing "
+                            "here proves the scanner's power has been cycled "
+                            "since the last one. An empty marker region is not "
+                            "that proof: any program that loads firmware into "
+                            "this scanner overwrites the same memory, so "
+                            "'no marker' can equally mean 'something erased "
+                            "it'.\n\nA read taken at any moment other than the "
+                            "first transaction after a power cycle returns "
+                            "corrupted data while still reporting success. On "
+                            "2026-08-08 exactly this situation produced 256 "
+                            "bytes of 0xFF from 0x52. Nothing was sent to the "
+                            "scanner.")}
+            # The nonce we planted is gone from RAM -- we got here only with no
+            # marker present at all -- so the RAM was cleared, and the only
+            # thing that clears it is losing power.
+            return {"may_read": True, "state": state, "code": "fresh",
+                    "witnessed": True, "witness": w.get("nonce"),
+                    "reason": (
+                        f"Power cycle confirmed: the marker this software put "
+                        f"in the scanner's RAM ({w.get('event')} "
+                        f"{str(w.get('nonce'))[:8]}) is no longer there, and "
+                        f"only powering the scanner off clears it. No reader "
+                        f"firmware is resident either.")}
         return {"may_read": True, "state": state, "code": "fresh",
+                "witnessed": False,
                 "reason": "Fresh power cycle: no reader firmware and no read "
                           "marker in the scanner's RAM."}
 

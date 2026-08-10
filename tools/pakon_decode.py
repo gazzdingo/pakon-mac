@@ -781,15 +781,38 @@ def unsquash_transport(rgb: np.ndarray, scale: float = DEFAULT_TRANSPORT_SCALE) 
     return out
 
 
+# The scanner's lens inverts the image it projects onto the CCD, so the
+# capture is upside-down and back-to-front relative to the scene — a 180°
+# rotation, not a mirror. docs/46 §5 listed orientation as open ("six variants
+# tried, all judged wrong"; "a lens inverts the image; a flip may be required
+# that I never applied"). It is settled now, from legible text: frame 04 of
+# captures/strip_cal.bin carries shop signage that reads as upright, correct
+# (un-mirrored) words only after a 180° rotation of what rot90(k=1) produced.
+#
+# rot90(k=1) followed by 180° is exactly rot90(k=-1), so the fix is the sign
+# of the single rotation the decoder already did — no extra resample, no
+# mirror, and the array stays C-contiguous.
+#
+# ORDER MATTERS, AND IT IS FIXED HERE: ccd_deskew runs on the capture's own
+# (n_lines, ccd) axes, before this function, so its offsets stay in capture
+# scan lines and keep their measured sign (R +8 / G 0 / B −8). Anything that
+# deskews *after* this rotation — the Go pipeline reads the raw14 TIFF this
+# writes — is looking at an axis that now runs backwards, and must negate
+# them. See analysis/pipeline/main.go's deskew block.
+ROTATE_180_FOR_LENS = True
+
+
 def to_frame_image(rgb: np.ndarray,
                    transport_scale: float = DEFAULT_TRANSPORT_SCALE) -> np.ndarray:
-    """(n_lines, ccd, 3) → display image, square pixels, transport left→right.
+    """(n_lines, ccd, 3) → display image, square pixels, transport axis on x.
 
     1. Resample transport axis (fix squashed pixels from fast motor)
-    2. rot90 CCW so the strip reads left→right
+    2. rot90 CW — the strip reads along x, and the scene is the right way up
+       because the lens inverted it (see ROTATE_180_FOR_LENS above)
     """
     rgb = unsquash_transport(rgb, transport_scale)
-    return np.ascontiguousarray(np.rot90(rgb, k=1))
+    k = -1 if ROTATE_180_FOR_LENS else 1
+    return np.ascontiguousarray(np.rot90(rgb, k=k))
 
 
 def write_png(path: Path, rgb_u8: np.ndarray,

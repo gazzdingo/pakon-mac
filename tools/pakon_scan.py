@@ -2036,6 +2036,7 @@ def probe() -> dict:
         "state": "absent",
         "lamp": None,
         "hint": "",
+        "simulated": None,
         "speeds": MOTOR_SPEED,
         "decodable_bases": list(DECODABLE_BASES),
     }
@@ -2050,38 +2051,52 @@ def probe() -> dict:
         out["gate"] = None
         out["gate_error"] = str(e)
 
-    try:
-        import usb.core
-    except ImportError:
-        out["hint"] = "pyusb is not installed (pip install pyusb)"
-        return out
+    # A simulated scanner is a scanner as far as every caller of this function
+    # is concerned, and saying so here is what lets the application's own
+    # scanner-present path be exercised end to end with no hardware on the
+    # bus. It is reported as `simulated` rather than passed off as real: the
+    # UI shows the distinction, because a run against a replayed capture
+    # proves the software and proves nothing at all about the machine.
+    sim = _simulating()
+    if sim:
+        out.update(present=True, state="ready", simulated=sim,
+                   hint=f"Simulated scanner replaying {Path(sim).name}. "
+                        f"Nothing is open on USB and nothing can move.")
+    else:
+        try:
+            import usb.core
+        except ImportError:
+            out["hint"] = "pyusb is not installed (pip install pyusb)"
+            return out
 
-    try:
-        loaded = usb.core.find(idVendor=VID, idProduct=PID)
-        unloaded = (usb.core.find(idVendor=0x04B4, idProduct=0x8613)
-                    or usb.core.find(idVendor=0x0F05, idProduct=0xF235))
-    except Exception as e:                                  # noqa: BLE001
-        out["hint"] = f"USB probe failed: {e}"
-        return out
+        try:
+            loaded = usb.core.find(idVendor=VID, idProduct=PID)
+            unloaded = (usb.core.find(idVendor=0x04B4, idProduct=0x8613)
+                        or usb.core.find(idVendor=0x0F05, idProduct=0xF235))
+        except Exception as e:                              # noqa: BLE001
+            out["hint"] = f"USB probe failed: {e}"
+            return out
 
-    if loaded is None:
-        if unloaded is not None:
-            out.update(present=True, state="needs_firmware",
-                       hint="Scanner present, firmware not loaded. Run "
-                            "tools/pakon_load.py.")
-        else:
-            out["hint"] = ("No scanner on USB. Open an existing capture "
-                           "instead — everything downstream works offline.")
-        return out
+        if loaded is None:
+            if unloaded is not None:
+                out.update(present=True, state="needs_firmware",
+                           hint="Scanner present, firmware not loaded. Run "
+                                "tools/pakon_load.py.")
+            else:
+                out["hint"] = ("No scanner on USB. Open an existing capture "
+                               "instead — everything downstream works "
+                               "offline.")
+            return out
+        out.update(present=True, state="ready")
 
-    out.update(present=True, state="ready")
     link = None
     try:
         link = Link.open()
         link.clear_fault()
         h = poll_lamp(link, LampHealth())
         out["lamp"] = h.to_json()
-        out["hint"] = "Scanner is loaded and answering."
+        if not sim:
+            out["hint"] = "Scanner is loaded and answering."
     except Exception as e:                                  # noqa: BLE001
         out["hint"] = f"scanner present but not answering: {e}"
         out["state"] = "error"

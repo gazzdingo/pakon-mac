@@ -5,6 +5,104 @@ import (
 	"sort"
 )
 
+// ShastaParams are the fields of anselinstalldir/dataPathItems/shasta/
+// shasta-rpd.dpi — the DPI shasta.map selects for the colour-negative
+// ("CN-Premium") path.
+type ShastaParams struct {
+	Black          float64 // black = 0
+	MetricGray     float64 // metricGray = 1618
+	White          float64 // white = 3000
+	ShadowPercent  float64 // shadowPercent = 1.0
+	MinValue       float64 // minValue = 0
+	MaxValue       float64 // maxValue = 4095
+}
+
+func ShastaRpdParams() ShastaParams {
+	return ShastaParams{
+		Black:         0.0,
+		MetricGray:    1618.0,
+		White:         3000.0,
+		ShadowPercent: 1.0,
+		MinValue:      0.0,
+		MaxValue:      4095.0,
+	}
+}
+
+// histPercentile returns the value at pct% of a 0…4095 code histogram.
+func histPercentile(hist []int, nPix int, pct float64) float64 {
+	target := int(pct / 100.0 * float64(nPix))
+	cum := 0
+	for code := 0; code < len(hist); code++ {
+		cum += hist[code]
+		if cum > target {
+			return float64(code)
+		}
+	}
+	return float64(len(hist) - 1)
+}
+
+// ShastaToneRpd is a stand-in for AnsShastaCapabilityImpl::analyze, which is
+// not ported (see tools/ansel/README.md — Shasta ANALYZE is False).
+//
+// The vendor builds a per-scene tone LUT that lands the scene's shadow point on
+// `black` and its grey point on `metricGray`, then blends the ends with the
+// aggressiveness/exposure-slope fields. This reproduces only the two anchors:
+// shadowPercent → black, median → metricGray, straight line between them,
+// clamped to [minValue, maxValue]. Everything it uses comes from shasta-rpd.dpi.
+func ShastaToneRpd(rpd12 [][][3]float64, p ShastaParams) [][][3]float64 {
+	height := len(rpd12)
+	if height == 0 {
+		return rpd12
+	}
+	width := len(rpd12[0])
+
+	var lo, mid [3]float64
+	for c := 0; c < 3; c++ {
+		hist := make([]int, 4096)
+		n := 0
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				v := int(rpd12[y][x][c])
+				if v < 0 {
+					v = 0
+				}
+				if v > 4095 {
+					v = 4095
+				}
+				hist[v]++
+				n++
+			}
+		}
+		lo[c] = histPercentile(hist, n, p.ShadowPercent)
+		mid[c] = histPercentile(hist, n, 50.0)
+	}
+	fmt.Printf("DEBUG: shasta anchors lo=%v median=%v -> black=%.0f metricGray=%.0f\n",
+		lo, mid, p.Black, p.MetricGray)
+
+	out := make([][][3]float64, height)
+	for y := 0; y < height; y++ {
+		out[y] = make([][3]float64, width)
+		for x := 0; x < width; x++ {
+			for c := 0; c < 3; c++ {
+				span := mid[c] - lo[c]
+				if span < 1.0 {
+					span = 1.0
+				}
+				scale := (p.MetricGray - p.Black) / span
+				v := (rpd12[y][x][c]-lo[c])*scale + p.Black
+				if v < p.MinValue {
+					v = p.MinValue
+				}
+				if v > p.MaxValue {
+					v = p.MaxValue
+				}
+				out[y][x][c] = v
+			}
+		}
+	}
+	return out
+}
+
 func LinkedPercentileTone(rpd12 [][][3]float64, white float64, shadowPercent, highlightPercent float64, maxValue float64) [][][3]float64 {
 	height := len(rpd12)
 	if height == 0 {

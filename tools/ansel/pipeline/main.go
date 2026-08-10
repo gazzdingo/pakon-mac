@@ -268,17 +268,57 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 		}
 	}
 	
-	frameDmin := frameDminRgbFromPlanes(planeR, planeG, planeB, 4096)
-	
 	// Kodak Gold 400 (DX code 96) SBA parameters from sba-CN-default-96-1.dpi
 	fpo := [3]int{879, 1250, 1386} // Film Printing Offset (orange-mask aim density)
 	fpa := [3]int{-75, -50, -25}   // Film Preference Adjustment (Kodak Gold 400 specific)
 	nbp := 18
 	nb  := 130 // neutralButton
+
+	// --- F-135 negative -> positive -------------------------------------
+	// The SRA forward LUT does NOT invert: it is monotonically increasing
+	// (0 -> 0, 4095 -> 2441) and its own sibling DPI, ansel-color-rom12.dpi,
+	// describes it as "ROMM to an RPD-like space" — an encoding change, not a
+	// polarity change. Neither does the polynomial: this unit's diagonal is
+	// +0.289/+0.276/+0.278 (docs/58 §12). So after PolyPixel -> SraLut the
+	// frame is still a negative, in a log-ish RPD12 space.
+	//
+	// The inversion is therefore the printing-density definition: density
+	// measured *above the film base*, with the base placed on the DPI's own
+	// Film Printing Offset.
+	//
+	//     rpd12 = ( fpo - setshifts ) + ( SRA[filmBase] - SRA[x] )
+	//
+	// filmBase is the frame's clear-film code, found with the vendor's own
+	// FindDmin histogram routine walked from the top of the range. Pre-loading
+	// -setshifts is what lets the SBA stage below do its documented job: carry
+	// the frame's measured base onto the DPI's fpo aim, without any value
+	// crossing zero and being clamped away.
 	prefA := PreferenceShiftsFromDpiFields(fpo, fpa, nbp, nb, -16.0, 16.0, 0)
-	
 	setshiftsOut := SetShifts12(prefA, prefA, band3.Planar, band3.NumLut)
-	
+
+	if model == "f135" {
+		filmBase := frameFilmBaseRgbFromPlanes(planeR, planeG, planeB, 4096)
+		fmt.Printf("DEBUG: f135 film base (SRA space) = %v\n", filmBase)
+		planeR = planeR[:0]
+		planeG = planeG[:0]
+		planeB = planeB[:0]
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				for c := 0; c < 3; c++ {
+					v := float64(fpo[c]-setshiftsOut[c]) + (float64(filmBase[c]) - rpd12[y][x][c])
+					if v < 0 { v = 0 }
+					if v > 4095 { v = 4095 }
+					rpd12[y][x][c] = v
+				}
+				planeR = append(planeR, int(rpd12[y][x][0]))
+				planeG = append(planeG, int(rpd12[y][x][1]))
+				planeB = append(planeB, int(rpd12[y][x][2]))
+			}
+		}
+	}
+
+	frameDmin := frameDminRgbFromPlanes(planeR, planeG, planeB, 4096)
+
 	balanced := make([][][3]float64, height)
 	for y := 0; y < height; y++ {
 		balanced[y] = make([][3]float64, width)
@@ -335,10 +375,13 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 		}
 	}
 
-	// Shasta tone LUT requires full scene analysis (aim codes from image stats)
-	// and cannot be approximated with a simple percentile. Skip for now.
-	// shasted := LinkedPercentileTone(fugcOut, 3000.0, 1.0, 99.0, 4095.0)
+	// Shasta. The vendor's AnsShastaCapabilityImpl::analyze is not ported, so
+	// F-135 uses the two-anchor stand-in built from shasta-rpd.dpi (the DPI
+	// shasta.map selects for CN-Premium).
 	shasted := fugcOut
+	if model == "f135" {
+		shasted = ShastaToneRpd(fugcOut, ShastaRpdParams())
+	}
 
 	var sum [3]float64
 	for y := 0; y < height; y++ {

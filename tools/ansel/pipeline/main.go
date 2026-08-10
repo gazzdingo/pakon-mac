@@ -21,6 +21,10 @@ import (
 // where the inversion happens open. Treat the rendered colour as provisional.
 const F135InvertPorted = false
 
+// ccdLineOffsets is the trilinear CCD row spacing in scan lines, R/G/B.
+// Measured, not from a vendor table — see the deskew block in processImage.
+var ccdLineOffsets = [3]int{8, 0, -8}
+
 type ColorProfile struct {
 	NegLut [16384]float32
 	Matrix [3][3]float32
@@ -222,6 +226,44 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	height := bounds.Max.Y - bounds.Min.Y
 	width := bounds.Max.X - bounds.Min.X
 	
+	// --- Trilinear CCD deskew -------------------------------------------
+	// The sensor (#123528) senses R, G and B on three physically separate
+	// pixel rows, so each channel crosses a given point on the film at a
+	// different time and the three records land on different scan lines.
+	// docs/30 §"Sensor" has this [VERIFIED trilinear — F-135 Service Manual
+	// p.7] but records the row spacing as UNKNOWN; docs/46 asks whether a
+	// +3 line shift is real. Measured by cross-correlating the log planes of
+	// captures/out_test/frames/*_raw14.tiff, it is +8 / 0 / -8: R leads G by
+	// eight scan lines and B trails it by eight. Frame 02 peaks at 0.998 (R)
+	// and 0.996 (B), and 02…08 all agree; 00/01 are blank leader.
+	//
+	// The transport axis here is x (the long axis of the strip), so the
+	// correction is a shift along x. It is in *scan lines*, so it is only
+	// valid for the transport speed and line rate this capture was made at.
+	sample := func(x, y, c int) int {
+		if x < bounds.Min.X {
+			x = bounds.Min.X
+		}
+		if x >= bounds.Max.X {
+			x = bounds.Max.X - 1
+		}
+		r, g, b, _ := img.At(x, y).RGBA()
+		switch c {
+		case 0:
+			return int(r)
+		case 1:
+			return int(g)
+		}
+		return int(b)
+	}
+	ccdPixel := func(x, y int) (int, int, int) {
+		return sample(x-ccdLineOffsets[0], y, 0),
+			sample(x-ccdLineOffsets[1], y, 1),
+			sample(x-ccdLineOffsets[2], y, 2)
+	}
+	fmt.Printf("CCD deskew: R %+d / G %+d / B %+d scan lines\n",
+		ccdLineOffsets[0], ccdLineOffsets[1], ccdLineOffsets[2])
+
 	rpd12 := make([][][3]float64, height)
 	var planeR, planeG, planeB []int
 
@@ -240,12 +282,12 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 		rpd12[yy] = make([][3]float64, width)
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			xx := x - bounds.Min.X
-			r, g, b, _ := img.At(x, y).RGBA()
+			r, g, b := ccdPixel(x, y)
 
 			var outR, outG, outB float32
 
 			if model == "f135" {
-				polyOut := PolyPixel([3]int{int(r), int(g), int(b)}, coeffs)
+				polyOut := PolyPixel([3]int{r, g, b}, coeffs)
 
 				outR = float32(profile.SraLut[clamp4k(polyOut[0])])
 				outG = float32(profile.SraLut[clamp4k(polyOut[1])])
@@ -253,7 +295,7 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 
 				if x == bounds.Min.X && y == bounds.Min.Y {
 					fmt.Printf("DEBUG pixel[0,0] raw=%d,%d,%d polyOut=%v sra=%.0f,%.0f,%.0f\n",
-						int(r), int(g), int(b), polyOut, outR, outG, outB)
+						r, g, b, polyOut, outR, outG, outB)
 				}
 
 				planeR = append(planeR, int(outR))
@@ -448,7 +490,20 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 func main() {
 	modelFlag := flag.String("model", "f135", "Pipeline model: f135 (polynomial) or f235 (matrix/LUT)")
 	coeffsFlag := flag.String("coeffs", "/Users/guy/www/pakon-mac/research/windows-registry/pakon_registry_full.txt", "Path to the registry .txt or EEPROM file containing coefficients (for f135)")
+	deskewFlag := flag.String("ccd-deskew", "8,0,-8", "Trilinear CCD row spacing in scan lines, R,G,B. \"0,0,0\" disables.")
 	flag.Parse()
+
+	if parts := strings.Split(*deskewFlag, ","); len(parts) == 3 {
+		for i, p := range parts {
+			v, err := strconv.Atoi(strings.TrimSpace(p))
+			if err != nil {
+				log.Fatalf("-ccd-deskew: %q is not an integer", p)
+			}
+			ccdLineOffsets[i] = v
+		}
+	} else {
+		log.Fatalf("-ccd-deskew: want three comma-separated integers, got %q", *deskewFlag)
+	}
 
 	args := flag.Args()
 	if len(args) < 2 {

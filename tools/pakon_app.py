@@ -46,7 +46,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 _TOOLS = Path(__file__).resolve().parent
 _ROOT = _TOOLS.parent
 sys.path.insert(0, str(_TOOLS))
-sys.path.insert(0, str(_TOOLS / "ansel"))
+sys.path.insert(0, str(_TOOLS / "ansel" / "python-pipeline"))
 
 import numpy as np                      # noqa: E402
 import pakon_render as pr               # noqa: E402

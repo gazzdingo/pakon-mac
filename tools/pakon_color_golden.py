@@ -299,7 +299,7 @@ def cmd_dmin_prime(g: PolyGolden, count: int, seed: int) -> int:
     import sys
     from pathlib import Path
 
-    ansel = Path(__file__).resolve().parent / "ansel"
+    ansel = Path(__file__).resolve().parent / "ansel" / "python-pipeline"
     if str(ansel) not in sys.path:
         sys.path.insert(0, str(ansel))
     import pakon_scene_context as sc  # noqa: E402

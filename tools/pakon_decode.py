@@ -65,7 +65,7 @@ import numpy as np
 # tools/ for colour+filmstock; tools/ansel/ for Ansel/SBA host post-process
 _TOOLS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_TOOLS))
-sys.path.insert(0, str(_TOOLS / "ansel"))
+sys.path.insert(0, str(_TOOLS / "ansel" / "python-pipeline"))
 import pakon_color as pc  # noqa: E402
 import pakon_filmstock as film  # noqa: E402
 import pakon_ansel as ansel  # noqa: E402

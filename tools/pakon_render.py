@@ -94,7 +94,7 @@ import numpy as np
 _TOOLS = Path(__file__).resolve().parent
 _ROOT = _TOOLS.parent
 sys.path.insert(0, str(_TOOLS))
-sys.path.insert(0, str(_TOOLS / "ansel"))
+sys.path.insert(0, str(_TOOLS / "ansel" / "python-pipeline"))
 
 import pakon_decode as dec      # noqa: E402  (theirs — call, do not modify)
 import pakon_color as pc        # noqa: E402

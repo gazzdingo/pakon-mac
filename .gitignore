@@ -25,3 +25,7 @@ captures/
 app/node_modules/
 app/dist/
 .DS_Store
+
+# Go pipeline build artefacts
+analysis/pipeline/pipeline_test
+analysis/pipeline/pakonpipeline

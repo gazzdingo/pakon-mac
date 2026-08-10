@@ -571,6 +571,117 @@ def job_export(jid: str, body: dict) -> None:
 # reaches the child even if this process is SIGKILLed, so the same mechanism
 # covers "the user pressed Cancel" and "the app was force-quit".
 
+#: The cross-process interlock, which had a writer and a reader but no refusal.
+#:
+#: ``pakon_scan`` has always written ``~/.pakon-scan-in-flight.json`` while a
+#: scan is in flight, and ``probe()`` has always reported ``in_flight``. But
+#: nothing ever refused on it, and ``ScanSupervisor``'s own guard is a lock
+#: object in *this* interpreter's memory — it says nothing about a second
+#: backend. That second backend is reachable: force-quit the window mid-scan
+#: and the backend outlives it with its scan child still driving the transport;
+#: relaunch, and a fresh backend starts, sees its own supervisor idle, and
+#: opens the device.
+#:
+#: What happens then, on macOS, is worse than a refusal. libusb's darwin
+#: backend opens the *device* with ``USBDeviceOpenSeize`` and, per its own
+#: source, ignores ``kIOReturnExclusiveAccess`` there and carries on;
+#: ``set_configuration`` is then a device-wide IOKit ``SetConfiguration``,
+#: which — again per libusb's own comment, "setting configuration will
+#: invalidate the interface" — tears down the interfaces of every client,
+#: including the one streaming EP 0x86. ``Link.open`` swallows that USBError.
+#: Only the ``claim_interface`` that follows is genuinely refused
+#: (``USBInterfaceOpen`` → ``kIOReturnExclusiveAccess`` →
+#: ``LIBUSB_ERROR_ACCESS``), and by then the damage is done. The kernel's
+#: exclusion is real but it arrives one call too late to be an interlock, so
+#: the interlock has to be ours and it has to be consulted before we open
+#: anything at all.
+
+
+def scan_marker_state() -> dict:
+    """Who, if anyone, is driving the machine — across processes."""
+    out = {"present": False, "pid": None, "alive": False, "mine": False,
+           "info": {}}
+    try:
+        if not scan.MARKER.is_file():
+            return out
+        out["present"] = True
+        try:
+            info = json.loads(scan.MARKER.read_text())
+        except (OSError, json.JSONDecodeError):
+            info = {}
+        out["info"] = info
+        pid = int(info.get("pid") or 0)
+        out["pid"] = pid or None
+        if not pid:
+            return out
+        # Our own scan child is not a conflict with us.
+        child = SCAN.child_pid()
+        out["mine"] = pid in (os.getpid(), child) if child else pid == os.getpid()
+        try:
+            os.kill(pid, 0)
+            out["alive"] = True
+        except OSError:
+            out["alive"] = False
+    except Exception:                                       # noqa: BLE001
+        return out
+    return out
+
+
+def foreign_scan() -> dict | None:
+    """A scan in flight owned by a live process that is not ours. Anything
+    about to open the device must ask this first and take no for an answer."""
+    st = scan_marker_state()
+    return st if (st["alive"] and not st["mine"]) else None
+
+
+def foreign_scan_refusal(st: dict) -> str:
+    started = st.get("info", {}).get("started")
+    when = (f", started {time.strftime('%H:%M:%S', time.localtime(started))}"
+            if started else "")
+    return (f"another process (pid {st.get('pid')}) is scanning{when}. Film is "
+            f"moving and that process owns the USB interface; opening the "
+            f"scanner now would take the transport out from under it. Stop "
+            f"that scan first — the Stop button will do it.")
+
+
+def stop_foreign_scan(timeout: float = 6.0) -> dict:
+    """Ask the process that owns the transport to stop, and wait for it.
+
+    ``scan.emergency_stop`` opens the device from scratch, so it cannot get
+    through while another process still holds the interface: it burns its six
+    retries and reports failure. The owner's pid is in the marker and
+    ``pakon_scan`` stops the transport on SIGTERM, so the panic path asks the
+    owner first and only takes the device once that process is gone.
+    """
+    st = scan_marker_state()
+    out = {"owner_pid": st["pid"], "signalled": False, "exited": False,
+           "mine": st["mine"]}
+    if not st["alive"] or st["mine"] or not st["pid"]:
+        return out
+    try:
+        os.kill(st["pid"], signal.SIGTERM)
+        out["signalled"] = True
+    except OSError as e:
+        out["error"] = str(e)
+        return out
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            os.kill(st["pid"], 0)
+        except OSError:
+            out["exited"] = True
+            break
+        time.sleep(0.1)
+    if not out["exited"]:
+        try:
+            os.kill(st["pid"], signal.SIGKILL)
+            out["killed"] = True
+        except OSError:
+            pass
+        time.sleep(0.5)
+    return out
+
+
 class ScanSupervisor:
     """At most one scan, at any time, with a stop on every way out."""
 
@@ -589,10 +700,22 @@ class ScanSupervisor:
         with self.lock:
             return self.job if (self.proc and self.proc.poll() is None) else None
 
+    def child_pid(self) -> int | None:
+        with self.lock:
+            return (self.proc.pid
+                    if (self.proc and self.proc.poll() is None) else None)
+
     # ---- start ----
     def start(self, jid: str, body: dict) -> dict:
+        # Two guards, because they answer different questions. This one is
+        # "am I already scanning"; the next is "is anything, anywhere,
+        # already scanning" — and only the second survives a force-quit.
         if self.running():
             raise RuntimeError("a scan is already running")
+        other = foreign_scan()
+        if other:
+            raise RuntimeError("Refusing to start a scan: "
+                               + foreign_scan_refusal(other))
 
         base = int(body.get("base") or 16)
         seconds = scan.clamp_seconds(
@@ -861,10 +984,16 @@ def hardware_state(fresh: bool = False) -> dict:
     have to wait for one.
     """
     running = SCAN.running()
+    # THE THIRD GUARD, and the one that was missing. `running` is this
+    # process's own scan. A scan started by a backend that outlived its window
+    # is just as real and just as fatal to probe past: scan.probe() ends in
+    # Link.open(), and Link.open() does not survive contact with an interface
+    # somebody else is streaming from. The marker is the only thing that knows.
+    other = foreign_scan()
     now = time.time()
     warm = bool(_HW_CACHE["value"]) and now - _HW_CACHE["at"] < _HW_TTL
-    refused = fresh and running
-    if running or (warm and not fresh):
+    refused = fresh and (running or other)
+    if running or other or (warm and not fresh):
         p = dict(_HW_CACHE["value"] or {"present": False, "state": "unknown",
                                         "hint": "not probed yet"})
         p["cached"] = True
@@ -880,7 +1009,15 @@ def hardware_state(fresh: bool = False) -> dict:
     if refused:
         p["recheck_refused"] = ("a scan owns the USB interface; the machine "
                                 "cannot be probed until it ends")
-    p["scan_running"] = running
+    if other:
+        # Deliberately NOT rewritten into `state`: the last known state is
+        # still the truth about the machine, and `cached` already says it is
+        # not current. This adds the one fact the UI cannot infer.
+        p["foreign_scan"] = {"pid": other["pid"],
+                             "started": other["info"].get("started"),
+                             "path": other["info"].get("path")}
+        p["hint"] = foreign_scan_refusal(other)
+    p["scan_running"] = running or bool(other)
     p["scan_job"] = SCAN.current()
     p["limits"] = {
         "default_seconds": scan.DEFAULT_MAX_SECONDS,
@@ -1585,10 +1722,44 @@ def diagnostics() -> dict:
     }
 
 
+def watch_parent(poll: float = 1.0) -> None:
+    """Die when the process that started us does.
+
+    This is the other half of the interlock. Refusing to open the machine
+    while another process owns it is correct but it is still two backends, and
+    the second one exists at all only because the first was allowed to outlive
+    its window: Electron force-quit leaves no signal, no ``finally`` and no
+    ``will-quit``, and a backend spawned with ``stdio: pipe`` simply keeps
+    running with its scan child still driving film.
+
+    ``os.getppid()`` becomes 1 (or the launchd reaper) the moment that happens,
+    which needs no cooperation from the dying parent. Opt-in via
+    ``--watch-parent`` so that a backend started by hand from a terminal, and
+    attached to with ``PAKON_BACKEND_PORT``, is not affected.
+
+    ``SCAN.shutdown()`` before exiting, so the scan child's control pipe is
+    closed and the transport stops rather than being orphaned one level down.
+    """
+    start = os.getppid()
+    while True:
+        time.sleep(poll)
+        if os.getppid() != start:
+            print(f"parent {start} is gone; stopping the scan and exiting",
+                  file=sys.stderr, flush=True)
+            try:
+                SCAN.shutdown()
+            finally:
+                os._exit(0)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--port", type=int, default=8136)
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--watch-parent", action="store_true",
+                    help="exit when the process that started this one exits. "
+                         "The Electron app passes it; a hand-started backend "
+                         "should not.")
     a = ap.parse_args()
 
     # Before anything else: if a previous run died mid-scan, the transport may
@@ -1596,6 +1767,15 @@ def main() -> int:
     stale = scan_startup_check()
     if stale.get("stale"):
         print(f"  RECOVERED a scan orphaned by a crash: {stale}")
+    other = foreign_scan()
+    if other:
+        # Not fatal — the rest of the application works offline — but every
+        # path that would touch USB is now closed, and saying so once at
+        # startup beats discovering it from a refusal later.
+        print(f"  NOTE: {foreign_scan_refusal(other)}")
+
+    if a.watch_parent:
+        threading.Thread(target=watch_parent, daemon=True).start()
 
     # Every way this process can end, the child gets its pipe closed and stops.
     atexit.register(SCAN.shutdown)

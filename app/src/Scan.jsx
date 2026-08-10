@@ -42,6 +42,18 @@ const PERFS = Array.from({ length: 48 }, (_, i) => i);
 function blockedReason(hw, scanJob) {
   if (!hw) return { title: 'Checking', why: 'The machine has not been probed yet.', fix: 'recheck' };
   if (scanJob?.status === 'running') return { title: 'Scanning', why: 'A scan is already running.', fix: null };
+  /* A scan owned by a *different* process — normally a backend that outlived
+     its window. This window holds no job record for it, so without this the
+     screen would offer Scan strip for a machine that is already moving film.
+     The Stop in the lane above does reach it: it signals the owner by pid. */
+  if (hw.foreign_scan)
+    return {
+      title: 'Scanning elsewhere',
+      why:
+        hw.hint ||
+        `Another process (pid ${hw.foreign_scan.pid}) is scanning and owns the USB interface.`,
+      fix: null,
+    };
   if (hw.state === 'unreachable')
     return { title: 'Backend silent', why: hw.hint || 'The hardware probe stopped answering.', fix: 'recheck' };
   if (!hw.present)

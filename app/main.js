@@ -72,7 +72,11 @@ function api(pathname, { method = 'GET', body = null, timeout = 15000 } = {}) {
 function startBackend(port) {
   const script = path.join(repoRoot(), 'tools', 'pakon_app.py');
   const py = process.env.PAKON_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
-  backend = spawn(py, ['-u', script, '--port', String(port)], {
+  // --watch-parent: the backend exits when this process does, however this
+  // process ends. Belt to the braces below — those handlers cannot run if we
+  // are SIGKILLed, and a backend that outlives its window keeps its scan child
+  // alive with it, still driving the transport.
+  backend = spawn(py, ['-u', script, '--port', String(port), '--watch-parent'], {
     cwd: repoRoot(),
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, PYTHONUNBUFFERED: '1' },
@@ -84,6 +88,30 @@ function startBackend(port) {
     backend = null;
     if (code && !quitConfirmed) console.error('backend exited', code);
   });
+}
+
+/** Stop the backend, from anywhere, more than once, safely.
+ *
+ * SIGTERM first, because the backend's own handler closes the scan child's
+ * control pipe and that is what stops the transport. SIGKILL only if it is
+ * still there, and never as the first move: a killed backend cannot stop
+ * anything.
+ */
+function killBackend() {
+  if (!spawnedBackend || !backend) return;
+  const proc = backend;
+  try {
+    proc.kill('SIGTERM');
+  } catch {
+    /* already gone */
+  }
+  setTimeout(() => {
+    try {
+      if (!proc.killed && proc.exitCode === null) proc.kill('SIGKILL');
+    } catch {
+      /* already gone */
+    }
+  }, 2500).unref?.();
 }
 
 function waitForBackend(tries = 120) {
@@ -184,7 +212,7 @@ async function createWindow() {
         console.error('capture failed', e);
       }
       quitConfirmed = true;
-      if (spawnedBackend && backend) backend.kill();
+      killBackend();
       app.exit(0);
     }, wait);
   }
@@ -259,11 +287,58 @@ app.on('before-quit', async (e) => {
     }
   }
   quitConfirmed = true;
-  if (spawnedBackend && backend) backend.kill();
+  killBackend();
   app.quit();
 });
 
-app.whenReady().then(async () => {
+/* ── the backend must not outlive this process ──────────────────────────────
+ *
+ * `before-quit` covers the polite path only, and it is the path that was
+ * already covered. Everything below is the impolite ones — a renderer crash
+ * taking the app down, an uncaught throw in the main process, the user
+ * force-quitting, a terminal Ctrl-C in development. Each of them used to leave
+ * a Python backend running, and if a scan was in flight that backend's child
+ * kept driving film with nothing on screen to stop it.
+ *
+ * These handlers cannot cover SIGKILL — nothing can. That is what the
+ * backend's own `--watch-parent` is for, and it is why the backend and the app
+ * now both refuse to open the scanner while `~/.pakon-scan-in-flight.json`
+ * names a live owner. */
+app.on('will-quit', killBackend);
+app.on('quit', killBackend);
+process.on('exit', killBackend);
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(sig, () => {
+    quitConfirmed = true;
+    killBackend();
+    app.exit(0);
+  });
+}
+process.on('uncaughtException', (err) => {
+  console.error('main process threw', err);
+  quitConfirmed = true;
+  killBackend();
+  app.exit(1);
+});
+
+/* One window, one backend. Without this, launching the app again while it is
+ * already running gives a second backend whose supervisor believes it is idle
+ * — the exact case the in-flight marker now refuses.
+ *
+ * The lock is taken before anything is started, and a loser exits without
+ * spawning a backend at all, so there is no window in which two exist. */
+const primary = app.requestSingleInstanceLock();
+if (!primary) {
+  app.exit(0);
+}
+
+app.on('second-instance', () => {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.focus();
+});
+
+if (primary) app.whenReady().then(async () => {
   // PAKON_BACKEND_PORT attaches to a backend that is already running, which
   // keeps opened rolls alive across UI restarts while developing.
   if (process.env.PAKON_BACKEND_PORT) {

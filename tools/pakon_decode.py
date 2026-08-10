@@ -70,6 +70,7 @@ import pakon_color as pc  # noqa: E402
 import pakon_filmstock as film  # noqa: E402
 import pakon_ansel as ansel  # noqa: E402
 import pakon_color_adjust as color_adjust  # noqa: E402
+import pakon_scene_context as scene_ctx  # noqa: E402
 
 WORDS_PER_LINE = 6000          # 2000 px × 3 channels — DpiBase16
 PIXELS_PER_LINE = 2000
@@ -373,6 +374,63 @@ def rpd12_to_u16(rpd12: np.ndarray) -> np.ndarray:
     return np.clip(
         np.rint(rpd12 * (65535.0 / ansel.SHASTA_MAX)), 0, 65535
     ).astype(np.uint16)
+
+
+# --------------------------------------------------------------------------
+# F-135 negative → positive (docs/58 §3.5 / §15.1)
+# --------------------------------------------------------------------------
+
+def _film_base_code(plane: np.ndarray, n_bins: int = 4096) -> int:
+    """FindDmin on one plane, histogrammed with numpy for strip-sized data.
+
+    The walk itself is the vendor's — ``find_dmin_code_from_hist`` @
+    ``0x100093f0…0x1000941f``, high side down, ``thr = n // 1000``.
+    """
+    v = np.clip(plane, 0, n_bins - 1).astype(np.int64).ravel()
+    counts = np.bincount(v, minlength=n_bins).tolist()
+    thr = scene_ctx.find_dmin_thr_n_pixels(v.size)
+    return scene_ctx.find_dmin_code_from_hist(counts, thr, n_bins=n_bins)
+
+
+def f135_rom12_to_rpd12(rom12: np.ndarray,
+                        sra_lut: np.ndarray,
+                        fpo: tuple[float, float, float],
+                        setshifts: tuple[int, int, int] | None,
+                        quiet: bool = False) -> np.ndarray:
+    """(h, w, 3) ROM12 poly output → (h, w, 3) RPD12 positive.
+
+    Neither of the two stages ahead of this one inverts:
+
+    * ``fcn.1000d880``'s diagonal on this unit is +0.289 / +0.276 / +0.278,
+      so the polynomial preserves polarity (docs/58 §12).
+    * ``common-sraFwdLut-metric-rom12.lut`` is monotonically increasing
+      (0 → 0, 4095 → 2441). ``ansel-color-rom12.dpi`` says what it is for:
+      "The forward lut now takes us from ROMM to an RPD-like space" — an
+      encoding change, not a polarity change.
+
+    So the frame reaching Ansel is still a negative. This applies the SRA
+    forward LUT and then the printing-density definition: density measured
+    above the film base, with the base carried onto the DPI's ``fpo`` aim.
+
+        rpd12 = (fpo - setShifts OUT) + ( SRA[filmBase] - SRA[x] )
+
+    Pre-loading ``-setShifts`` is what lets the SBA stage that runs next put
+    the measured base on ``fpo`` without anything crossing zero and being
+    clamped away. ``filmBase`` is FindDmin, which walks the histogram from
+    the high side and so returns maximum transmission — the clear film base.
+    """
+    idx = np.clip(rom12, 0, 4095).astype(np.int32)
+    sra = np.asarray(sra_lut, dtype=np.int64)[idx]
+    base = np.array([_film_base_code(sra[:, :, c]) for c in range(3)])
+    ss = np.array(setshifts if setshifts is not None else (0, 0, 0), dtype=np.float64)
+    anchor = np.asarray(fpo, dtype=np.float64) - ss
+    out = np.clip(anchor + (base - sra), 0, ansel.SHASTA_MAX)
+    if not quiet:
+        print(f"  F-135 invert: film base (SRA) = {base}  "
+              f"anchor = fpo{np.asarray(fpo).round(0)} - setShifts{ss.round(0)} "
+              f"= {anchor.round(0)}")
+        print(f"  F-135 invert: RPD12 mean = {out.mean(axis=(0, 1)).round(1)}")
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -818,6 +876,27 @@ def cmd_strip(args: argparse.Namespace) -> int:
             scene=scene,
             sba_key_override=force_key,
         )
+        # F-135 negative → positive. Stage 2 hands Ansel METRIC_ROM12, and
+        # nothing between the polynomial and here inverts (docs/58 §3.5).
+        # Roll-level film base: it is a property of the stock, not the frame,
+        # and the vendor estimates it at roll level too (orderFpo* in the
+        # sba dpi / AnalyseRoll).
+        if args.model == "f135":
+            rpd12_pos = f135_rom12_to_rpd12(
+                ansel.rpd16_to_rpd12(rpd),
+                engine.sra_lut,
+                engine.sba.fpo,
+                engine.setshifts_out,
+            )
+            rpd = rpd12_to_u16(rpd12_pos)
+            # AnsShastaCapabilityImpl::analyze is not ported, so the assembled
+            # toneLut has no scene aims to hit. Use the two-anchor stand-in
+            # built from the selected shasta dpi.
+            engine.shasta_stand_in = True
+            print("  F-135 tone: shasta two-anchor stand-in "
+                  f"(shadowPercent {engine.shasta.shadow_percent} → black, "
+                  f"median → metricGray {engine.shasta.metric_gray})")
+
         legacy = bool(getattr(args, "legacy_tone", False))
         print(f"  Ansel {'legacy-v1' if legacy else 'two-pass'} on "
               f"{len(spans)} scenes ({rpd.shape[0]} lines) …")

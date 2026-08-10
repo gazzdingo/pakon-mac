@@ -273,6 +273,35 @@ def aim_medians(rpd12: np.ndarray, aim: float) -> np.ndarray:
     return np.clip(x, 0, SHASTA_MAX)
 
 
+def shasta_two_anchor_tone(rpd12: np.ndarray,
+                           shasta: "ShastaParams") -> np.ndarray:
+    """Two-anchor stand-in for ``AnsShastaCapabilityImpl::analyze``.
+
+    ``pakon_shasta.py`` carries the toneLut *assembly* but not the scene
+    ``analyze`` that chooses its aims (``ANALYZE`` is False), so on the
+    colour-negative path the assembled LUT does not land the scene on the
+    dpi's aims. This reproduces only the two anchors the dpi states
+    outright — ``shadowPercent`` → ``black``, median → ``metricGray`` —
+    with a straight line between them, clamped to ``[minValue, maxValue]``.
+
+    Every number comes from the selected ``shasta-*.dpi``. Nothing here is
+    fitted to an image.
+    """
+    x = rpd12.astype(np.float64)
+    black = float(getattr(shasta.dpi, "black", 0.0) or 0.0)
+    min_value = float(getattr(shasta.dpi, "min_value", 0.0) or 0.0)
+    out = np.empty_like(x)
+    for c in range(3):
+        lo = float(np.percentile(x[:, :, c], shasta.shadow_percent))
+        mid = float(np.median(x[:, :, c]))
+        span = max(mid - lo, 1.0)
+        scale = (shasta.metric_gray - black) / span
+        out[:, :, c] = np.clip(
+            (x[:, :, c] - lo) * scale + black, min_value, shasta.max_value
+        )
+    return out
+
+
 def linked_percentile_tone(
     rpd12: np.ndarray,
     *,
@@ -383,6 +412,11 @@ class AnselEngine:
     color_adjust: color_adjust.ColorAdjustParams = field(
         default_factory=color_adjust.ColorAdjustParams
     )
+    # F-135: use the two-anchor Shasta stand-in instead of the partially
+    # ported toneLut (AnsShastaCapabilityImpl::analyze is not ported, so the
+    # assembled LUT has no scene aims to hit). Set by pakon_decode.py for
+    # --model f135. Off elsewhere — nothing else changes behaviour.
+    shasta_stand_in: bool = False
     _icc_cache: object = field(default=None, repr=False)
 
     @classmethod
@@ -552,7 +586,9 @@ class AnselEngine:
             # Assemble Cap toneLut from live image sampling when unset
             # (7b970/7b3c0 → 935d0 → builder → setToneLut). Mid-aims from
             # FindDmin + Laplacian collectData dens when ANALYZE is True.
-            if (
+            if self.shasta_stand_in:
+                x = shasta_two_anchor_tone(x, self.shasta)
+            elif (
                 shasta_mod.SHASTA_TONE_LUT_PORTED
                 and self.tone_lut is None
                 and self.shasta.dpi is not None
@@ -564,7 +600,9 @@ class AnselEngine:
                     setshifts_out=self.setshifts_out,
                 )
                 self.tone_lut = tone
-            if (
+            if self.shasta_stand_in:
+                pass  # already toned above
+            elif (
                 shasta_mod.SHASTA_TONE_LUT_PORTED
                 and self.tone_lut is not None
             ):

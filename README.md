@@ -1,13 +1,18 @@
 # pakon-mac
 
+> ⚠️ **Work in Progress** — this project is under active development. Nothing
+> here is production-ready. APIs, protocols, and tools may change without notice.
+
 Native macOS support for Kodak/Pakon F-135, F-235 and F-335 film scanners.
 
 These scanners shipped in 2002–2007 with 32-bit Windows XP drivers and have no
 vendor support on any modern OS. This project documents the hardware interface
 and reimplements the host side in userspace on macOS.
 
-**Status: research / documentation phase.** No working scan yet. See
-[`docs/06-roadmap.md`](docs/06-roadmap.md) for where things stand.
+## Status
+
+**Active development / research phase.** See [`docs/06-roadmap.md`](docs/06-roadmap.md)
+for where things currently stand.
 
 ## Why this is feasible
 
@@ -55,10 +60,27 @@ established the command packet framing, the address enum, and the identification
 of `F235Ldr.sys` as Anchor Chips' ezloader. Facts taken from it are tagged
 **[EXTERNAL]**.
 
-## Legal
+## Legal Disclaimer
 
-Reverse engineering for interoperability — enabling hardware you own to work on
-an operating system its vendor abandoned. No vendor binaries or firmware images
-are redistributed in this repository; the documentation describes interfaces
-only, and the tools operate on files you supply from your own copy of the vendor
-distribution.
+**This project is not affiliated with, endorsed by, or in any way connected to
+Kodak, Eastman Kodak Company, Pakon Inc., or any of their successors, assigns,
+or affiliates.** Kodak, Pakon, and related product names are trademarks of their
+respective owners. Use of these names is purely for descriptive purposes to
+identify the hardware this software is designed to interoperate with.
+
+This software is provided **"as is", without warranty of any kind**, express or
+implied, including but not limited to the warranties of merchantability, fitness
+for a particular purpose, and non-infringement. In no event shall the author or
+contributors be liable for any claim, damages, or other liability — whether in
+an action of contract, tort, or otherwise — arising from, out of, or in
+connection with this software or the use of it. **Use at your own risk.**
+
+This includes but is not limited to: damage to scanning hardware, loss of film
+or photographs, data loss, system instability, or any other direct, indirect,
+incidental, special, exemplary, or consequential damages.
+
+Reverse engineering conducted for interoperability purposes under applicable
+law — enabling hardware you own to work on an operating system its vendor
+abandoned. No vendor binaries or firmware images are redistributed in this
+repository; the documentation describes interfaces only, and the tools operate
+on files you supply from your own licensed copy of the vendor distribution.

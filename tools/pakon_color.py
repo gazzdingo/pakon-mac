@@ -893,21 +893,39 @@ def render_raw(in_path: str, out_path: str, width: int, data_dir: str,
     return 0
 
 
+def _tiff_short_or_long(value: int) -> int:
+    """TIFF type code for a count-1 tag: SHORT while it fits, else LONG.
+
+    ImageWidth/ImageLength/RowsPerStrip are "SHORT or LONG" in TIFF 6.0, and
+    every reader takes either. A full-strip render at transport scale is well
+    past 65535 lines, which a SHORT cannot hold -- that used to raise
+    ``struct.error: ushort format requires 0 <= number <= 65535`` here. The
+    choice is by magnitude so small images stay byte-for-byte what they were.
+    """
+    return 3 if 0 <= value <= 0xFFFF else 4
+
+
 def write_tiff(path: str, width: int, height: int, rgb16: bytes) -> None:
     """Minimal uncompressed 16-bit RGB TIFF, little-endian.
 
     Untagged, like the vendor's own output -- there is no ICC-embed path in
-    TLA.dll's save (docs/58 section 10).
+    TLA.dll's save (docs/58 section 10). The IFD layout does not depend on the
+    SHORT/LONG choice: every entry is 12 bytes either way, so the BitsPerSample
+    and strip offsets are the same as they have always been.
     """
+    if len(rgb16) > 0xFFFFFFFF:
+        raise ValueError(
+            f"{len(rgb16)} bytes exceeds what a single-strip classic TIFF can "
+            f"address (4 GiB); split the strip or write BigTIFF")
     entries = [
-        (256, 3, 1, width),        # ImageWidth
-        (257, 3, 1, height),       # ImageLength
+        (256, _tiff_short_or_long(width), 1, width),    # ImageWidth
+        (257, _tiff_short_or_long(height), 1, height),  # ImageLength
         (258, 3, 3, 0),            # BitsPerSample -> offset, filled below
         (259, 3, 1, 1),            # Compression = none
         (262, 3, 1, 2),            # Photometric = RGB
         (273, 4, 1, 0),            # StripOffsets -> filled below
         (277, 3, 1, 3),            # SamplesPerPixel
-        (278, 3, 1, height),       # RowsPerStrip
+        (278, _tiff_short_or_long(height), 1, height),  # RowsPerStrip
         (279, 4, 1, len(rgb16)),   # StripByteCounts
     ]
     header = b'II\x2a\x00' + struct.pack('<I', 8)

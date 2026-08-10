@@ -432,6 +432,102 @@ def test_concurrent_read_locked() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _listing(root: Path) -> dict:
+    """Every file under root, with its exact bytes. Byte-identical or not."""
+    import hashlib
+    out = {}
+    for p in sorted(root.rglob("*")):
+        if p.is_file():
+            b = p.read_bytes()
+            out[str(p.relative_to(root))] = (len(b), hashlib.sha256(b).hexdigest())
+    return out
+
+
+def test_simulate_never_touches_the_real_store() -> None:
+    section("a rehearsal cannot write into the real store (2026-08-08 bug)")
+    import subprocess
+    import calib_read as cr
+
+    real = Path(tempfile.mkdtemp())
+    try:
+        # A real store with a real read in it, exactly as an owner would have.
+        st = cs.CalibrationStore(real)
+        st.save_read({0x51: ERASED51, 0x52: GOOD52}, source="genuine read",
+                     stamp="2026-08-08T15-27-44Z")
+        before = _listing(real)
+
+        env = dict(os.environ, PAKON_CALIBRATION_DIR=str(real))
+        proc = subprocess.run(
+            [sys.executable, str(HERE / "calib_read.py"), "--simulate", "read"],
+            capture_output=True, text=True, env=env)
+        after = _listing(real)
+        check(after == before,
+              "the real store is byte-identical before and after a rehearsal",
+              f"changed: {sorted(set(after) ^ set(before)) or 'contents differ'}")
+        check(len(cs.CalibrationStore(real).list_reads()) == 1,
+              "no rehearsal record was added to the real store")
+        check("REHEARSAL" in proc.stdout,
+              "the rehearsal says so, and names the scratch store it used",
+              proc.stdout[:200])
+        check("not touched" in proc.stdout,
+              "and says plainly that the real store was left alone")
+
+        # status must not touch it either.
+        before2 = _listing(real)
+        subprocess.run([sys.executable, str(HERE / "calib_read.py"),
+                        "--simulate", "status"],
+                       capture_output=True, text=True, env=env)
+        check(_listing(real) == before2, "nor does a simulated status")
+
+        # And the structural half: do_read itself refuses a simulated
+        # transport pointed at the real store, whoever the caller is -- with
+        # --force too, which is the combination that would otherwise get past
+        # the "already stored" refusal.
+        old = os.environ.get("PAKON_CALIBRATION_DIR")
+        os.environ["PAKON_CALIBRATION_DIR"] = str(real)
+        try:
+            for forced in (False, True):
+                try:
+                    cr.do_read(cs.CalibrationStore(real), sim(),
+                               cd.PowerCycleGuard(sim(), real / "journal"),
+                               force=forced, source="test")
+                    check(False, f"do_read refuses a simulated read into the "
+                                 f"real store (force={forced})")
+                except cd.ReadRefused as e:
+                    check("simulated scanner" in str(e),
+                          f"do_read refuses a simulated read into the real "
+                          f"store (force={forced})", str(e)[:80])
+        finally:
+            if old is None:
+                del os.environ["PAKON_CALIBRATION_DIR"]
+            else:
+                os.environ["PAKON_CALIBRATION_DIR"] = old
+        check(_listing(real) == before, "and that refusal wrote nothing")
+
+        # Pointing --store at the real store while simulating is refused.
+        proc = subprocess.run(
+            [sys.executable, str(HERE / "calib_read.py"), "--simulate",
+             "--store", str(real), "read"],
+            capture_output=True, text=True, env=env)
+        check(proc.returncode != 0 and _listing(real) == before,
+              "--simulate --store <the real store> is refused outright",
+              proc.stderr[:120])
+
+        # The rehearsal must still be a genuine rehearsal: it does save,
+        # somewhere disposable, so the exercise is the real code path.
+        with tempfile.TemporaryDirectory() as scratch:
+            proc = subprocess.run(
+                [sys.executable, str(HERE / "calib_read.py"), "--simulate",
+                 "--store", scratch, "read"],
+                capture_output=True, text=True, env=env)
+            reads = cs.CalibrationStore(Path(scratch)).list_reads()
+            check(proc.returncode == 0 and len(reads) == 1 and reads[0].is_good,
+                  "a rehearsal still exercises the whole path, in scratch",
+                  proc.stdout[-200:] + proc.stderr[-200:])
+    finally:
+        shutil.rmtree(real, ignore_errors=True)
+
+
 def main() -> int:
     print("calibration read/backup self-tests -- no scanner required")
     test_verify()
@@ -446,6 +542,7 @@ def main() -> int:
     test_save_before_interpret()
     test_orchestration()
     test_concurrent_read_locked()
+    test_simulate_never_touches_the_real_store()
     print(f"\n{_count - len(_fails)}/{_count} checks passed")
     if _fails:
         print("FAILED:")

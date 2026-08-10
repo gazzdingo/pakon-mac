@@ -3,8 +3,14 @@
 
     python3 tools/calib_read.py status        what is stored, what is in force
     python3 tools/calib_read.py read          read (only if it is safe to)
-    python3 tools/calib_read.py read --simulate     rehearse with no hardware
+    python3 tools/calib_read.py --simulate read     rehearse with no hardware
     python3 tools/calib_read.py use <stamp>   use an earlier stored read
+
+--simulate is a REHEARSAL. It gets a simulated scanner and a scratch store in
+a temporary directory, and the real store is not opened for writing at all. A
+rehearsal record in the real store is not a cosmetic mistake: the store is
+what decides whether a genuine read is still needed, so one simulated record
+makes the software believe the job is done and blocks the real read.
 
 WHAT IT DOES, AND WHY IN THIS ORDER
 -----------------------------------
@@ -36,6 +42,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(os.path.dirname(os.path.abspath(__file__)))
@@ -60,6 +67,48 @@ def _sim_transport() -> cd.SimTransport:
     if not contents:
         contents = {0x52: bytes(256)}
     return cd.SimTransport(contents)
+
+
+def _same_path(a: Path, b: Path) -> bool:
+    try:
+        return Path(a).expanduser().resolve() == Path(b).expanduser().resolve()
+    except OSError:
+        return False
+
+
+def open_store(explicit: Path | None, *,
+               simulate: bool) -> tuple[cs.CalibrationStore, Path | None]:
+    """Pick the store this run may write to. A rehearsal never gets the real one.
+
+    Returns (store, scratch_dir_or_None).
+
+    A --simulate run is a dry run and must be able to leave nothing behind in
+    the real store, so it is given a fresh scratch directory instead. The
+    reason this matters is specific rather than tidy-minded: the store is the
+    thing do_read() consults to decide whether a genuine read is still needed
+    (has_calibration), so a single simulated record there makes the software
+    believe this scanner's calibration has already been captured and refuse
+    the real read. That happened on 2026-08-08 on the owner's machine.
+
+    Pointing --store at the real store while simulating is refused outright
+    rather than quietly obeyed, because there is no honest reason to rehearse
+    into the one place a rehearsal must not reach.
+    """
+    if not simulate:
+        return cs.CalibrationStore(explicit), None
+    real = cs.default_store()
+    if explicit is not None:
+        root = Path(explicit).expanduser()
+        if _same_path(root, real):
+            raise SystemExit(
+                f"--simulate will not write to the real calibration store "
+                f"({real}).\nA rehearsal record there would make the software "
+                f"believe this scanner has already been read and stop it "
+                f"taking the genuine read.\nDrop --store to rehearse in a "
+                f"scratch directory, or point it somewhere disposable.")
+        return cs.CalibrationStore(root), None
+    scratch = Path(tempfile.mkdtemp(prefix="pakon-calib-rehearsal-"))
+    return cs.CalibrationStore(scratch), scratch
 
 
 def connect_report(store: cs.CalibrationStore, transport: cd.Transport,
@@ -100,6 +149,21 @@ def do_read(store: cs.CalibrationStore, transport: cd.Transport,
             source: str = "calib_read") -> dict:
     """The whole protected read. Returns a report; raises ReadRefused if not."""
     cd.assert_safe_installation()
+
+    # A simulated scanner's bytes may not enter the real store, whoever asks.
+    # open_store() keeps the CLI honest; this keeps every other caller honest
+    # too, because the damage does not depend on which layer made the mistake:
+    # a rehearsal record in the real store reads as "already captured" and
+    # blocks the genuine read.
+    if isinstance(transport, cd.SimTransport) and _same_path(store.root,
+                                                             cs.default_store()):
+        raise cd.ReadRefused(
+            f"This is a simulated scanner and the store it was given is the "
+            f"real calibration store ({store.root}). A simulated record there "
+            f"would make the software believe this scanner's calibration has "
+            f"already been read and refuse the genuine read. Nothing was "
+            f"written, and nothing was sent to any scanner.")
+
     ok, why = cd.firmware_ok()
     if not ok:
         raise cd.ReadRefused(why)
@@ -200,7 +264,8 @@ def main() -> int:
     ap.add_argument("--store", type=Path, default=None)
     ap.add_argument("--simulate", action="store_true",
                     help="rehearse against a simulated scanner; no hardware, "
-                         "no USB, nothing touched")
+                         "no USB, and a scratch store -- the real store is "
+                         "never written to")
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("status")
     r = sub.add_parser("read")
@@ -212,8 +277,13 @@ def main() -> int:
     a = ap.parse_args()
     cmd = a.cmd or "status"
 
-    store = cs.CalibrationStore(a.store)
+    store, scratch = open_store(a.store, simulate=a.simulate)
     journal = store.root / "journal"
+    if a.simulate:
+        print("\n  REHEARSAL. Simulated scanner, no USB.")
+        print(f"  rehearsal store  {store.root}"
+              + ("  (scratch, delete it whenever)" if scratch else ""))
+        print(f"  real store       {cs.default_store()}  -- not touched")
 
     if cmd == "use":
         try:

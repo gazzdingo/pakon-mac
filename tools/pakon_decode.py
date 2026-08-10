@@ -918,12 +918,25 @@ def cmd_strip(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     frames_dir = out / "frames"
 
+    # Measure the pitch before asking for the scale. The capture's own frame
+    # spacing is the one input that needs neither a sidecar nor the speed
+    # anchor — only that 35 mm frames are 38 mm apart — so for the many
+    # captures that predate pakon_scan's sidecar it is the whole answer, and
+    # resolve_transport_scale no longer has to log "no measured pitch" and
+    # leave the geometry alone.
+    pitch, pitch_detail = measure_pitch_from_strip(rgb)
+    if pitch:
+        print(f"frame pitch {pitch:.0f} lines ({pitch_detail})")
+    else:
+        print(f"frame pitch: not measured ({pitch_detail})")
+
     ts, ts_src = resolve_transport_scale(
         transport_scale_override=args.transport_scale,
         motor_speed=getattr(args, "motor_speed", None),
         dpi_base=getattr(args, "dpi_base", None),
         line_rate=getattr(args, "line_rate", None),
         capture=args.input,
+        measured_pitch_lines=pitch,
     )
     print(f"transport scale {ts:.4f}  ({ts_src})")
 
@@ -1132,6 +1145,58 @@ def measure_pitch_lines(capture: Path | str) -> float | None:
     ones = np.zeros(n_lines, dtype=bool)
     ones[lo:hi] = trace[lo:hi] < pf._otsu(trace[lo:hi])
     return pf.estimate_pitch(ones)
+
+
+def measure_pitch_from_strip(rgb: np.ndarray) -> tuple[float | None, str]:
+    """Measure the frame pitch of a strip that is already segmented in memory.
+
+    Same estimator as ``measure_pitch_lines`` (pakon_framing owns it), but on
+    the array we are actually about to apply the geometry to, which matters
+    for two reasons:
+
+    * ``measure_pitch_lines`` streams the ``.bin`` at a fixed 6000-word
+      stride. On a capture taken before the FIFO fix that stride is a lie:
+      ``segment_lines`` drops the glitched lines, so line index and film
+      travel stop agreeing and the apparent pitch comes out SHORT. On
+      ``captures/strip_cal.bin`` the whole-file number is 1349 lines against
+      1454 over the clean prefix — a 7 % geometry error, in the direction of
+      making the frame too wide.
+    * ``--max-lines`` / calibration have already been applied here, so what is
+      measured is what is rendered.
+
+    Returns (pitch_lines, detail). The detail carries the per-frame spread,
+    because a wide spread is the signature of exactly the dropped-line damage
+    above and is the operator's cue to decode a clean prefix instead.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import pakon_framing as pf                                   # noqa: PLC0415
+
+    trace = pf.framing_trace(rgb)
+    green = pf.green_trace(rgb)
+    present = pf.film_present(green, pf.DEFAULT_CLEAR_LEVEL)
+    idx = np.flatnonzero(present)
+    lo, hi = (int(idx[0]), int(idx[-1]) + 1) if idx.size else (0, trace.size)
+    ones = np.zeros(trace.size, dtype=bool)
+    if hi > lo:
+        ones[lo:hi] = trace[lo:hi] < pf._otsu(trace[lo:hi])
+    pitch = pf.estimate_pitch(ones)
+    if pitch is None:
+        return None, "no measurable frame structure"
+
+    starts = np.array([a for a, b in pf._runs(ones) if b - a >= 200],
+                      dtype=np.float64)
+    deltas = np.diff(starts)
+    # Only whole-pitch gaps: a missed frame doubles, a torn one halves.
+    keep = deltas[np.abs(deltas - pitch) <= 0.3 * pitch]
+    if keep.size < 2:
+        return float(pitch), f"{keep.size} usable frame gap(s)"
+    spread = float(keep.std() / keep.mean() * 100.0)
+    detail = (f"{keep.size} frame gaps, spread {spread:.1f} %"
+              + ("" if spread < 5.0 else
+                 " — WIDE: consistent with dropped lines (pre-FIFO-fix "
+                 "capture); decode a clean prefix with --max-lines"))
+    return float(pitch), detail
 
 
 def cmd_geometry(args: argparse.Namespace) -> int:

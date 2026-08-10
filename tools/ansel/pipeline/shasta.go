@@ -63,18 +63,28 @@ func histPercentile(hist []int, nPix int, pct float64) float64 {
 // metricGray, straight line between them, clamped to [minValue, maxValue].
 // Every constant comes from shasta-rpd.dpi, but the SHAPE is not the vendor's.
 //
-// It also runs PER CHANNEL, and that is load-bearing in a way it should not be.
-// A vendor tone scale is one curve applied to all three channels; the reason a
-// per-channel one is needed here is that the data reaching it does not have
-// matched channel contrast. Measured on 08_raw14.tiff: the negative's own
-// optical density spans 0.894 / 1.061 / 1.185 decades (1…99.9 %), a normal
-// colour negative, but after PolyPixel → SraLut the spans are 462 / 236 / 144
-// code values — R : G : B = 1.00 : 0.51 : 0.31. Dropping the polynomial's
-// constant term overshoots the other way (557 / 738 / 911, 1.00 : 1.32 : 1.64).
-// So the F-135 stage-2 → Ansel hand-off is still wrong, and a per-channel
-// stretch here is hiding it. That is the next thing to fix, and it is what
-// AnsColorNegativePath / AnsSraCapabilityImpl::makeSRALUTS (also unported)
-// would be doing.
+// It runs PER CHANNEL. That is not what a Shasta tone scale is — the vendor
+// keeps a single toneLut (int16 vector at AnsShastaCapabilityImpl+0x3e0,
+// docs/46) — and the note that used to sit here blamed it on the stage-2
+// hand-off not having matched channel contrast. That reason is gone: the
+// density inversion in main.go now reproduces the negative's own channel
+// contrasts to about 2 %. Running one shared curve was tried and measured, and
+// it does not rescue the frame, because the per-channel behaviour here is
+// standing in for something else entirely — the roll/scene balance.
+//
+// What the vendor balances with, and why one curve is not enough yet:
+//   * ColorNegativePath::analyzePostBalance (PakonIMAu.dll:0x100fdc40) builds
+//     its three shift LUTs at 0x1006c4f0 as lut_c[i] = master[i + shift_c] —
+//     ONE curve, three integer translations. Same shape as makeSRALUTS.
+//   * The three integer shifts come from ColorNegativePath::setShifts
+//     (0x10100260) fed by the roll analysis in analyzeBalanceOrder
+//     (0x10101220, called twice per scene). That is Sba(), which is NOT ported
+//     — docs/46 lists full Sba() / AnalyseRoll as open. Our shifts come from
+//     the sba-*.dpi constants alone, so they carry the stock's nominal mask
+//     but nothing measured off this frame.
+// Until Sba() is ported, a per-channel stretch here is the stand-in for it.
+// It is an honest grey-world normaliser, not a tone scale, and that is the
+// next thing to replace.
 func ShastaToneRpd(rpd12 [][][3]float64, p ShastaParams) [][][3]float64 {
 	height := len(rpd12)
 	if height == 0 {

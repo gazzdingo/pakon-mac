@@ -445,9 +445,8 @@ def rpd12_to_u16(rpd12: np.ndarray) -> np.ndarray:
 
 # No DLL call site computes what f135_rom12_to_rpd12 computes. docs/58 §3.5 is
 # [VERIFIED] that no density LUT is applied between fcn.1000d880 and Ansel, and
-# §15.1 leaves where the F-135 inverts open. Every table and constant used
-# below is the vendor's; the arrangement is ours. Rendered F-135 colour is
-# provisional until AnsColorNegativePath is traced.
+# where the F-135 inverts is still open (docs/58 §16). Every constant used below
+# is the vendor's; the arrangement is ours. Rendered F-135 colour is provisional.
 F135_INVERT_PORTED = False
 
 def _film_base_code(plane: np.ndarray, n_bins: int = 4096) -> int:
@@ -462,43 +461,53 @@ def _film_base_code(plane: np.ndarray, n_bins: int = 4096) -> int:
     return scene_ctx.find_dmin_code_from_hist(counts, thr, n_bins=n_bins)
 
 
-def f135_rom12_to_rpd12(rom12: np.ndarray,
-                        sra_lut: np.ndarray,
+def f135_rom12_to_rpd12(lin12: np.ndarray,
+                        pedestal: tuple[float, float, float],
                         fpo: tuple[float, float, float],
                         setshifts: tuple[int, int, int] | None,
                         quiet: bool = False) -> np.ndarray:
-    """(h, w, 3) ROM12 poly output → (h, w, 3) RPD12 positive.
+    """(h, w, 3) linear 12-bit poly output → (h, w, 3) RPD12 positive.
 
-    Neither of the two stages ahead of this one inverts:
+    Nothing ahead of this inverts: ``fcn.1000d880``'s diagonal on this unit is
+    +0.289 / +0.276 / +0.278, so the polynomial preserves polarity (docs/58
+    §12). As on the F-235 path, the logarithm is what turns a negative the
+    right way up (docs/58 §3.5, §5).
 
-    * ``fcn.1000d880``'s diagonal on this unit is +0.289 / +0.276 / +0.278,
-      so the polynomial preserves polarity (docs/58 §12).
-    * ``common-sraFwdLut-metric-rom12.lut`` is monotonically increasing
-      (0 → 0, 4095 → 2441). ``ansel-color-rom12.dpi`` says what it is for:
-      "The forward lut now takes us from ROMM to an RPD-like space" — an
-      encoding change, not a polarity change.
+        rpd12 = fpo + 1000 * ( log10(filmBase - c9) - log10(lin - c9) )
 
-    So the frame reaching Ansel is still a negative. This applies the SRA
-    forward LUT and then the printing-density definition: density measured
-    above the film base, with the base carried onto the DPI's ``fpo`` aim.
+    This no longer applies the SRA forward LUT. That is a binary result, not
+    taste: ``AnsSraCapabilityImpl::analyze`` (PakonIMAu.dll:0x101a7080) always
+    finishes by composing the forward table (dpi+0x68) with the *backward*
+    table (dpi+0x64) — ``0x101a3ce0`` at ``0x101a751b`` / ``0x101a7540`` /
+    ``0x101a7566`` — and the pair round-trips to within 3 codes, so the
+    finished SRA operator is metric-preserving. The vendor never applies the
+    forward table on its own. docs/58 §16.
 
-        rpd12 = (fpo - setShifts OUT) + ( SRA[filmBase] - SRA[x] )
+    ``c9`` is the polynomial's own per-channel constant (159.59 / 444.75 /
+    635.54 on this unit): a pedestal in the LINEAR domain, which has to come
+    off before the log or the channel contrasts come out wrong. With it off,
+    the channel density spans reproduce the negative's own to about 2 %.
 
-    Pre-loading ``-setShifts`` is what lets the SBA stage that runs next put
-    the measured base on ``fpo`` without anything crossing zero and being
-    clamped away. ``filmBase`` is FindDmin, which walks the histogram from
-    the high side and so returns maximum transmission — the clear film base.
+    ``filmBase`` is FindDmin, which walks the histogram from the high side and
+    so returns maximum transmission — the clear film base. It is placed on the
+    DPI's ``fpo`` (the orange-mask aim), because the SBA balance that runs next
+    is sized to carry it from there to the neutral balance point:
+    fpo + setShifts = 1567 / 1542 / 1516 against nbp 1550.
     """
-    idx = np.clip(rom12, 0, 4095).astype(np.int32)
-    sra = np.asarray(sra_lut, dtype=np.int64)[idx]
-    base = np.array([_film_base_code(sra[:, :, c]) for c in range(3)])
-    ss = np.array(setshifts if setshifts is not None else (0, 0, 0), dtype=np.float64)
-    anchor = np.asarray(fpo, dtype=np.float64) - ss
-    out = np.clip(anchor + (base - sra), 0, ansel.SHASTA_MAX)
+    lin = np.asarray(lin12, dtype=np.float64)
+    ped = np.asarray(pedestal, dtype=np.float64)
+    base = np.array([_film_base_code(lin[:, :, c]) for c in range(3)],
+                    dtype=np.float64)
+    base_log = np.log10(np.maximum(base - ped, 1.0))
+    dens = 1000.0 * (base_log - np.log10(np.maximum(lin - ped, 1.0)))
+    out = np.clip(np.asarray(fpo, dtype=np.float64) + dens, 0, ansel.SHASTA_MAX)
     if not quiet:
-        print(f"  F-135 invert: film base (SRA) = {base}  "
-              f"anchor = fpo{np.asarray(fpo).round(0)} - setShifts{ss.round(0)} "
-              f"= {anchor.round(0)}")
+        ss = np.array(setshifts if setshifts is not None else (0, 0, 0),
+                      dtype=np.float64)
+        print(f"  F-135 invert: film base (linear 12-bit) = {base.round(0)}  "
+              f"poly pedestal c9 = {ped.round(2)}")
+        print(f"  F-135 invert: base lands on fpo{np.asarray(fpo).round(0)}, "
+              f"setShifts{ss.round(0)} carries it to {(np.asarray(fpo) + ss).round(0)}")
         print(f"  F-135 invert: RPD12 mean = {out.mean(axis=(0, 1)).round(1)}")
     return out
 
@@ -968,15 +977,16 @@ def cmd_strip(args: argparse.Namespace) -> int:
             scene=scene,
             sba_key_override=force_key,
         )
-        # F-135 negative → positive. Stage 2 hands Ansel METRIC_ROM12, and
-        # nothing between the polynomial and here inverts (docs/58 §3.5).
+        # F-135 negative → positive. Nothing between the polynomial and here
+        # inverts (docs/58 §3.5), so the logarithm has to (docs/58 §16).
         # Roll-level film base: it is a property of the stock, not the frame,
         # and the vendor estimates it at roll level too (orderFpo* in the
         # sba dpi / AnalyseRoll).
         if args.model == "f135":
+            _c = pc.load_unit_matrix("auto")
             rpd12_pos = f135_rom12_to_rpd12(
                 ansel.rpd16_to_rpd12(rpd),
-                engine.sra_lut,
+                (_c[9], _c[19], _c[29]),
                 engine.sba.fpo,
                 engine.setshifts_out,
             )

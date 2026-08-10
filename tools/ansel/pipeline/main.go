@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/png"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -17,8 +18,10 @@ import (
 
 // F135InvertPorted records that the F-135 negative->positive step in
 // processImage has no DLL call site behind it. docs/58 s3.5 is [VERIFIED] that
-// no density LUT is applied between fcn.1000d880 and Ansel, and s15.1 leaves
-// where the inversion happens open. Treat the rendered colour as provisional.
+// no density LUT is applied between fcn.1000d880 and Ansel, and s16 records
+// what has since been ruled out: AnsSraCapabilityImpl::makeSRALUTS is a
+// balance, not a mask removal, and the SRA forward LUT is never applied on its
+// own. Treat the rendered colour as provisional.
 const F135InvertPorted = false
 
 // ccdLineOffsets is the trilinear CCD row spacing in scan lines, R/G/B.
@@ -274,9 +277,12 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	}
 
 	// --- Single pass ---
-	// F-135: PolyPixel (TLB.dll:fcn.1000d880, 3x10 quadratic, ROM12 out)
-	//        -> SRA forward LUT (common-sraFwdLut-metric-rom12.lut, ROM12 -> RPD12).
+	// F-135: PolyPixel (TLB.dll:fcn.1000d880, 3x10 quadratic) -> linear 12-bit.
 	//        No NegLut / NegMat: those are the F-235 (TLA) stage-2 tables.
+	//
+	// The SRA forward LUT used to be applied here on its own. It no longer is,
+	// and that is a binary result rather than taste — see the inversion block
+	// below for the call sites.
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		yy := y - bounds.Min.Y
 		rpd12[yy] = make([][3]float64, width)
@@ -289,13 +295,13 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 			if model == "f135" {
 				polyOut := PolyPixel([3]int{r, g, b}, coeffs)
 
-				outR = float32(profile.SraLut[clamp4k(polyOut[0])])
-				outG = float32(profile.SraLut[clamp4k(polyOut[1])])
-				outB = float32(profile.SraLut[clamp4k(polyOut[2])])
+				outR = float32(clamp4k(polyOut[0]))
+				outG = float32(clamp4k(polyOut[1]))
+				outB = float32(clamp4k(polyOut[2]))
 
 				if x == bounds.Min.X && y == bounds.Min.Y {
-					fmt.Printf("DEBUG pixel[0,0] raw=%d,%d,%d polyOut=%v sra=%.0f,%.0f,%.0f\n",
-						r, g, b, polyOut, outR, outG, outB)
+					fmt.Printf("DEBUG pixel[0,0] raw=%d,%d,%d polyOut=%v\n",
+						r, g, b, polyOut)
 				}
 
 				planeR = append(planeR, int(outR))
@@ -330,49 +336,101 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	nb := sel.Sba.NeutralButton
 
 	// --- F-135 negative -> positive -------------------------------------
-	// PROVENANCE: F135InvertPorted is false. Every table and constant below
-	// is the vendor's, but the arrangement is not: no call site in TLB.dll or
-	// PakonIMAu.dll has been shown to compute this. docs/58 s3.5 is [VERIFIED]
-	// that no log-density LUT is applied between the polynomial and Ansel, and
-	// leaves where the F-135 inverts as unresolved. This is the smallest step
-	// that turns the frame the right way up using only vendor numbers; it is
-	// not evidence of what the vendor does.
+	// PROVENANCE: F135InvertPorted is still false. No call site in TLB.dll or
+	// PakonIMAu.dll has been shown to compute this step; docs/58 s3.5 is
+	// [VERIFIED] that no log-density LUT is applied between the polynomial and
+	// Ansel, and where the F-135 inverts is still open. What follows is a
+	// stand-in. Two things about it are now settled from the bytes, though, and
+	// they are why it no longer looks like the previous one:
 	//
-	// The SRA forward LUT does NOT invert: it is monotonically increasing
-	// (0 -> 0, 4095 -> 2441) and its own sibling DPI, ansel-color-rom12.dpi,
-	// describes it as "ROMM to an RPD-like space" — an encoding change, not a
-	// polarity change. Neither does the polynomial: this unit's diagonal is
-	// +0.289/+0.276/+0.278 (docs/58 §12). So after PolyPixel -> SraLut the
-	// frame is still a negative, in a log-ish RPD12 space.
+	//  1. The SRA forward LUT is never used on its own by the vendor.
+	//     AnsSraCapabilityImpl::analyze (PakonIMAu.dll:0x101a7080) finishes by
+	//     calling 0x101a3ce0 three times (0x101a751b / 0x101a7540 / 0x101a7566)
+	//     with the DPI's forward table (dpi+0x68) AND its backward table
+	//     (dpi+0x64):
+	//         sraLut_ch[i] = clamp( bwd[ aCh[ fwd[i] ] ], 0, 4095 )
+	//     fwd and bwd round-trip to within 2-3 codes over the whole domain, so
+	//     the finished SRA operator is metric-PRESERVING: it goes out to the
+	//     RPD working space, tone-scales, and comes straight back. Applying
+	//     common-sraFwdLut-metric-rom12.lut alone, as this code used to, is not
+	//     an operation the vendor performs anywhere.
 	//
-	// The inversion is therefore the printing-density definition: density
-	// measured *above the film base*, with the base placed on the DPI's own
-	// Film Printing Offset.
+	//  2. AnsSraCapabilityImpl::makeSRALUTS (0x101a6be0 — the 0x10594b78 in
+	//     docs/46 is the *string*, not the function) is not the missing
+	//     orange-mask removal. It builds ONE shared neutral curve `aCh` and
+	//     three per-channel ADDITIVE INTEGER offsets (0x101a3d40):
+	//         offR = -trunc(-(2/3)d2 - d3)
+	//         offG = -trunc( (4/3)d2 )
+	//         offB = -trunc(-(2/3)d2 + d3)
+	//     from two opponent-chroma scalars. An additive offset cannot change a
+	//     channel's contrast, so makeSRALUTS can only balance. See docs/58 s16.
 	//
-	//     rpd12 = ( fpo - setshifts ) + ( SRA[filmBase] - SRA[x] )
+	// So the tone step has to be a density conversion, and it is the logarithm
+	// that inverts — exactly as on the F-235 path, where the -7000*log10 dens
+	// LUT is what turns the negative the right way up (docs/58 s3.5, s5).
 	//
-	// filmBase is the frame's clear-film code, and it is exactly what the
-	// vendor's FindDmin returns: the routine walks the histogram DOWN from the
-	// top, so "Dmin" here is maximum transmission. Pre-loading
-	// -setshifts is what lets the SBA stage below do its documented job: carry
-	// the frame's measured base onto the DPI's fpo aim, without any value
-	// crossing zero and being clamped away.
+	//     rpd12 = fpo + 1000 * ( log10(filmBase - c9) - log10(poly - c9) )
+	//
+	// c9 is the polynomial's own per-channel constant term (159.59 / 444.75 /
+	// 635.54 on this unit, docs/58 s4.4a): a pedestal in the LINEAR domain,
+	// which has to come off before any log or the channel contrasts come out
+	// wrong. Measured on 08_raw14.tiff (1...99.9 %):
+	//     -log10(poly/4095)       spans 791 / 404 / 236  = 1.00 : 0.51 : 0.30
+	//     -log10(poly - c9)       spans 1035 / 1180 / 1160 = 1.00 : 1.14 : 1.12
+	//     the negative's own D    spans 1052 / 1182 / 1201 = 1.00 : 1.12 : 1.14
+	// i.e. taking the pedestal off reproduces the film's own channel contrasts
+	// to 2 %. That is what lets the tone scale below be ONE curve, the way a
+	// vendor tone scale is.
+	//
+	// 1000 codes per decade is the metric the rest of the chain is written in:
+	// the FUGC tone LUTs are 3201 rows of "1000 x density" (docs/58 s6 row 15).
+	//
+	// filmBase is the frame's clear-film code — what the vendor's FindDmin
+	// returns, since it walks the histogram DOWN from the top (dmin.go). It is
+	// placed on the DPI's own Film Printing Offset `fpo`, the orange-mask aim,
+	// because the SBA balance below is sized to take it from there to neutral:
+	// fpo (879/1250/1386) + setShifts (688/292/130) = 1567/1542/1516, i.e. the
+	// same dpi's neutralBalancePoint 1550 to within 3 %% in every channel. That
+	// is what the mask removal is on this path — a per-channel OFFSET, which is
+	// all makeSRALUTS and setShifts can express, and it only works once the
+	// channel contrasts already match.
 	prefA := PreferenceShiftsFromDpiFields(fpo, fpa, nbp, nb,
 		sel.Sba.NeutralUnderConstraint, sel.Sba.NeutralOverConstraint, sel.Sba.Pcls)
 	setshiftsOut := SetShifts12(prefA, prefA, band3.Planar, band3.NumLut)
 
 	if model == "f135" {
 		filmBase := frameDminRgbFromPlanes(planeR, planeG, planeB, 4096)
-		fmt.Printf("DEBUG: f135 film base (SRA space) = %v\n", filmBase)
+		var ped [3]float64
+		for c := 0; c < 3; c++ {
+			ped[c] = float64(coeffs[c*10+9])
+		}
+		var baseLog [3]float64
+		for c := 0; c < 3; c++ {
+			v := float64(filmBase[c]) - ped[c]
+			if v < 1.0 {
+				v = 1.0
+			}
+			baseLog[c] = math.Log10(v)
+		}
+		fmt.Printf("DEBUG: f135 film base (linear 12-bit) = %v  poly pedestal c9 = %.2f/%.2f/%.2f\n",
+			filmBase, ped[0], ped[1], ped[2])
 		planeR = planeR[:0]
 		planeG = planeG[:0]
 		planeB = planeB[:0]
 		for y := 0; y < height; y++ {
 			for x := 0; x < width; x++ {
 				for c := 0; c < 3; c++ {
-					v := float64(fpo[c]-setshiftsOut[c]) + (float64(filmBase[c]) - rpd12[y][x][c])
-					if v < 0 { v = 0 }
-					if v > 4095 { v = 4095 }
+					lin := rpd12[y][x][c] - ped[c]
+					if lin < 1.0 {
+						lin = 1.0
+					}
+					v := float64(fpo[c]) + 1000.0*(baseLog[c]-math.Log10(lin))
+					if v < 0 {
+						v = 0
+					}
+					if v > 4095 {
+						v = 4095
+					}
 					rpd12[y][x][c] = v
 				}
 				planeR = append(planeR, int(rpd12[y][x][0]))

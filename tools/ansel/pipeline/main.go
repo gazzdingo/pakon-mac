@@ -271,8 +271,13 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	// Kodak Gold 400 (DX code 96) SBA parameters from sba-CN-default-96-1.dpi
 	fpo := [3]int{879, 1250, 1386} // Film Printing Offset (orange-mask aim density)
 	fpa := [3]int{-75, -50, -25}   // Film Preference Adjustment (Kodak Gold 400 specific)
-	nbp := 18
-	nb  := 130 // neutralButton
+	// nbp is neutralBalancePoint, not a button count. It was 18 here, which
+	// flipped the sign of every preference shift: lim46 = round(nbp*sqrt3)
+	// came out 31 instead of 2685, so sPrime = lim46 - Y went negative.
+	// tools/ansel/pakon_sba_preference.py (PREFERENCE_SHIFTS_PORTED, docs/49)
+	// passes the dpi's neutralBalancePoint and yields prefA (746, 350, 189).
+	nbp := 1550 // neutralBalancePoint
+	nb  := 130  // neutralButton
 
 	// --- F-135 negative -> positive -------------------------------------
 	// The SRA forward LUT does NOT invert: it is monotonically increasing

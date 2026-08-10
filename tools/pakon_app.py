@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import copy
 import hashlib
 import json
 import os
@@ -208,6 +209,53 @@ class Session:
         self.cache_bytes = 0
         self.cache_limit = 512 * 1024 * 1024
         self.exports: list[dict] = []
+        #: roll id -> stack of {"label", "at", "frames"} snapshots, oldest
+        #: first. See snapshot() for why this is cheap enough to be automatic.
+        self.undo: dict[str, list[dict]] = {}
+
+    # ---- undo ----
+    #
+    # There was no undo anywhere in this app, and two operations
+    # (apply-to-roll, redetect) rewrite every frame at once. The parametric
+    # model makes the fix nearly free: a frame's whole editable state is a
+    # handful of ints and a dict, so a snapshot of a 40-frame roll is a few
+    # kilobytes. There is no reason not to take one before every destructive
+    # edit, and that is what happens.
+    #
+    # Deliberately in memory and not in the sidecar. Undo is a property of
+    # this editing session; persisting it would mean reasoning about undoing
+    # past a reopen, past a redetect that changed the frame count, and past
+    # another process having written the same sidecar.
+    UNDO_DEPTH = 40
+
+    @staticmethod
+    def _snap_frames(roll) -> list[dict]:
+        return [{"index": f.index, "a": f.a, "b": f.b,
+                 "params": copy.deepcopy(f.params or {}),
+                 "exported": f.exported, "confidence": f.confidence,
+                 "phase": getattr(f, "phase", ""),
+                 "framing_risk": getattr(f, "framing_risk", 0),
+                 "scan_warning": getattr(f, "scan_warning", 0)}
+                for f in roll.frames]
+
+    def snapshot(self, roll, label: str) -> None:
+        """Record the roll's frame state so the next edit can be undone."""
+        with self.lock:
+            st = self.undo.setdefault(roll.id, [])
+            st.append({"label": label, "at": time.time(),
+                       "frames": self._snap_frames(roll)})
+            del st[:-self.UNDO_DEPTH]
+
+    def undo_state(self, roll_id: str) -> dict:
+        with self.lock:
+            st = self.undo.get(roll_id) or []
+            return {"available": bool(st), "depth": len(st),
+                    "label": st[-1]["label"] if st else None}
+
+    def undo_pop(self, roll) -> dict | None:
+        with self.lock:
+            st = self.undo.get(roll.id) or []
+            return st.pop() if st else None
 
     # ---- render cache (memory only; never a file) ----
     def cache_get(self, k: str):
@@ -1055,6 +1103,7 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
                 i = int(parts[3])
                 f = roll.frames[i]
                 if body.get("reset"):
+                    S.snapshot(roll, f"reset frame {i + 1}")
                     f.params = {}
                 else:
                     f.params = pr.merged_params({**(f.params or {}),
@@ -1064,17 +1113,10 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
                 return _json(self, roll_json(roll))
 
             if parts[2] == "apply-to-roll":
-                src = roll.frames[int(body.get("from", 0))]
-                keys = body.get("keys") or ["density", "red", "green", "blue"]
-                base = pr.merged_params(src.params)
-                for f in roll.frames:
-                    if f.index == src.index:
-                        continue
-                    f.params = pr.merged_params(
-                        {**(f.params or {}), **{k: base[k] for k in keys}})
-                    S.cache_drop(f"{roll.id}:{f.index}:")
-                save_sidecar(roll)
-                return _json(self, roll_json(roll))
+                return _json(self, apply_to_roll(roll, body))
+
+            if parts[2] == "undo":
+                return _json(self, undo_roll(roll))
 
             if parts[2] == "boundary":
                 return _json(self, edit_boundary(roll, body))
@@ -1092,12 +1134,141 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
         return _json(self, {"error": "not found"}, 404)
 
 
+def _line_traces(roll) -> tuple[np.ndarray, np.ndarray]:
+    """The two per-line scalars the framing cascade needs, read in chunks.
+
+    The old redetect materialised the whole calibrated strip
+    (``np.asarray(strip[:])``) — 1.5 GB on a 31k-line roll — where
+    ``open_capture`` had always chunked at 4096 lines for the same data. This
+    keeps the chunking and returns 0.5 MB.
+    """
+    strip = roll.attach()
+    n = int(roll.lines)
+    trace = np.empty(n, dtype=np.float64)
+    green = np.empty(n, dtype=np.float64)
+    CH = 4096
+    for a0 in range(0, n, CH):
+        b0 = min(n, a0 + CH)
+        blk = dec.apply_unit_calibration(
+            np.asarray(strip[a0:b0]), roll._dark, roll._gain)
+        trace[a0:b0] = blk.mean(axis=(1, 2))
+        green[a0:b0] = blk[:, :, 1].mean(axis=1)
+        del blk
+    return trace, green
+
+
+APPLY_KEYS_DEFAULT = ["density", "red", "green", "blue"]
+
+
+def apply_to_roll(roll, body: dict) -> dict:
+    """Copy one frame's corrections onto every other frame.
+
+    This is the most destructive control in the application: one click
+    replaces the colour of an entire roll, and before this change it did so
+    with no confirmation and no way back. Someone who had graded thirty frames
+    by hand and then clicked it lost all thirty.
+
+    Two things now stand between the click and the loss.
+
+    First, it will not act without ``confirm``. Asked without it, it returns a
+    ``needs_confirm`` payload that *names what will be lost* — how many frames
+    change, and specifically which frames already carry hand adjustments that
+    this would overwrite. A count of frames is not enough; "12 frames, 5 of
+    them already adjusted" is the sentence that makes someone stop.
+
+    Second, the prior state is snapshotted first, so the answer to "I clicked
+    it anyway" is one undo rather than an evening's work.
+    """
+    src_i = int(body.get("from", 0))
+    if not (0 <= src_i < len(roll.frames)):
+        return {"error": f"no frame {src_i}"}
+    src = roll.frames[src_i]
+    keys = list(body.get("keys") or APPLY_KEYS_DEFAULT)
+    base = pr.merged_params(src.params)
+    values = {k: base[k] for k in keys if k in base}
+
+    targets = [f for f in roll.frames if f.index != src.index]
+    # "Would change" means the value actually differs. Repeating an apply
+    # should not claim to overwrite anything.
+    changing, overwriting = [], []
+    for f in targets:
+        cur = pr.merged_params(f.params)
+        if any(cur.get(k) != v for k, v in values.items()):
+            changing.append(f.index)
+            if pr.is_adjusted(f.params):
+                overwriting.append(f.index)
+
+    if not body.get("confirm"):
+        return {
+            "needs_confirm": True,
+            "op": "apply-to-roll",
+            "from": src.index,
+            "keys": keys,
+            "values": values,
+            "summary": pr.describe_params(src.params),
+            "frames_total": len(roll.frames),
+            "frames_changing": changing,
+            "frames_overwriting_adjustments": overwriting,
+            "undoable": True,
+            "message": (
+                f"Apply frame {src.index + 1}'s "
+                f"{', '.join(keys)} to {len(changing)} other "
+                f"{'frame' if len(changing) == 1 else 'frames'}"
+                + (f", replacing hand adjustments on "
+                   f"{len(overwriting)} of them "
+                   f"({', '.join(str(i + 1) for i in overwriting[:8])}"
+                   f"{'…' if len(overwriting) > 8 else ''})"
+                   if overwriting else "")
+                + ". This can be undone."),
+            "roll": roll_json(roll),
+        }
+
+    S.snapshot(roll, f"apply frame {src.index + 1} to roll")
+    for f in targets:
+        f.params = pr.merged_params({**(f.params or {}), **values})
+        S.cache_drop(f"{roll.id}:{f.index}:")
+    save_sidecar(roll)
+    out = roll_json(roll)
+    out["applied"] = {"from": src.index, "keys": keys,
+                      "frames_changed": len(changing)}
+    return out
+
+
+def undo_roll(roll) -> dict:
+    """Restore the frame state from before the last destructive edit."""
+    snap = S.undo_pop(roll)
+    if snap is None:
+        return {"error": "nothing to undo", "undo": S.undo_state(roll.id)}
+    by_index = {s["index"]: s for s in snap["frames"]}
+    roll.frames = [pr.Frame(index=s["index"], a=s["a"], b=s["b"],
+                            confidence=s.get("confidence", "good"),
+                            params=copy.deepcopy(s.get("params") or {}),
+                            exported=s.get("exported"),
+                            phase=s.get("phase", ""),
+                            framing_risk=int(s.get("framing_risk") or 0),
+                            scan_warning=int(s.get("scan_warning") or 0))
+                   for s in snap["frames"]]
+    for k, f in enumerate(roll.frames):
+        f.index = k
+    del by_index
+    S.cache_drop(f"{roll.id}:")
+    save_sidecar(roll)
+    out = roll_json(roll)
+    out["undone"] = {"label": snap["label"], "at": snap["at"]}
+    return out
+
+
 def edit_boundary(roll, body: dict) -> dict:
     """Move / split / merge frame boundaries. The strip is continuous and the
     frames are found afterwards — review.html exposes that honestly, so the
     user has to be able to correct it."""
     op = body.get("op")
     frames = roll.frames
+    # Boundary edits are creative work too, and redetect throws all of them
+    # away at once. Snapshot first; the frame list is small.
+    S.snapshot(roll, {"move": "move a boundary", "split": "split a frame",
+                      "merge": "merge two frames",
+                      "redetect": "re-detect all frames"}.get(op, f"{op}"))
     if op == "move":
         i = int(body["index"])          # boundary between i and i+1
         line = max(0, min(int(body["line"]), roll.lines))
@@ -1121,16 +1292,27 @@ def edit_boundary(roll, body: dict) -> dict:
             frames[i].b = frames[i + 1].b
             frames.pop(i + 1)
     elif op == "redetect":
-        strip = roll.attach()
-        blk = dec.apply_unit_calibration(np.asarray(strip[:]),
-                                         roll._dark, roll._gain)
-        spans = dec.find_frames(blk)
-        keep = {f.index: f.params for f in frames}
-        roll.frames = [pr.Frame(index=k, a=int(a), b=int(b))
-                       for k, (a, b) in enumerate(spans)]
-        for f in roll.frames:
-            f.params = keep.get(f.index, {})
-        del blk
+        # Same cascade the open path runs, so a redetect cannot disagree with
+        # the original detection for reasons other than the parameters given.
+        # An operator threshold can be passed here: the binarisation level is
+        # INFERRED (Otsu; the vendor's rule is untraced, docs/56 §7.4), so it
+        # is the one knob worth exposing when detection goes wrong.
+        if "ones_threshold" in body:
+            t = body.get("ones_threshold")
+            roll.ones_threshold = None if t in (None, "") else float(t)
+        # Parameters follow the film, not the list position. Frames are keyed
+        # by their midpoint line, which survives a boundary shift; the old
+        # code re-keyed by index, which is wrong exactly when redetect is
+        # worth running -- when the frame count changed.
+        keep = [((f.a + f.b) // 2, f.params) for f in frames if f.params]
+        trace, green = _line_traces(roll)
+        pr._frame_roll(roll, trace, green, roll.capture)
+        for mid, params in keep:
+            for f in roll.frames:
+                if f.a <= mid < f.b:
+                    f.params = params
+                    break
+        del trace, green
     for k, f in enumerate(roll.frames):
         f.index = k
     pr._flag_confidence(roll)

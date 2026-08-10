@@ -288,8 +288,9 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	//
 	//     rpd12 = ( fpo - setshifts ) + ( SRA[filmBase] - SRA[x] )
 	//
-	// filmBase is the frame's clear-film code, found with the vendor's own
-	// FindDmin histogram routine walked from the top of the range. Pre-loading
+	// filmBase is the frame's clear-film code, and it is exactly what the
+	// vendor's FindDmin returns: the routine walks the histogram DOWN from the
+	// top, so "Dmin" here is maximum transmission. Pre-loading
 	// -setshifts is what lets the SBA stage below do its documented job: carry
 	// the frame's measured base onto the DPI's fpo aim, without any value
 	// crossing zero and being clamped away.
@@ -297,7 +298,7 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	setshiftsOut := SetShifts12(prefA, prefA, band3.Planar, band3.NumLut)
 
 	if model == "f135" {
-		filmBase := frameFilmBaseRgbFromPlanes(planeR, planeG, planeB, 4096)
+		filmBase := frameDminRgbFromPlanes(planeR, planeG, planeB, 4096)
 		fmt.Printf("DEBUG: f135 film base (SRA space) = %v\n", filmBase)
 		planeR = planeR[:0]
 		planeG = planeG[:0]

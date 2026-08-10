@@ -19,7 +19,11 @@ This application collects basic, anonymous telemetry (OS version, app version, a
 
 **To opt out:** Set the `PAKON_TELEMETRY_OPT_OUT=1` environment variable when running the app.
 
-## Why this is feasible
+## Architecture & Pipelines
+
+This project includes two separate imaging pipelines for processing the raw scanner data:
+1. **Python Pipeline**: The original research and reference implementation (`tools/pakon_render.py`). Uses NumPy for processing.
+2. **Go Pipeline**: The newer, production-oriented implementation (`analysis/pipeline/`). This is significantly faster than the Python version due to being a compiled language with better multi-threading and memory management for heavy image operations.
 
 The Windows kernel drivers (`F235Ldr.sys`, `F235Lib.sys`, `F135usb2.sys`) are
 generic USB plumbing — a firmware loader and a bulk-pipe passthrough. None of

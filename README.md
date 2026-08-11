@@ -6,9 +6,7 @@
 </p>
 
 
-# pakon-mac
-
-**⚠️ WARNING ⚠️**
+<h2 align="center" >⚠️ WARNING WIP⚠️</h2>
 The application and some of the image processing pipelines are **NOT working 100% yet**. This repository is highly experimental and in active development. Please do not run this or attempt to interface with your scanner unless you know exactly what you are doing.
 
 **Colour is currently in progress.** The F-135 negative→positive inversion

@@ -1,7 +1,25 @@
+<p align="center">
+  <img src="docs/assets/pakon-mac-icon.png" alt="Pakon Mac" width="240">
+</p>
+<p align="center">
+  <img src="docs/assets/pakon-mac-logo.png" alt="Pakon Mac" width="420">
+</p>
+
 # pakon-mac
 
 **⚠️ WARNING ⚠️**
 The application and some of the image processing pipelines are **NOT working 100% yet**. This repository is highly experimental and in active development. Please do not run this or attempt to interface with your scanner unless you know exactly what you are doing.
+
+**Colour is currently in progress.** The F-135 negative→positive inversion
+is fixed and verified against the vendor's own ICC output. The tone stage
+feeding it (`AnsShastaCapabilityImpl::analyze`) is still a two-anchor
+stand-in — `ShastaAnalyzePorted = false` in both pipelines — and is being
+ported from the vendor binary now, Unicorn-verified leaf by leaf. Expect
+rendered colour to change as that lands.
+
+**The Electron app UI is not finished.** It exists to exercise the scan and
+decode pipeline end to end, not as a polished product yet — expect rough
+edges, placeholder screens, and controls that don't do anything yet.
 
 Native macOS support for Kodak/Pakon F-135, F-235 and F-335 film scanners.
 

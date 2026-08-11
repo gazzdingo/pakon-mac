@@ -1651,6 +1651,7 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
     meta = {
         "version": 2,
         "capture": str(out),
+        "model": "f135",
         # "in_flight" = the stub written before the transport started, from
         # everything already known. "complete" = rewritten by run_scan's
         # finally with the run's own outcome. A reader that finds "in_flight"
@@ -2108,7 +2109,8 @@ def run_scan(out_path: str | Path,
                     log_path=(dx_log if dx_log is not None
                               else out.with_suffix(".dx.jsonl")),
                     interval=dxr.DEFAULT_INTERVAL_S,
-                    meta={"capture": str(out), "speed": speed,
+                    meta={"capture": str(out),
+        "model": "f135", "speed": speed,
                           "dpi_base": cfg.dpi_base, "lamp": bool(lamp),
                           "line_rate_0x91": cfg.line_rate_0x91})
                 res.dx_log = str(dx_log if dx_log is not None

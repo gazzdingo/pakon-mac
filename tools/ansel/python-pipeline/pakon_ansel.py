@@ -320,7 +320,15 @@ SHASTA_TWO_ANCHOR_PORTED = False  # shape is ours; only the aims are vendor
 
 def shasta_two_anchor_tone(rpd12: np.ndarray,
                            shasta: "ShastaParams") -> np.ndarray:
-    """Two-anchor stand-in for ``AnsShastaCapabilityImpl::analyze``.
+    """Two-anchor stand-in for the negative's tone stage.
+
+    Named for Shasta, but Shasta is not what it replaces. On a 135 colour
+    negative (CN-Enhanced) the tone stage is
+    ``ColorNegativePath::analyzeAutoTone`` ``0x100fb730`` — a six-capability
+    chain (cna → dra → toneHelper → contrast → ast → citras). That chain is
+    NOT ported; ``pakon_shasta.AUTO_TONE_PORTED`` holds the call map, the
+    per-capability enable bytes, the toneHelper DPI resolution and the reasons
+    it cannot be ported piecewise. This function is what stands in for it.
 
     ``pakon_shasta.py`` carries the toneLut *assembly*, and
     ``SHASTA_ANALYZE_PORTED`` is **True** — but that flag is narrower than its
@@ -482,15 +490,22 @@ class AnselEngine:
     color_adjust: color_adjust.ColorAdjustParams = field(
         default_factory=color_adjust.ColorAdjustParams
     )
-    # F-135: use the two-anchor Shasta stand-in instead of the assembled
-    # toneLut. NOT because "ANALYZE is False" — pakon_shasta's
-    # SHASTA_ANALYZE_PORTED is True. That flag records something narrower than
-    # its name suggests: the mid-aims Preference builds from the live Laplacian
-    # collectData dens (0x1027fc80 -> 0x1027e9d0 -> cn_premium_mid_aim_rgb).
-    # AnsShastaCapabilityImpl::analyze itself (0x101e5250…0x101e5ca0) and its
-    # Cap wrap 0x101ed9b0 are not ported, and SHASTA_TONE_LUT_FRAGMENTS records
-    # that the remaining curve pieces are "cited but insufficient for a scene
-    # toneLut". Set by pakon_decode.py / pakon_render.py for --model f135.
+    # F-135: use the two-anchor stand-in instead of the assembled toneLut.
+    #
+    # The reason is no longer "analyze is unported". pakon_shasta now carries a
+    # Unicorn-verified, bit-exact port of analyze's image stage 0x1027be10 plus
+    # the builder 0x10293ee0 (SHASTA_ANALYZE_INNER_PORTED, harness
+    # pakon_shasta_analyze_golden.py). The reason is that
+    # SHASTA_ON_CN_RENDER_PATH is False: Shasta is reachable only from
+    # CN-Premium and DC-Premium, and CiColorCorrectionAnsel::bStartNewRoll's
+    # path table (0x10002270) has no CN-Premium case at all — a negative goes
+    # to AnsCnEnhancedPath, whose tone stage is
+    # ColorNegativePath::analyzeAutoTone 0x100fb730 (which acquires cna, dra,
+    # toneHelper, contrast, ast, pfd, citras — never shasta). So this stand-in
+    # stands in for analyzeAutoTone, and swapping a correct Shasta curve in
+    # here would add a stage the scanner never runs for this film.
+    #
+    # Set by pakon_decode.py / pakon_render.py for --model f135.
     # Off elsewhere — nothing else changes behaviour.
     shasta_stand_in: bool = False
     # Ceiling the 12->16-bit RPD scale was taken with, for render_strip's
@@ -666,6 +681,12 @@ class AnselEngine:
             # (7b970/7b3c0 → 935d0 → builder → setToneLut). Mid-aims from
             # FindDmin + Laplacian collectData dens when ANALYZE is True.
             if self.shasta_stand_in:
+                # Stands in for ColorNegativePath::analyzeAutoTone 0x100fb730
+                # (cna → dra → toneHelper → contrast → ast → citras), NOT for
+                # Shasta, which never runs for CN-Enhanced. That chain is not
+                # ported — see AUTO_TONE_PORTED in pakon_shasta.py for the call
+                # map, the enable bytes, the toneHelper DPI resolution and why
+                # it cannot be ported piecewise.
                 x = shasta_two_anchor_tone(x, self.shasta)
             elif (
                 shasta_mod.SHASTA_TONE_LUT_PORTED

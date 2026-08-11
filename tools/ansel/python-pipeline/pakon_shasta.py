@@ -257,23 +257,47 @@ Curve helpers — status
   code_28``. Fill#2 mirrors with ``≥`` / ``start−1``. After fills:
   ``p18/p38`` → work ``+0x358/+0x360`` (↑) and ``+0x350/+0x348`` (↓).
 
-  Dpi names on **ShastaParams** dump ``0x10128033`` (same early layout
-  on the work object for these doubles):
+  Dpi names — CORRECTED. The work object is **not** ShastaParams-shaped;
+  it embeds ShastaParams at ``work+0x10`` (``0x1008e970`` field-by-field
+  copy @ ``0x101e581e``), so ``work_off = Params_off + 0x10``. The old
+  table here read the ShastaParams dump offsets straight off, which is
+  one slot low throughout — every entry below was wrong. See
+  ``SHASTA_WORK_LAYOUT`` for the full proven map.
 
-  ==========  ==============================
-  work off    dpi key (Params dump)
-  ==========  ==============================
-  ``+0x120``  ``shadowExpBlend``
-  ``+0x128``  ``highlightExpBlend``
-  ``+0x130``  ``shadowTransitionRatio``
-  ``+0x138``  ``highlightTransitionRatio``
-  ``+0x140``  ``shadowExpSatFactor``
-  ``+0x148``  ``shadowCompSatFactor``
-  ``+0x220``  ``highlightDeltaGain``
-  ``+0x1d0``  ``blackNoiseStdDev``
-  ``+0x1d8``  ``minBlackOffset``
-  ``+0x1e0``  ``maxWhiteOffset``
-  ==========  ==============================
+  ==========  ================================  ======================
+  work off    dpi key (ACTUAL)                  old (wrong) claim
+  ==========  ================================  ======================
+  ``+0x120``  ``shadowCompBlend``               shadowExpBlend
+  ``+0x128``  ``highlightCompBlend``            highlightExpBlend
+  ``+0x130``  ``shadowExpBlend``                shadowTransitionRatio
+  ``+0x138``  ``highlightExpBlend``             highlightTransitionRatio
+  ``+0x140``  ``shadowTransitionRatio``         shadowExpSatFactor
+  ``+0x148``  ``highlightTransitionRatio``      shadowCompSatFactor
+  ``+0x220``  ``blackPointRatio``               highlightDeltaGain
+  ``+0x228``  ``shadowDeltaGain``               (unnamed adj scale)
+  ``+0x230``  ``highlightDeltaGain``            (unnamed adj scale)
+  ``+0x1d0``  ``blackNoiseSigmaMult``           blackNoiseStdDev
+  ``+0x1d8``  ``blackNoiseSuppStops``           minBlackOffset
+  ``+0x1e0``  ``blackNoiseStdDev``              maxWhiteOffset
+  ``+0x1e8``  ``minBlackOffset``                maxExpDelta
+  ``+0x1f0``  ``maxWhiteOffset``                maxCompDelta
+  ``+0x1f8``  ``maxExpDelta``                   (whiteSatLower·cv)
+  ``+0x200``  ``maxCompDelta``                  (whiteSatUpper·cv)
+  ``+0x100``  ``shadowExpScale``                highlightExpScale
+  ``+0x108``  ``highlightExpScale``             shadowMaxExpSlope
+  ``+0x110``  ``shadowMaxExpSlope``             highlightMaxExpSlope
+  ``+0x118``  ``highlightMaxExpSlope``          shadowCompBlend
+  ==========  ================================  ======================
+
+  The corrected map is self-consistent with the builder's own symmetry:
+  fill#1 (highlight) takes ``+0x128`` ``highlightCompBlend`` / ``+0x148``
+  ``highlightTransitionRatio`` / ``+0x340`` whitePointRatio, and fill#2
+  (shadow) takes ``+0x120`` ``shadowCompBlend`` / ``+0x140``
+  ``shadowTransitionRatio`` / ``+0x220`` ``blackPointRatio``; ``93d50``
+  divides the dens gap by ``blackNoiseSigmaMult`` and uses
+  ``blackNoiseStdDev`` as the gaussian width; ``0x1027b2f0`` switches on
+  ``+0x1c8`` ``filterPolicy``; ``0x1027be10`` scales the shadow adj by
+  ``shadowDeltaGain`` and the highlight adj by ``highlightDeltaGain``.
 
   Prep ints ``+0x2c0…+0x338`` from buttons/aggr × ``+0x58`` (cite
   ``0x1027b1c0``). Image-derived ``+0x2f4/+0x300/+0x340/+0x370/+0x378``
@@ -360,6 +384,41 @@ UNKNOWN / blockers (honest)
   ``SHASTA_IMAGE_SAMPLE_7B3C0_PORTED``). ``SHASTA_APPLY_PORTED=True``:
   I16 Op dispatch ``0x1014de50``→``0x1014dcc0`` + Preference assemble.
   ``SHASTA_ANALYZE_PORTED``: Laplacian collect leaf + dens→mid-aims.
+
+RESOLVED since the above was written
+------------------------------------
+* **Iem hist fill ``0x104ea940`` is no longer a gap.** ``0x1027b970`` fills
+  its histogram through ``0x104eab00`` → ``0x104ea940`` → I16 case
+  ``0x104ea7f0`` (type enum 3, vtable ``0x1057b100``), per-pixel bin via
+  ``0x104ea370`` → ``0x104f56e0``. That code now executes for real on a
+  synthesised plane set inside the end-to-end run and its counts match
+  ``hist_counts_from_plane0`` bit-for-bit on all harness cases
+  (``SHASTA_IEM_HIST_FILL_PORTED``).
+* **analyze's image stage ``0x1027be10`` is assembled and verified as a
+  whole**, not leaf by leaf: prep → ``0x1027b970`` → ``0x1027b3c0`` → seed →
+  ``0x102935d0`` → ``+0x370/+0x378`` scale → ``0x1027b2f0``, then the builder
+  ``0x10293ee0``, matched on the entire work object and the entire 4096-entry
+  toneLut and blackNoiseLut (``SHASTA_ANALYZE_INNER_PORTED``, harness
+  ``pakon_shasta_analyze_golden.py``). Assembling it found four defects that
+  every individual leaf golden had passed over, because each had been given
+  hand-injected inputs: the dpi→slot binding (see the corrected table above),
+  ``0x1027b1c0``'s conversion (``_ftol2`` truncates, so the ``+0.5`` must not
+  be re-rounded), ``_ftol2``'s non-finite result (low dword of the x87 integer
+  indefinite is **0**, not ``INT_MIN``), and ``0x102935d0``'s ``+0x368`` floor
+  (it compares against the just-computed ``+0x370``, which at ``0x10293896``
+  overwrote the stack slot that held ``d_2f8``).
+
+STILL OPEN
+----------
+* Cap-level ``AnsShastaCapabilityImpl::analyze`` ``0x101e5250`` itself — its
+  vector plumbing, the ``Cap+0x2e0 ← work+0x2b0`` POD copy (``0x1008e530``),
+  the ``+0x3c0`` blackNoise percentile block at ``0x101e5886…0x101e5929`` and
+  the wrap ``0x101ed9b0``. Only the inner ``0x1027be10`` stage is ported.
+* Cap ``+0x3e0`` automatic assign from analyze — still UNKNOWN.
+
+DO NOT WIRE THIS INTO A COLOUR-NEGATIVE RENDER — see
+``SHASTA_ON_CN_RENDER_PATH``. Shasta is reachable only from CN-Premium and
+DC-Premium, and the host never selects either for negative film.
 """
 from __future__ import annotations
 
@@ -409,6 +468,90 @@ SHASTA_HIST_PERCENTILE_PORTED = True
 SHASTA_IMAGE_PERCENTILE_7B970_PORTED = True
 # 0x1027b3c0 highlight-range means → +0x310/+0x318/+0x320/+0x340.
 SHASTA_IMAGE_SAMPLE_7B3C0_PORTED = True
+# work_off = ShastaParams_off + 0x10 (0x1008e970 copy @ 0x101e581e), and the
+# ShastaParams field↔dpi-key map from the params dump printer 0x10127e00.
+SHASTA_WORK_LAYOUT_PORTED = True
+# Iem histogram fill 0x104eab00 → 0x104ea940 → I16 case 0x104ea7f0, executed on
+# a real plane set inside the 0x1027be10 end-to-end run and compared bit-exactly
+# against hist_counts_from_plane0 (pakon_shasta_analyze_golden.py).
+SHASTA_IEM_HIST_FILL_PORTED = True
+# 0x1027be10 — analyze's image stage — assembled and Unicorn-verified END TO END
+# (prep + 7b970 + 7b3c0 + seed + 935d0 + post-scale), then fed to the real
+# builder 0x10293ee0 and matched bit-for-bit on the whole toneLut.
+# NOTE this is analyze's INNER stage. The Cap-level 0x101e5250 wrapper (its
+# vector plumbing, Cap+0x2e0 POD copy and blackNoiseLut percentile block) is
+# still unported — and see SHASTA_ON_CN_RENDER_PATH below before wiring any of
+# this into a colour-negative render.
+SHASTA_ANALYZE_INNER_PORTED = True
+# ---------------------------------------------------------------------------
+# Shasta is NOT on the 135 colour-negative render path (proven, see below).
+# ---------------------------------------------------------------------------
+# The processing path is chosen by name in CiColorCorrectionAnsel::bStartNewRoll
+# 0x10001e70 (export PIAnselStartNewRoll 0x100183a0) through the jump table at
+# 0x10002270 = [0x1000205f, 0x10001f93, 0x10001f93, 0x10001f24, 0x10001ff9]:
+#   0 -> "DC-Premium"  1,2 -> "CN-Enhanced"  3 -> "CN-Lockbeam"  4 -> "CP-Balance"
+# There is NO case yielding "CN-Premium"; the string 0x1057a048 has exactly one
+# code reference in the whole DLL (0x1004f6e7, its own registration).
+# AnsShastaCapabilityImpl::analyze 0x101e5250 has one caller (0x1010d941) and
+# zero data/vtable references; the chain bottoms out at analyzeWithShastaTriage
+# 0x10116040, called only from 0x10057111 (CN-Premium.cpp) and 0x100739a3
+# (DC-Premium.cpp). AnsShastaCapability::acquire 0x1010dff0 likewise has only
+# those two path owners (0x100503fe / 0x1006df66).
+# A colour negative renders through AnsCnEnhancedPath, whose tone stage is
+# ColorNegativePath::analyzeAutoTone 0x100fb730 — one caller, 0x10069a1d inside
+# AnsCnEnhancedPath::CnEnhanced_analyzeSceneSpecific — which acquires cna, dra,
+# toneHelper, contrast, ast, pfd and citras, and never shasta.
+SHASTA_ON_CN_RENDER_PATH = False
+
+# ---------------------------------------------------------------------------
+# The negative's REAL tone stage — ColorNegativePath::analyzeAutoTone — is NOT
+# ported. pakon_ansel.shasta_two_anchor_tone has been standing in for it,
+# mislabelled (Go: ShastaToneRpd / AutoTonePorted in pipeline/shasta.go).
+# ---------------------------------------------------------------------------
+# 0x100fb730, \Atc\ansel\src\libPaths.ansel\cnMethods.cpp. Not one algorithm:
+# an orchestrator chaining SIX capability subsystems, each with its own
+# ...CapabilityImpl::analyze, DPI parser and data files, threading one tone
+# object through the CN context (ctx+0x64d0, seeded 0 at 0x100fb787 and
+# re-stored after every stage) plus a scalar in ctx+0x4bc:
+#   stage  capability   acquire      Impl::analyze   data (via its .map)
+#     1    cna          0x10132dc0   0x1022ea50      cna/ansel-cna-default-default.dpi
+#     2    dra          0x10131100   0x1022af20      dra/ansel-dra-default-default.dpi + 6 *.ttc
+#     3    toneHelper   0x1010c6a0   0x101dcc50      toneHelper/toneHelper-default.dpi + AllOnTree1/deiTree1
+#     4    contrast     0x1010ad20   0x101d8240      contrast/contrast-CNEnhanced.dpi
+#     5    ast          0x1012f3f0   0x10227160      (no dataPathItems dir)
+#     6    citras       -            0x10223860      (no dataPathItems dir)
+# A seventh, pfd (acquired 0x100fbc1c), is disabled: ColorNegativePath::
+# declareAutoTone 0x100f95f0 zeroes its enable byte +0xc/+0xd at 0x100f9da2/
+# 0x100f9dad while setting all six above to 1 (0x100f9723, 0x100f98ad,
+# 0x100f9a37, 0x100f9b0e, 0x100f9be5, 0x100f9cd8). analyzeAutoTone tests that
+# same +0xc byte before each stage, so the other six all run.
+#
+# Not ported because: reachability from 0x100fb730 over direct calls is 166
+# functions / 67,896 code bytes / 615 indirect (vtable) call sites — larger
+# than the whole of AnsShastaCapabilityImpl::analyze (189 / 44,427 / 386),
+# which was a full task on its own. And it is not separable: a half-ported
+# chain would be a worse transform than the stand-in, so nothing is wired in
+# until the whole chain is bit-exact.
+#
+# It is also NOT a pure function of the image. The chain runs 17th of the 30
+# capabilities AnsCnEnhancedPath::declare 0x10064d70 registers (after filmLut,
+# flesh, pan, fos, scpLut, afterSCPLutSba, area, orderOrientation, asea,
+# noiseTable, pnr, nra, dei, dtt, falloff, fugc) and reads what they published
+# via AnsSceneContext::find 0x10022a40, which is directly reachable.
+# toneHelper's own DPI names decisionTreeDei = deiTree1, i.e. it consumes dei.
+# So a bit-exact analyzeAutoTone needs its producers ported too; it cannot be
+# verified end-to-end in isolation.
+#
+# toneHelper DPI resolution (the file the earlier note could not find): it IS
+# DPI-file-driven and was simply never copied into vendor/. toneHelper.map keys
+# on _AnselPath_ and maps "CN-Enhanced" -> ansel-toneHelper-default, i.e.
+# toneHelper-default.dpi (NOT -CNPremium; those two differ only in decisionTree,
+# AllOnTree1 vs dTree1). It, its map, its six decision trees and the equally
+# missing cna/ and dra/ data are now copied into
+# vendor/ansel/anselinstalldir/dataPathItems/. Nothing reads them yet.
+# ast and citras have no dataPathItems directory in a full install, so those
+# two are not DPI-file-driven.
+AUTO_TONE_PORTED = False
 
 # ShastaParams early scalars (ctor 0x100543b0 / dump 0x101280a0)
 SHASTA_PARAMS_METRIC_GRAY_OFF = 0x38
@@ -455,28 +598,124 @@ F64_CLAMP_NEG = -2000.0  # 0x105a77a8
 CURVE_LOG_RATIO_ITERS = 100  # edx seed in dispatcher 0x10293510
 CURVE_NEWTON_ITERS = 100  # edx at 0x10293514
 
-# ShastaParams dump 0x10128033 — blend / blackNoise scalars used by builder
-WORK_SHADOW_EXP_BLEND_OFF = 0x120
-WORK_HIGHLIGHT_EXP_BLEND_OFF = 0x128
-WORK_SHADOW_TRANSITION_RATIO_OFF = 0x130
-WORK_HIGHLIGHT_TRANSITION_RATIO_OFF = 0x138
-WORK_SHADOW_EXP_SAT_FACTOR_OFF = 0x140
-WORK_SHADOW_COMP_SAT_FACTOR_OFF = 0x148
-WORK_HIGHLIGHT_DELTA_GAIN_OFF = 0x220
-WORK_BLACK_NOISE_STD_DEV_OFF = 0x1D0
-WORK_MIN_BLACK_OFFSET_OFF = 0x1D8
-WORK_MAX_WHITE_OFFSET_OFF = 0x1E0
-# 0x102935d0 / helpers — Params dump names (0x10128033)
-WORK_HIGHLIGHT_EXP_SCALE_OFF = 0x100  # clamped [0,1] in 0x10292e00
-WORK_SHADOW_MAX_EXP_SLOPE_OFF = 0x108
-WORK_HIGHLIGHT_MAX_EXP_SLOPE_OFF = 0x110  # min-clamped to 1.0 in 92e00
-WORK_SHADOW_COMP_BLEND_OFF = 0x118  # min-clamped to 1.0 in 92e00
-WORK_MAX_EXP_DELTA_OFF = 0x1E8  # 0x102931e0
-WORK_MAX_COMP_DELTA_OFF = 0x1F0  # 0x10293170
-WORK_ADJ_CLAMP_LO_SRC_OFF = 0x1F8  # qword load in 0x10293230 (overlaps bool in Params)
-WORK_ADJ_CLAMP_HI_SRC_OFF = 0x200  # whiteSatLowerLimit dump; 93230 hi
-WORK_ADJ_SCALE_370_OFF = 0x228  # post-935d0 multiply in 0x1027be10
-WORK_ADJ_SCALE_378_OFF = 0x230
+# ---------------------------------------------------------------------------
+# Work-object dpi block — PROVEN layout, ``work_off = ShastaParams_off + 0x10``
+# ---------------------------------------------------------------------------
+# ``AnsShastaCapabilityImpl::analyze`` constructs the work object at
+# ``ebp-0x770`` (ctor ``0x101e0db0`` @ ``0x101e5805``) and immediately copies
+# the Cap's ``ShastaParams`` (``this+0x10``) to ``work+0x10`` with
+# ``0x1008e970`` (``0x101e5810…0x101e581e``). ``0x1008e970`` is a field-by-field
+# same-offset POD copy (``[src+0x38]→[dst+0x38]`` … ``[src+0x220]→[dst+0x220]``),
+# so every ShastaParams field lands at ``work + off + 0x10``.
+#
+# The ShastaParams field↔name map comes from the params dump printer at
+# ``0x10127e00…`` (each ``mov/fld [ebx+off]`` is followed by its own
+# ``"<name> = "`` literal). ``SHASTA_WORK_LAYOUT`` is that map + 0x10.
+#
+# Independently cross-checked by six DLL uses (see
+# ``pakon_shasta_analyze_golden.py`` docstring) and Unicorn-verified end to end.
+#
+# NOTE: the ``ToneLutBuilderWork`` python field NAMES below predate this map and
+# are now only slot labels — several are misnomers (e.g. ``black_noise_std_dev``
+# is slot ``+0x1d0`` = ``blackNoiseSigmaMult``). ``SHASTA_WORK_LAYOUT`` and the
+# per-field comments on ``ToneLutBuilderWork`` are authoritative; do not infer a
+# dpi key from a python field name.
+SHASTA_WORK_LAYOUT: tuple[tuple[int, str, str], ...] = (
+    (0x48, "metricGray", "i"),
+    (0x4C, "black", "i"),
+    (0x50, "white", "i"),
+    (0x58, "codeValuesPerButton", "d"),
+    (0x60, "minValue", "i"),
+    (0x64, "maxValue", "i"),
+    (0x68, "analysisImageDim", "d"),
+    (0x70, "rowPortion", "d"),
+    (0x78, "colPortion", "d"),
+    (0x80, "extShadowPercent", "d"),
+    (0x88, "shadowPercent", "d"),
+    (0x90, "highlightPercent", "d"),
+    (0x98, "extHighlightPercent", "d"),
+    (0xA0, "highlightDiffMult", "d"),
+    (0xA8, "highlightDiffLimit", "d"),
+    (0xB0, "blackButtons", "d"),
+    (0xB8, "extShadowButtons", "d"),
+    (0xC0, "shadowButtons", "d"),
+    (0xC8, "highlightButtons", "d"),
+    (0xD0, "extHighlightButtons", "d"),
+    (0xD8, "blackAggr", "d"),
+    (0xE0, "extShadowAggr", "d"),
+    (0xE8, "shadowAggr", "d"),
+    (0xF0, "highlightAggr", "d"),
+    (0xF8, "extHighlightAggr", "d"),
+    (0x100, "shadowExpScale", "d"),
+    (0x108, "highlightExpScale", "d"),
+    (0x110, "shadowMaxExpSlope", "d"),
+    (0x118, "highlightMaxExpSlope", "d"),
+    (0x120, "shadowCompBlend", "d"),
+    (0x128, "highlightCompBlend", "d"),
+    (0x130, "shadowExpBlend", "d"),
+    (0x138, "highlightExpBlend", "d"),
+    (0x140, "shadowTransitionRatio", "d"),
+    (0x148, "highlightTransitionRatio", "d"),
+    (0x150, "shadowExpSatFactor", "d"),
+    (0x158, "shadowCompSatFactor", "d"),
+    (0x160, "highlightExpSatFactor", "d"),
+    (0x168, "highlightCompSatFactor", "d"),
+    (0x170, "satSmoothingWidth", "d"),
+    (0x178, "shadowDesatDim", "d"),
+    (0x180, "shadowMinDesat", "d"),
+    (0x188, "shadowDesatLumAdj", "d"),
+    (0x190, "shadowDesatBlend", "d"),
+    (0x198, "shadowExpTxtFactor", "d"),
+    (0x1A0, "shadowCompTxtFactor", "d"),
+    (0x1A8, "highlightExpTxtFactor", "d"),
+    (0x1B0, "highlightCompTxtFactor", "d"),
+    (0x1B8, "txtSmoothingWidth", "d"),
+    (0x1C0, "txtAmpLimit", "d"),
+    (0x1C8, "filterPolicy", "i"),
+    (0x1D0, "blackNoiseSigmaMult", "d"),
+    (0x1D8, "blackNoiseSuppStops", "d"),
+    (0x1E0, "blackNoiseStdDev", "d"),
+    (0x1E8, "minBlackOffset", "d"),
+    (0x1F0, "maxWhiteOffset", "d"),
+    (0x1F8, "maxExpDelta", "d"),
+    (0x200, "maxCompDelta", "d"),
+    (0x208, "bUseWhitePtCompression", "i"),
+    (0x210, "whiteSatLowerLimit", "d"),
+    (0x218, "whiteSatUpperLimit", "d"),
+    (0x220, "blackPointRatio", "d"),
+    (0x228, "shadowDeltaGain", "d"),
+    (0x230, "highlightDeltaGain", "d"),
+)
+
+# Slot offsets, named by the PROVEN dpi key at that slot.
+WORK_METRIC_GRAY_OFF = 0x48
+WORK_CODE_VALUES_PER_BUTTON_OFF = 0x58
+WORK_MIN_VALUE_OFF = 0x60
+WORK_MAX_VALUE_OFF = 0x64
+WORK_SHADOW_EXP_SCALE_OFF = 0x100  # clamped [0,1] in 0x10292e00
+WORK_HIGHLIGHT_EXP_SCALE_OFF = 0x108
+WORK_SHADOW_MAX_EXP_SLOPE_OFF = 0x110  # min-clamped to 1.0 in 92e00
+WORK_HIGHLIGHT_MAX_EXP_SLOPE_OFF = 0x118  # min-clamped to 1.0 in 92e00
+WORK_SHADOW_COMP_BLEND_OFF = 0x120  # fill#2 p+0x10 when shadow adj >= 0
+WORK_HIGHLIGHT_COMP_BLEND_OFF = 0x128  # fill#1 p+0x10 when highlight adj >= 0
+WORK_SHADOW_EXP_BLEND_OFF = 0x130  # fill#2 p+0x10 when shadow adj < 0
+WORK_HIGHLIGHT_EXP_BLEND_OFF = 0x138  # fill#1 p+0x10 when highlight adj < 0
+WORK_SHADOW_TRANSITION_RATIO_OFF = 0x140  # fill#2 p+0x20
+WORK_HIGHLIGHT_TRANSITION_RATIO_OFF = 0x148  # fill#1 p+0x20
+WORK_FILTER_POLICY_OFF = 0x1C8  # 0x1027b2f0 flag switch
+WORK_BLACK_NOISE_SIGMA_MULT_OFF = 0x1D0  # 93d50 divisor
+WORK_BLACK_NOISE_SUPP_STOPS_OFF = 0x1D8  # 93d50 amplitude
+WORK_BLACK_NOISE_STD_DEV_OFF = 0x1E0  # 93d50 gaussian width
+WORK_MIN_BLACK_OFFSET_OFF = 0x1E8  # 0x102931e0 mid_lo guard
+WORK_MAX_WHITE_OFFSET_OFF = 0x1F0  # 0x10293170 white guard
+WORK_MAX_EXP_DELTA_OFF = 0x1F8  # 0x10293230 clamp lo
+WORK_MAX_COMP_DELTA_OFF = 0x200  # 0x10293230 clamp hi
+WORK_USE_WHITE_PT_COMPRESSION_OFF = 0x208
+WORK_WHITE_SAT_LOWER_OFF = 0x210
+WORK_WHITE_SAT_UPPER_OFF = 0x218
+WORK_BLACK_POINT_RATIO_OFF = 0x220  # fill#2 p+0x30 (mirror of +0x340)
+WORK_SHADOW_DELTA_GAIN_OFF = 0x228  # 0x1027be10 scales +0x370
+WORK_HIGHLIGHT_DELTA_GAIN_OFF = 0x230  # 0x1027be10 scales +0x378
 
 
 def parse_dpi_scalars(path: Path) -> dict[str, str]:
@@ -711,12 +950,17 @@ def prep_breakpoint_pair(
 ) -> tuple[int, int]:
     """One channel of ``0x1027b1c0``:
 
-    ``a = fist(stops * aggr * codeValuesPerButton + 0.5)``;
+    ``a = ftol2(stops * aggr * codeValuesPerButton + 0.5)``;
     ``b = ref_code - a`` (or ``base_code - a`` depending on site).
 
-    Callers must pass the exact field roles; full field←dpi map UNKNOWN.
+    ``0x1027b1c0`` converts with ``_ftol2`` ``0x104ffe44``, which **truncates**
+    toward zero — the ``+0.5`` is the round-to-nearest. A rounding conversion
+    here double-rounds and moves the ext-shadow/shadow knots by one code
+    (extShadow: ``0.7*9.28*75 = 487.2``, ``+0.5 = 487.7`` -> ``487``, not 488).
+
+    Field←dpi roles are proven — see ``SHASTA_WORK_LAYOUT`` / ``dpi_prep_inputs``.
     """
-    a = fist_round(stops * aggr * code_values_per_button + F64_HALF)
+    a = ftol2_chop(stops * aggr * code_values_per_button + F64_HALF)
     return a, ref_code - a
 
 
@@ -748,12 +992,22 @@ def avg2largest_i16(a: int, b: int, c: int) -> int:
 def ftol2_chop(x: float) -> int:
     """``0x104ffe44`` — trunc toward zero (dens scale path @ ``0x100569c9``).
 
-    Non-finite → ``0x80000000`` (MSVC ``__ftol2`` indefinite / INT_MIN).
-    Python ``trunc(±inf)`` raises; the CRT does not.
+    ``_ftol2`` truncates with ``fistp qword [esp+0x10]`` and returns the **low
+    dword** of that 64-bit result (``mov eax, [esp+0x10]`` @ ``0x104ffe5f``).
+    For ``±inf`` / ``NaN`` / anything outside int64 the x87 stores the integer
+    indefinite ``0x8000000000000000``, whose low dword is **0** — and
+    ``test eax,eax; je 0x104ffea3`` then returns that 0 directly. Verified by
+    emulating ``0x104ffe44``: ``-inf``, ``+inf`` and ``NaN`` all return 0
+    (an earlier ``INT_MIN`` model made ``+0x368``/``+0x370`` clamp to the wrong
+    rail whenever ``0x10292d80`` overflowed to ``-inf``).
     """
     if not math.isfinite(x):
-        return -0x80000000
-    return int(math.trunc(x))
+        return 0
+    t = math.trunc(x)
+    if t < -(1 << 63) or t >= (1 << 63):
+        return 0
+    lo = int(t) & 0xFFFFFFFF
+    return lo - (1 << 32) if lo >= 0x80000000 else lo
 
 
 def master_lut_clip_i16(code: int, lo: int = 0, hi: int = MASTER_LUT_MAX) -> int:
@@ -1170,6 +1424,11 @@ class ToneLutBuilderWork:
     code_330: int = 0  # +0x330
     code_334: int = 0  # +0x334
     code_338: int = 0  # +0x338
+    # raw 0x1027b970 percentile codes (before the 0x1027be10 seed copy)
+    code_2e4: int = 0  # +0x2e4 extShadow
+    code_2e8: int = 0  # +0x2e8 shadow
+    code_2ec: int = 0  # +0x2ec highlight
+    code_2f0: int = 0  # +0x2f0 extHighlight
     # image-derived (0x1027be10 store / 0x102935d0 adjust)
     code_2f4: int = 0  # +0x2f4
     code_2f8: int = 0  # +0x2f8
@@ -1408,6 +1667,7 @@ def image_derived_fields_935d0(work: ToneLutBuilderWork) -> ToneLutBuilderWork:
         )
         - T
     )
+    # +0x368 @0x102938a0…0x102938fd: d80(T, d_2f4, d_32c, disp) - T
     disp = curve_dispatch_93510(float(d_32c), float(d_2f4), float(d_32c))
     work.adj_368 = float(
         ftol2_chop(
@@ -1415,9 +1675,17 @@ def image_derived_fields_935d0(work: ToneLutBuilderWork) -> ToneLutBuilderWork:
         )
         - T
     )
-    # 0x1029390d…: if d_2f8 < 0 and adj_368 < d_2f8 → adj_368 = d_2f8
-    if d_2f8 < 0 and work.adj_368 < float(d_2f8):
-        work.adj_368 = float(d_2f8)
+    # Floor at 0x1029390d…0x1029392f:
+    #     if adj_370 < 0 and adj_368 < adj_370: adj_368 = adj_370
+    #
+    # The DLL reloads this comparand from stack slot ``[esp+0x38]``, which held
+    # ``(double)d_2f8`` (stored at 0x10293837) until 0x10293896 — where
+    # ``fst qword [esp+0x50]``, executed *after* the ``add esp,8`` at
+    # 0x10293893, lands on that same slot and replaces it with the freshly
+    # computed ``+0x370``. So the floor is against ``adj_370``, not ``d_2f8``.
+    # (Confirmed end-to-end: using ``d_2f8`` diverges on 4 of 8 harness cases.)
+    if work.adj_370 < F64_0 and work.adj_368 < work.adj_370:
+        work.adj_368 = work.adj_370
 
     _clamp_adjs_93230(work)
     return work
@@ -1805,6 +2073,66 @@ def image_percentile_codes_7b970(
     return ImagePercentileCodes(c2e4, c2e8, c2ec, c2f0)
 
 
+def _r80(x: "Fraction") -> "Fraction":
+    """Round an exact rational to an x87 80-bit significand (64 bits, even)."""
+    from fractions import Fraction
+
+    if x == 0:
+        return Fraction(0)
+    sign = -1 if x < 0 else 1
+    a = abs(x)
+    e = a.numerator.bit_length() - a.denominator.bit_length()
+    while Fraction(2) ** e > a:
+        e -= 1
+    while Fraction(2) ** (e + 1) <= a:
+        e += 1
+    sc = Fraction(2) ** (e - 63)
+    q = a / sc
+    n = q.numerator // q.denominator
+    r = q - n
+    if r > Fraction(1, 2) or (r == Fraction(1, 2) and n % 2):
+        n += 1
+    return sign * n * sc
+
+
+def _sqrt80(x: "Fraction") -> "Fraction":
+    """``fsqrt`` — square root rounded to an 80-bit significand."""
+    from fractions import Fraction
+
+    if x <= 0:
+        return Fraction(0)
+    k = 200
+    v = x * Fraction(4) ** k
+    n = math.isqrt(v.numerator * v.denominator) // v.denominator
+    return _r80(Fraction(n) / Fraction(2) ** k)
+
+
+def _x87_hypot_7b3c0(sum_a: int, sum_b: int, n: int) -> float:
+    """``+0x320`` exactly as ``0x1027b750…0x1027b792`` computes it.
+
+    The DLL never divides: it forms ``1/n`` once (``fild n; fdivr 1.0``), keeps
+    it in an x87 register, **and also spills it to a double** at
+    ``fst qword [esp+0x18]``. One channel mean is then ``sum * (1/n)`` with the
+    80-bit reciprocal (``fmulp st(1)``) and the other is ``fld [esp+0x18];
+    fmul <sum>`` — i.e. with the *double-rounded* reciprocal. The squares, the
+    add and the ``fsqrt`` all stay in 80-bit registers (``0x1027b782``…
+    ``0x1027b78c``) and are rounded to double only by the final ``fst``.
+
+    Doing this in float64 (``math.sqrt(a*a+b*b)``) lands one ULP low on some
+    inputs, so both roundings are modelled explicitly here.
+    """
+    from fractions import Fraction
+
+    if n <= 0:
+        return F64_0
+    inv80 = _r80(Fraction(1, n))
+    inv64 = Fraction(float(inv80))
+    a = _r80(Fraction(sum_a) * inv64)   # +0x310 channel: double reciprocal
+    b = _r80(Fraction(sum_b) * inv80)   # +0x318 channel: 80-bit reciprocal
+    s = _r80(_r80(a * a) + _r80(b * b))
+    return float(_sqrt80(s))
+
+
 def white_pt_ratio_7b3c0(
     hypot_320: float,
     *,
@@ -1851,9 +2179,11 @@ def image_range_means_7b3c0(
     n = int(mask.sum())
     if n <= 0:
         return ImageRangeMeans(F64_0, F64_0, F64_0, F64_1)
-    m1 = float(p1[mask].sum()) / float(n)
-    m2 = float(p2[mask].sum()) / float(n)
-    hyp = math.sqrt(m1 * m1 + m2 * m2)
+    s1 = int(p1[mask].sum())
+    s2 = int(p2[mask].sum())
+    m1 = float(s1) / float(n)
+    m2 = float(s2) / float(n)
+    hyp = _x87_hypot_7b3c0(s1, s2, n)
     p340 = white_pt_ratio_7b3c0(
         hyp,
         use_white_pt=use_white_pt,
@@ -1942,52 +2272,157 @@ def tone_lut_work_from_dpi(
     mid_lo: int | None = None,
     mid_hi: int | None = None,
 ) -> ToneLutBuilderWork:
-    """Builder/935d0 work from shipped dpi. Mids default black/metricGray."""
+    """Builder/935d0 work from shipped dpi, bound via ``SHASTA_WORK_LAYOUT``.
+
+    The right-hand sides are the dpi keys the DLL actually reads at each slot
+    (proven: ``work_off = ShastaParams_off + 0x10``). The python field names on
+    the left are legacy slot labels and several are misnomers — read the
+    comments, not the names.
+    """
     start = int(round(dpi.metric_gray))
     white = int(round(dpi.white))
     lo = int(round(dpi.black)) if mid_lo is None else int(mid_lo)
     hi = start if mid_hi is None else int(mid_hi)
     return ToneLutBuilderWork(
         code_start=start,
-        code_min=int(round(dpi.min_value)),
-        code_max=int(round(dpi.max_value)),
-        code_48=start + int(round(dpi.code_values_per_button)),
-        code_values_per_button=float(dpi.code_values_per_button),
+        code_min=int(round(dpi.min_value)),        # +0x60 minValue
+        code_max=int(round(dpi.max_value)),        # +0x64 maxValue
+        code_48=int(round(dpi.metric_gray)),       # +0x48 metricGray (int)
+        code_values_per_button=float(dpi.code_values_per_button),   # +0x58
         mid_lo=lo,
         mid_hi=hi,
         code_white=white,
-        shadow_exp_blend=float(dpi.shadow_exp_blend),
-        highlight_exp_blend=float(dpi.highlight_exp_blend),
-        shadow_transition_ratio=float(dpi.shadow_transition_ratio),
-        highlight_transition_ratio=float(dpi.highlight_transition_ratio),
-        shadow_exp_sat_factor=float(dpi.shadow_exp_sat_factor),
-        shadow_comp_sat_factor=float(dpi.shadow_comp_sat_factor),
-        highlight_delta_gain=float(dpi.highlight_delta_gain),
-        black_noise_std_dev=float(dpi.black_noise_std_dev),
-        min_black_offset=float(dpi.min_black_offset),
-        max_white_offset=float(dpi.max_white_offset),
-        highlight_exp_scale=float(dpi.highlight_exp_scale),
-        shadow_max_exp_slope=float(dpi.shadow_max_exp_slope),
-        highlight_max_exp_slope=float(dpi.highlight_max_exp_slope),
-        shadow_comp_blend=float(dpi.shadow_comp_blend),
-        max_exp_delta=float(dpi.max_exp_delta),
-        max_comp_delta=float(dpi.max_comp_delta),
-        adj_clamp_lo_src=float(dpi.white_sat_lower_limit)
-        * float(dpi.code_values_per_button),
-        adj_clamp_hi_src=float(dpi.white_sat_upper_limit)
-        * float(dpi.code_values_per_button),
+        # slot +0x120 / +0x128 — shadowCompBlend / highlightCompBlend
+        shadow_exp_blend=float(dpi.shadow_comp_blend),
+        highlight_exp_blend=float(dpi.highlight_comp_blend),
+        # slot +0x130 / +0x138 — shadowExpBlend / highlightExpBlend
+        shadow_transition_ratio=float(dpi.shadow_exp_blend),
+        highlight_transition_ratio=float(dpi.highlight_exp_blend),
+        # slot +0x140 / +0x148 — shadow/highlight TransitionRatio
+        shadow_exp_sat_factor=float(dpi.shadow_transition_ratio),
+        shadow_comp_sat_factor=float(dpi.highlight_transition_ratio),
+        # slot +0x220 — blackPointRatio (fill#2 mirror of whitePointRatio)
+        highlight_delta_gain=float(dpi.black_point_ratio),
+        # slots +0x1d0 / +0x1d8 / +0x1e0 — blackNoise sigmaMult/suppStops/stdDev
+        black_noise_std_dev=float(dpi.black_noise_sigma_mult),
+        min_black_offset=float(dpi.black_noise_supp_stops),
+        max_white_offset=float(dpi.black_noise_std_dev),
+        # slots +0x100…+0x118 — shadowExpScale, highlightExpScale,
+        # shadowMaxExpSlope, highlightMaxExpSlope
+        highlight_exp_scale=float(dpi.shadow_exp_scale),
+        shadow_max_exp_slope=float(dpi.highlight_exp_scale),
+        highlight_max_exp_slope=float(dpi.shadow_max_exp_slope),
+        shadow_comp_blend=float(dpi.highlight_max_exp_slope),
+        # slots +0x1e8 / +0x1f0 — minBlackOffset / maxWhiteOffset guards
+        max_exp_delta=float(dpi.min_black_offset),
+        max_comp_delta=float(dpi.max_white_offset),
+        # slots +0x1f8 / +0x200 — maxExpDelta / maxCompDelta (0x10293230 clamp)
+        adj_clamp_lo_src=float(dpi.max_exp_delta),
+        adj_clamp_hi_src=float(dpi.max_comp_delta),
+        # slots +0x228 / +0x230 — shadowDeltaGain / highlightDeltaGain
+        adj_scale_370=float(dpi.shadow_delta_gain),
+        adj_scale_378=float(dpi.highlight_delta_gain),
     )
+
+
+# Canonical name for the corrected constructor.
+analyze_work_from_dpi = tone_lut_work_from_dpi
 
 
 def dpi_prep_inputs(dpi: "ShastaDpi") -> tuple[tuple[float, float], ...]:
-    """Five ``(buttons, aggr)`` pairs for ``0x1027b1c0``."""
+    """Five ``(aggr, buttons)`` pairs for ``0x1027b1c0``, in DLL slot order.
+
+    ``0x1027b1c0`` pairs ``work+0xd8+8k`` (aggr) with ``work+0xb0+8k``
+    (buttons) for ``k=0…4`` and writes ``+0x328/+0x32c/+0x330/+0x334/+0x338``.
+    With ``work = ShastaParams + 0x10`` those slots are, in order:
+    **black, extShadow, shadow, highlight, extHighlight**.
+
+    (The previous order here was shadow, extShadow, black, … — it swapped the
+    black and shadow break-points, which with the shipped rpd dpi moves the
+    two shadow knots by 10.466 vs 6.67 buttons.)
+    """
     return (
-        (dpi.shadow_buttons, dpi.shadow_aggr),
-        (dpi.ext_shadow_buttons, dpi.ext_shadow_aggr),
-        (dpi.black_buttons, dpi.black_aggr),
-        (dpi.highlight_buttons, dpi.highlight_aggr),
-        (dpi.ext_highlight_buttons, dpi.ext_highlight_aggr),
+        (dpi.black_aggr, dpi.black_buttons),
+        (dpi.ext_shadow_aggr, dpi.ext_shadow_buttons),
+        (dpi.shadow_aggr, dpi.shadow_buttons),
+        (dpi.highlight_aggr, dpi.highlight_buttons),
+        (dpi.ext_highlight_aggr, dpi.ext_highlight_buttons),
     )
+
+
+def analyze_inner_7be10(
+    work: ToneLutBuilderWork,
+    dpi: "ShastaDpi",
+    rgb_i16: np.ndarray,
+    *,
+    blockavg_rgb: np.ndarray | None = None,
+) -> ToneLutBuilderWork:
+    """``0x1027be10`` — analyze's image stage, in the DLL's own order.
+
+    Called from ``AnsShastaCapabilityImpl::analyze`` @ ``0x101e584d`` with
+    ``(sampled, blockAvg, metricGray, midLo, midHi, white)``; the four codes are
+    already in ``work.code_start/mid_lo/mid_hi/code_white`` when this runs.
+
+    Sequence (cited, all Unicorn-verified end to end)::
+
+        +0x2b0…+0x2bc  <- the four arg codes           (0x1027be89…0x1027bea0)
+        0x1027b1c0     prep breakpoints                (0x1027bea6)
+        0x1027b970     percentiles -> +0x2e4…+0x2f0    (0x1027beb2)
+        0x1027b3c0     planar means -> +0x310…+0x340   (0x1027beba)
+        seed           +0x2f4…+0x300 <- +0x2e4…+0x2f0  (0x1027bebf…)
+        +0x308 = sar1(+0x2ec-+0x2e4-+0x2e8++0x2f0) / (+0x58*2.5)
+        0x102935d0     image-derived adj doubles        (0x1027bf19)
+        +0x370 *= +0x228 (shadowDeltaGain)              (0x1027bf1e)
+        +0x378 *= +0x230 (highlightDeltaGain)           (0x1027bf32)
+        0x1027b2f0     filter-policy flags +0x388…+0x38a (0x1027bf44)
+
+    ``0x1027b2f0`` only sets the three ``+0x388/+0x389/+0x38a`` booleans from
+    ``filterPolicy`` and the sign of the two adjs; it feeds the desat/texture
+    filters, not the toneLut, so it is not modelled here.
+    """
+    if not SHASTA_ANALYZE_INNER_PORTED:
+        raise RuntimeError("SHASTA_ANALYZE_INNER_PORTED is False")
+    prep = dpi_prep_inputs(dpi)
+    apply_prep_7b1c0(work, prep)
+
+    n_bins = int(work.code_max) + 1
+    sampled = hist_counts_from_plane0(np.asarray(rgb_i16)[:, :, 0], n_bins)
+    block = None
+    if blockavg_rgb is not None:
+        block = hist_counts_from_plane0(
+            np.asarray(blockavg_rgb)[:, :, 0], n_bins
+        )
+    codes = image_percentile_codes_7b970(
+        sampled,
+        ext_shadow_percent=dpi.ext_shadow_percent,
+        shadow_percent=dpi.shadow_percent,
+        highlight_percent=dpi.highlight_percent,
+        ext_highlight_percent=dpi.ext_highlight_percent,
+        mid_lo=int(work.mid_lo),
+        code_white=int(work.code_white),
+        blockavg_counts=block,
+        highlight_diff_mult=dpi.highlight_diff_mult,
+        highlight_diff_limit=dpi.highlight_diff_limit,
+        code_values_per_button=float(work.code_values_per_button),
+    )
+    work.code_2e4 = codes.code_2e4
+    work.code_2e8 = codes.code_2e8
+    work.code_2ec = codes.code_2ec
+    work.code_2f0 = codes.code_2f0
+
+    means = image_range_means_7b3c0(
+        rgb_i16,
+        codes.code_2ec,
+        codes.code_2f0,
+        use_white_pt=dpi.use_white_pt_compression,
+        white_sat_lower=dpi.white_sat_lower_limit,
+        white_sat_upper=dpi.white_sat_upper_limit,
+        code_values_per_button=float(work.code_values_per_button),
+    )
+    seed_image_fields_7be10(work, codes, p340=means.p340)
+    image_derived_fields_935d0(work)
+    scale_adjs_after_935d0(work)
+    return work
 
 
 def assemble_scene_tone_lut(
@@ -2192,6 +2627,10 @@ class ShastaDpi:
     shadow_max_exp_slope: float = 2.0
     highlight_max_exp_slope: float = 2.0
     shadow_comp_blend: float = 0.5
+    highlight_comp_blend: float = 0.5
+    shadow_exp_scale: float = 0.5
+    black_point_ratio: float = 1.0
+    shadow_delta_gain: float = 1.0
     max_exp_delta: float = 4.0
     max_comp_delta: float = 4.0
     shadow_buttons: float = 6.67
@@ -2249,6 +2688,10 @@ class ShastaDpi:
             shadow_max_exp_slope=_num(d, "shadowMaxExpSlope", 2.0),
             highlight_max_exp_slope=_num(d, "highlightMaxExpSlope", 2.0),
             shadow_comp_blend=_num(d, "shadowCompBlend", 0.5),
+            highlight_comp_blend=_num(d, "highlightCompBlend", 0.5),
+            shadow_exp_scale=_num(d, "shadowExpScale", 0.5),
+            black_point_ratio=_num(d, "blackPointRatio", 1.0),
+            shadow_delta_gain=_num(d, "shadowDeltaGain", 1.0),
             max_exp_delta=_num(d, "maxExpDelta", 4.0),
             max_comp_delta=_num(d, "maxCompDelta", 4.0),
             shadow_buttons=_num(d, "shadowButtons", 6.67),

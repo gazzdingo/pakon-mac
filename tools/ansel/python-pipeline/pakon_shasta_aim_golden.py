@@ -1478,7 +1478,7 @@ def main() -> int:
     lut_path = color_dir / "_ClientColNegLut.txt"
     mat_path = color_dir / "_ClientColNegMat.txt"
     if lut_path.is_file() and mat_path.is_file():
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
         import pakon_color as pc  # noqa: E402
 
         lut = [float(int(v)) for v in pc.load_vendor_lut(str(lut_path))]

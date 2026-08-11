@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/png"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -261,8 +262,14 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 	outImg := image.NewRGBA(image.Rect(0, 0, width, height))
 	bypassImg := image.NewRGBA(image.Rect(0, 0, width, height))
 
+	// Stage taps, for "show me each stage" — additive, no effect on the
+	// render when req.TapDir is "". NewTapWriter and every method on it are
+	// nil-safe, so tw is used unconditionally below with no branch on it.
+	tw, twErr := NewTapWriter(req.TapDir, height, width)
+	if twErr != nil {
+		return fmt.Errorf("tap writer: %w", twErr)
+	}
 
-	
 	
 	// --- Trilinear CCD deskew -------------------------------------------
 	// The sensor (#123528) senses R, G and B on three physically separate
@@ -306,10 +313,13 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 			sample(x+ccdLineOffsets[1], y, 1),
 			sample(x+ccdLineOffsets[2], y, 2)
 	}
+	// Diagnostics go to stderr, never stdout: an app driving this over a pipe
+	// (docs/62 §3.4) cannot tell a log line from the payload otherwise, and
+	// the parity harness fails the run outright if stdout is not clean.
 	if ccdLineOffsets == [3]int{0, 0, 0} {
-		fmt.Printf("CCD deskew: off here — the input is already deskewed\n")
+		fmt.Fprintf(os.Stderr, "CCD deskew: off here — the input is already deskewed\n")
 	} else {
-		fmt.Printf("CCD deskew: R %+d / G %+d / B %+d transport px "+
+		fmt.Fprintf(os.Stderr, "CCD deskew: R %+d / G %+d / B %+d transport px "+
 			"(sampled at x%+d/x%+d/x%+d — x runs against scan-line order "+
 			"after the lens 180°)\n",
 			ccdLineOffsets[0], ccdLineOffsets[1], ccdLineOffsets[2],
@@ -325,13 +335,17 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 		return v
 	}
 
-	// --- Single pass ---
+	// --- Pass 1: PolyPixel only ---
 	// F-135: PolyPixel (TLB.dll:fcn.1000d880, 3x10 quadratic) -> linear 12-bit.
 	//        No NegLut / NegMat: those are the F-235 (TLA) stage-2 tables.
 	//
-	// The SRA forward LUT used to be applied here on its own. It no longer is,
-	// and that is a binary result rather than taste — see the inversion block
-	// below for the call sites.
+	// The SRA forward LUT is NOT applied here on its own — that produces a
+	// fully black image (a metric-preserving round trip fwd-then-bwd, applied
+	// half of it) and is not an operation the vendor performs anywhere. See
+	// the inversion block below for the call sites and the c9 formula that
+	// replaces it. rpd12 holds the RAW poly output here, in the 0..4095 domain
+	// PolyPixel produces; pass 2 overwrites it with the inverted value once
+	// frameDmin (which itself needs the raw poly planes) is known.
 	for y := 0; y < height; y++ {
 		yy := y - 0
 		rpd12[yy] = make([][3]float64, width)
@@ -344,14 +358,9 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 			if model == "f135" {
 				polyOut := PolyPixel([3]int{r, g, b}, coeffs)
 
-				outR = float32(profile.SraLut[clamp4k(polyOut[0])])
-				outG = float32(profile.SraLut[clamp4k(polyOut[1])])
-				outB = float32(profile.SraLut[clamp4k(polyOut[2])])
-
-				if x == 0 && y == 0 {
-					fmt.Printf("DEBUG pixel[0,0] raw=%d,%d,%d polyOut=%v\n",
-						r, g, b, polyOut)
-				}
+				outR = float32(polyOut[0])
+				outG = float32(polyOut[1])
+				outB = float32(polyOut[2])
 
 				planeR = append(planeR, int(outR))
 				planeG = append(planeG, int(outG))
@@ -370,7 +379,8 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 			rpd12[yy][xx] = [3]float64{float64(outR), float64(outG), float64(outB)}
 		}
 	}
-	
+	tw.Write("poly", rpd12) // raw PolyPixel output, pre-inversion
+
 	// SBA preference fields come from the dpi that sba.map selected for this
 	// DX — nothing film-specific is hardcoded here.
 	//
@@ -447,9 +457,42 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 		sel.Sba.NeutralUnderConstraint, sel.Sba.NeutralOverConstraint, sel.Sba.Pcls)
 	setshiftsOut := SetShifts12(prefA, prefA, band3.Planar, band3.NumLut)
 
-	// SRA LUT inversion already applied at the PolyPixel stage.
-
 	frameDmin := frameDminRgbFromPlanes(planeR, planeG, planeB, 4096)
+
+	// --- Pass 2: the inversion itself ---
+	//     rpd12 = fpo + 1000 * ( log10(filmBase - c9) - log10(poly - c9) )
+	// c9 is coeffs[10*ch+9], PolyPixel's own per-channel constant term (see
+	// poly.go) — the pedestal that has to come off before the log, or the
+	// channel contrasts come out wrong (measured 1.00:0.51:0.30 with it left
+	// in, 1.00:1.14:1.12 with it removed, against the negative's own
+	// 1.00:1.12:1.14). rpd12[y][x] currently holds pass 1's raw poly output;
+	// this overwrites it in place.
+	logTerm := func(v, c9 float64) float64 {
+		d := v - c9
+		if d < 1 {
+			d = 1
+		}
+		return math.Log10(d)
+	}
+	c9 := [3]float64{float64(coeffs[9]), float64(coeffs[19]), float64(coeffs[29])}
+	baseLog := [3]float64{
+		logTerm(float64(frameDmin[0]), c9[0]),
+		logTerm(float64(frameDmin[1]), c9[1]),
+		logTerm(float64(frameDmin[2]), c9[2]),
+	}
+	if model == "f135" {
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				p := rpd12[y][x]
+				for ch := 0; ch < 3; ch++ {
+					v := float64(fpo[ch]) + 1000*(baseLog[ch]-logTerm(p[ch], c9[ch]))
+					p[ch] = float64(clamp4k(int(v)))
+				}
+				rpd12[y][x] = p
+			}
+		}
+	}
+	tw.Write("inv", rpd12) // after the c9 negative->positive log
 
 	balanced := make([][][3]float64, height)
 	for y := 0; y < height; y++ {
@@ -461,7 +504,8 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 			balanced[y][x] = [3]float64{float64(po[0]), float64(po[1]), float64(po[2])}
 		}
 	}
-	
+	tw.Write("balance", balanced)
+
 	// toned is balanced; Shasta runs after FUGC on final RPD12 values
 	toned := balanced
 	
@@ -473,19 +517,6 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 	} else {
 		fugcApplyLut, _, _, _ = BuildSetLutInfoApplyLut(profile.Fugc[:], fugcDmin, prefA, frameDmin, afilmAim)
 	}
-	
-	fmt.Printf("DEBUG: frameDmin=%v\n", frameDmin)
-	fmt.Printf("DEBUG: prefA=%v\n", prefA)
-	fmt.Printf("DEBUG: setshiftsOut=%v\n", setshiftsOut)
-	
-	minB, maxB := 9999.0, 0.0
-	for y := 0; y < 100; y++ {
-		for x := 0; x < 100; x++ {
-			if balanced[y][x][0] < minB { minB = balanced[y][x][0] }
-			if balanced[y][x][0] > maxB { maxB = balanced[y][x][0] }
-		}
-	}
-	fmt.Printf("DEBUG: balanced R range (first 100x100) = %v to %v\n", minB, maxB)
 	
 	clampFugc := func(v float64) int {
 		i := int(v)
@@ -506,17 +537,26 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 			}
 		}
 	}
+	tw.Write("fugc", fugcOut)
 
-	// Shasta. The vendor's AnsShastaCapabilityImpl::analyze is not ported, so
-	// F-135 uses the two-anchor stand-in built from shasta-rpd.dpi (the DPI
-	// shasta.map selects for CN-Premium).
+	// Auto-tone. The real stage for a negative is
+	// ColorNegativePath::analyzeAutoTone (0x100fb730) — a six-capability chain
+	// (cna → dra → toneHelper → contrast → ast → citras), NOT Shasta, which
+	// never runs for CN-Enhanced. It is not ported; see AutoTonePorted in
+	// shasta.go for the full call map, the enable bytes, the toneHelper DPI
+	// resolution and why the chain cannot be ported piecewise. Until then
+	// F-135 keeps the two-anchor stand-in built from shasta-rpd.dpi.
 	shasted := fugcOut
 	if model == "f135" {
 		shasted = ShastaToneRpd(fugcOut, sel.ShastaParams())
 	}
+	tw.Write("shasta", shasted)
+	tw.Write("ansel", shasted) // the toned RPD-12 handed to the ICC hop
 
 	var sum [3]float64
+	iccU8 := make([][][3]uint8, height)
 	for y := 0; y < height; y++ {
+		iccU8[y] = make([][3]uint8, width)
 		for x := 0; x < width; x++ {
 			p := shasted[y][x]
 
@@ -532,17 +572,27 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 
 			srgbColor := IccRpd12ToSrgb8(rpd2pcs, srgb, []int{finalR, finalG, finalB})
 			outImg.Set(x, y, color.RGBA{srgbColor[0], srgbColor[1], srgbColor[2], 255})
+			iccU8[y][x] = [3]uint8{srgbColor[0], srgbColor[1], srgbColor[2]}
 			sum[0] += float64(srgbColor[0])
 			sum[1] += float64(srgbColor[1])
 			sum[2] += float64(srgbColor[2])
 		}
 	}
+	tw.WriteU8("icc", iccU8)
+	tw.Set("film_base", frameDmin)
+	tw.Set("fpo", fpo)
+
 	n := float64(width * height)
-	fmt.Printf("OUTPUT mean sRGB per channel: R=%.1f G=%.1f B=%.1f\n", sum[0]/n, sum[1]/n, sum[2]/n)
+	logf("OUTPUT mean sRGB per channel: R=%.1f G=%.1f B=%.1f\n", sum[0]/n, sum[1]/n, sum[2]/n)
 	if model == "f135" {
-		fmt.Printf("PROVENANCE: F135InvertPorted=%v ShastaAnalyzePorted=%v "+
-			"— the inversion and the tone scale are stand-ins, not vendor call sites\n",
-			F135InvertPorted, ShastaAnalyzePorted)
+		logf("PROVENANCE: F135InvertPorted=%v AutoTonePorted=%v "+
+			"ShastaAnalyzePorted=%v — the inversion and the tone scale are "+
+			"stand-ins, not vendor call sites\n",
+			F135InvertPorted, AutoTonePorted, ShastaAnalyzePorted)
+	}
+
+	if err := tw.Close(); err != nil {
+		return fmt.Errorf("tap writer close: %w", err)
 	}
 
 	return emit(outImg, nil)
@@ -555,6 +605,10 @@ func main() {
 	}
 
 	modelFlag := flag.String("model", "f135", "scanner model (f135 or f235)")
+	tapFlag := flag.String("tap-dir", "", "write one raw array per pipeline "+
+		"stage here (poly/inv/balance/fugc/shasta/ansel/icc) plus a "+
+		"manifest.json, for tools/pakon_parity.py or for looking at a stage "+
+		"directly. \"\" writes nothing.")
 	flag.Parse()
 	args := flag.Args()
 
@@ -605,6 +659,7 @@ func main() {
 		StageOrder:  OrderFugcShasta,
 		IccInput:    IccU12,
 		FugcMode:    2,
+		TapDir:      *tapFlag,
 	}
 
 	anselRoot := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/anselinstalldir/dataPathItems"
@@ -615,7 +670,9 @@ func main() {
 		log.Fatalf("OpenEngine failed: %v", err)
 	}
 
-	logf := func(format string, a ...any) { fmt.Printf(format, a...) }
+	// stderr, not stdout: docs/62 §3.4's ABI contract, so a caller reading
+	// stdout as a payload never sees a log line mixed into it.
+	logf := func(format string, a ...any) { fmt.Fprintf(os.Stderr, format, a...) }
 	
 	emit := func(out, bypass *image.RGBA) error {
 		outF, err := os.Create(outputPath)

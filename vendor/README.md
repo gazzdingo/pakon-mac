@@ -21,18 +21,28 @@ vendor/ansel/
       rpd.pf, srgb.pf, romm.pf, unity.pf           ICC-style colour profiles
       sat*.pf, warm_bw*.pf, cold_bw.pf, sepia*.pf  abstract tone profiles
       defaults.ini                                 DX film-product table
-  anselinstalldir/dataPathItems/          # 91 files
+  anselinstalldir/dataPathItems/          # 107 files
       sba/       SbaDPI/*.dpi + sba.map, Pcode/, Sfs/   scene-balance params
       shasta/    shasta-*.dpi + shasta.map              tone-scale aims
       fugc/      *.lut + fugc-lutMap.map                film undercolour LUTs
       profile/   Rpd2Pcs_*.pf, Srgb_v2.pf + profile.map ICC profiles
       common/    common-sraFwdLut-*.lut, luts6_*.lut    SRA + 3-band LUTs
       color/, contrast/, SCPLut/                        selector + adjust tables
+      cna/       ansel-cna-default-default.dpi          auto-tone stage 1 params
+      dra/       ansel-dra-*.dpi + *.ttc                auto-tone stage 2 + curves
+      toneHelper/ toneHelper-*.dpi + toneHelper.map     auto-tone stage 3 params
+                  AllOnTree1, dTree1, deiTree1, …       its scene decision trees
 ```
 
-Roughly 3.8 MB, 113 files: 40 `.dpi` parameter files, 22 `.lut` tables,
-21 `.pf` profiles, 8 `.map` selector files, plus the `Config/ColorCorrection`
-text tables and the `sba/Pcode` and `sba/Sfs` blobs.
+Roughly 3.9 MB, 129 files: 43 `.dpi` parameter files, 22 `.lut` tables,
+21 `.pf` profiles, 9 `.map` selector files, 6 `.ttc` tone curves, 6 decision
+trees, plus the `Config/ColorCorrection` text tables and the `sba/Pcode` and
+`sba/Sfs` blobs.
+
+`cna/`, `dra/` and `toneHelper/` are the data for the colour-negative auto-tone
+stage (`ColorNegativePath::analyzeAutoTone`, see
+`tools/ansel/pipeline/shasta.go`). They are copied in because that stage cannot
+be ported without them; nothing reads them yet.
 
 Only the subdirectories the pipeline actually reads were copied. The rest of a
 real install (`area/`, `deRender/`, `reRender/`, `pnr/`, `noiseTable/`, and the

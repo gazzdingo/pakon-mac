@@ -1,8 +1,5 @@
 <p align="center">
-  <img src="docs/assets/pakon-mac-icon.png" alt="Pakon Mac" width="240">
-</p>
-<p align="center">
-  <img src="docs/assets/pakon-mac-logo.png" alt="Pakon Mac" width="420">
+  <img src="https://github.com/user-attachments/assets/f9b63009-a7c3-4c32-984e-52093fa22add" alt="Pakon Mac" width="240">
 </p>
 
 # pakon-mac

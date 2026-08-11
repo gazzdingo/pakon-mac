@@ -509,10 +509,24 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 	// toned is balanced; Shasta runs after FUGC on final RPD12 values
 	toned := balanced
 	
-	fugcDmin := [3]int{500, 500, 500}
-	afilmAim := [3]int{500, 1000, 1000}
+	// FUGC aim words. docs/62 §2.4: these were hardcoded here. They are read
+	// from the vendor files now — aTableDmin from the selected fugc .lut and
+	// aFilmAimDmin from fugc/fugc-defaultParams.dpi, both resolved by
+	// maps.go's PakonColorOpen. On this install the shipped values are
+	// {500,500,500} and {500,1000,1000}, i.e. exactly what the hardcode said,
+	// so this changes no pixel here; it stops being a coincidence on any
+	// other install.
+	fugcDmin := sel.FugcDmin
+	afilmAim := sel.FugcAim
+
+	// docs/62 §2.2: this branched on `model == "f135"`, which sent every F-135
+	// frame down the mode-2 plane path — the branch docs/58 §7 lists as NOT
+	// ported. The FUGC mode is a runtime capability field (Cap +0x60e8,
+	// CAP_MODE_SELECT = 0xC), not a property of the scanner model, and
+	// pakon_ansel.py defaults fugc_mode to 1 with nothing in the tree setting
+	// it to 2. Branch on the mode the request actually carries.
 	var fugcApplyLut [][3]float32
-	if model == "f135" {
+	if req.FugcMode == 2 {
 		fugcApplyLut, _, _ = BuildMode2ApplyLut(profile.Fugc[:], fugcDmin, prefA, frameDmin, afilmAim)
 	} else {
 		fugcApplyLut, _, _, _ = BuildSetLutInfoApplyLut(profile.Fugc[:], fugcDmin, prefA, frameDmin, afilmAim)
@@ -605,6 +619,10 @@ func main() {
 	}
 
 	modelFlag := flag.String("model", "f135", "scanner model (f135 or f235)")
+	fugcModeFlag := flag.Int("fugc-mode", 1, "FUGC mode (Cap +0x60e8). 2 takes "+
+		"the metrics/plane path at 0x101fc7e6; anything else takes setLutInfo "+
+		"at 0x101f82c0, which is what pakon_ansel.py defaults to and what "+
+		"docs/58 §7 lists as ported. docs/62 §2.2.")
 	tapFlag := flag.String("tap-dir", "", "write one raw array per pipeline "+
 		"stage here (poly/inv/balance/fugc/shasta/ansel/icc) plus a "+
 		"manifest.json, for tools/pakon_parity.py or for looking at a stage "+
@@ -658,7 +676,7 @@ func main() {
 		CoeffPath:   "../../../backups/eeprom-i2c/eeprom_52.bin",
 		StageOrder:  OrderFugcShasta,
 		IccInput:    IccU12,
-		FugcMode:    2,
+		FugcMode:    *fugcModeFlag,
 		TapDir:      *tapFlag,
 	}
 

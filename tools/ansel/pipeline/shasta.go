@@ -89,13 +89,34 @@ const ShastaOnCnRenderPath = false
 // stand-in does, so nothing is wired in until the whole chain is bit-exact.
 //
 // It is also not a pure function of the image. The chain runs 17th of the 30
-// capabilities AnsCnEnhancedPath::declare (0x10064d70) registers — after
+// capabilities AnsCnEnhancedPath::declare (0x10064ff0) registers — after
 // filmLut, flesh, pan, fos, scpLut, afterSCPLutSba, area, orderOrientation,
 // asea, noiseTable, pnr, nra, dei, dtt, falloff and fugc — and reads what they
 // published through AnsSceneContext::find (0x10022a40, directly reachable).
 // toneHelper's own DPI names decisionTreeDei = deiTree1, i.e. it consumes the
 // dei stage. So porting analyzeAutoTone bit-exactly means porting its
 // producers too; it cannot be verified end-to-end in isolation.
+//
+// That address was cited as 0x10064d70 until it was checked against the
+// binary. 0x10064d70 is NOT declare: it is a 201-byte, call-free, branch-free
+// field-zeroing helper (mov eax,ecx; xor ecx,ecx; mov [eax+..],ecx ...) with
+// six direct callers — 0x100fc4b8, 0x10104f88, 0x101098ac, 0x1010ce8c,
+// 0x10116456, 0x101de0fb — and no vtable pointer anywhere in the image.
+// declare is AnsCnEnhancedPath vtable slot 1 (virtual_4), 0x1057adb8 ->
+// 0x10064ff0, spanning 0x10064ff0..0x1006598d (2461 bytes). It names itself:
+// it pushes "AnsCnEnhancedPath::declare" (0x1057ac58) together with
+// "\Atc\ansel\src\libPaths.ansel\CN-Enhanced.cpp" (0x1057ac74) at ten log and
+// exception sites, and those ten are the ONLY references to that string in
+// .text. Two neighbours that have been mistaken for it: virtual_44
+// (0x10066b00) self-logs "AnsCnEnhancedPath::initialize", not declare, and
+// virtual_48 (0x10066700) self-logs "AnsCnEnhancedPath::match".
+//
+// The registration ORDER above is corroborated by virtual_20 (0x1057adc8 ->
+// 0x10068490), a separate branch-free routine that pushes 21 of these names as
+// immediates in exactly this relative order — color, filmLut, flesh, scpLut,
+// afterSCPLutSba, area, orderOrientation, asea, noiseTable, falloff, fugc,
+// toneHelper, contrast, citras, sharpenAdjust, adaptSharp, blemish, date,
+// dust, scratch, redeye — i.e. toneHelper immediately after fugc, as here.
 //
 // (One lookup, AnsDraCapabilityImpl::analyze's guarded find("lighting") at
 // 0x1022b2e5→0x1022b314, whose miss is fatal at 0x1022b35b, cannot be

@@ -1,6 +1,10 @@
 <p align="center">
   <img src="https://github.com/user-attachments/assets/f9b63009-a7c3-4c32-984e-52093fa22add" alt="Pakon Mac" width="240">
 </p>
+<p align="center">
+  <img width="400" alt="image" src="https://github.com/user-attachments/assets/6f061022-3565-4f91-8b8a-c39bf5877b49" />
+</p>
+
 
 # pakon-mac
 

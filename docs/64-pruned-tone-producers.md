@@ -81,25 +81,50 @@ runs, not through it.
 | **dtt** | Most likely a source-type classifier — archive / digital / colour-positive / colour-negative — inferred from the four `.dpi` variant filenames it loads (`dtt-srcType-archive.dpi` etc.). Confirmed genuinely executed on this path, unlike most of this list. | 0% ported |
 | **pan** | Panorama (letterboxed-frame) detector — inspects the top/bottom border rows against the frame's `dmin` to guess whether the frame is a panoramic crop. | 0% ported |
 
-## Not resolved — don't treat as pruned
+## Both remaining open questions — now RESOLVED
 
-Two items from the original 16 were **not** cleared either way; they stay
-open questions for whoever picks up the real `analyzeAutoTone` port, not
-backlog items:
+Both `dei` and `flesh` started as genuinely unresolved — real circumstantial
+evidence each way, no agent had traced the actual call site. Both have since
+been run down properly. Neither is required by `analyzeAutoTone`.
 
-- **`dei`** — real risk of being a genuine, silently-missing dependency.
-  `AnsDeiResults` has a field literally named `adjToneHelperDeiValue`, and
-  `toneHelper`'s own shipped DPI carries a decision tree named `deiTree1`
-  seemingly built for exactly this. No agent found the actual call site that
-  reads it, though — toneHelper has ~5.7 KB of never-fully-decompiled callee
-  code where such a lookup could be hiding. This is exactly the class of bug
-  (an undetected missing input) that caused the current shadow crush, so it
-  should not be assumed prunable on absence of evidence.
-- **`flesh`** — the agent assigned to it never actually investigated
-  (its transcript ends with *"I'll stop issuing checks now and wait for the
-  monitor's completion notification"* — a stuck run, not a finding). Zero
-  evidence either direction. Needs a fresh pass before anyone treats it as
-  either pruned or required.
+- **`dei` — OUT, by execution order.** `AnsDeiResults`'s field named
+  `adjToneHelperDeiValue` and `toneHelper`'s own `deiTree1` decision tree
+  looked like a real dependency. Settled two ways: full decompilation of all
+  four previously-unread `toneHelper` callees found zero reads of dei data,
+  and — decisively — `ColorNegativePath::CalcDei` (`0x101081e0`) is called
+  *after* `analyzeAutoTone` in the scene driver (`fcn.10069490`: `CalcDei` at
+  `0x10069aca`, `analyzeAutoTone` at `0x10069a1d`), so it structurally cannot
+  be an input regardless of what it computes. The suggestive naming describes
+  a *different* caller of the same shared `toneHelper::analyze` code, reached
+  from the separate CnPremium/Shasta path, not this one.
+- **`flesh` — OUT, but not for the easy reason.** The call-order trick that
+  closed `dei` doesn't apply here: `analyzePostBalance` (which calls
+  `flesh::analyze`) runs at `0x10069503`, *before* `analyzeAutoTone` at
+  `0x10069a1d` — the opposite order. So this was closed the harder way: the
+  real flesh accumulator was located precisely (bytes `0x4b6`–`0x4bb` of the
+  shared driver state, written by real per-channel R/G/B arithmetic at
+  `0x100fe471`–`0x100fe47d`), then every one of `analyzeAutoTone`'s 13 uses of
+  that same driver-state pointer was checked by hand, along with all 73
+  indirect call sites in both functions (all proven to be smart-pointer
+  destructor calls, not data dispatch — so nothing could carry the value out
+  through an unresolved vtable call either) and every string/global
+  cross-reference. None reach byte `0x4b6`. Checked against a 225-function
+  reachable set, larger than the 166-function baseline used elsewhere in this
+  doc — a conservative negative, not a lucky miss.
+
+  **Not a dead end, though** — the accumulator is real, live, cross-step
+  state, and it does feed three real consumers: the `color` capability's
+  shifts (`0x100fe708`), the shift-LUT builder on global `0x106b5f74`
+  (`0x100fe807`), and — most notably — `analyzeArea` (`0x100e16d0`, driver
+  call at `0x100698b1`). So if `area` (the dust/scratch/blemish feature
+  described above) is ever ported, `flesh` becomes a real, required
+  dependency *there*, not of the tone stage.
+
+Total `analyzeAutoTone` scope is now a settled number, not a range: the core
+166-function chain plus `citras`'s confirmed apply-time code (218 functions) —
+**384 functions / 157,822 bytes / 879 indirect calls total**. The
+`flesh`-inclusive ceiling this doc's earlier version left open (~751
+functions) does not apply.
 
 ## One discrepancy from this same scoping pass — RESOLVED
 

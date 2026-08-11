@@ -3,7 +3,8 @@
 **This document is meant to be edited in place as work lands, not
 rewritten.** When something moves from "not done" to "done": cut its row
 from §2, add it to §1 with the same evidence links, and update the TL;DR.
-Last touched: 2026-08-11 (Phase 2 of the `analyzeAutoTone` port, mid-`dra`).
+Last touched: 2026-08-11 (Phase 2 of the `analyzeAutoTone` port — all six
+tone subsystems now done; Phase 3 next).
 
 Scope is the **colour rendering pipeline** specifically — raw sensor data to
 final sRGB. Capture, transport, hardware safety and the app UI have their own
@@ -17,8 +18,8 @@ doc tracks progress toward that, not just one bug fix. Read in this order:
 1. **`docs/66-autotone-port-plan.md`** — the current, actively-maintained
    execution plan for the in-progress `analyzeAutoTone` port, with a live
    phase-status table and exact resume instructions for whatever's
-   incomplete right now (`dra`, as of last touch). Start there, not here,
-   if you're resuming that specific work.
+   incomplete right now (Phase 3, `citras`-apply, as of last touch). Start
+   there, not here, if you're resuming that specific work.
 2. **`docs/67-re-playbook.md`** — reusable patterns from this port that
    apply to the *next* one. Written with `area` (dust/scratch removal,
    likely "Digital Ice") specifically in mind, since that's the largest
@@ -44,14 +45,15 @@ before/after test, not assumed. The real fix is a large reverse-engineering
 project, currently being scoped (§3).
 
 **Update, 2026-08-11**: the real port is now well underway, not just
-scoped. The orchestration shell and 5 of 6 tone subsystems (`cna`,
-`toneHelper`, `contrast`, `ast`, `citras`-analyze) are fully ported and
-Unicorn-verified bit-exact against the real DLL. `dra`, the 6th, is in
-progress — see `docs/66` for exact status and how to resume it. None of
-this is wired into the render path yet by design (see §2's first row);
-that happens only at the final assembled-verification phase, deliberately
-last, matching how Shasta's port found its real bugs only once everything
-ran together rather than leaf-by-leaf.
+scoped. The orchestration shell and **all six** tone subsystems (`cna`,
+`dra`, `toneHelper`, `contrast`, `ast`, `citras`-analyze) are fully ported
+and Unicorn-verified bit-exact against the real DLL — Phase 2 is closed.
+What's left is `citras`-apply (Phase 3, 218 fn / 86,062 B) and the mandatory
+assembled verification + render-path swap (Phase 6) — see `docs/66` for
+exact status. None of this is wired into the render path yet by design (see
+§2's first row); that happens only at the final assembled-verification
+phase, deliberately last, matching how Shasta's port found its real bugs
+only once everything ran together rather than leaf-by-leaf.
 
 Separately, a scoping pass to find that fix's true size surfaced **14 more
 capabilities** that are real, mostly-executing features of the scanner —
@@ -87,7 +89,7 @@ findings playbook waiting for whoever starts it (`docs/67`).
 
 | Gap | Unlocks | Status | Research |
 |---|---|---|---|
-| `ColorNegativePath::analyzeAutoTone` (`0x100fb730`) | **The actual fix for the shadow crush.** Confirmed the cause — the live stand-in clips 8.65% of its own toned output under code 257, and the crush measurably survives a correct FUGC (39.21%→39.19% shadow-region clipping, no real change) | **In progress, not a scoping exercise anymore.** Scope settled at 384 fns / 157,822 bytes / 879 indirect calls (not a range — `flesh` proven out of scope). Shell + 5/6 subsystems done and Unicorn-verified; `dra` in progress; `citras`-apply (Phase 3) and assembled verification + render-path swap (Phase 6) not started. Nothing wired into the render path yet — deliberate, happens last. | `docs/66` (live plan + status), `docs/63`, `docs/64`, `docs/reports/autotone-scope-2026-08-10/` (22 raw reports) |
+| `ColorNegativePath::analyzeAutoTone` (`0x100fb730`) | **The actual fix for the shadow crush.** Confirmed the cause — the live stand-in clips 8.65% of its own toned output under code 257, and the crush measurably survives a correct FUGC (39.21%→39.19% shadow-region clipping, no real change) | **In progress, not a scoping exercise anymore.** Scope settled at 384 fns / 157,822 bytes / 879 indirect calls (not a range — `flesh` proven out of scope). Shell + all 6 subsystems done and Unicorn-verified (Phase 2 closed 2026-08-11); `citras`-apply (Phase 3) and assembled verification + render-path swap (Phase 6) not started. Nothing wired into the render path yet — deliberate, happens last. | `docs/66` (live plan + status), `docs/63`, `docs/64`, `docs/reports/autotone-scope-2026-08-10/` (22 raw reports) |
 
 ### Real scanner features currently doing nothing
 

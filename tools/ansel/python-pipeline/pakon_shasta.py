@@ -572,6 +572,18 @@ SHASTA_ON_CN_RENDER_PATH = False
 # vendor/ansel/anselinstalldir/dataPathItems/. Nothing reads them yet.
 # ast and citras have no dataPathItems directory in a full install, so those
 # two are not DPI-file-driven.
+#
+# dra's find("lighting") branch, resolved by live Unicorn execution against
+# the real DLL: AnsDraCapabilityImpl::analyze's guarded find("lighting") at
+# 0x1022b2e5->0x1022b35b does NOT fail fatally on a miss. A miss CONTINUES to
+# the LUT-building path (0x1022b3b0) -- "lighting" is not in CN-Enhanced's
+# declared capability list, so this fires on every real negative, and it is a
+# harmless no-op. The branch flag at 0x1022b327 does not even encode
+# found-vs-not-found -- it encodes whether find() raised an INTERNAL error (a
+# value-size mismatch or a heap-allocation failure); a clean miss and a clean
+# size-matching hit both take the same continue path. Any port of dra must
+# implement "miss continues" from the start (see tools/ansel/pipeline/shasta.go
+# for the mirrored Go-side note).
 AUTO_TONE_PORTED = False
 
 # ShastaParams early scalars (ctor 0x100543b0 / dump 0x101280a0)

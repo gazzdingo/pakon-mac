@@ -118,11 +118,18 @@ const ShastaOnCnRenderPath = false
 // toneHelper, contrast, citras, sharpenAdjust, adaptSharp, blemish, date,
 // dust, scratch, redeye — i.e. toneHelper immediately after fugc, as here.
 //
-// (One lookup, AnsDraCapabilityImpl::analyze's guarded find("lighting") at
-// 0x1022b2e5→0x1022b314, whose miss is fatal at 0x1022b35b, cannot be
-// satisfied on this path at all — "lighting" is not in CN-Enhanced's declared
-// capability list — so that branch must not be taken for a negative. Worth
-// re-deriving before trusting any port of dra.)
+// CORRECTED, by live Unicorn execution against the real DLL, not by re-reading
+// disassembly: AnsDraCapabilityImpl::analyze's guarded find("lighting") at
+// 0x1022b2e5→0x1022b35b does NOT fail fatally on a miss. A miss CONTINUES,
+// landing 0x1022b3b0, the LUT-building path — "lighting" is not in
+// CN-Enhanced's declared capability list, so this fires on every real
+// negative, and it is a harmless no-op, not an abort. The branch flag at
+// 0x1022b327 does not even encode found-vs-not-found: it encodes whether
+// find() raised an INTERNAL error (a value-size mismatch or a heap-allocation
+// failure). A clean miss and a clean size-matching hit both take the same
+// continue path; only a genuine internal error aborts. Any port of dra must
+// implement this "miss continues" behaviour from the start — the previous
+// "miss is fatal" claim above was wrong and must not be replicated.
 //
 // DATA — the toneHelper file the earlier note could not find
 //

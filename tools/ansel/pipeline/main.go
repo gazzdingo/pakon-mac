@@ -10,6 +10,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -584,7 +585,15 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 			db := uint8(finalB * 255 / 4095)
 			bypassImg.Set(x, y, color.RGBA{dr, dg, db, 255})
 
-			srgbColor := IccRpd12ToSrgb8(rpd2pcs, srgb, []int{finalR, finalG, finalB})
+			// req.IccInput, not the depth-less entry point. -icc-input
+			// existed as a flag and as a RenderRequest field but nothing
+			// read it, so the two answers it selects between — u12 reaching
+			// every one of the mft2 input table's 4096 knots, or u8 reaching
+			// 256 of them because that is all PIL can hand lcms — rendered
+			// identically and the parity harness measured the difference as
+			// 0.00%. docs/62 §2.9.
+			srgbColor := IccRpd12ToSrgb8Depth(rpd2pcs, srgb,
+				[]int{finalR, finalG, finalB}, req.IccInput)
 			outImg.Set(x, y, color.RGBA{srgbColor[0], srgbColor[1], srgbColor[2], 255})
 			iccU8[y][x] = [3]uint8{srgbColor[0], srgbColor[1], srgbColor[2]}
 			sum[0] += float64(srgbColor[0])
@@ -612,17 +621,211 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 	return emit(outImg, nil)
 }
 
+// DefaultCoeffRelPath and defaultAnselRelPath are repo-relative, and are
+// found by searching UPWARD from the working directory rather than being
+// absolute.
+//
+// The absolute paths that used to be baked in here
+// (/Users/guy/Downloads/Pakon Update 2/…) meant this binary only ran on one
+// machine and only from one directory, and the relative
+// "../../../backups/eeprom-i2c/eeprom_52.bin" only resolved when the process
+// happened to be started from tools/ansel/pipeline. The harness builds this
+// into a scratch dir and runs it from the repo root, so neither worked.
+const (
+	DefaultCoeffRelPath = "backups/eeprom-i2c/eeprom_52.bin"
+	defaultAnselRelPath = "vendor/ansel/anselinstalldir/dataPathItems"
+)
+
+// findUpward walks up from the working directory looking for rel.
+func findUpward(rel string) (string, bool) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", false
+	}
+	for {
+		cand := filepath.Join(dir, rel)
+		if _, err := os.Stat(cand); err == nil {
+			return cand, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+// ResolveCoeffPath returns the stage-2 coefficient store to read.
+func ResolveCoeffPath(flagVal string) (string, error) {
+	if flagVal != "" {
+		if _, err := os.Stat(flagVal); err != nil {
+			return "", fmt.Errorf("%s: %w", flagVal, err)
+		}
+		return flagVal, nil
+	}
+	if p, ok := findUpward(DefaultCoeffRelPath); ok {
+		return p, nil
+	}
+	return "", fmt.Errorf(
+		"no -coeffs given and %s is not above the working directory (%s). "+
+			"The stage-2 polynomial is this unit's calibration; there is no "+
+			"generic fallback to guess at", DefaultCoeffRelPath, mustGetwd())
+}
+
+// ResolveAnselRoot returns the vendor dataPathItems directory.
+func ResolveAnselRoot(flagVal string) (string, error) {
+	if flagVal != "" {
+		if _, err := os.Stat(flagVal); err != nil {
+			return "", fmt.Errorf("%s: %w", flagVal, err)
+		}
+		return filepath.Clean(flagVal), nil
+	}
+	if p, ok := findUpward(defaultAnselRelPath); ok {
+		return p, nil
+	}
+	return "", fmt.Errorf(
+		"no -ansel-root given and %s is not above the working directory (%s)",
+		defaultAnselRelPath, mustGetwd())
+}
+
+func mustGetwd() string {
+	d, err := os.Getwd()
+	if err != nil {
+		return "?"
+	}
+	return d
+}
+
+// readFrame reads the input pixels. A non-zero h/w means -raw-in: a
+// headerless (h,w,3) little-endian u16 blob on the capture's own grid.
+// Otherwise the input is a TIFF.
+func readFrame(path string, rawH, rawW int) (*frame, error) {
+	if rawH > 0 && rawW > 0 {
+		px, err := ReadRawU16(path, rawH, rawW)
+		if err != nil {
+			return nil, fmt.Errorf("-raw-in: %w", err)
+		}
+		fr := &frame{h: rawH, w: rawW, px: make([][][3]int, rawH)}
+		for y := 0; y < rawH; y++ {
+			fr.px[y] = make([][3]int, rawW)
+			for x := 0; x < rawW; x++ {
+				fr.px[y][x] = [3]int{
+					int(px[y][x][0]), int(px[y][x][1]), int(px[y][x][2])}
+			}
+		}
+		return fr, nil
+	}
+
+	inFile, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer inFile.Close()
+
+	img, err := tiff.Decode(inFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode TIFF: %w", err)
+	}
+	b := img.Bounds()
+	fr := &frame{h: b.Dy(), w: b.Dx(), px: make([][][3]int, b.Dy())}
+	for y := 0; y < fr.h; y++ {
+		fr.px[y] = make([][3]int, fr.w)
+		for x := 0; x < fr.w; x++ {
+			r, g, bl, _ := img.At(b.Min.X+x, b.Min.Y+y).RGBA()
+			fr.px[y][x] = [3]int{int(r), int(g), int(bl)}
+		}
+	}
+	return fr, nil
+}
+
+// parseHW parses the "h,w" of -raw-in.
+func parseHW(s string) (int, int, error) {
+	parts := strings.Split(s, ",")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("want \"h,w\", got %q", s)
+	}
+	h, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || h <= 0 {
+		return 0, 0, fmt.Errorf("%q is not a positive height", parts[0])
+	}
+	w, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || w <= 0 {
+		return 0, 0, fmt.Errorf("%q is not a positive width", parts[1])
+	}
+	return h, w, nil
+}
+
 func main() {
 	if len(os.Args) == 1 {
 		// No args -> act as C-shared library, do nothing
 		return
 	}
 
+	// The flag surface IS the request. Every field the colour chain needs
+	// that cannot be recovered from the pixels has to arrive here explicitly
+	// — request.go's whole premise — so anything RenderRequest carries and a
+	// caller has to choose gets a flag. tools/pakon_parity.py drives all of
+	// these; a rebuild of this file that leaves any of them out does not fail
+	// loudly, it fails as "flag provided but not defined" and the harness
+	// cannot run at all.
 	modelFlag := flag.String("model", "f135", "scanner model (f135 or f235)")
+	dxFlag := flag.String("dx", "96-1", "DX film code, \"PART1[-PART2]\". "+
+		"Selects the film tables the way the vendor's own .map files do "+
+		"(maps.go:SelectFilm). An absent part 2 is -1, \"explicitly unknown\", "+
+		"which is legal only because sba.map / fugc-rgb-lutMap.map carry X "+
+		"cells for it.")
+	isoFlag := flag.Int("iso", 0, "film speed. 0 is \"explicitly unknown\", "+
+		"legal for the same reason as an absent DX part 2.")
+	filmPathFlag := flag.String("film-path", "ColNeg", "ColNeg | BnW | "+
+		"IMPORTED | POSITIVE. Selects fcn.1000d880's matrix (filmClass); it "+
+		"has no wildcard cell in any vendor selector, so there is nothing to "+
+		"fall back to and POSITIVE is refused (F135ReversalPorted).")
+	anselPathFlag := flag.String("ansel-path", "CN-Premium", "vendor path name "+
+		"(CN-Premium, CN-Fps, DC-Premium…). sba.map / shasta.map / profile.map "+
+		"key on it and it has no wildcard cell.")
+	sourceTypeFlag := flag.Int("source-type", 1, "vendor source type, the "+
+		"fourth key SelectFilm matches on.")
+	coeffSourceFlag := flag.String("coeff-source", string(CoeffEeprom),
+		"eeprom | registry — which stage-2 coefficient store to read. There is "+
+			"no \"auto\": they differ by 14–57 RPD codes at (4000,4000,4000) "+
+			"and they answer different questions. docs/62 §2.11.")
+	coeffPathFlag := flag.String("coeffs", "", "path to the coefficient store. "+
+		"Empty searches upward from the working directory for "+
+		DefaultCoeffRelPath+".")
+	filmBaseFlag := flag.String("film-base", "", "the ROLL's film base in "+
+		"linear 12-bit codes, \"r,g,b\" — FindDmin over the whole strip, not "+
+		"this frame. It is a property of the stock (docs/62 §2.6); measuring "+
+		"it per frame makes the same negative render differently depending on "+
+		"which frames you exported. 0 is FindDmin's \"no valid Dmin\" sentinel "+
+		"and is refused. Empty requires -film-base-from-frame.")
+	filmBaseFromFrameFlag := flag.Bool("film-base-from-frame", false,
+		"measure the film base from this frame alone. The explicit, logged "+
+			"opt-out for offline analysis with no roll context; never correct "+
+			"for the app.")
+	stageOrderFlag := flag.String("stage-order", string(OrderFugcShasta),
+		"fugc-shasta (the VENDOR's order, established from "+
+			"AnsCnPremiumPath::exportParameterPack) | shasta-fugc (what "+
+			"pakon_ansel.py:render_scene does). They do not commute.")
+	iccInputFlag := flag.String("icc-input", string(IccU12),
+		"u8 | u12 — the precision the RPD codes reach the ICC transform at. "+
+			"The RPD-side profile's mft2 input table has 4096 entries, so u12 "+
+			"reaches every knot. u8 exists to put Go on Python's footing for "+
+			"the parity harness. docs/62 §2.9.")
 	fugcModeFlag := flag.Int("fugc-mode", 1, "FUGC mode (Cap +0x60e8). 2 takes "+
 		"the metrics/plane path at 0x101fc7e6; anything else takes setLutInfo "+
 		"at 0x101f82c0, which is what pakon_ansel.py defaults to and what "+
 		"docs/58 §7 lists as ported. docs/62 §2.2.")
+	anselRootFlag := flag.String("ansel-root", "", "the vendor's "+
+		"anselinstalldir/dataPathItems. The F-X35 COM SERVER root it sits "+
+		"under is derived from it (two levels up) and is where "+
+		"Config/ColorCorrection is read from. Empty uses the in-repo copy "+
+		"under vendor/ansel, found by searching upward from the working "+
+		"directory.")
+	rawInFlag := flag.String("raw-in", "", "read the input as a headerless "+
+		"(h,w,3) little-endian u16 blob of the given \"h,w\" instead of "+
+		"decoding a TIFF. This is the CALIBRATED 14-bit capture slice on the "+
+		"capture's OWN grid — before unsquash, before rot90 — so the CCD axis "+
+		"is x, which is what FindDmin's window is stated in.")
 	tapFlag := flag.String("tap-dir", "", "write one raw array per pipeline "+
 		"stage here (poly/inv/balance/fugc/shasta/ansel/icc) plus a "+
 		"manifest.json, for tools/pakon_parity.py or for looking at a stage "+
@@ -630,58 +833,96 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 
-	if len(args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-model f135|f235] <input.tiff> <output.png>\n", os.Args[0])
+	// An output PNG is optional when -tap-dir is given: the parity harness
+	// wants the stages, not a picture, and making it name a PNG it will not
+	// read would be a lie about what this run produces.
+	minArgs := 2
+	usageTail := "<input> <output.png>"
+	if *tapFlag != "" {
+		minArgs = 1
+		usageTail = "<input> [output.png]"
+	}
+	if len(args) < minArgs {
+		fmt.Fprintf(os.Stderr, "Usage: %s [flags] %s\n", os.Args[0], usageTail)
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
-
 	inputPath := args[0]
-	outputPath := args[1]
+	outputPath := ""
+	if len(args) > 1 {
+		outputPath = args[1]
+	}
 
-	inFile, err := os.Open(inputPath)
+	dx1, dx2, err := parseDXString(*dxFlag)
 	if err != nil {
-		log.Fatalf("failed to open input file: %v", err)
-	}
-	defer inFile.Close()
-
-	img, err := tiff.Decode(inFile)
-	if err != nil {
-		log.Fatalf("failed to decode TIFF: %v", err)
-	}
-	bounds := img.Bounds()
-	width := bounds.Dx()
-	height := bounds.Dy()
-
-	fr := &frame{
-		h:  height,
-		w:  width,
-		px: make([][][3]int, height),
+		log.Fatalf("-dx: %v", err)
 	}
 
-	for y := 0; y < height; y++ {
-		fr.px[y] = make([][3]int, width)
-		for x := 0; x < width; x++ {
-			r, g, b, _ := img.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
-			fr.px[y][x] = [3]int{int(r), int(g), int(b)}
+	var filmBase [3]int
+	if *filmBaseFlag != "" {
+		if filmBase, err = ParseTriple(*filmBaseFlag); err != nil {
+			log.Fatalf("-film-base: %v", err)
 		}
 	}
 
-	req := &RenderRequest{
-		Model:       *modelFlag,
-		FilmPath:    "ColNeg",
-		DXPart1:     96,
-		DXPart2:     -1,
-		AnselPath:   "CN-Premium",
-		CoeffSource: CoeffEeprom,
-		CoeffPath:   "../../../backups/eeprom-i2c/eeprom_52.bin",
-		StageOrder:  OrderFugcShasta,
-		IccInput:    IccU12,
-		FugcMode:    *fugcModeFlag,
-		TapDir:      *tapFlag,
+	// -raw-in decides both how the pixels are read and which axis of the grid
+	// indexes CCD pixels, because those are the same fact. A raw blob is on
+	// the capture's own grid (x); a TIFF has been through
+	// pakon_decode.to_frame_image, which rot90s it (y). Getting this wrong
+	// does not error, it silently drops FindDmin's window — see dmin.go.
+	ccdAxis := CcdAxisY
+	rawH, rawW := 0, 0
+	if *rawInFlag != "" {
+		if rawH, rawW, err = parseHW(*rawInFlag); err != nil {
+			log.Fatalf("-raw-in: %v", err)
+		}
+		ccdAxis = CcdAxisX
 	}
 
-	anselRoot := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/anselinstalldir/dataPathItems"
-	fx35Root := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER"
+	coeffPath, err := ResolveCoeffPath(*coeffPathFlag)
+	if err != nil {
+		log.Fatalf("-coeffs: %v", err)
+	}
+	anselRoot, err := ResolveAnselRoot(*anselRootFlag)
+	if err != nil {
+		log.Fatalf("-ansel-root: %v", err)
+	}
+	// <root>/anselinstalldir/dataPathItems -> <root>, which is the F-X35 COM
+	// SERVER directory Config/ColorCorrection hangs off.
+	fx35Root := filepath.Dir(filepath.Dir(anselRoot))
+
+	req := &RenderRequest{
+		Model:             *modelFlag,
+		FilmPath:          *filmPathFlag,
+		DXPart1:           dx1,
+		DXPart2:           dx2,
+		ISO:               *isoFlag,
+		AnselPath:         *anselPathFlag,
+		SourceType:        *sourceTypeFlag,
+		CoeffSource:       CoeffSource(*coeffSourceFlag),
+		CoeffPath:         coeffPath,
+		FilmBase:          filmBase,
+		FilmBaseFromFrame: *filmBaseFromFrameFlag,
+		CcdAxis:           ccdAxis,
+		StageOrder:        StageOrder(*stageOrderFlag),
+		IccInput:          IccInputDepth(*iccInputFlag),
+		FugcMode:          *fugcModeFlag,
+		TapDir:            *tapFlag,
+	}
+
+	// Validate BEFORE the pixels are read, not after. Every refusal in
+	// request.go is a statement about the request, not about the image, so
+	// there is no reason to decode a frame first — and reporting "-stage-order
+	// banana" only after a TIFF decode has already failed on an unrelated
+	// problem hides the flag error behind an irrelevant one.
+	if err := req.Validate(); err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	fr, err := readFrame(inputPath, rawH, rawW)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
 
 	eng, err := OpenEngine(fx35Root, anselRoot, req)
 	if err != nil {
@@ -693,6 +934,10 @@ func main() {
 	logf := func(format string, a ...any) { fmt.Fprintf(os.Stderr, format, a...) }
 	
 	emit := func(out, bypass *image.RGBA) error {
+		if outputPath == "" {
+			// -tap-dir with no output PNG: the stages ARE the product.
+			return nil
+		}
 		outF, err := os.Create(outputPath)
 		if err != nil {
 			return err

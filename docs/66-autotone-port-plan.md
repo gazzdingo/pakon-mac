@@ -23,7 +23,7 @@ port has already learned that will transfer to that one.
 | 0d/0e | `contrast` + `ast` recon | done |
 | 1 | Orchestration shell (`pakon_autotone.py`) | done, Unicorn-golden |
 | 2a | `cna` subsystem | done, Unicorn-golden, all flags `True` |
-| 2b | `dra` subsystem | **in progress** — see below |
+| 2b | `dra` subsystem | **done**, Unicorn-golden, all flags `True` |
 | 2c | `toneHelper` subsystem | done, Unicorn-golden (2 flags intentionally `False`, see note) |
 | 2d | `contrast` subsystem | done, Unicorn-golden (1 flag intentionally `False`, see note) |
 | 2e | `ast` subsystem | done, Unicorn-golden (2 flags intentionally `False`, see note) |
@@ -31,7 +31,13 @@ port has already learned that will transfer to that one.
 | 3 | `citras`-apply (218 fn / 86,062 B) | not started |
 | 4 | `flesh` port | n/a — Phase 0b ruled it out of scope |
 | 5 | `docs/64` dei row cleanup | done |
-| 6 | Assembled verification + render-path swap + acceptance test | not started, blocked on 2b + 3 |
+| 6 | Assembled verification + render-path swap + acceptance test | not started, blocked on 3 |
+
+**Phase 2 is fully closed** (2026-08-11) — all six tone subsystems ported
+and Unicorn-verified bit-exact against the real DLL: shell +
+`cna`/`dra`/`toneHelper`/`contrast`/`ast`/`citras`-analyze. What's left for
+the whole port is Phase 3 (`citras`-apply) and Phase 6 (assembly + render
+swap + acceptance test) — nothing else.
 
 **Intentional `False` flags are not gaps.** `TONEHELPER_ACQUIRE_IMAGE_PORTED`,
 `TONEHELPER_IMAGE_HISTOGRAM_PORTED`, `CONTRAST_SELECT_DPI_TREE_PORTED`,
@@ -39,41 +45,32 @@ port has already learned that will transfer to that one.
 paths on `AnsCnEnhancedPath`, documented in their own file's comment next to
 the flag. Don't "finish" these without re-reading why they're `False` first.
 
-### `dra` — what's actually left (Phase 2b)
+### `dra` — closed out (Phase 2b)
 
-As of this write-up, `tools/ansel/python-pipeline/pakon_dra.py` has these
-flags `True`: entry points, lighting branch/dispatch, DPI/TTC parse, results
-layout, rebin, lum histogram, compose-tone, cumulative bounds, eff-bounds,
-`keepMidPtLut`, TTC slope, **and** — new — `validate_params`, `alloc`,
-`generateLut`, `analyze_image`, `analyze_hist`. A background agent has live
-end-to-end matches for `analyze_hist` against the real DLL (identity tone
-LUT, lum-only, edge-only, non-identity tone LUT, spiky histograms — all bit
-exact) and for `analyze_image`.
+`tools/ansel/python-pipeline/pakon_dra.py` has every flag `True`: entry
+points, lighting branch/dispatch, DPI/TTC parse, results layout, rebin, lum
+histogram, compose-tone, cumulative bounds, eff-bounds, `keepMidPtLut`, TTC
+slope, `validate_params`, `alloc`, `generate_lut`, and both `analyze`
+overloads — run from their **true entry points** (`0x1022af20`/`0x1022b530`)
+under Unicorn, not a mid-function slice. `pakon_dra.py` now defines the
+umbrella `DRA_ANALYZE_PORTED = True`, and `pakon_autotone.py` imports it
+(`from pakon_dra import DRA_ANALYZE_PORTED`) rather than restating it — that
+import was missing when the subsystem first landed (the file had a stale
+hardcoded `False` with a comment claiming it was imported when it wasn't);
+fixed directly once caught. `pakon_autotone_shell_golden.py`'s full suite
+(including the not-found-fallback and `cap+0xf` checks across all seven
+capability slots) passes with `dra` wired in live. Verify with:
 
-**What's not done yet**: `pakon_autotone.py:324` still hardcodes
-`DRA_ANALYZE_PORTED = False` instead of importing it — every other subsystem
-follows the pattern `from pakon_dra import DRA_ANALYZE_PORTED  # noqa: E402`
-(see how `cna`/`toneHelper`/`ast`/`citras` are wired at lines 284, 349, 377,
-386). `pakon_dra.py` itself has no umbrella `DRA_ANALYZE_PORTED` constant
-yet either — only the two split `DRA_ANALYZE_IMAGE_PORTED` /
-`DRA_ANALYZE_HIST_PORTED`. The file's own trailer `print()` block (bottom of
-`main()`) still labels `GENERATE_LUT`/`ALLOC`/`VALIDATE_PARAMS`/
-`ANALYZE_IMAGE`/`ANALYZE_HIST` as "NOT ported" even though the flags above
-say `True` — that's stale self-reporting text, not a real gap, but fix it
-when you touch this file so it doesn't mislead the next reader.
+```
+PYTHONPATH=tools/ansel/python-pipeline python3 tools/ansel/python-pipeline/pakon_dra_golden.py
+PYTHONPATH=tools/ansel/python-pipeline python3 tools/ansel/python-pipeline/pakon_autotone_shell_golden.py
+```
 
-**To resume**: don't restart from scratch. Check whether the background
-agent (dispatched as "Assemble dra's generateLut and finish the port") is
-still running; if it finished, read its final report before touching the
-file. If it's gone and the file is in the state described above, the
-remaining work is: (1) add `DRA_ANALYZE_PORTED = DRA_ANALYZE_IMAGE_PORTED and
-DRA_ANALYZE_HIST_PORTED` (or equivalent) to `pakon_dra.py`, only if both are
-genuinely verified — check `pakon_dra_golden.py` and
-`pakon_dra_lighting_golden.py` actually exercise both overloads end-to-end,
-not just their sub-pieces in isolation; (2) wire it into
-`pakon_autotone.py:324`; (3) run the full `pakon_autotone_shell_golden.py`
-suite to confirm the assembled shell still passes with `dra` now live instead
-of stubbed.
+One incidental finding from this pass, not a port bug: a synthetic
+out-of-range pixel test (`[-2000, 4000]`) triggered genuine heap-adjacent
+out-of-bounds histogram indexing **in the real DLL itself** — vendor
+undefined behavior, not something the port introduced or needs to
+replicate. Documented in the test, not "fixed."
 
 ## Context (why this port exists)
 

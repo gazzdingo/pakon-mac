@@ -13,7 +13,12 @@ status elsewhere (`docs/54`, `docs/59`) and aren't repeated here.
 ## 0. If you're picking this up cold
 
 The end goal is a **full native port of the F-135's colour science** — this
-doc tracks progress toward that, not just one bug fix. Read in this order:
+doc tracks progress toward that, not just one bug fix. If you have zero
+prior context on this project at all (don't know what a Pakon F-135 is,
+haven't seen this repo before), read **`docs/68-handover.md` first** — it
+explains the whole project, the hardware-safety rules, and a real gotcha
+about this repo having a public/private remote split. Then come back here.
+Otherwise, read in this order:
 
 1. **`docs/66-autotone-port-plan.md`** — the current, actively-maintained
    execution plan for the in-progress `analyzeAutoTone` port, with a live

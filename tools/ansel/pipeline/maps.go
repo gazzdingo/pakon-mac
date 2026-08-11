@@ -158,13 +158,18 @@ func tokenMatches(tok string, value int, haveValue bool) bool {
 	return haveValue && n == value
 }
 
-// SelectSbaKey walks sba.map's rules in order and returns the first match.
-// Selector columns are: _AnselPath_ scannerName sourceType productCode
-// genCode _AnselImageSize_, then the key.
-func SelectSbaKey(mapPath, anselPath string, sourceType int, dx DX) (string, error) {
+// SelectSbaKey walks sba.map's rules in order and returns the first match,
+// together with the rule that matched. Selector columns are: _AnselPath_
+// scannerName sourceType productCode genCode _AnselImageSize_, then the key.
+//
+// The matched rule is returned rather than discarded because it is the only
+// thing that distinguishes "this stock's own dpi was selected" from "the
+// wildcard row answered because there was nothing to select on". Both are
+// legitimate vendor outcomes; they are not the same claim about the frame.
+func SelectSbaKey(mapPath, anselPath string, sourceType int, dx DX) (string, string, error) {
 	f, err := os.Open(mapPath)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
@@ -202,17 +207,17 @@ func SelectSbaKey(mapPath, anselPath string, sourceType int, dx DX) (string, err
 		if !tokenMatches(genTok, dx.Part2, dx.Part2 >= 0) {
 			continue
 		}
-		return key, nil
+		return key, strings.Join(fs, " "), nil
 	}
-	return "", fmt.Errorf("%s: no rule matched", mapPath)
+	return "", "", fmt.Errorf("%s: no rule matched", mapPath)
 }
 
 // SelectShastaKey walks shasta.map. Columns: _AnselPath_ _AnselToneStrategy_
 // _AnselToneAggrSetting_ _AnselImageSize_, then the key.
-func SelectShastaKey(mapPath, anselPath string) (string, error) {
+func SelectShastaKey(mapPath, anselPath string) (string, string, error) {
 	f, err := os.Open(mapPath)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer f.Close()
 	sc := bufio.NewScanner(f)
@@ -246,22 +251,182 @@ func SelectShastaKey(mapPath, anselPath string) (string, error) {
 		if fs[1] != "any" {
 			continue
 		}
-		return fs[4], nil
+		return fs[4], strings.Join(fs, " "), nil
 	}
-	return "", fmt.Errorf("%s: no rule matched", mapPath)
+	return "", "", fmt.Errorf("%s: no rule matched", mapPath)
 }
 
-// SelectFugcLut walks fugc-lutMap.map. Two tables: film (dx1, dx2, iso) →
+// fugcLutMapByMode is what AnsFugcMapping (PakonIMAu.dll @ 0x101fb140)
+// selects on: the `mode` field of fugc/fugc-defaultParams.dpi.
+//
+// fugc-lutMap.map is NOT one of the options. It is the 08/28/2002 original
+// both variants were split out of, and nothing in the DLL selects it. This
+// pipeline opened it anyway until now, which was the single largest numeric
+// divergence between the Go and Python engines: the shipped dpi says
+// `mode = RGB`, the rgb map (10/24/2003) has every per-film rule commented
+// out so every stock falls through to its `film = X X X 2.25` catch-all, and
+// that resolves to NoShift_fugc-generic0225.lut — which differs from the
+// fugc-generic0225.lut the 2002 map hands back in 705 rows, by up to 60
+// codes, over indices 237…943. For ISO 100/200 and ~100 other DX codes the
+// 2002 map also picks a different contrast class outright.
+//
+// Cite: tools/ansel/python-pipeline/pakon_ansel_maps.py:fugc_lut_map_path.
+var fugcLutMapByMode = map[string]string{
+	"RGB":     "fugc-rgb-lutMap.map",
+	"NEUTRAL": "fugc-neutral-lutMap.map",
+}
+
+// FugcLutMapPath resolves (map file, mode) the way AnsFugcMapping does.
+// There is no default: if the dpi carries no `mode`, there is nothing to
+// select on and this refuses rather than falling back to the 2002 file.
+func FugcLutMapPath(items string) (string, string, error) {
+	dpi := filepath.Join(items, "fugc", "fugc-defaultParams.dpi")
+	f, err := os.Open(dpi)
+	if err != nil {
+		return "", "", err
+	}
+	defer f.Close()
+
+	mode := ""
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Text()
+		if i := strings.Index(line, "#"); i >= 0 {
+			line = line[:i]
+		}
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "=") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if strings.EqualFold(strings.TrimSpace(parts[0]), "mode") {
+			mode = strings.ToUpper(strings.TrimSpace(parts[1]))
+			break
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return "", "", err
+	}
+	if mode == "" {
+		return "", "", fmt.Errorf(
+			"%s: no 'mode =' field. AnsFugcMapping (0x101fb140) selects the "+
+				"FUGC lutMap on it; without it there is nothing to select on",
+			dpi)
+	}
+	name, ok := fugcLutMapByMode[mode]
+	if !ok {
+		return "", "", fmt.Errorf("%s: mode = %q is not RGB or NEUTRAL", dpi, mode)
+	}
+	path := filepath.Join(items, "fugc", name)
+	if st, statErr := os.Stat(path); statErr != nil || st.IsDir() {
+		return "", "", fmt.Errorf("%s (selected by mode = %s): %v", path, mode, statErr)
+	}
+	return path, mode, nil
+}
+
+// LoadFugcATableDmin reads the `aTableDmin` header of a shipped fugc-*.lut.
+// It is analyze's +0x60f8 word (Cap +0xe0). Every file in this install
+// carries 500 500 500, which is why hardcoding it was survivable — but it is
+// a per-file field and reading it is one line.
+func LoadFugcATableDmin(path string) ([3]int, error) {
+	dmin := [3]int{500, 500, 500}
+	f, err := os.Open(path)
+	if err != nil {
+		return dmin, err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Text()
+		if i := strings.Index(line, "#"); i >= 0 {
+			line = line[:i]
+		}
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "=") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if !strings.EqualFold(strings.TrimSpace(parts[0]), "aTableDmin") {
+			continue
+		}
+		fs := strings.Fields(parts[1])
+		if len(fs) < 3 {
+			continue
+		}
+		var out [3]int
+		for i := 0; i < 3; i++ {
+			v, cerr := strconv.Atoi(fs[i])
+			if cerr != nil {
+				return dmin, fmt.Errorf("%s: aTableDmin %q: %w", path, fs[i], cerr)
+			}
+			out[i] = v
+		}
+		return out, nil
+	}
+	return dmin, sc.Err()
+}
+
+// LoadAfilmAimDmin reads `aFilmAimDmin` from fugc-defaultParams.dpi — Cap
+// +0x12, the aim the 0x101fc3c4 policy branch falls back to. Cite the copy
+// into Cap at 0x10118380.
+func LoadAfilmAimDmin(items string) ([3]int, error) {
+	aim := [3]int{500, 1000, 1000}
+	dpi := filepath.Join(items, "fugc", "fugc-defaultParams.dpi")
+	f, err := os.Open(dpi)
+	if err != nil {
+		return aim, err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Text()
+		if i := strings.Index(line, "#"); i >= 0 {
+			line = line[:i]
+		}
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "=") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if !strings.EqualFold(strings.TrimSpace(parts[0]), "aFilmAimDmin") {
+			continue
+		}
+		fs := strings.Fields(parts[1])
+		if len(fs) < 3 {
+			continue
+		}
+		var out [3]int
+		for i := 0; i < 3; i++ {
+			v, cerr := strconv.Atoi(fs[i])
+			if cerr != nil {
+				return aim, fmt.Errorf("%s: aFilmAimDmin %q: %w", dpi, fs[i], cerr)
+			}
+			out[i] = v
+		}
+		return out, nil
+	}
+	return aim, sc.Err()
+}
+
+// SelectFugcLut walks the selected fugc lutMap. Two tables: film (dx1, dx2, iso) →
 // contrast, then contrast → LUT filename. Both first-match, and the ISO rules
 // come first, so an ISO 400 stock takes contrast 2.25 whatever its DX is.
-func SelectFugcLut(mapPath string, dx DX) (float64, string, error) {
+//
+// It also returns the film row that matched. Every shipped lutMap ends with a
+// `# Default` row of `film = X X X <contrast>`, so a request that carries no
+// DX and no ISO is answered by the vendor's own catch-all rather than by
+// anything this port invents — and on fugc-rgb-lutMap.map, which `mode = RGB`
+// selects, that catch-all is the ONLY live row: every per-film rule in it is
+// commented out. On that map the ISO cannot change the outcome for any stock.
+func SelectFugcLut(mapPath string, dx DX) (float64, string, string, error) {
 	f, err := os.Open(mapPath)
 	if err != nil {
-		return 0, "", err
+		return 0, "", "", err
 	}
 	defer f.Close()
 
 	contrast := -1.0
+	rule := ""
 	lutByContrast := map[string]string{}
 	var order []string
 
@@ -295,6 +460,7 @@ func SelectFugcLut(mapPath string, dx DX) (float64, string, error) {
 			}
 			if c, err := strconv.ParseFloat(fs[3], 64); err == nil {
 				contrast = c
+				rule = "film = " + strings.Join(fs, " ")
 			}
 		case "contrast":
 			if len(fs) != 2 {
@@ -305,14 +471,14 @@ func SelectFugcLut(mapPath string, dx DX) (float64, string, error) {
 		}
 	}
 	if contrast < 0 {
-		return 0, "", fmt.Errorf("%s: no film rule matched", mapPath)
+		return 0, "", "", fmt.Errorf("%s: no film rule matched", mapPath)
 	}
 	for _, k := range order {
 		if c, err := strconv.ParseFloat(k, 64); err == nil && c == contrast {
-			return contrast, lutByContrast[k], nil
+			return contrast, lutByContrast[k], rule, nil
 		}
 	}
-	return contrast, "", fmt.Errorf("%s: contrast %.2f has no LUT", mapPath, contrast)
+	return contrast, "", rule, fmt.Errorf("%s: contrast %.2f has no LUT", mapPath, contrast)
 }
 
 // LoadSbaDpi resolves an sba key to its file and reads the preference fields.
@@ -380,22 +546,99 @@ func ParseDX(s string, iso int) (DX, error) {
 
 // FilmSelection is everything the .map files decide for one film stock.
 type FilmSelection struct {
-	DX       DX
-	Sba      *SbaDpi
-	Shasta   *ShastaDpi
-	FugcLut  string
-	Contrast float64
+	DX          DX
+	Sba         *SbaDpi
+	Shasta      *ShastaDpi
+	FugcLut     string
+	Contrast    float64
+	FugcMapFile string // which lutMap AnsFugcMapping selected
+	FugcMode    string // the fugc-defaultParams.dpi `mode` it selected on
+	FugcDmin    [3]int // aTableDmin, read from the selected .lut
+	FugcAim     [3]int // aFilmAimDmin, read from fugc-defaultParams.dpi
+
+	// Provenance. Every selection this made records the vendor rule that
+	// answered it, so a defaulted stock can be told apart from a chosen one
+	// at every layer above this — see Engine.Resolution.
+	SbaRule    string // the sba.map row that matched
+	ShastaRule string // the shasta.map row that matched
+	FugcRule   string // the lutMap `film =` row that matched
+
+	// DXDefaulted is true when no DX reached this selection and the vendor's
+	// wildcard rows are therefore what chose the stock. ISODefaulted likewise
+	// for the film speed. Neither is an error; both are claims the operator
+	// is entitled to see, because "Kodak Gold 400" and "whatever the map says
+	// when nobody told it" are different statements about their photograph.
+	DXDefaulted  bool
+	ISODefaulted bool
+}
+
+// DefaultNote is one line of prose for a selection that had no DX or no ISO to
+// go on, or "" when the operator's own selection drove it. It names the file
+// and the row, so the claim is checkable rather than reassuring.
+func (s *FilmSelection) DefaultNote() string {
+	if !s.DXDefaulted && !s.ISODefaulted {
+		return ""
+	}
+	missing := "DX"
+	if s.DXDefaulted && s.ISODefaulted {
+		missing = "DX or film speed"
+	} else if s.ISODefaulted {
+		missing = "film speed"
+	}
+	return fmt.Sprintf(
+		"no %s was supplied, so the vendor's own wildcard rows chose this "+
+			"stock: sba.map %q -> %s, and %s %q -> %s (contrast %.2f). This "+
+			"is the F-135's documented no-DX behaviour, not a measurement of "+
+			"the film in the gate",
+		missing, s.SbaRule, s.Sba.Key, s.FugcMapFile, s.FugcRule, s.FugcLut,
+		s.Contrast)
 }
 
 // SelectFilm runs the vendor's three selections for a DX number.
+//
+// NO DX IS A LEGITIMATE INPUT, BECAUSE THE VENDOR TREATS IT AS ONE. This used
+// to refuse outright, which broke every roll on a unit whose DX board has
+// never returned a code — and being stricter than the F-135's own software is
+// a deviation from "byte for byte the same as pakon's", not a safeguard. The
+// shipped selection tables carry the no-DX rows themselves:
+//
+//	sba/SbaDPI/sba.map      any any 1 any any any  -> ansel-sba-CN-default
+//	                        (sourceType 1 = ANS_NEGATIVE_35; productCode and
+//	                        genCode are `any`, which is exactly "no DX")
+//	shasta/shasta.map       any any any any        -> ansel-shasta-rpd
+//	fugc/fugc-rgb-lutMap.map  # Default
+//	                        film = X X X 2.25      -> NoShift_fugc-generic0225.lut
+//
+// So CN-default is not this port's guess. It is the row the vendor's own map
+// selects when nothing is known about the stock, which is why the install
+// ships sba-CN-default.dpi at all. On fugc-rgb-lutMap.map — the file
+// `mode = RGB` selects — every per-film rule is commented out and that `X X X`
+// row is the only live one, so a missing ISO cannot change the FUGC LUT for
+// any stock whatsoever.
+//
+// The defect this refusal was added to fix was never the defaulting. It was
+// that the defaulting was SILENT: the owner's film was rendered as a stock
+// nobody chose and nothing said so. The fix for silent is visible. So this
+// defaults exactly as the vendor does and marks the result DXDefaulted, and
+// every layer above — Engine.Resolution, roll.dx_source, the sidecar and the
+// Review rail — carries that through to the screen.
+//
+// What still refuses: a film path whose stage-2 branch is not ported
+// (RenderRequest.CheckFilmClass, POSITIVE/filmClass 2), and a film base of
+// zero (CheckFilmBase). Those cannot be defaulted from anything the vendor
+// ships. Cite: tools/ansel/python-pipeline/pakon_ansel_maps.py:select_ansel_files,
+// which makes the same selection with the same reasons recorded.
 func SelectFilm(items, dxSpec string, iso int, anselPath string, sourceType int) (*FilmSelection, error) {
+	dxDefaulted := strings.TrimSpace(dxSpec) == ""
+	isoDefaulted := iso <= 0
+
 	dx, err := ParseDX(dxSpec, iso)
 	if err != nil {
 		return nil, err
 	}
 
 	sbaDir := filepath.Join(items, "sba", "SbaDPI")
-	sbaKey, err := SelectSbaKey(filepath.Join(sbaDir, "sba.map"), anselPath, sourceType, dx)
+	sbaKey, sbaRule, err := SelectSbaKey(filepath.Join(sbaDir, "sba.map"), anselPath, sourceType, dx)
 	if err != nil {
 		return nil, err
 	}
@@ -405,7 +648,7 @@ func SelectFilm(items, dxSpec string, iso int, anselPath string, sourceType int)
 	}
 
 	shastaDir := filepath.Join(items, "shasta")
-	shastaKey, err := SelectShastaKey(filepath.Join(shastaDir, "shasta.map"), anselPath)
+	shastaKey, shastaRule, err := SelectShastaKey(filepath.Join(shastaDir, "shasta.map"), anselPath)
 	if err != nil {
 		return nil, err
 	}
@@ -414,22 +657,66 @@ func SelectFilm(items, dxSpec string, iso int, anselPath string, sourceType int)
 		return nil, err
 	}
 
-	contrast, fugcLut, err := SelectFugcLut(filepath.Join(items, "fugc", "fugc-lutMap.map"), dx)
+	fugcMap, fugcMode, err := FugcLutMapPath(items)
+	if err != nil {
+		return nil, err
+	}
+	contrast, fugcLut, fugcRule, err := SelectFugcLut(fugcMap, dx)
+	if err != nil {
+		return nil, err
+	}
+	fugcDmin, err := LoadFugcATableDmin(filepath.Join(items, "fugc", fugcLut))
+	if err != nil {
+		return nil, err
+	}
+	fugcAim, err := LoadAfilmAimDmin(items)
 	if err != nil {
 		return nil, err
 	}
 
-	return &FilmSelection{DX: dx, Sba: sba, Shasta: shasta, FugcLut: fugcLut, Contrast: contrast}, nil
+	return &FilmSelection{
+		DX: dx, Sba: sba, Shasta: shasta, FugcLut: fugcLut, Contrast: contrast,
+		FugcMapFile: filepath.Base(fugcMap), FugcMode: fugcMode,
+		FugcDmin: fugcDmin, FugcAim: fugcAim,
+		SbaRule: sbaRule, ShastaRule: shastaRule, FugcRule: fugcRule,
+		DXDefaulted: dxDefaulted, ISODefaulted: isoDefaulted,
+	}, nil
+}
+
+// DXLabel is the DX as prose. "none (defaulted)" rather than "-1--1": a
+// sentinel printed as a number reads like a film code, which is the one thing
+// this must not be mistaken for.
+func (s *FilmSelection) DXLabel() string {
+	if s.DX.Part1 < 0 {
+		return "none (defaulted)"
+	}
+	if s.DX.Part2 < 0 {
+		return strconv.Itoa(s.DX.Part1)
+	}
+	return fmt.Sprintf("%d-%d", s.DX.Part1, s.DX.Part2)
+}
+
+// ISOLabel is the film speed as prose, for the same reason.
+func (s *FilmSelection) ISOLabel() string {
+	if s.DX.Iso <= 0 {
+		return "none (defaulted)"
+	}
+	return strconv.Itoa(s.DX.Iso)
 }
 
 func (s *FilmSelection) Print() {
-	fmt.Printf("film: DX %d-%d ISO %d\n", s.DX.Part1, s.DX.Part2, s.DX.Iso)
-	fmt.Printf("  sba.map        -> %s (%s)  fpo=%v fpa=%v nbp=%d neuBtn=%d\n",
+	fmt.Fprintf(os.Stderr, "film: DX %s ISO %s\n", s.DXLabel(), s.ISOLabel())
+	if note := s.DefaultNote(); note != "" {
+		fmt.Fprintf(os.Stderr, "  DEFAULTED: %s\n", note)
+	}
+	fmt.Fprintf(os.Stderr, "  sba.map        -> %s (%s)  fpo=%v fpa=%v nbp=%d neuBtn=%d\n",
 		s.Sba.Key, s.Sba.File, s.Sba.Fpo, s.Sba.Fpa,
 		s.Sba.NeutralBalancePoint, s.Sba.NeutralButton)
-	fmt.Printf("  shasta.map     -> %s (%s)  black=%.0f gray=%.0f white=%.0f\n",
+	fmt.Fprintf(os.Stderr, "  shasta.map     -> %s (%s)  black=%.0f gray=%.0f white=%.0f\n",
 		s.Shasta.Key, s.Shasta.File, s.Shasta.Black, s.Shasta.MetricGray, s.Shasta.White)
-	fmt.Printf("  fugc-lutMap    -> contrast %.2f -> %s\n", s.Contrast, s.FugcLut)
+	fmt.Fprintf(os.Stderr, "  fugc mode=%s   -> %s -> contrast %.2f -> %s  "+
+		"aTableDmin=%v aFilmAimDmin=%v\n",
+		s.FugcMode, s.FugcMapFile, s.Contrast, s.FugcLut, s.FugcDmin, s.FugcAim)
 }
 
 // ShastaParams adapts the selected dpi to the tone stage's view of it.

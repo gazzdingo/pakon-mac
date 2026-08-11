@@ -205,7 +205,16 @@ class FugcLutMap:
         gen_code: int | None,
         iso: int | None,
     ) -> tuple[float, str]:
-        contrast = 2.25
+        """``Mapping::find`` @ ``0x101feea0`` — first match wins, no guessing.
+
+        Both lookups refuse rather than substitute. There is no invented
+        ``contrast = 2.25`` default and no nearest-key search: every shipped
+        map ends with a ``film = X X X <contrast>`` catch-all and lists a
+        ``contrast =`` row for every contrast it can produce, so a miss on
+        either means the file is not the map we think it is. Guessing there
+        silently renders every frame through the wrong tone LUT.
+        """
+        contrast: float | None = None
         for dx1, dx2, rule_iso, c in self.film_rules:
             if dx1 is not None and product_code != dx1:
                 continue
@@ -215,15 +224,22 @@ class FugcLutMap:
                 continue
             contrast = c
             break
+        if contrast is None:
+            raise LookupError(
+                f"{self.path}: no film rule matched "
+                f"(productCode={product_code}, genCode={gen_code}, iso={iso}) "
+                f"and the map has no 'film = X X X' catch-all. "
+                f"{len(self.film_rules)} rules parsed."
+            )
         name = self.contrast_to_lut.get(contrast)
         if name is None:
-            # nearest contrast key
-            keys = sorted(self.contrast_to_lut)
-            if not keys:
-                return contrast, "fugc-generic0225.lut"
-            best = min(keys, key=lambda k: abs(k - contrast))
-            name = self.contrast_to_lut[best]
-            contrast = best
+            have = ", ".join(f"{k:g}" for k in sorted(self.contrast_to_lut))
+            raise LookupError(
+                f"{self.path}: film rule selected contrast {contrast:g}, "
+                f"which the map's 'contrast =' table does not define "
+                f"(it has: {have or 'nothing'}). Mapping::find does not fall "
+                f"back to the nearest key."
+            )
         return contrast, name
 
 
@@ -302,6 +318,53 @@ def resolve_dpi_key(key: str, index: dict[str, Path],
     return None
 
 
+#: ``mode`` in ``fugc/fugc-defaultParams.dpi`` → the lutMap ``AnsFugcMapping``
+#: (PakonIMAu.dll @ ``0x101fb140``) reads. There is no third option in the
+#: shipped data, and no ``fugc-lutMap.map`` branch: that file is the 08/28/2002
+#: original both variants were split out of, and nothing selects it.
+FUGC_LUT_MAP_BY_MODE = {
+    "RGB": "fugc-rgb-lutMap.map",
+    "NEUTRAL": "fugc-neutral-lutMap.map",
+}
+
+
+def fugc_lut_map_path(root: Path) -> tuple[Path, str]:
+    """``(map file, mode)`` for ``AnsFugcMapping`` @ ``0x101fb140``.
+
+    ``fugc-lutMap.map`` (08/28/2002) is NOT it. ``0x101fb140`` chooses between
+    ``fugc-neutral-lutMap.map`` and ``fugc-rgb-lutMap.map`` on the FUGC mode,
+    and the shipped ``fugc-defaultParams.dpi`` says ``mode = RGB``. The
+    difference is not cosmetic: the rgb map (10/24/2003) comments out every
+    per-film rule, so every stock lands on its ``film = X X X 2.25`` catch-all
+    and resolves to ``NoShift_fugc-generic0225.lut`` — which differs from
+    ``fugc-generic0225.lut`` in 705 of 4096 entries. The 2002 map also routes
+    ISO 100/200 and ~100 DX codes to contrast 2.50 instead.
+    """
+    dpi = root / "fugc" / "fugc-defaultParams.dpi"
+    mode = ""
+    if dpi.is_file():
+        for raw in dpi.read_text(errors="replace").splitlines():
+            line = _strip_comment(raw)
+            if line.lower().startswith("mode") and "=" in line:
+                mode = line.split("=", 1)[1].strip().upper()
+                break
+    if not mode:
+        raise LookupError(
+            f"{dpi}: no 'mode =' field. AnsFugcMapping (0x101fb140) selects "
+            f"the FUGC lutMap on it; without it there is nothing to select on."
+        )
+    name = FUGC_LUT_MAP_BY_MODE.get(mode)
+    if name is None:
+        raise LookupError(
+            f"{dpi}: mode = {mode!r} is not one of "
+            f"{sorted(FUGC_LUT_MAP_BY_MODE)}."
+        )
+    path = root / "fugc" / name
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} (selected by mode = {mode})")
+    return path, mode
+
+
 def sra_fwd_lut_name(metric: int) -> str:
     """Pick common-sraFwdLut by metric (no .map; from color.map notes)."""
     if metric == METRIC_ROM12:
@@ -344,8 +407,23 @@ class SelectedAnselFiles:
     fugc_name: str
     sra_name: str
     profile_key: str
-    # Why this SBA dpi was chosen (CLI / map / override) — host logging only.
+    #: Why each of these files was chosen — CLI override, a named map rule, or
+    #: a fallback. EVERY ONE OF THEM IS RECORDED, including the fallbacks. The
+    #: shasta and profile misses used to substitute a key with nothing written
+    #: down at all, which meant the only difference between "the vendor's map
+    #: chose this" and "the map did not answer and we picked something" was
+    #: invisible from here upwards. A fallback is defensible; an unrecorded
+    #: one is not.
     sba_selection_reason: str = ""
+    shasta_selection_reason: str = ""
+    profile_selection_reason: str = ""
+    fugc_selection_reason: str = ""
+    #: True when nothing was known about the film stock and the vendor maps'
+    #: own wildcard rows are what answered. Not an error — it is what the
+    #: F-135 does when the DX board reads nothing — but it is a different
+    #: claim about the frame than a stock the operator chose, and the host
+    #: turns it into `dx_source = "default"`.
+    stock_defaulted: bool = False
 
 
 def select_ansel_files(
@@ -368,7 +446,8 @@ def select_ansel_files(
     sba_map = parse_key_selector_map(root / "sba" / "SbaDPI" / "sba.map")
     shasta_map = parse_key_selector_map(root / "shasta" / "shasta.map")
     profile_map = parse_key_selector_map(root / "profile" / "profile.map")
-    fugc_map = parse_fugc_lut_map(root / "fugc" / "fugc-lutMap.map")
+    fugc_map_path, _fugc_mode = fugc_lut_map_path(root)
+    fugc_map = parse_fugc_lut_map(fugc_map_path)
 
     index = index_dpi_keys([
         root / "sba" / "SbaDPI",
@@ -428,15 +507,19 @@ def select_ansel_files(
     )
     fugc_lut = root / "fugc" / fugc_name
     if not fugc_lut.is_file():
-        fugc_lut = root / "fugc" / "fugc-generic0225.lut"
-        fugc_name = fugc_lut.name
-        contrast = 2.25
+        raise FileNotFoundError(
+            f"{fugc_lut}: {fugc_map_path.name} maps contrast {contrast:g} to "
+            f"this LUT and it is not installed. Substituting another curve "
+            f"would silently change the tone scale of every frame."
+        )
 
     sra_name = sra_fwd_lut_name(ctx.metric)
     sra_lut = root / "common" / sra_name
     if not sra_lut.is_file():
-        sra_lut = root / "common" / "common-sraFwdLut-metric-default.lut"
-        sra_name = sra_lut.name
+        raise FileNotFoundError(
+            f"{sra_lut}: SRA forward LUT for metric {ctx.metric} is not "
+            f"installed; the -default table is a different metric."
+        )
 
     return SelectedAnselFiles(
         sba_dpi=sba_dpi,

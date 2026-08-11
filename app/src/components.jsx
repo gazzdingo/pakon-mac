@@ -9,14 +9,24 @@
 // and 8 are disabled, why a stage is unavailable — goes behind <Info>, which
 // is closed until asked.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { frameUrl, fmtBytes, fmtClock, GATE } from './api';
+import { frameUrl } from './api';
 
-export const MODES = [
-  ['review', 'Roll'],
-  ['scan', 'Scanner'],
-  ['config', 'Config'],
+/** The product, in the order it happens. One roll of film goes scan → edit →
+ *  export, and these were three unrelated screens reached from a mode switcher
+ *  that put Diagnostics between Config and Export as though they were peers. */
+export const STEPS = [
+  ['scan', 'Scan'],
+  ['review', 'Edit'],
   ['export', 'Export'],
+];
+
+/** Not steps. Reference screens about the machine and the pipeline, reachable
+ *  at any point and part of no sequence — so they sit in the top bar, away
+ *  from the three. Calibration had no way in at all before this. */
+export const TOOLS = [
+  ['config', 'Config'],
   ['diagnostics', 'Diagnostics'],
+  ['calibration', 'Calibration'],
 ];
 
 /* ── the info affordance ────────────────────────────────────────────────── */
@@ -222,6 +232,9 @@ export function useTheme() {
   return [dark, setDark];
 }
 
+/** The roll's identity, and the way out to the reference screens. Both persist
+ *  across all three steps: which roll you are working on is the one fact that
+ *  is true on Scan, Edit and Export alike, so it does not move. */
 export function TopBar({ mode, setMode, roll, dark, setDark }) {
   return (
     <header className="top">
@@ -231,13 +244,6 @@ export function TopBar({ mode, setMode, roll, dark, setDark }) {
       >
         PAKON&nbsp;F&#8209;135&nbsp;PLUS
       </span>
-      <nav className="modes" aria-label="Mode">
-        {MODES.map(([id, label]) => (
-          <button key={id} type="button" className={`mode${mode === id ? ' on' : ''}`} onClick={() => setMode(id)}>
-            {label}
-          </button>
-        ))}
-      </nav>
       <span className="sp" />
       {roll ? (
         <>
@@ -252,6 +258,13 @@ export function TopBar({ mode, setMode, roll, dark, setDark }) {
       ) : (
         <Chip>No roll open</Chip>
       )}
+      <nav className="modes" aria-label="Reference">
+        {TOOLS.map(([id, label]) => (
+          <button key={id} type="button" className={`mode${mode === id ? ' on' : ''}`} onClick={() => setMode(id)}>
+            {label}
+          </button>
+        ))}
+      </nav>
       <button
         type="button"
         className="themeswap"
@@ -283,101 +296,119 @@ function stopNote(r) {
   };
 }
 
-/** Twin lanes. Capture is live: it runs while the transport does, and its Stop
- *  reaches the motor — see Scan.jsx for why that is a separate process. */
-export function Lanes({ exportJob, scanJob, onStopScan }) {
+/** The three steps, and where each one is up to.
+ *
+ *  This replaces the twin capture/export lanes rather than sitting beside
+ *  them. Those lanes were already two thirds of this bar — capture is step 1's
+ *  progress and export is step 3's — with the one step nobody could see a lane
+ *  for (edit) missing between them, and a mode switcher above that listed the
+ *  three alongside Config and Diagnostics as though all five were peers. One
+ *  bar now says which step you are on, what each step is doing, and — for a
+ *  step that cannot be reached yet — what it is waiting for, in place, rather
+ *  than greying out and saying nothing.
+ *
+ *  Rows come from `stepRows` in App.jsx. This draws them and owns nothing but
+ *  the stop.
+ *
+ *  STOP IS NOT PART OF THE NAVIGATION. It lives in step 1's cell and is
+ *  therefore on screen from all three steps, always enabled, exactly as it was
+ *  in the capture lane. Gating it behind being on the Scan step would put it
+ *  back where it was before it was un-gated: unreachable at the moment it
+ *  matters most.
+ */
+export function Steps({ mode, setMode, rows, onStopScan }) {
   const [stopping, setStopping] = useState(false);
   const [stopped, setStopped] = useState(null);
-  const running = exportJob && exportJob.status === 'running';
-  const pct = running || exportJob?.status === 'done' ? Math.round((exportJob.progress || 0) * 100) : null;
-
-  const scanning = scanJob && scanJob.status === 'running';
+  const scanning = !!rows.find((r) => r.id === 'scan')?.running;
   // A new scan replaces the last stop's verdict; it is no longer the truth.
   useEffect(() => {
     if (scanning) setStopped(null);
   }, [scanning]);
   const note = stopNote(stopped);
-  const elapsed = scanJob?.elapsed ?? (scanJob?.seconds || 0);
-  const cap = scanJob?.max_seconds || 0;
-  const spct = scanning && cap ? Math.min(100, Math.round((elapsed / cap) * 100)) : null;
-  const gate = GATE[scanJob?.window?.state || 'unknown'] || GATE.unknown;
 
   return (
-    <div className="lanes">
-      <div className="lane">
-        <span className="what">
-          <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            Capture
-            <Info side="left">
-              The transport is driven by a separate process that owns the USB
-              handle, so <b>Stop reaches the motor even if this window stops
-              responding</b>.
-              <br />
-              <br />
-              Stop is never disabled. It used to grey out unless this window
-              believed a scan was running — which is exactly backwards: the
-              moment the backend stops answering, this window marks the job{' '}
-              <span className="num">error</span> and stops believing, and that
-              is precisely when you want to press it. The server route is
-              unconditional, so the button is too. Pressed with nothing running
-              it says so and stops nothing.
-            </Info>
-          </span>
-          <b
-            style={
-              !scanning && !stopping && note
-                ? { color: note.tone === 'bad' ? 'var(--danger-ink)' : 'var(--mute)' }
-                : undefined
-            }
-          >
-            {stopping
-              ? 'Stopping…'
-              : scanning
-                ? `${fmtClock(elapsed)} · ${gate.label} · ${fmtBytes(scanJob.bytes)}`
-                : note?.text ||
-                  (scanJob?.status === 'done' ? scanJob.message || 'Done' : 'Idle')}
-          </b>
-        </span>
-        <div className={`bar${scanning ? ' warnfill' : ''}`}>
-          <i style={{ width: `${spct ?? 0}%` }} />
-        </div>
-        <span className="pc">{scanning ? fmtClock(Math.max(0, cap - elapsed)) : '—'}</span>
-        <Btn
-          variant={scanning ? 'danger' : ''}
-          onClick={async () => {
-            setStopping(true);
-            setStopped(null);
-            try {
-              setStopped((await onStopScan?.()) || {});
-            } finally {
-              setStopping(false);
-            }
-          }}
-          title="Stop the transport now. Always available, whatever this window thinks the machine is doing."
-        >
-          {stopping ? 'Stopping…' : 'Stop'}
-        </Btn>
-      </div>
-      <div className="lane">
-        <span className="what">
-          <span className="lbl">Export</span>
-          <b>{exportJob ? exportJob.message || exportJob.phase || 'Working' : 'Idle'}</b>
-        </span>
-        <div className={`bar${running ? ' warnfill' : ''}`}>
-          <i style={{ width: `${pct ?? 0}%` }} />
-        </div>
-        <span className="pc">{pct == null ? '—' : `${pct} %`}</span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <Btn disabled>Cancel</Btn>
-          <Info side="left">
-            <b>Not implemented.</b> The export loop has no interrupt check to
-            cancel into, and there is no cancel endpoint. Left disabled rather
-            than enabled and inert — see <span className="num">docs/54</span>{' '}
-            §4.3.
-          </Info>
-        </span>
-      </div>
-    </div>
+    <nav className="steps" aria-label="Steps">
+      {rows.map((r, i) => {
+        const current = mode === r.id;
+        /* The step you are standing on is never shut, even if what it needs
+           has gone away underneath you. Being unable to leave the screen you
+           are already on is not a state this bar may create. */
+        const shut = !r.ok && !current;
+        const isScan = r.id === 'scan';
+        const showNote = isScan && !scanning && (stopping || !!note);
+        const text = showNote ? (stopping ? 'Stopping…' : note.text) : r.state;
+        return (
+          <div key={r.id} className={`step${current ? ' on' : ''}${shut ? ' shut' : ''}`}>
+            <button
+              type="button"
+              className="stepgo"
+              disabled={shut || undefined}
+              aria-current={current ? 'step' : undefined}
+              onClick={() => setMode(r.id)}
+            >
+              <span className="stepno">{i + 1}</span>
+              <span className="what">
+                <span className="lbl">{r.label}</span>
+                <b className={showNote ? (note.tone === 'bad' ? 'bad' : '') : r.tone || ''}>
+                  {text}
+                </b>
+              </span>
+              <span className={`bar${r.warn ? ' warnfill' : ''}`}>
+                <i style={{ width: `${r.pct || 0}%` }} />
+              </span>
+              <span className="pc">{r.pc ?? '—'}</span>
+            </button>
+
+            {isScan ? (
+              <>
+                <Btn
+                  variant={scanning ? 'danger' : ''}
+                  onClick={async () => {
+                    setStopping(true);
+                    setStopped(null);
+                    try {
+                      setStopped((await onStopScan?.()) || {});
+                    } finally {
+                      setStopping(false);
+                    }
+                  }}
+                  title="Stop the transport now. Always available, from any step, whatever this window thinks the machine is doing."
+                >
+                  {stopping ? 'Stopping…' : 'Stop'}
+                </Btn>
+                <Info side="left">
+                  The transport is driven by a separate process that owns the USB
+                  handle, so <b>Stop reaches the motor even if this window stops
+                  responding</b>.
+                  <br />
+                  <br />
+                  It is never disabled and it does not care which step you are
+                  on. It used to grey out unless this window believed a scan was
+                  running — which is exactly backwards: the moment the backend
+                  stops answering, this window marks the job{' '}
+                  <span className="num">error</span> and stops believing, and
+                  that is precisely when you want to press it. The server route
+                  is unconditional, so the button is too. Pressed with nothing
+                  running it says so and stops nothing.
+                </Info>
+              </>
+            ) : null}
+
+            {r.id === 'export' ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <Btn disabled>Cancel</Btn>
+                <Info side="left">
+                  <b>Not implemented.</b> The export loop has no interrupt check to
+                  cancel into, and there is no cancel endpoint. Left disabled rather
+                  than enabled and inert — see <span className="num">docs/54</span>{' '}
+                  §4.3.
+                </Info>
+              </span>
+            ) : null}
+          </div>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -526,6 +557,93 @@ export function Empty({ title, children, action }) {
       {action}
     </div>
   );
+}
+
+/* ── the last line ──────────────────────────────────────────────────────── */
+
+/** Catch a render throw and show it, instead of unmounting the application.
+ *
+ *  React unmounts the whole tree when a render throws and there is no boundary
+ *  above it. There was none — `createRoot(...).render(<App/>)` and nothing
+ *  else — so one bad shape from the backend took the window to blank. The one
+ *  that did it: apply-to-roll's `needs_confirm` payload assigned to `roll`,
+ *  then `roll.frames.find(...)` on an object that has no `frames`. The error
+ *  went to a devtools console nobody had open.
+ *
+ *  This does not pretend to recover. It says what broke, keeps the stack where
+ *  it can be copied, and offers the ways out. The work is in the backend and
+ *  the sidecars, not in this tree, so a reload costs nothing but the
+ *  selection — and saying so is most of the value of the screen. */
+export class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, info: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    // main.js forwards renderer console errors to the terminal, so this is
+    // also how the crash reaches anyone running the app from a shell.
+    console.error('renderer crashed', error, info?.componentStack);
+    this.setState({ info });
+  }
+
+  render() {
+    const { error, info } = this.state;
+    if (!error) return this.props.children;
+    return (
+      <div className="app" style={{ display: 'grid', placeItems: 'center', padding: 24 }}>
+        <div style={{ maxWidth: '78ch', width: '100%' }}>
+          <div className="title" style={{ color: 'var(--danger-ink)', marginBottom: 8 }}>
+            The window stopped rendering
+          </div>
+          <p className="quiet" style={{ marginBottom: 12 }}>
+            Your work is not in this window. Frame adjustments live in the
+            backend and are written to sidecars outside the workspace, so
+            reloading loses nothing but which frame was selected.
+          </p>
+          <pre
+            className="num"
+            style={{
+              fontSize: 11,
+              color: 'var(--mute)',
+              background: 'var(--content2)',
+              borderRadius: 'var(--r-sm)',
+              padding: '10px 12px',
+              maxHeight: 260,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              marginBottom: 12,
+            }}
+          >
+            {String(error?.stack || error)}
+            {info?.componentStack || ''}
+          </pre>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn variant="primary" onClick={() => window.location.reload()}>
+              Reload the window
+            </Btn>
+            <Btn variant="flat" onClick={() => this.setState({ error: null, info: null })}>
+              Try to carry on
+            </Btn>
+            <Btn
+              variant="flat"
+              onClick={() =>
+                navigator.clipboard?.writeText(
+                  `${error?.stack || error}\n${info?.componentStack || ''}`,
+                )
+              }
+            >
+              Copy the error
+            </Btn>
+          </div>
+        </div>
+      </div>
+    );
+  }
 }
 
 export function Spinner({ children }) {

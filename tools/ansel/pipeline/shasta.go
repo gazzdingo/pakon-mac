@@ -2,14 +2,23 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"sort"
 )
 
-// ShastaAnalyzePorted records that AnsShastaCapabilityImpl::analyze is NOT
-// ported — not here, and not in tools/ansel/pakon_shasta.py either, which
-// carries the toneLut assembly but sets ANALYZE False. ShastaToneRpd below is
-// a stand-in, not the vendor's curve. Same convention as the *_PORTED flags in
-// the Python modules.
+// ShastaAnalyzePorted records that AnsShastaCapabilityImpl::analyze
+// (0x101e5250…0x101e5ca0) and its Cap wrap 0x101ed9b0 are NOT ported here.
+// ShastaToneRpd below is a stand-in, not the vendor's curve.
+//
+// This is deliberately NOT the same flag as
+// tools/ansel/python-pipeline/pakon_shasta.py's SHASTA_ANALYZE_PORTED, which
+// is True. That one is narrower than its name: it records only that the
+// Preference path can build the toneLut's mid-aims from the live Laplacian
+// collectData dens (0x1027fc80 -> 0x1027e9d0 -> cn_premium_mid_aim_rgb). The
+// Cap-level analyze is unported on both sides, and pakon_shasta's own
+// SHASTA_TONE_LUT_FRAGMENTS records that the remaining curve pieces are
+// "cited but insufficient for a scene toneLut". That — not "Python sets
+// ANALYZE False" — is what justifies the stand-in, on both sides.
 const ShastaAnalyzePorted = false
 
 // ShastaParams are the fields of anselinstalldir/dataPathItems/shasta/
@@ -49,7 +58,7 @@ func histPercentile(hist []int, nPix int, pct float64) float64 {
 }
 
 // ShastaToneRpd is a stand-in for AnsShastaCapabilityImpl::analyze, which is
-// not ported (see tools/ansel/README.md — Shasta ANALYZE is False).
+// not ported (see ShastaAnalyzePorted above for exactly what that means).
 //
 // The vendor builds a per-scene tone LUT from five measured statistics
 // (extShadowPercent 0.1, shadowPercent 1.0, the scene grey, highlightPercent
@@ -112,7 +121,7 @@ func ShastaToneRpd(rpd12 [][][3]float64, p ShastaParams) [][][3]float64 {
 		lo[c] = histPercentile(hist, n, p.ShadowPercent)
 		mid[c] = histPercentile(hist, n, 50.0)
 	}
-	fmt.Printf("DEBUG: shasta anchors lo=%v median=%v -> black=%.0f metricGray=%.0f\n",
+	fmt.Fprintf(os.Stderr, "shasta anchors lo=%v median=%v -> black=%.0f metricGray=%.0f\n",
 		lo, mid, p.Black, p.MetricGray)
 
 	out := make([][][3]float64, height)
@@ -170,7 +179,7 @@ func LinkedPercentileTone(rpd12 [][][3]float64, white float64, shadowPercent, hi
 		}
 	}
 
-	fmt.Printf("DEBUG Shasta lo=%v hi=%v\n", lo, hi)
+	fmt.Fprintf(os.Stderr, "shasta linked lo=%v hi=%v\n", lo, hi)
 
 	out := make([][][3]float64, height)
 	for i := 0; i < height; i++ {

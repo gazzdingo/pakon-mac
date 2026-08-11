@@ -1,19 +1,15 @@
 package main
 
 import (
+	"os"
 	"bufio"
-	"flag"
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
-	"log"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 
-	"golang.org/x/image/tiff"
 )
 
 // F135InvertPorted records that the F-135 negative->positive step in
@@ -22,6 +18,12 @@ import (
 // what has since been ruled out: AnsSraCapabilityImpl::makeSRALUTS is a
 // balance, not a mask removal, and the SRA forward LUT is never applied on its
 // own. Treat the rendered colour as provisional.
+
+type frame struct {
+	h, w int
+	px   [][][3]int
+}
+
 const F135InvertPorted = false
 
 // ccdLineOffsets is the trilinear CCD row spacing, R/G/B, in PIXELS of the
@@ -241,37 +243,23 @@ func (p *ColorProfile) ApplyMath(r, g, b float32) (float32, float32, float32) {
 	return finalR, finalG, finalB
 }
 
-func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, srgb *IccMft2, model string, coeffs []float32, band3 *ThreeBandLut, sel *FilmSelection) error {
-	f, err := os.Open(inputPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, ...any), emit func(out, bypass *image.RGBA) error) error {
+	profile := eng.Profile
+	rpd2pcs := eng.Rpd2Pcs
+	srgb := eng.Srgb
+	model := req.Model
+	coeffs := eng.Coeffs
+	band3 := eng.Band3
+	sel := eng.Sel
+
+	height := fr.h
+	width := fr.w
+
+	outImg := image.NewRGBA(image.Rect(0, 0, width, height))
+	bypassImg := image.NewRGBA(image.Rect(0, 0, width, height))
+
+
 	
-	var img image.Image
-	if strings.HasSuffix(strings.ToLower(inputPath), ".tiff") || strings.HasSuffix(strings.ToLower(inputPath), ".tif") {
-		img, err = tiff.Decode(f)
-	} else {
-		img, _, err = image.Decode(f)
-	}
-	if err != nil {
-		return err
-	}
-
-	if rotate180 {
-		img = rotated180{img}
-	}
-	fmt.Printf("orientation: lens 180° %s\n", map[bool]string{
-		true:  "applied here (-rotate180)",
-		false: "already carried by the input (tools/pakon_decode.py)",
-	}[rotate180])
-
-	bounds := img.Bounds()
-	outImg := image.NewRGBA(bounds)
-	bypassImg := image.NewRGBA(bounds)
-
-	height := bounds.Max.Y - bounds.Min.Y
-	width := bounds.Max.X - bounds.Min.X
 	
 	// --- Trilinear CCD deskew -------------------------------------------
 	// The sensor (#123528) senses R, G and B on three physically separate
@@ -302,20 +290,13 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	// edge picks up half again the rainbow fringing instead of none, which
 	// reads as a colour bug rather than an ordering one.
 	sample := func(x, y, c int) int {
-		if x < bounds.Min.X {
-			x = bounds.Min.X
+		if x < 0 {
+			x = 0
 		}
-		if x >= bounds.Max.X {
-			x = bounds.Max.X - 1
+		if x >= width {
+			x = width - 1
 		}
-		r, g, b, _ := img.At(x, y).RGBA()
-		switch c {
-		case 0:
-			return int(r)
-		case 1:
-			return int(g)
-		}
-		return int(b)
+		return fr.px[y][x][c]
 	}
 	ccdPixel := func(x, y int) (int, int, int) {
 		return sample(x+ccdLineOffsets[0], y, 0),
@@ -348,11 +329,11 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	// The SRA forward LUT used to be applied here on its own. It no longer is,
 	// and that is a binary result rather than taste — see the inversion block
 	// below for the call sites.
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		yy := y - bounds.Min.Y
+	for y := 0; y < height; y++ {
+		yy := y - 0
 		rpd12[yy] = make([][3]float64, width)
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			xx := x - bounds.Min.X
+		for x := 0; x < width; x++ {
+			xx := x - 0
 			r, g, b := ccdPixel(x, y)
 
 			var outR, outG, outB float32
@@ -364,7 +345,7 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 				outG = float32(clamp4k(polyOut[1]))
 				outB = float32(clamp4k(polyOut[2]))
 
-				if x == bounds.Min.X && y == bounds.Min.Y {
+				if x == 0 && y == 0 {
 					fmt.Printf("DEBUG pixel[0,0] raw=%d,%d,%d polyOut=%v\n",
 						r, g, b, polyOut)
 				}
@@ -464,7 +445,14 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	setshiftsOut := SetShifts12(prefA, prefA, band3.Planar, band3.NumLut)
 
 	if model == "f135" {
-		filmBase := frameDminRgbFromPlanes(planeR, planeG, planeB, 4096)
+		var filmBase [3]int
+		if req.FilmBase != [3]int{} {
+			filmBase = req.FilmBase
+		} else {
+			fb := frameDminRgbFromPlanes(planeR, planeG, planeB, 4096)
+			filmBase = [3]int{int(fb[0]), int(fb[1]), int(fb[2])}
+		}
+		logf("DEBUG F-135 math: FilmBase=%v\n", filmBase)
 		var ped [3]float64
 		for c := 0; c < 3; c++ {
 			ped[c] = float64(coeffs[c*10+9])
@@ -525,9 +513,9 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 	afilmAim := [3]int{500, 1000, 1000}
 	var fugcApplyLut [][3]float32
 	if model == "f135" {
-		fugcApplyLut = BuildMode2ApplyLut(profile.Fugc[:], fugcDmin, setshiftsOut, afilmAim)
+		fugcApplyLut, _, _ = BuildMode2ApplyLut(profile.Fugc[:], fugcDmin, prefA, frameDmin, afilmAim)
 	} else {
-		fugcApplyLut, _ = BuildSetLutInfoApplyLut(profile.Fugc[:], fugcDmin, setshiftsOut, frameDmin, afilmAim)
+		fugcApplyLut, _, _, _ = BuildSetLutInfoApplyLut(profile.Fugc[:], fugcDmin, prefA, frameDmin, afilmAim)
 	}
 	
 	fmt.Printf("DEBUG: frameDmin=%v\n", frameDmin)
@@ -601,110 +589,9 @@ func processImage(inputPath, outputPath string, profile *ColorProfile, rpd2pcs, 
 			F135InvertPorted, ShastaAnalyzePorted)
 	}
 
-	outBypass, _ := os.Create(outputPath + "_bypass.png")
-	png.Encode(outBypass, bypassImg)
-	outBypass.Close()
-	
-	out, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	return png.Encode(out, outImg)
+	return emit(outImg, bypassImg)
 }
 
 func main() {
-	modelFlag := flag.String("model", "f135", "Pipeline model: f135 (polynomial) or f235 (matrix/LUT)")
-	coeffsFlag := flag.String("coeffs", "/Users/guy/www/pakon-mac/research/windows-registry/pakon_registry_full.txt", "Path to the registry .txt or EEPROM file containing coefficients (for f135)")
-	deskewFlag := flag.String("ccd-deskew", "0,0,0", "Trilinear CCD row spacing, R,G,B, in input pixels along the transport axis (= capture scan lines only at transport scale 1.0). Off by default: raw14 TIFFs from tools/pakon_decode.py are already deskewed. Pass 8,0,-8 for one decoded with --ccd-deskew off.")
-	rotateFlag := flag.Bool("rotate180", false, "Apply the lens 180° here. Off by default: raw14 TIFFs from tools/pakon_decode.py already carry it. Pass this for a TIFF written before that fix.")
-	dxFlag := flag.String("dx", "96-1", "DX film product PART1[-PART2], e.g. 96-1 (Kodak Gold/UltraMax 400), 82-4, 78-13")
-	isoFlag := flag.Int("iso", 400, "Film speed, used by fugc-lutMap.map's film→contrast table")
-	anselPathFlag := flag.String("ansel-path", "CN-Premium", "Ansel path: CN-Premium, CN-Fps, DC-Premium")
-	sourceTypeFlag := flag.Int("source-type", 1, "Ansel sourceType (1 = ANS_NEGATIVE_35, per sba.map)")
-	anselRootFlag := flag.String("ansel-root", "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/anselinstalldir/dataPathItems", "anselinstalldir/dataPathItems")
-	flag.Parse()
-
-	if parts := strings.Split(*deskewFlag, ","); len(parts) == 3 {
-		for i, p := range parts {
-			v, err := strconv.Atoi(strings.TrimSpace(p))
-			if err != nil {
-				log.Fatalf("-ccd-deskew: %q is not an integer", p)
-			}
-			ccdLineOffsets[i] = v
-		}
-	} else {
-		log.Fatalf("-ccd-deskew: want three comma-separated integers, got %q", *deskewFlag)
-	}
-	rotate180 = *rotateFlag
-
-	args := flag.Args()
-	if len(args) < 2 {
-		log.Fatalf("Usage: %s [-model f135|f235] <input> <output>\n", os.Args[0])
-	}
-	inputPath := args[0]
-	outputPath := args[1]
-
-	items := *anselRootFlag
-	lutPath := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/Config/ColorCorrection/_ClientColNegLut.txt"
-	matPath := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/Config/ColorCorrection/_ClientColNegMat.txt"
-	rpd2pcsPath := items + "/profile/Rpd2Pcs_HR200_QS_v5s10.pf"
-	srgbPath := items + "/profile/Srgb_v2.pf"
-	sraPath := items + "/common/common-sraFwdLut-metric-rom12.lut"
-	band3Path := items + "/common/luts6_postROMM_equalRGBshort.lut"
-
-	// --- Film selection, the way the vendor's .map files do it -----------
-	sel, err := SelectFilm(items, *dxFlag, *isoFlag, *anselPathFlag, *sourceTypeFlag)
-	if err != nil {
-		log.Fatalf("Film selection: %v", err)
-	}
-	sel.Print()
-	fugcPath := items + "/fugc/" + sel.FugcLut
-
-	profile, err := LoadProfile(lutPath, matPath, fugcPath, sraPath)
-	if err != nil {
-		log.Fatalf("Error loading base profile: %v", err)
-	}
-	
-	var coeffs []float32
-	if *modelFlag == "f135" {
-		coeffs, err = LoadMatrixRegistry(*coeffsFlag, 1) 
-		if err != nil {
-			log.Fatalf("Error loading f135 coefficients from %s: %v", *coeffsFlag, err)
-		}
-	}
-	
-	rpd2pcs, err := LoadICCProfile(rpd2pcsPath)
-	if err != nil {
-		log.Fatalf("Error loading Rpd2Pcs: %v", err)
-	}
-	
-	srgb, err := LoadICCProfileB2A0(srgbPath)
-	if err != nil {
-		log.Fatalf("Error loading Srgb: %v", err)
-	}
-	
-	band3, err := Load3BandLutAscii(band3Path)
-	if err != nil {
-		log.Fatalf("Error loading 3band lut: %v", err)
-	}
-	
-	err = processImage(inputPath, outputPath, profile, rpd2pcs, srgb, *modelFlag, coeffs, band3, sel)
-	if err != nil {
-		log.Fatalf("Failed to process image: %v", err)
-	}
-	fmt.Printf("Successfully saved %s\n", outputPath)
+	// Replaced by cabi.go
 }
-
-// importSort unused
-func strictMinMax(vals []float64) (float64, float64) {
-	min, max := vals[0], vals[0]
-	for _, v := range vals {
-		if v < min { min = v }
-		if v > max { max = v }
-	}
-	return min, max
-}
-
-
-

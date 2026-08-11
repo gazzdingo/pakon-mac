@@ -51,6 +51,7 @@ sys.path.insert(0, str(_TOOLS / "ansel" / "python-pipeline"))
 import numpy as np                      # noqa: E402
 import pakon_render as pr               # noqa: E402
 import pakon_decode as dec              # noqa: E402
+import pakon_color as pc                # noqa: E402
 import pakon_scan as scan               # noqa: E402
 import pakon_gate as pgate              # noqa: E402
 
@@ -167,9 +168,46 @@ def _app_dir(kind: str) -> Path:
 
 WORKSPACE = _app_dir("cache") / "workspace"
 SIDECARS = _app_dir("data") / "sidecars"
-CAPTURES = _ROOT / "captures"
+
+#: Where a scan writes its capture, and the biggest single thing this
+#: application creates — about 700 MB a roll, plus its .dx.json and .scan.json
+#: sidecars.
+#:
+#: This used to be ``_ROOT / "captures"``, which was wrong twice.
+#:
+#: It broke the storage contract at the top of this file. "Everything else
+#: lives in a temp workspace, deleted on close" is the owner's rule, and the
+#: primary artefact of the main path was the one thing exempt from it: purge()
+#: only ever walked WORKSPACE, so captures accumulated forever while two
+#: dialogs told the user they had been deleted.
+#:
+#: And when packaged, ``_ROOT`` is ``process.resourcesPath`` — inside the
+#: signed .app bundle. A scan would ``mkdir`` and write 700 MB into
+#: ``Pakon Mac.app/Contents/Resources/captures``, which breaks the signature
+#: and puts the owner's photographs somewhere an app update deletes.
+#:
+#: So captures live in the cache tree beside the workspace, and purge() reaches
+#: them.
+CAPTURES = _app_dir("cache") / "captures"
+
+#: The repository's own ``captures/`` — the owner's existing photographs and
+#: the research .bins the tools were built against. Read-only from here: it is
+#: LISTED so that everything already on disk stays openable, and it is never
+#: written to and never, under any circumstance, deleted. purge() proves that
+#: rather than trusting it.
+LEGACY_CAPTURES = _ROOT / "captures"
+
 WORKSPACE.mkdir(parents=True, exist_ok=True)
 SIDECARS.mkdir(parents=True, exist_ok=True)
+CAPTURES.mkdir(parents=True, exist_ok=True)
+
+
+def capture_dirs() -> list[Path]:
+    """Everywhere a capture may be found, newest home first."""
+    out = [CAPTURES]
+    if LEGACY_CAPTURES.is_dir() and LEGACY_CAPTURES.resolve() != CAPTURES.resolve():
+        out.append(LEGACY_CAPTURES)
+    return out
 
 
 def capture_key(path: str | Path) -> str:
@@ -355,6 +393,25 @@ class Session:
             j = self.jobs.setdefault(jid, {"id": jid})
             j.update(kw)
 
+    def job_append(self, jid: str, field: str, value) -> None:
+        """Add to a list field on a job, keeping every value.
+
+        ``job_set`` overwrites, which is right for a phase or a byte count and
+        wrong for a warning: FilmSense reports each mis-load condition exactly
+        once, when it is first seen, so an overwritten warning is a warning
+        the operator can never be shown.
+        """
+        if value is None:
+            return
+        with self.lock:
+            j = self.jobs.setdefault(jid, {"id": jid})
+            cur = j.get(field)
+            if not isinstance(cur, list):
+                cur = []
+            if value not in cur:
+                cur.append(value)
+            j[field] = cur
+
     def job_get(self, jid: str):
         with self.lock:
             j = self.jobs.get(jid)
@@ -376,11 +433,21 @@ def unexported_summary() -> dict:
         exported += exp
         rolls.append({"id": r.id, "name": r.name, "adjusted": adj,
                       "exported": exp, "frames": len(r.frames)})
+    # Three figures, not one. The quit dialog said "the raw captures (X MB) are
+    # deleted" while X was dir_size(WORKSPACE) — which held rgb14.npy and
+    # roll.json and no captures at all, and the captures were not deleted
+    # either. Both halves of that sentence were wrong. Now each thing is
+    # measured separately and the dialog can name what it is actually about to
+    # remove.
+    ws, caps = dir_size(WORKSPACE), dir_size(CAPTURES)
     return {
         "rolls": rolls,
         "adjusted_frames": adjusted,
         "exported_frames": exported,
-        "workspace_bytes": dir_size(WORKSPACE),
+        "workspace_bytes": ws,          # the render cache: rgb14.npy, roll.json
+        "capture_bytes": caps,          # the raw .bin scans and their sidecars
+        "temp_bytes": ws + caps,        # everything purge(all=True) removes
+        "captures": len(list(CAPTURES.glob("*.bin"))),
         "sidecar_bytes": dir_size(SIDECARS),
         "has_unexported_work": adjusted > 0 and exported < adjusted,
     }
@@ -421,11 +488,22 @@ def workspace_state() -> dict:
         disk = {"total": du.total, "used": du.used, "free": du.free}
     except OSError:
         disk = {}
+    caps = capture_entries()
     return {
         "path": str(WORKSPACE),
+        "captures_path": str(CAPTURES),
+        "legacy_captures_path": (str(LEGACY_CAPTURES)
+                                 if LEGACY_CAPTURES.is_dir() else None),
         "sidecars": str(SIDECARS),
         "rolls": entries,
-        "total_bytes": sum(e["bytes"] for e in entries),
+        # Leftover raw scans. These are the 700 MB items, and until now the
+        # housekeeping screens could not see them at all, so a crash left them
+        # on disk for good with nothing offering to clear them.
+        "captures": caps,
+        "capture_bytes": sum(c["bytes"] for c in caps),
+        "total_bytes": sum(e["bytes"] for e in entries)
+                       + sum(c["bytes"] for c in caps),
+        "workspace_bytes": sum(e["bytes"] for e in entries),
         "sidecar_bytes": dir_size(SIDECARS),
         "disk": disk,
     }
@@ -493,10 +571,77 @@ def dx_from_sidecar(path: str | Path) -> str | None:
     return f"{int(p1)}-{int(p2)}"
 
 
+def film_from_sidecar(path: str | Path) -> dict:
+    """What the scan that made this capture recorded the film as.
+
+    THE POINT OF RECORDING IT. Before ``ScanConfig`` carried a film field the
+    operator's answer lived only in ``S.jobs``, so a capture opened from a
+    later launch of the app — or a year later — had nobody left to ask. This
+    reads it back, and it is the reason a capture is now self-describing.
+
+    Returns ``{}`` for a capture with no sidecar or an older one.
+    """
+    try:
+        meta = dec.load_capture_sidecar(path) or {}
+    except Exception:                                       # noqa: BLE001
+        return {}
+    f = meta.get("film")
+    return f if isinstance(f, dict) else {}
+
+
+def refuse_film_choice(film_path: str | None, dx: str | None) -> None:
+    """Refuse a film selection that cannot be decoded, before anything is spent.
+
+    Both halves used to fail late and quietly:
+
+    * ``POSITIVE`` maps to ``POLY_CLASS_COLREV``, which
+      ``dec.check_film_class`` refuses because the F-135 reversal branch is not
+      ported — but only when the capture was *opened*, i.e. after the whole
+      roll had already gone past the sensor and the auto-open failed.
+    * a DX that does not resolve used to be swallowed into ``stock = None``,
+      and because the client dropped ``film_path`` whenever a DX was typed, the
+      roll reached the colour default with neither.
+
+    Raised from the scan start and from open, so the answer is the same
+    wherever it is asked.
+    """
+    if film_path:
+        try:
+            dec.check_film_class(pc.film_class_for_path(film_path),
+                                 pc.DEFAULT_MODEL)
+        except dec.FilmClassNotPorted as e:
+            raise ValueError(str(e)) from e
+    if dx and film is not None:
+        try:
+            p1, p2 = film.parse_dx(dx)
+            film.lookup(p1, p2)
+        except Exception as e:                              # noqa: BLE001
+            raise ValueError(
+                f"DX {dx!r} does not resolve to a film stock ({e}). Correct "
+                f"it, or clear it and choose a film path — a DX that cannot "
+                f"be looked up is not a film selection, and carrying on would "
+                f"mean rendering this roll as a default nobody chose."
+            ) from e
+
+
 def list_captures() -> list[dict]:
-    out = []
-    if CAPTURES.is_dir():
-        for p in sorted(CAPTURES.glob("*.bin")):
+    """Every capture that can be opened, from both homes.
+
+    ``temporary`` is the fact the UI needs: a capture in the cache tree is
+    deleted when the workspace is cleared, and one in the repository's own
+    ``captures/`` never is. They look identical in a file list otherwise, and
+    the difference is 700 MB of the owner's photographs.
+    """
+    out, seen = [], set()
+    for d in capture_dirs():
+        temporary = d.resolve() == CAPTURES.resolve()
+        if not d.is_dir():
+            continue
+        for p in sorted(d.glob("*.bin")):
+            rp = p.resolve()
+            if rp in seen:
+                continue
+            seen.add(rp)
             try:
                 info = pr.probe_capture(p)
             except OSError:
@@ -509,8 +654,45 @@ def list_captures() -> list[dict]:
                 if pr.is_adjusted(f.get("params")))
             info["saved_name"] = side.get("name")
             info["dx_read"] = dx_from_sidecar(p)
+            # What the scan recorded, and where each part came from. `dx_read`
+            # above is the DX board's own reading; these are the operator's
+            # selection. They are different claims and the UI now says which.
+            recorded = film_from_sidecar(p)
+            info["recorded_film_path"] = recorded.get("film_path")
+            info["recorded_dx"] = recorded.get("dx")
+            info["dx_source"] = (
+                recorded.get("dx_source")
+                or ("board" if info["dx_read"] else "none"))
+            info["temporary"] = temporary
+            info["dir"] = str(d)
             out.append(info)
     return out
+
+
+def capture_entries() -> list[dict]:
+    """The temp captures, as the housekeeping screens need them: what it is,
+    how big, when, and whether its adjustments have been exported."""
+    entries = []
+    for p in sorted(CAPTURES.glob("*.bin")):
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        side = load_sidecar(capture_key(p))
+        frames = side.get("frames") or []
+        # The .dx.json / .scan.json sidecars go with it; counting them keeps
+        # the "you will free N" figure honest.
+        extra = sum(q.stat().st_size for q in CAPTURES.glob(f"{p.stem}.*")
+                    if q != p and q.is_file())
+        entries.append({
+            "name": p.name,
+            "path": str(p),
+            "bytes": st.st_size + extra,
+            "mtime": st.st_mtime,
+            "adjusted": sum(1 for f in frames if pr.is_adjusted(f.get("params"))),
+            "exported": sum(1 for f in frames if f.get("exported")),
+        })
+    return entries
 
 
 # --------------------------------------------------------------------------
@@ -524,9 +706,13 @@ def job_open(jid: str, body: dict) -> None:
             raise ValueError("no capture path")
         src = Path(path)
         if not src.is_file():
-            alt = CAPTURES / os.path.basename(path)
-            if alt.is_file():
-                src = alt
+            # A bare name, or a path from before captures moved out of the
+            # repository. Look in both homes before giving up.
+            for d in capture_dirs():
+                alt = d / os.path.basename(path)
+                if alt.is_file():
+                    src = alt
+                    break
             else:
                 raise FileNotFoundError(f"capture not found: {path}")
 
@@ -542,22 +728,59 @@ def job_open(jid: str, body: dict) -> None:
         def prog(phase, frac, msg):
             S.job_set(jid, phase=phase, progress=float(frac), message=msg)
 
-        # The scanner's own reading, if the scan that made this capture got
-        # one. A DX typed by the operator always wins over a decoded one.
-        dx_spec = body.get("dx") or None
+        # WHAT FILM IS THIS, AND WHO SAID SO.
+        #
+        # Precedence, and the provenance that goes with it — see
+        # `pakon_scan.DX_PRECEDENCE` for why it is this way round. In short:
+        # a typed DX is the operator's deliberate statement about the roll in
+        # the gate, while the board's reading is `tools/dx_decode.py`, which
+        # has never been validated against a real roll. Both are kept; the
+        # source says which was used, and no screen could tell them apart
+        # before this existed.
+        #
+        #   1. typed here (the Open dialog, or carried from the scan)
+        #   2. recorded by the scan that made this capture (its .scan.json)
+        #   3. read off the DX board during that scan (its .dx.json)
+        #
+        # Film path follows the same idea: fall back to what the scan recorded
+        # rather than letting the render reach a colour-negative default that
+        # nobody chose. That is the whole reason it is in the sidecar.
+        recorded = film_from_sidecar(src)
+        dx_spec = (body.get("dx") or "").strip() or None
+        dx_source = "typed" if dx_spec else ""
+        if not dx_spec and recorded.get("dx"):
+            dx_spec = recorded["dx"]
+            dx_source = f"sidecar:{recorded.get('dx_source') or 'unknown'}"
         if not dx_spec:
             dx_spec = dx_from_sidecar(src)
+            dx_source = "board" if dx_spec else ""
+
+        film_path = (body.get("film_path") or "").strip() or None
+        film_source = "typed" if film_path else ""
+        if not film_path and recorded.get("film_path"):
+            film_path = recorded["film_path"]
+            film_source = "sidecar"
+
+        # The same refusal the scan start makes, so a capture opened by hand
+        # gets the same answer as one opened straight off a scan.
+        refuse_film_choice(film_path, dx_spec if dx_source == "typed" else None)
 
         roll = pr.open_capture(
             src, WORKSPACE, roll_id,
             name=body.get("name"),
             dx=dx_spec,
-            film_path=body.get("film_path") or None,
+            dx_source=dx_source,
+            film_path=film_path,
             sba_key=body.get("sba_key") or None,
             sba_default=bool(body.get("sba_default")),
             max_lines=int(body.get("max_lines") or 0),
             progress=prog,
         )
+        if film_source == "sidecar":
+            roll.warnings.append(
+                f"film path {film_path} was not chosen here — it is what the "
+                f"scan that made this capture recorded in its sidecar. Nothing "
+                f"was guessed, but nothing was re-confirmed either.")
         roll.ir = ch
         restored = apply_sidecar(roll)
         (Path(roll.workspace) / "roll.json").write_text(
@@ -574,23 +797,115 @@ def job_open(jid: str, body: dict) -> None:
                   trace=traceback.format_exc()[-2000:])
 
 
+def export_request(body: dict) -> tuple:
+    """Everything both the plan and the write need, worked out exactly once.
+
+    The plan and the write agreeing is the whole safety property here, so the
+    destination, the frame list and the template are derived in one place and
+    handed to both. Working them out twice is how a plan comes to describe an
+    export that did something else.
+    """
+    roll = S.rolls.get(body.get("roll"))
+    if roll is None:
+        raise ValueError("unknown roll")
+    dest = Path(os.path.expanduser(body.get("dest") or "~/Pictures/Film"))
+    if body.get("subfolder", True):
+        dest = dest / roll.name
+    fmt = body.get("format") or "tiff"
+    colour = body.get("colour") or "linear"
+    template = body.get("template") or "{roll}_{frame:02}_{stock}"
+    idxs = body.get("frames")
+    if not idxs:
+        idxs = [f.index for f in roll.frames
+                if not pr.merged_params(f.params)["rejected"]]
+    on_exist = body.get("on_exist") or "ask"
+    if on_exist not in pr.ON_EXIST:
+        raise ValueError(f"on_exist must be one of {pr.ON_EXIST}")
+    return roll, dest, fmt, colour, template, list(idxs), on_exist
+
+
+def plan_for_export(roll, idxs, dest, fmt, colour, template,
+                    on_exist) -> dict:
+    """``pr.plan_export``, with its one unusable mode routed around.
+
+    ``plan_export(on_exist="unique")`` raises ``FileNotFoundError`` whenever a
+    target already exists — which is the only situation "unique" is for. It
+    rebinds ``out`` to the free name and then the ``elif exists:`` branch,
+    which is still true because ``exists`` was computed from the *original*
+    path, calls ``out.stat()`` on the new name that by construction does not
+    exist yet. ``ask``, ``skip`` and ``overwrite`` never rebind and are fine.
+
+    ``tools/pakon_render.py`` belongs to another task and is not edited from
+    here, so this asks for the plan in a mode that cannot hit the bug and then
+    resolves the free names with the planner's own ``unique_path`` — the
+    detection stays in one place and only the naming is done here. The upstream
+    one-line fix is to stat the pre-rename path.
+    """
+    if on_exist != "unique":
+        return pr.plan_export(roll, idxs, dest, fmt=fmt, colour=colour,
+                              template=template, on_exist=on_exist)
+    plan = pr.plan_export(roll, idxs, dest, fmt=fmt, colour=colour,
+                          template=template, on_exist="skip")
+    taken: set = set()
+    for it in plan["items"]:
+        p = Path(it["path"])
+        if it["action"] == "skip" or p in taken:
+            p = pr.unique_path(p, taken)
+            it["path"] = str(p)
+        it["action"] = "write"
+        taken.add(p)
+    plan.update(on_exist="unique", needs_confirm=False,
+                will_write=len(plan["items"]), will_skip=0)
+    return plan
+
+
+def export_plan(body: dict) -> dict:
+    """What this export would write, before a byte of it is written."""
+    roll, dest, fmt, colour, template, idxs, on_exist = export_request(body)
+    plan = plan_for_export(roll, idxs, dest, fmt, colour, template, on_exist)
+    plan["roll"] = roll.id
+    plan["frames"] = idxs
+    plan["message"] = export_collision_message(plan) if plan["needs_confirm"] else ""
+    return plan
+
+
 def job_export(jid: str, body: dict) -> None:
+    """Export, through the planner that has been sitting there uncalled.
+
+    ``pakon_render.plan_export`` was written with ``existing``, ``duplicates``,
+    ``needs_confirm``, ``on_exist`` and ``unique_path``, and nothing ever
+    called it — so export opened a path and wrote, and there were two live ways
+    to lose work by it:
+
+      * exporting a roll twice to the same folder replaced the first export's
+        TIFFs with no prompt;
+      * the naming template is a free-text field, so deleting ``{frame:02}``
+        from it renders all 36 frames to one filename, each overwriting the
+        last. That one is invisible: the destination folder ends up holding a
+        single file and nothing said so.
+
+    The refusal lives HERE and not only in the UI. A plan that needs
+    confirmation ends the job before anything is rendered, so no future caller
+    — a retry, a script, a screen that forgets to ask — can overwrite by
+    omission. Each frame is then written to the exact path the plan named,
+    which is what ``export_frame(out=…)`` exists for.
+    """
     try:
-        roll = S.rolls.get(body.get("roll"))
-        if roll is None:
-            raise ValueError("unknown roll")
-        dest = Path(os.path.expanduser(body.get("dest") or "~/Pictures/Film"))
-        if body.get("subfolder", True):
-            dest = dest / roll.name
-        fmt = body.get("format") or "tiff"
-        colour = body.get("colour") or "linear"
-        template = body.get("template") or "{roll}_{frame:02}_{stock}"
-        idxs = body.get("frames")
-        if not idxs:
-            idxs = [f.index for f in roll.frames
-                    if not pr.merged_params(f.params)["rejected"]]
+        roll, dest, fmt, colour, template, idxs, on_exist = export_request(body)
+        plan = plan_for_export(roll, idxs, dest, fmt, colour, template,
+                               on_exist)
+        if plan["needs_confirm"]:
+            S.job_set(
+                jid, status="error", phase="blocked", progress=0.0,
+                needs_confirm=True, plan=plan, dest=str(dest),
+                error=export_collision_message(plan),
+                message=export_collision_message(plan))
+            return
+
+        by_frame = {it["frame"]: it for it in plan["items"]}
         results = []
         total = len(idxs)
+        replaced = 0
         for k, i in enumerate(idxs):
             # k is the position in the queue, i is the frame's own number.
             # The lane reads "3 of 12", so it needs the position; naming the
@@ -598,23 +913,65 @@ def job_export(jid: str, body: dict) -> None:
             S.job_set(jid, progress=k / max(1, total), phase="rendering",
                       message=f"frame {i + 1} — {k + 1} of {total}", current=i,
                       results=list(results))
+            item = by_frame.get(i) or {}
+            if item.get("action") == "skip":
+                results.append({"frame": i, "status": "skipped",
+                                "path": item.get("path"),
+                                "reason": "a file of that name is already there"})
+                continue
             try:
                 r = pr.export_frame(roll, i, dest, fmt=fmt, colour=colour,
-                                    template=template)
+                                    template=template,
+                                    out=Path(item["path"]) if item.get("path")
+                                    else None)
                 r["status"] = "written"
+                if item.get("action") == "overwrite":
+                    r["replaced"] = True
+                    replaced += 1
             except Exception as e:                          # noqa: BLE001
                 r = {"frame": i, "status": "error", "error": str(e)}
             results.append(r)
         save_sidecar(roll)
         with S.lock:
             S.exports.extend(r for r in results if r.get("status") == "written")
+        written = sum(1 for r in results if r.get("status") == "written")
+        skipped = sum(1 for r in results if r.get("status") == "skipped")
+        msg = f"{written} of {total} written"
+        if replaced:
+            msg += f", {replaced} replaced"
+        if skipped:
+            msg += f", {skipped} skipped"
         S.job_set(jid, status="done", progress=1.0, phase="done",
-                  results=results, dest=str(dest),
-                  message=f"{sum(1 for r in results if r.get('status') == 'written')}"
-                          f" of {total} written")
+                  results=results, dest=str(dest), plan=plan,
+                  replaced=replaced, skipped=skipped, message=msg)
     except Exception as e:                                  # noqa: BLE001
         S.job_set(jid, status="error", error=f"{e}",
                   trace=traceback.format_exc()[-2000:])
+
+
+def export_collision_message(plan: dict) -> str:
+    """Name what would be destroyed, in the words that make someone stop.
+
+    The two collisions need different sentences. Files already in the folder
+    are "you will replace work you have"; two frames rendering to one name is
+    "your template does not tell these frames apart" — and that second one is
+    a bug in what the user typed, not a decision they are making.
+    """
+    ex, dup = plan.get("existing") or [], plan.get("duplicates") or []
+    bits = []
+    if ex:
+        names = ", ".join(Path(e["path"]).name for e in ex[:4])
+        bits.append(f"{len(ex)} file{'' if len(ex) == 1 else 's'} already in "
+                    f"that folder would be replaced ({names}"
+                    f"{'…' if len(ex) > 4 else ''})")
+    if dup:
+        frames = ", ".join(str(d["frame"] + 1) for d in dup[:6])
+        bits.append(f"{len(dup)} frame{'' if len(dup) == 1 else 's'} would "
+                    f"overwrite each other — the naming template does not "
+                    f"tell them apart, so frames {frames}"
+                    f"{'…' if len(dup) > 6 else ''} all render to the same "
+                    f"filename")
+    return "; ".join(bits) or "this export would replace existing files"
 
 
 # --------------------------------------------------------------------------
@@ -658,10 +1015,35 @@ def job_export(jid: str, body: dict) -> None:
 #: anything at all.
 
 
+def _pid_is_scan(pid: int) -> bool:
+    """Is this pid actually a pakon scan, or just *a* live pid?
+
+    ``os.kill(pid, 0)`` only answers "something with this number exists". Pids
+    are recycled, and a marker left behind by a scan that died without clearing
+    it will eventually name an unrelated process. Two things then go wrong, and
+    the second is much worse than the first: the app refuses to probe forever
+    because it believes a scan is running, and the panic stop SIGTERMs
+    somebody else's process.
+
+    So the owner is confirmed by its command line before it is either believed
+    or signalled. A ``ps`` that fails is treated as "yes, it is a scan",
+    because refusing to touch the machine is the safe direction to be wrong in
+    — and the Stop button clears the marker, so that is never a dead end.
+    """
+    try:
+        r = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                           capture_output=True, text=True, timeout=3)
+    except Exception:                                       # noqa: BLE001
+        return True
+    if r.returncode != 0:
+        return False                    # no such process
+    return "pakon_scan" in (r.stdout or "")
+
+
 def scan_marker_state() -> dict:
     """Who, if anyone, is driving the machine — across processes."""
     out = {"present": False, "pid": None, "alive": False, "mine": False,
-           "info": {}}
+           "stale_pid": False, "info": {}}
     try:
         if not scan.MARKER.is_file():
             return out
@@ -683,6 +1065,11 @@ def scan_marker_state() -> dict:
             out["alive"] = True
         except OSError:
             out["alive"] = False
+        if out["alive"] and not out["mine"] and not _pid_is_scan(pid):
+            # The number is in use, but not by a scan. The marker outlived its
+            # owner and the pid has been recycled.
+            out["alive"] = False
+            out["stale_pid"] = True
     except Exception:                                       # noqa: BLE001
         return out
     return out
@@ -716,7 +1103,10 @@ def stop_foreign_scan(timeout: float = 6.0) -> dict:
     """
     st = scan_marker_state()
     out = {"owner_pid": st["pid"], "signalled": False, "exited": False,
-           "mine": st["mine"]}
+           "mine": st["mine"], "stale_pid": st["stale_pid"]}
+    # `alive` is already "alive AND is a pakon scan" — see _pid_is_scan. A
+    # recycled pid must never be signalled: the panic button stops scanners,
+    # not whatever else happens to hold that number.
     if not st["alive"] or st["mine"] or not st["pid"]:
         return out
     try:
@@ -829,8 +1219,21 @@ class ScanSupervisor:
         # Not `dx`: the child emits a `dx` event carrying the DX *board's*
         # reading, and a typed lookup must never be able to overwrite a
         # measurement under the same name.
-        open_with = {"film_path": (body.get("film_path") or None),
-                     "dx": ((body.get("dx") or "").strip() or None),
+        #
+        # AND the same two facts go to the child on the command line, so they
+        # reach the capture's own sidecar. `open_with` is a key in `S.jobs`, an
+        # in-memory dict that dies with this backend; a capture that outlives
+        # the process it was made by used to carry no statement at all of what
+        # film the operator said it was. The sidecar is the durable copy.
+        film_path = (body.get("film_path") or "").strip() or None
+        dx_typed = (body.get("dx") or "").strip() or None
+        refuse_film_choice(film_path, dx_typed)
+        if film_path:
+            cmd += ["--film-path", film_path]
+        if dx_typed:
+            cmd += ["--dx", dx_typed]
+        open_with = {"film_path": film_path,
+                     "dx": dx_typed,
                      "name": name or None}
         S.job_set(jid, kind="scan", status="running", phase="starting",
                   progress=0.0, message="starting the scan process",
@@ -882,6 +1285,13 @@ class ScanSupervisor:
                         message=f"{r.get('lines', 0):,} lines · "
                                 f"{w.get('state', '')}")
                 elif kind == "warn":
+                    # ACCUMULATED, NOT OVERWRITTEN. This was a single scalar,
+                    # so each warning replaced the last and a scan that warned
+                    # about a mis-load and later about anything else kept only
+                    # the second. The mis-load warnings are the ones that most
+                    # need to survive: FilmSense warns once per condition, at
+                    # the moment it is first seen, and never repeats it.
+                    S.job_append(jid, "warnings", ev.get("message"))
                     S.job_set(jid, warning=ev.get("message"))
                 elif kind == "error":
                     S.job_set(jid, error=ev.get("message"))
@@ -1228,6 +1638,14 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
     def log_message(self, *a):                      # noqa: A003
         pass
 
+    def do_OPTIONS(self):                           # noqa: N802
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.end_headers()
+
     # ---------------------------------------------------------------- GET
     def do_GET(self):                               # noqa: N802
         u = urlparse(self.path)
@@ -1252,6 +1670,8 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
                 "workspace": workspace_state(),
                 "captures": list_captures(),
                 "captures_dir": str(CAPTURES),
+                "legacy_captures_dir": (str(LEGACY_CAPTURES)
+                                        if LEGACY_CAPTURES.is_dir() else None),
                 "unavailable_controls": pr.UNAVAILABLE_CONTROLS,
                 "calibration": calibration_info(),
                 # Disk only -- this must not cause USB traffic on bootstrap.
@@ -1275,6 +1695,18 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
 
         if route == "captures":
             return _json(self, list_captures())
+
+        if route == "paths":
+            # So the native file dialogs open where captures actually are.
+            # main.js used to default to `repoRoot()/captures`, which when
+            # packaged is inside the .app bundle.
+            return _json(self, {
+                "captures": str(CAPTURES),
+                "legacy_captures": (str(LEGACY_CAPTURES)
+                                    if LEGACY_CAPTURES.is_dir() else None),
+                "workspace": str(WORKSPACE),
+                "sidecars": str(SIDECARS),
+            })
 
         if route == "workspace":
             return _json(self, workspace_state())
@@ -1311,13 +1743,37 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
         if scale not in pr.SCALES:
             scale = "preview"
         max_edge = int((q.get("max") or [0])[0]) or None
+        if index < 0 or index >= len(roll.frames):
+            return _json(self, {"error": f"frame {index} of "
+                                         f"{len(roll.frames)}"}, 404)
         f = roll.frames[index]
         key = f"{roll.id}:{index}:{scale}:{max_edge}:{_pv(f.params)}"
         hit = S.cache_get(key)
         if hit is None:
             t0 = time.perf_counter()
-            img = pr.render_frame(roll, index, None, scale=scale,
-                                  max_edge=max_edge)
+            try:
+                img = pr.render_frame(roll, index, None, scale=scale,
+                                      max_edge=max_edge)
+            except pr.gocol.GoColourError as e:
+                # A REFUSAL, not a crash. The colour engine declines to guess
+                # — no film base, no film class, no stock — and it says why in
+                # prose. app/src/api.js:frameError re-requests this URL when
+                # the <img> fails and prints `.error`, so the operator reads
+                # the engine's own words instead of an empty stage.
+                #
+                # 422, not 500: the request was understood and the render was
+                # declined. A 500 would say the backend broke, which sends
+                # whoever is holding it looking in the wrong place — that is
+                # how this failure was first mistaken for a UI bug.
+                # No Cache-Control: a refusal must not be cached, because the
+                # operator's next action is usually to fix its cause.
+                return _json(self, e.as_dict(), 422)
+            except ValueError as e:
+                # The Python-side refusals at the front door — no film
+                # selected, no resolved film path, DX did not resolve. Same
+                # shape, same status, so the UI has one thing to display.
+                return _json(self, {"error": str(e), "engine": "python",
+                                    "kind": "refused"}, 422)
             hit = pr.encode(img, "JPEG", quality=90)
             S.cache_put(key, hit)
             self._last_ms = (time.perf_counter() - t0) * 1000.0
@@ -1348,6 +1804,11 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
             threading.Thread(target=job_export, args=(jid, body),
                              daemon=True).start()
             return _json(self, {"id": jid})
+
+        if route == "export/plan":
+            # Synchronous and read-only: it stats paths and renders nothing,
+            # so the screen can ask before it commits without a job round trip.
+            return _json(self, export_plan(body))
 
         if route == "film":
             if film is None:
@@ -1635,8 +2096,13 @@ def purge(body: dict) -> dict:
     unrecoverable.
     """
     ids = body.get("ids")
+    caps = body.get("captures")
     if body.get("all"):
         ids = [d.name for d in WORKSPACE.glob("*") if d.is_dir()]
+        # Captures are temp data too, and the quit dialog has always claimed
+        # they were deleted. Now they are — but only the ones in the cache
+        # tree, never the repository's own.
+        caps = [p.name for p in CAPTURES.glob("*.bin")]
     freed = 0
     refused: list[str] = []
     root = WORKSPACE.resolve()
@@ -1656,6 +2122,37 @@ def purge(body: dict) -> dict:
             S.rolls.pop(rid, None)
         S.cache_drop(f"{rid}:")
         shutil.rmtree(d, ignore_errors=True)
+
+    # Captures, under the same proof as the workspace above and one more
+    # besides. These are irreplaceable — the film passes the sensor once — so
+    # deleting one is only ever allowed inside the temp captures directory,
+    # and a resolved path that lands anywhere else is refused and reported
+    # rather than removed. LEGACY_CAPTURES is the owner's own photographs and
+    # is unreachable from here by construction.
+    croot = CAPTURES.resolve()
+    for name in caps or []:
+        if ".." in name or "/" in name or "\\" in name:
+            refused.append(name)
+            continue
+        p = CAPTURES / name
+        if not p.is_file():
+            continue
+        try:
+            if p.resolve().parent != croot:
+                refused.append(name)
+                continue
+        except OSError:
+            refused.append(name)
+            continue
+        # The capture and the sidecars that describe it go together: a
+        # .scan.json describing a .bin that is gone is worse than neither.
+        for q in sorted(CAPTURES.glob(f"{p.stem}.*")):
+            try:
+                if q.is_file() and q.resolve().parent == croot:
+                    freed += q.stat().st_size
+                    q.unlink()
+            except OSError:
+                pass
     out = {"freed": freed, "workspace": workspace_state()}
     if refused:
         out["refused"] = refused
@@ -1791,6 +2288,9 @@ def diagnostics() -> dict:
         gate_desc = pgate.Gate.from_calibration().describe()
     except Exception as e:                                  # noqa: BLE001
         gate_desc = {"error": str(e)}
+    # What the pipeline does with a capture that carries no speed at all: ask
+    # the resolver, do not describe it from memory. See "transport_scale" below.
+    ts_none, ts_none_src = dec.resolve_transport_scale()
     return {
         "rolls": rolls,
         "calibration": calibration_info(),
@@ -1800,13 +2300,17 @@ def diagnostics() -> dict:
             "words_per_line": dec.WORDS_PER_LINE,
             "pixels_per_line": dec.PIXELS_PER_LINE,
             "raw14_max": dec.RAW14_MAX,
-            "transport_scale": dec.DEFAULT_TRANSPORT_SCALE,
+            "transport_scale": ts_none,
+            # Both the number and the sentence are what resolve_transport_scale
+            # itself returns for a capture it knows nothing about — nothing here
+            # restates DEFAULT_TRANSPORT_SCALE or re-derives a scale, so this row
+            # cannot drift away from the resolver the renderer actually uses.
+            # (It said "legacy default speed 25802 → 1.0000" once, which read as
+            # though 1.0 were derived from that speed. transport_scale(25802) is
+            # 4.3607; the 1.0 is the sentinel for "speed unknown".)
             "transport_scale_note": (
-                f"derived: speed/{dec.SQUARE_MOTOR_SPEED} at line_rate "
-                f"{dec.REF_LINE_RATE}; legacy default speed "
-                f"{dec.LEGACY_DEFAULT_MOTOR_SPEED} → "
-                f"{dec.DEFAULT_TRANSPORT_SCALE:.4f}. gold400 @11467 → "
-                f"{dec.transport_scale(11467):.4f}"
+                f"{ts_none_src} Worked example, same resolver: "
+                f"{dec.resolve_transport_scale(motor_speed=dec.MOTOR_SPEED[8])[1]}"
             ),
             "rpd_per_density": pr.RPD_PER_DENSITY,
         },

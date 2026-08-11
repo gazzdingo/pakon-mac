@@ -12,7 +12,7 @@
 Run::
 
     /Users/guy/.pyenv/versions/3.10.13/bin/python3 \\
-        tools/ansel/pakon_ane_useavg_golden.py
+        tools/ansel/python-pipeline/pakon_ane_useavg_golden.py
 """
 from __future__ import annotations
 

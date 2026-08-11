@@ -10,8 +10,8 @@ Leaves
 
 Usage
 -----
-``PYTHONPATH=tools/ansel /Users/guy/.pyenv/versions/3.10.13/bin/python3 \\
-    tools/ansel/pakon_fugc_golden.py [dll]``
+``PYTHONPATH=tools/ansel/python-pipeline /Users/guy/.pyenv/versions/3.10.13/bin/python3 \\
+    tools/ansel/python-pipeline/pakon_fugc_golden.py [dll]``
 """
 from __future__ import annotations
 

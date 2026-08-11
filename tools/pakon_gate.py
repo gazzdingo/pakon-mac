@@ -137,7 +137,7 @@ WINDOW_LINES = 256
 #: Run lengths, in lines. Frame pitch on this unit measures ~1460 lines and an
 #: inter-frame gap is a few hundred, so roll-end needs substantially more than
 #: one frame to be a roll end rather than a gap or a blank frame.
-DARK_CONFIRM_LINES = 512        # ~0.53 s. Two windows, so a splice cannot stop a roll.
+DARK_CONFIRM_LINES = 10000      # ~10.4 s. Extra long to easily feed any opaque leader without aborting on "DARK".
 ROLL_END_LINES = 4000           # ~2.7 frame pitches, ~4.1 s.
 LEADER_FILM_LINES = 2000        # film must have been seen before roll-end can arm.
 

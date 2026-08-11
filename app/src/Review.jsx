@@ -1,8 +1,9 @@
-// Review — design/variants/console-review.html.
+// Step 2 — edit and view the roll. design/variants/console-review.html.
 //
 // Same furniture as Scan with the centre swapped: settings rail left, the
 // photograph on a neutral ground in the middle, the correction bench right,
-// the roll along the floor.
+// the roll along the floor. This is where the time goes, so it gets the
+// widest centre of the three steps and the whole filmstrip along the floor.
 //
 // Two-tier render, from measurement on this machine (tools/pakon_render.py
 // check, 694 MB / 57 900 lines / 47 frames): quarter-res preview 39 ms,
@@ -35,6 +36,80 @@ const CHANNELS = [
 ];
 
 const fmt = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v || 0).toFixed(2);
+
+/* Where a roll's DX came from. No screen distinguished a typed DX from a
+   measured one — this field's own info text said "Typed, not read" even when
+   the value had come off the DX board — and `list_captures` has been computing
+   `dx_read` all along with nothing consuming it. Keyed by `roll.dx_source`,
+   which pakon_render now records. */
+const DX_SOURCES = {
+  typed: {
+    short: 'typed',
+    long: (
+      <>
+        <b>Typed by the operator</b>, for this open. A deliberate statement about
+        the roll that was in the gate.
+      </>
+    ),
+  },
+  board: {
+    short: 'read by the board',
+    long: (
+      <>
+        <b>Read by the DX sensor board</b> during the scan, from the capture's{' '}
+        <span className="num">.dx.json</span>. Only a code word that passed parity
+        and was unambiguous counts as a reading at all, so this is rare.
+      </>
+    ),
+  },
+  'sidecar:typed': {
+    short: 'typed at scan time',
+    long: (
+      <>
+        <b>Typed by the operator when the scan was started</b>, and recorded in
+        the capture's <span className="num">.scan.json</span>. Nobody had to
+        remember it: it was written down before the transport moved.
+      </>
+    ),
+  },
+  'sidecar:board': {
+    short: 'board, at scan time',
+    long: (
+      <>
+        <b>Read by the DX board during the scan</b> and recorded in the capture's{' '}
+        <span className="num">.scan.json</span>. Nothing was typed for this roll.
+      </>
+    ),
+  },
+  'sidecar:none': {
+    short: 'sidecar, source unstated',
+    long: (
+      <>
+        Recorded in the capture's <span className="num">.scan.json</span>, which
+        does not say whether it was typed or read.
+      </>
+    ),
+  },
+  'sidecar:unknown': {
+    short: 'sidecar, source unstated',
+    long: (
+      <>
+        Recorded in the capture's <span className="num">.scan.json</span> by a
+        version of the scan tool that did not record where it came from.
+      </>
+    ),
+  },
+  unresolved: {
+    short: 'DOES NOT RESOLVE',
+    long: (
+      <>
+        <b>This DX does not match any known film stock.</b> The film path is being
+        used instead — see the notice below. It used to be swallowed silently,
+        taking the film path with it.
+      </>
+    ),
+  },
+};
 
 /* ── the plot: histogram of the 14-bit source, and nothing invented ─────── */
 
@@ -310,9 +385,6 @@ export default function Review({
   onGoExport,
   onOpenFraming,
   onOpenContactSheet,
-  hw,
-  hwBusy,
-  onRecheckHw,
   onGoScan,
   machine,
 }) {
@@ -325,6 +397,15 @@ export default function Review({
   const [hist, setHist] = useState(null);
   const [bounds, setBounds] = useState(false);
   const [applyPlan, setApplyPlan] = useState(null);
+  // Why the frame would not render, and a nonce so Retry re-requests the same
+  // URL (the browser will not refetch an identical src on its own).
+  const [imgFailed, setImgFailed] = useState(null);
+  const [imgNonce, setImgNonce] = useState(0);
+  // Clear the failure when we navigate, or one bad frame would look like a
+  // whole broken roll.
+  // `sharp`, not the `scale` it derives -- scale is declared further down, and
+  // naming it here reaches it in its temporal dead zone.
+  useEffect(() => { setImgFailed(null); }, [roll.id, sel, sharp]);
   const settle = useRef(null);
 
   const frame = roll?.frames?.[sel];
@@ -449,58 +530,27 @@ export default function Review({
   }, [roll, sel, params, chan, clipboard, commit, setSel]);
 
   if (!roll) {
-    /* This is the screen the app lands on when there is no scanner, so it has
-       to answer the question that puts someone here: where is my scanner. It
-       says what is missing and offers to look again, rather than leaving the
-       absence to be inferred from a Scan tab nobody was sent to. */
-    const ready = hw?.present && hw?.state === 'ready' && !hw?.writes_locked;
-    const missing = !hw
-      ? 'Not probed yet'
-      : hw.state === 'unreachable'
-        ? 'Hardware probe not answering'
-        : !hw.present
-          ? 'No scanner on USB'
-          : hw.state === 'needs_firmware'
-            ? 'Scanner present, firmware not loaded'
-            : hw.writes_locked
-              ? 'Writes locked'
-              : hw.state !== 'ready'
-                ? 'Scanner not answering'
-                : null;
-
+    /* Step 2 is normally not reachable at all without a capture — the step bar
+       says so and does not let you in — so this is the fallback for a roll
+       that goes away underneath someone standing here. It points back at the
+       step that makes one and does not restate the machine's condition, which
+       step 1 and the step bar both already carry. */
     return (
       <div className="body" style={{ gridTemplateColumns: '280px minmax(0,1fr)' }}>
         <Rail side="l">
           <RailHead title="Rolls" />
           <div className="railfoot">
-            {ready ? (
-              <Btn variant="primary big" onClick={onGoScan}>
-                Scan strip
-              </Btn>
-            ) : null}
-            <Btn variant={ready ? 'flat big' : 'primary big'} onClick={onOpen}>
+            <Btn variant="primary big" onClick={onGoScan}>
+              ← Scan
+            </Btn>
+            <Btn variant="flat big" onClick={onOpen}>
               Open capture…
             </Btn>
           </div>
         </Rail>
         <div className="stage" style={{ flexDirection: 'column', gap: 14 }}>
-          <span className="title">No roll open</span>
-          <span className="quiet">Frames are rendered from a capture on demand.</span>
-          {missing ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Chip tone="warn" dot>
-                {missing}
-              </Chip>
-              <Btn
-                style={{ height: 24, padding: '0 8px', fontSize: 12 }}
-                disabled={hwBusy}
-                onClick={onRecheckHw}
-              >
-                {hwBusy ? 'Checking…' : 'Recheck'}
-              </Btn>
-              {hw?.hint ? <Info side="left">{hw.hint}</Info> : null}
-            </div>
-          ) : null}
+          <span className="title">No capture open</span>
+          <span className="quiet">Step 2 needs one. Scan a strip, or open a capture.</span>
         </div>
       </div>
     );
@@ -513,6 +563,12 @@ export default function Review({
 
   return (
     <>
+      <ApplySheet
+        plan={applyPlan}
+        busy={busy}
+        onCancel={() => setApplyPlan(null)}
+        onConfirm={doApply}
+      />
       <div className="body" style={{ gridTemplateColumns: '280px minmax(0,1fr) 340px' }}>
         {/* ── settings rail — the same furniture Scan uses ── */}
         <Rail side="l" aria-label="Capture settings">
@@ -615,13 +671,27 @@ export default function Review({
               Digital ICE
             </Toggle>
 
+            {/* This said "Typed, not read." unconditionally — including for a
+                value that came off the DX board, which is the one thing this
+                field exists to distinguish. `roll.dx_source` now carries the
+                provenance and this reports it instead of asserting one. */}
             <Field
               label="DX"
+              value={roll.dx ? DX_SOURCES[roll.dx_source]?.short || roll.dx_source || 'source unknown' : null}
               info={
                 <>
-                  Typed, not read. Captures carry no DX packets, and{' '}
-                  <span className="num">tools/dx_decode.py</span> has never been validated against a
-                  real roll.
+                  {DX_SOURCES[roll.dx_source]?.long || (
+                    <>
+                      Where this DX came from was not recorded — the roll was opened
+                      before provenance was tracked. Re-open the capture to resolve it.
+                    </>
+                  )}
+                  <br />
+                  <br />
+                  A typed DX outranks the board's reading: captures carry no DX
+                  packets, and <span className="num">tools/dx_decode.py</span> has
+                  never been validated against a real roll, so a code off the board
+                  is evidence rather than ground truth.
                 </>
               }
             >
@@ -634,6 +704,26 @@ export default function Review({
               </div>
             </Field>
           </Grp>
+
+          {/* What the open could not resolve, or resolved for you. An exposure
+              triad the committed dark/gain tables are not valid for, a frame
+              pitch that disagrees with the recorded speed, a DX that did not
+              look up, a film path taken from the sidecar rather than chosen.
+              Each of these used to be a silent default. */}
+          {roll.warnings?.length ? (
+            <Grp title="Notices">
+              <div className="rows" style={{ padding: '9px 11px', display: 'grid', gap: 8 }}>
+                {roll.warnings.map((w, i) => (
+                  <span
+                    key={i}
+                    style={{ fontSize: 12, lineHeight: 1.45, color: 'var(--warn-ink)' }}
+                  >
+                    {w}
+                  </span>
+                ))}
+              </div>
+            </Grp>
+          ) : null}
 
           <Grp title="Machine">
             <State rows={machine} />
@@ -664,13 +754,29 @@ export default function Review({
           </div>
 
           <main className="stage">
-            <img
-              key={`${roll.id}-${sel}-${frame.version}-${scale}`}
-              className="photo"
-              src={api.frameUrl(roll.id, sel, scale, frame.version)}
-              alt={`Frame ${sel + 1}`}
-              style={{ opacity: params.rejected ? 0.4 : 1 }}
-            />
+            {/* A frame that will not render must SAY so. Without onError the
+                <img> fails silently and the stage renders empty -- which reads
+                as "no image yet" when it actually means the backend refused,
+                e.g. FindDmin finding no film base. Silence here sent the owner
+                looking for a UI bug that was server-side. */}
+            {imgFailed ? (
+              <div className="stage-fail">
+                <b>Frame did not render</b>
+                <span className="quiet">{imgFailed}</span>
+                <Btn variant="flat" onClick={() => { setImgFailed(null); setImgNonce((n) => n + 1); }}>
+                  Retry
+                </Btn>
+              </div>
+            ) : (
+              <img
+                key={`${roll.id}-${sel}-${frame.version}-${scale}-${imgNonce}`}
+                className="photo"
+                src={api.frameUrl(roll.id, sel, scale, frame.version)}
+                alt={`Frame ${sel + 1}`}
+                style={{ opacity: params.rejected ? 0.4 : 1 }}
+                onError={() => api.frameError(roll.id, sel, scale, frame.version).then(setImgFailed)}
+              />
+            )}
           </main>
 
           <div className="editbar">
@@ -815,20 +921,47 @@ export default function Review({
               <Btn variant="flat" style={{ flex: 1 }} onClick={() => api.resetFrame(roll.id, sel).then(setRoll)}>
                 Reset frame
               </Btn>
+              <Btn variant="flat" style={{ flex: 1 }} disabled={busy} onClick={askApply}>
+                Apply to roll…
+              </Btn>
+            </div>
+
+            {/* Undo. The backend has snapshotted every destructive edit since
+                undo was written and served POST roll/<id>/undo the whole time,
+                and nothing in the app had ever called it — while
+                apply-to-roll's own confirmation promised "This can be undone".
+                It says what it will undo, because "Undo" alone is not an
+                answer to "undo what". */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <Btn
                 variant="flat"
                 style={{ flex: 1 }}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    setRoll(await api.applyToRoll(roll.id, sel, ['density', 'red', 'green', 'blue']));
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
+                disabled={busy || !roll.undo?.available}
+                onClick={undo}
+                title={roll.undo?.label ? `Undo ${roll.undo.label}` : undefined}
               >
-                Apply to roll
+                {roll.undo?.available ? `Undo ${roll.undo.label}` : 'Nothing to undo'}
               </Btn>
+              <Info side="left">
+                Every destructive edit — apply to roll, a boundary move, a
+                split, a merge, a re-detect, a frame reset — is snapshotted
+                first. A frame's editable state is a few ints and a dict, so a
+                whole roll is a few kilobytes and the snapshot is automatic.
+                <br />
+                <br />
+                <b>This session only.</b> The stack is in memory and is not
+                written to the sidecar: undoing past a reopen, past a re-detect
+                that changed the frame count, or past another process writing
+                the same sidecar are not things it can honestly promise.
+                {roll.undo?.depth ? (
+                  <>
+                    <br />
+                    <br />
+                    <span className="num">{roll.undo.depth}</span> step
+                    {roll.undo.depth === 1 ? '' : 's'} available.
+                  </>
+                ) : null}
+              </Info>
             </div>
           </Grp>
 

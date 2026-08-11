@@ -7,7 +7,7 @@ fields. Cap publish covered by ``pakon_shasta_tone_lut_golden.py``.
 
 Usage
 -----
-``PYTHONPATH=tools/ansel python3 tools/ansel/pakon_shasta_builder_golden.py [dll]``
+``PYTHONPATH=tools/ansel/python-pipeline python3 tools/ansel/python-pipeline/pakon_shasta_builder_golden.py [dll]``
 """
 from __future__ import annotations
 

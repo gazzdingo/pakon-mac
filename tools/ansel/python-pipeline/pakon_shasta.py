@@ -143,7 +143,7 @@ How analysis image relates to ``+0x2b0`` (VERIFIED call site)
      ``ANE_ANALYZE_FINALIZE_KNOT_PORTED`` /
      ``ANE_ANALYZE_FINALIZE_ADJUST_PORTED`` /
      ``ANE_CURVE_ROWS_FROM_DOUBLES_PORTED``); build orch ``0x1027e9d0``
-     still WALL.
+     ported (``pakon_ane_order.ANE_ORDER_PORTED``).
   3. Master LUT = global ``AnsLut`` @ ``0x106b5f74`` built by CRT init
      ``0x1056a470`` → ctor ``0x100f42a0(0xc, 0, 0xfff)``. Data pointer
      ``[0x106b5f7c] = alloc+0x10000`` (signed-int16 index 0). Fill:
@@ -342,9 +342,14 @@ UNKNOWN / blockers (honest)
   finalize knot/adjust + curve rows + frame FindDmin ``+0x6cac`` +
   ColNeg 1px remap closed (Unicorn-golden). Host dens-hist→
   ``getResults`` compose wired. Still need Ane build orch
-  ``0x1027e9d0`` (sample/residual → dens-hist). Contrast
+  ``0x1027e9d0`` (sample/residual → dens-hist) is ported
+  (``pakon_ane_order.ANE_ORDER_PORTED``), which is what
+  ``SHASTA_ANALYZE_PORTED = True`` below records. Contrast
   (``0x10119060``) / float-table (``0x1004f7b0``) side paths open.
-  ``ANALYZE`` stays False.
+  The Cap-level ``AnsShastaCapabilityImpl::analyze``
+  (``0x101e5250…0x101e5ca0``) and its wrap ``0x101ed9b0`` are NOT ported —
+  that, plus ``SHASTA_TONE_LUT_FRAGMENTS``, is why the colour-negative
+  paths still run a stand-in tone curve.
 * Cap ``+0x3e0`` automatic assign from analyze still UNKNOWN; host
   publishes via cited ``setToneLut`` ``0x101e48d0`` (``SHASTA_CAP_TONE_LUT_PORTED``).
 * Iem hist fill ``0x104ea940`` from plane list not ported — host builds

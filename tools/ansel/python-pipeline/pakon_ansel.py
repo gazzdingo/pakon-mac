@@ -1,6 +1,27 @@
 #!/usr/bin/env python3
 """Ansel colour from shipped Pakon data files (host post-process).
 
+DEPRECATED — NOT THE PRODUCT'S COLOUR ENGINE
+--------------------------------------------
+As of docs/62 phase 2 the app renders through Go: ``tools/ansel/pipeline``,
+reached from ``tools/pakon_render.py`` through a c-shared dylib
+(``tools/pakon_colour_go.py``). This module is no longer on the path any
+photograph the owner keeps travels down.
+
+It is deliberately still here and still working, behind
+``PAKON_COLOUR_ENGINE=python``, which raises a ``DeprecationWarning`` when it
+is used. Three reasons, in order: the Go engine is being actively corrected
+right now; the parity harness that would prove it correct is only just being
+built; and there has to be a way back if Go regresses in the middle of a
+scanning session. Deleting it would strand the operator.
+
+**Do not add features here.** A fix to the colour chain belongs in
+``tools/ansel/pipeline``. A fix applied here alone will not reach any image the
+app produces, and a fix applied here *as well* recreates the duplication
+docs/62 exists to end. What this module is still good for is being the second
+opinion the parity harness compares against — which is a reason to keep it
+byte-stable, not a reason to improve it.
+
 Pakon (docs/11 §5, PakonIMAu strings): stage-2 RPD stays **I16** through
 Shasta/SBA (`Only I16 data type is supported by ImaShastaOp`), then
 Rpd2Pcs→Srgb.
@@ -47,6 +68,7 @@ See ``docs/46-ansel-parity-checklist.md``.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -64,12 +86,23 @@ import pakon_scene_context as scene_ctx
 import pakon_shasta as shasta_mod
 import pakon_sra as sra_mod
 
+# The RPD ceiling is per scanner family, not global. 4092 is the F-235 / TLA
+# number (`pakon_color.RPD_MAX_BY_MODEL["f235"]`, the LUT-plus-3x4 clamp); the
+# F-135 polynomial clamps at 4095 (TLB.dll @ 0x1000da11, POLY_MAX). Anything
+# that undoes a 12->16-bit scale has to use the SAME ceiling the forward scale
+# used, or every value comes back short — 4092/4095 costs ~2 codes of 4096 over
+# the whole domain. Hence `rpd16_to_rpd12(..., rpd_max=...)` below.
 RPD_MAX = 4092
 SHASTA_MAX = 4095
 
+# tools/ansel/python-pipeline/pakon_ansel.py -> repo root
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+# Vendor Ansel / ColorCorrection data ships in-repo under vendor/ansel, laid
+# out exactly as an F-X35 COM SERVER install, so a fresh checkout resolves with
+# no flags. PAKON_FX35_ROOT points at a real install instead; the ansel_root
+# argument still overrides both. See vendor/README.md.
 _DEFAULT_FX35 = Path(
-    "/Users/guy/Downloads/Pakon Update 2/fx35install/"
-    "program files/Pakon/F-X35 COM SERVER"
+    os.environ.get("PAKON_FX35_ROOT") or _REPO_ROOT / "vendor" / "ansel"
 )
 DEFAULT_ANSEL_ROOT = _DEFAULT_FX35 / "anselinstalldir" / "dataPathItems"
 DEFAULT_PROFILE_DIR = DEFAULT_ANSEL_ROOT / "profile"
@@ -202,8 +235,16 @@ def apply_1d_lut(rpd12: np.ndarray, lut: np.ndarray) -> np.ndarray:
     return out
 
 
-def rpd16_to_rpd12(rpd16: np.ndarray) -> np.ndarray:
-    return rpd16.astype(np.float64) * (RPD_MAX / 65535.0)
+def rpd16_to_rpd12(rpd16: np.ndarray,
+                   rpd_max: float = RPD_MAX) -> np.ndarray:
+    """Undo the 12->16-bit RPD scale.
+
+    ``rpd_max`` MUST be the ceiling the forward scale used — 4092 on the
+    F-235 / TLA path, 4095 on the F-135 polynomial path. The default is the
+    F-235 number because that is the path this function was written for; the
+    F-135 callers pass ``pakon_color.RPD_MAX_BY_MODEL["f135"]``.
+    """
+    return rpd16.astype(np.float64) * (float(rpd_max) / 65535.0)
 
 
 def rpd12_to_icc_u8(rpd12: np.ndarray) -> np.ndarray:
@@ -281,10 +322,15 @@ def shasta_two_anchor_tone(rpd12: np.ndarray,
                            shasta: "ShastaParams") -> np.ndarray:
     """Two-anchor stand-in for ``AnsShastaCapabilityImpl::analyze``.
 
-    ``pakon_shasta.py`` carries the toneLut *assembly* but not the scene
-    ``analyze`` that chooses its aims (``ANALYZE`` is False), so on the
-    colour-negative path the assembled LUT does not land the scene on the
-    dpi's aims.
+    ``pakon_shasta.py`` carries the toneLut *assembly*, and
+    ``SHASTA_ANALYZE_PORTED`` is **True** — but that flag is narrower than its
+    name: it records only that Preference can build the mid-aims from the live
+    Laplacian ``collectData`` dens (``0x1027fc80`` → ``0x1027e9d0`` →
+    ``cn_premium_mid_aim_rgb``). ``AnsShastaCapabilityImpl::analyze`` itself
+    (``0x101e5250…0x101e5ca0``) and its Cap wrap ``0x101ed9b0`` are not ported,
+    and ``SHASTA_TONE_LUT_FRAGMENTS`` records that the remaining curve pieces
+    are "cited but insufficient for a scene toneLut". So on the colour-negative
+    path the assembled LUT is still not the vendor's curve.
 
     The vendor builds its curve from five measured statistics
     (``extShadowPercent`` 0.1, ``shadowPercent`` 1.0, the scene grey,
@@ -436,11 +482,20 @@ class AnselEngine:
     color_adjust: color_adjust.ColorAdjustParams = field(
         default_factory=color_adjust.ColorAdjustParams
     )
-    # F-135: use the two-anchor Shasta stand-in instead of the partially
-    # ported toneLut (AnsShastaCapabilityImpl::analyze is not ported, so the
-    # assembled LUT has no scene aims to hit). Set by pakon_decode.py for
-    # --model f135. Off elsewhere — nothing else changes behaviour.
+    # F-135: use the two-anchor Shasta stand-in instead of the assembled
+    # toneLut. NOT because "ANALYZE is False" — pakon_shasta's
+    # SHASTA_ANALYZE_PORTED is True. That flag records something narrower than
+    # its name suggests: the mid-aims Preference builds from the live Laplacian
+    # collectData dens (0x1027fc80 -> 0x1027e9d0 -> cn_premium_mid_aim_rgb).
+    # AnsShastaCapabilityImpl::analyze itself (0x101e5250…0x101e5ca0) and its
+    # Cap wrap 0x101ed9b0 are not ported, and SHASTA_TONE_LUT_FRAGMENTS records
+    # that the remaining curve pieces are "cited but insufficient for a scene
+    # toneLut". Set by pakon_decode.py / pakon_render.py for --model f135.
+    # Off elsewhere — nothing else changes behaviour.
     shasta_stand_in: bool = False
+    # Ceiling the 12->16-bit RPD scale was taken with, for render_strip's
+    # inverse. 4092 (F-235/TLA) by default; the F-135 callers set 4095.
+    rpd_max: float = RPD_MAX
     _icc_cache: object = field(default=None, repr=False)
 
     @classmethod
@@ -777,7 +832,7 @@ class AnselEngine:
                      return_toned: bool = False,
                      *,
                      legacy_tone: bool = False):
-        rpd12_full = rpd16_to_rpd12(rpd16)
+        rpd12_full = rpd16_to_rpd12(rpd16, self.rpd_max)
         scenes = [rpd12_full[a:b] for a, b in spans if b > a]
         # Median roll scales are a fallback AnalyseRoll stand-in only.
         # On the CN Preference path they fight setShifts OUT ratios.

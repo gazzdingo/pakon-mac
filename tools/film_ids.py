@@ -34,8 +34,11 @@ import os
 import re
 import sys
 
-DEFAULT_DIR = ("/Users/guy/Downloads/Pakon Update 2/fx35install/program files/"
-               "Pakon/F-X35 COM SERVER/Config/ColorCorrection")
+# vendor/ansel mirrors an F-X35 COM SERVER install (see vendor/README.md);
+# PAKON_FX35_ROOT overrides it with a real one.
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FX35_ROOT = os.environ.get("PAKON_FX35_ROOT") or os.path.join(_REPO, "vendor", "ansel")
+DEFAULT_DIR = os.path.join(FX35_ROOT, "Config", "ColorCorrection")
 
 SPECIAL = {
     "BnW": "black and white (C41 and conventional) -- includes Ilford HP5, "

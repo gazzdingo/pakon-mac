@@ -14,6 +14,10 @@ const path = require('path');
 const http = require('http');
 const net = require('net');
 
+app.setName('Pakon Mac');
+if (process.platform === 'darwin' && !app.isPackaged) {
+  app.dock.setIcon(path.join(__dirname, 'src', 'icons', 'icon_512x512.png'));
+}
 let backend = null;
 let win = null;
 let backendPort = 0;
@@ -139,9 +143,19 @@ function waitForBackend(tries = 120) {
 ipcMain.handle('backend-port', () => backendPort);
 
 ipcMain.handle('open-capture', async () => {
+  // Ask the backend where captures live rather than assuming
+  // `repoRoot()/captures` — when packaged that is inside the .app bundle,
+  // which is exactly where captures must never be.
+  let defaultPath = null;
+  try {
+    const p = await api('/api/app/paths', { timeout: 3000 });
+    defaultPath = p.captures || p.legacy_captures || null;
+  } catch {
+    /* fall through to the OS default rather than pointing into the bundle */
+  }
   const r = await dialog.showOpenDialog(win, {
     title: 'Open capture',
-    defaultPath: path.join(repoRoot(), 'captures'),
+    ...(defaultPath ? { defaultPath } : {}),
     filters: [
       { name: 'Pakon capture', extensions: ['bin'] },
       { name: 'All files', extensions: ['*'] },
@@ -176,7 +190,8 @@ async function createWindow() {
     height: 920,
     minWidth: 1120,
     minHeight: 720,
-    title: 'Pakon Scan',
+    title: 'Pakon Mac',
+    icon: path.join(repoRoot(), 'app', 'src', 'icons', 'icon_512x512.png'),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#0B0B0B',
     show: false,
@@ -230,39 +245,59 @@ async function confirmQuit() {
   const mb = (n) => `${((n || 0) / 1e6).toFixed(1)} MB`;
   const unexported = (session.adjusted_frames || 0) - (session.exported_frames || 0);
 
+  /* This dialog used to get both halves of its own sentence wrong. It said
+     "the raw captures (X MB) are deleted", where X was dir_size(WORKSPACE) --
+     a directory that holds rgb14.npy and roll.json and no captures at all --
+     and the captures were not deleted either, because purge() only ever
+     walked the workspace. So the figure described the wrong thing and the
+     claim was false about the right one.
+     Both are true now. The backend measures the render cache and the raw
+     captures separately, purge(all) removes both, and this names them
+     separately because they are not equally replaceable: the render cache is
+     rebuilt on demand, and a capture is film that has already gone past the
+     sensor once. */
+  const caps = session.capture_bytes || 0;
+  const ws = session.workspace_bytes || 0;
+  const total = session.temp_bytes ?? ws + caps;
+  const nCaps = session.captures || 0;
+  const what =
+    `${mb(total)} of temporary data is deleted:\n\n` +
+    `  • ${nCaps} raw capture${nCaps === 1 ? '' : 's'} (${mb(caps)}). A scan is not ` +
+    `repeatable — the film passes the sensor once — so these cannot be remade ` +
+    `without running the roll through again.\n` +
+    `  • the render cache (${mb(ws)}), which is rebuilt from a capture on demand.`;
+
   // Two different questions. Only ask the creative-work one when there is
   // creative work to lose.
   if (unexported > 0) {
     const { response } = await dialog.showMessageBox(win, {
       type: 'warning',
-      buttons: ['Quit and delete workspace', 'Quit, keep workspace this once', 'Cancel'],
+      buttons: ['Quit and delete', 'Quit, keep this once', 'Cancel'],
       defaultId: 2,
       cancelId: 2,
       message: `${session.adjusted_frames} frame${
         session.adjusted_frames === 1 ? '' : 's'
       } adjusted, ${session.exported_frames} exported`,
       detail:
-        `Quitting clears the workspace: the raw captures (${mb(
-          session.workspace_bytes,
-        )}) are deleted.\n\n` +
+        `${what}\n\n` +
         `Your adjustments (${mb(
           session.sidecar_bytes,
-        )}) are kept and re-apply if you reopen the same capture — but the ` +
-        `rendered frames themselves only exist after export.`,
+        )}) are kept and re-apply if you reopen the same capture — but they are ` +
+        `adjustments to a capture, so deleting the captures leaves nothing for them ` +
+        `to re-apply to. The rendered frames themselves only exist after export.`,
     });
     return ['delete', 'keep', 'cancel'][response];
   }
 
-  if ((session.workspace_bytes || 0) > 50e6) {
+  if (total > 50e6) {
     const { response } = await dialog.showMessageBox(win, {
       type: 'question',
-      buttons: ['Delete workspace and quit', 'Keep workspace', 'Cancel'],
-      defaultId: 0,
+      // Deleting is not the safe default when there are captures to lose.
+      buttons: ['Delete and quit', 'Quit, keep this once', 'Cancel'],
+      defaultId: nCaps ? 1 : 0,
       cancelId: 2,
-      message: `Delete ${mb(session.workspace_bytes)} of temporary scan data?`,
-      detail:
-        'The workspace holds raw captures and the render cache. It is ' +
-        'regenerable from the capture files and is normally cleared on quit.',
+      message: `Delete ${mb(total)} of temporary scan data?`,
+      detail: what,
     });
     return ['delete', 'keep', 'cancel'][response];
   }

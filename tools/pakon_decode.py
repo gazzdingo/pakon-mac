@@ -78,8 +78,11 @@ CHANNELS = 3
 RAW14_MAX = 16383
 _REPO_ROOT = _TOOLS.parent
 DEFAULT_CALIBRATION_DIR = _REPO_ROOT / "calibration"
-_FX35 = ("/Users/guy/Downloads/Pakon Update 2/fx35install/"
-         "program files/Pakon/F-X35 COM SERVER")
+# Vendor Ansel / ColorCorrection data ships in-repo under vendor/ansel, laid
+# out exactly as an F-X35 COM SERVER install, so a fresh checkout resolves with
+# no flags. PAKON_FX35_ROOT points at a real install instead; --data-dir /
+# --ansel-root still override both. See vendor/README.md.
+_FX35 = os.environ.get("PAKON_FX35_ROOT") or str(_REPO_ROOT / "vendor" / "ansel")
 DEFAULT_DATA_DIR = f"{_FX35}/Config/ColorCorrection"
 DEFAULT_ANSEL_ROOT = f"{_FX35}/anselinstalldir/dataPathItems"
 
@@ -271,6 +274,97 @@ def load_unit_calibration(
     return dark14, gain.astype(np.float64, copy=False), root
 
 
+#: The exposure the committed dark/gain tables were captured at, in the three
+#: registers that are one setting: integration (0x82 index 6), the lamp PWM
+#: period N, and the line rate (0x91). They are read from
+#: ``calibration/README.json`` rather than hardcoded, but the shape of the
+#: comparison lives here.
+EXPOSURE_TRIAD_KEYS = ("integration_0x82_idx6", "lamp_pwm_N", "line_rate_0x91")
+
+
+def calibration_exposure(cal_dir: str | Path | None = None) -> dict:
+    """The exposure triad ``calibration/README.json`` says the tables mean.
+
+    Returns ``{}`` when there is no record — the caller decides whether that is
+    fatal. Never raises.
+    """
+    root = Path(cal_dir) if cal_dir is not None else DEFAULT_CALIBRATION_DIR
+    try:
+        meta = json.loads((root / "README.json").read_text())
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return {}
+    cfg = meta.get("config") or {}
+    return {k: cfg.get(k) for k in EXPOSURE_TRIAD_KEYS if cfg.get(k) is not None}
+
+
+def check_capture_exposure(capture: Path | str,
+                           cal_dir: str | Path | None = None) -> list[str]:
+    """Was this capture taken at the exposure the committed tables are for?
+
+    ``load_unit_calibration`` validates the *shape* of ``dark_2000x3.npy`` and
+    ``gain_2000x3.npy`` and nothing else, while its own docstring says they are
+    "valid only for the exposure triad in that directory's README.json". So the
+    tables have been applied to every capture regardless of what it was
+    actually exposed at, and a mismatch is silent: a per-pixel dark taken at
+    integration 4093 subtracted from a capture taken at anything else is a
+    wrong number, not a noisy one.
+
+    This is the enforcement. It returns human-readable warnings rather than
+    raising, because refusing to open a capture that is merely suspect would
+    make the owner's photographs unreachable — but the warnings must reach a
+    screen, which is the half that was missing.
+
+    A capture with no sidecar gets one warning saying exactly that: it is not
+    evidence that the exposure matched, it is the absence of evidence.
+    """
+    want = calibration_exposure(cal_dir)
+    if not want:
+        return [f"no calibration record under "
+                f"{Path(cal_dir) if cal_dir else DEFAULT_CALIBRATION_DIR}, so "
+                f"nothing says what exposure the dark and gain tables are "
+                f"valid for"]
+    meta = load_capture_sidecar(capture) or {}
+    got = meta.get("exposure") if isinstance(meta.get("exposure"), dict) else {}
+    cfg = meta.get("config") if isinstance(meta.get("config"), dict) else {}
+    # The scan sidecar carries the triad under "exposure"; the ScanConfig dump
+    # under "config" uses the field names, not the register names. Accept both,
+    # because captures written before "exposure" existed only have the second.
+    alias = {"integration_0x82_idx6": "integration",
+             "lamp_pwm_N": "lamp_n",
+             "line_rate_0x91": "line_rate_0x91"}
+    out: list[str] = []
+    if not meta:
+        return [f"{Path(capture).name} has no .scan.json sidecar, so the "
+                f"exposure it was taken at is unknown. The committed dark and "
+                f"gain tables are valid only at "
+                + ", ".join(f"{k}={v}" for k, v in want.items())
+                + " and are being applied anyway."]
+    missing = []
+    for key, expect in want.items():
+        raw = got.get(key)
+        if raw is None:
+            raw = cfg.get(alias.get(key, key))
+        if raw is None:
+            missing.append(key)
+            continue
+        try:
+            same = int(raw) == int(expect)
+        except (TypeError, ValueError):
+            same = str(raw) == str(expect)
+        if not same:
+            out.append(
+                f"{key}: capture {raw}, calibration {expect}. The committed "
+                f"dark and gain tables were captured at {expect} and are not "
+                f"valid at {raw} — the correction applied to this capture is "
+                f"a wrong number, not a noisy one.")
+    if missing:
+        out.append(
+            "the sidecar does not record " + ", ".join(missing)
+            + ", so it cannot be checked against the committed tables "
+              "(re-scan with the current pakon_scan.py to record it)")
+    return out
+
+
 def apply_unit_calibration(
     rgb: np.ndarray,
     dark: np.ndarray,
@@ -318,7 +412,8 @@ def load_true_lut(data_dir: str) -> np.ndarray:
 def render_rpd(rgb14: np.ndarray, data_dir: str,
                offsets: str = "dmin",
                model: str = pc.DEFAULT_MODEL,
-               source: str = "auto") -> np.ndarray:
+               source: str = "auto",
+               film_class: int = 1) -> np.ndarray:
     """(n, w, 3) uint14 → (n, w, 3) uint16 scaled from 12-bit RPD.
 
     Stage 2 depends on scanner family (docs/58):
@@ -330,18 +425,27 @@ def render_rpd(rgb14: np.ndarray, data_dir: str,
 
       dmin      — rebuild from measured film-base Dmin (flat-fielded strips)
       template  — verbatim `_ClientColNegMat.txt` column 3
+
+    ``film_class`` is ``fcn.1000d880``'s matrix dispatch — 1/4/8 take the
+    NegMatrix at ``this+0x50``, 2 takes the PosMatrix at ``this+0xc8``. Get it
+    from ``pakon_color.film_class_for_path``; do not hardcode it, or slide film
+    renders through the negative matrix.
     """
+    check_film_class(film_class, model)
     if model == "f135":
         # TLB.dll @ 0x1000d880 — F-135 colour-negative stage 2
-        coeffs = pc.load_unit_matrix(source)
-        print(f"  model: f135 (TLB 3×10 poly, source={source})")
+        coeffs = pc.load_unit_matrix(source, film_class=film_class)
+        print(f"  model: f135 (TLB 3×10 poly, source={source}, "
+              f"filmClass={film_class})")
         print(f"  coeffs diagonal "
               f"{coeffs[0]:.6f} {coeffs[11]:.6f} {coeffs[22]:.6f}")
-        rpd12 = pc.poly_hwc(rgb14, coeffs, film_class=1)
+        rpd12 = pc.poly_hwc(rgb14, coeffs, film_class=film_class)
         rpd_max = pc.RPD_MAX_BY_MODEL["f135"]
         print(f"  RPD mean RGB = {rpd12.mean(axis=(0, 1)).round(1)}  "
               f"max = {rpd12.max(axis=(0, 1))}")
-        return (rpd12 * (65535.0 / rpd_max)).astype(np.uint16)
+        # rint, not truncate: this scale is undone by ansel.rpd16_to_rpd12 and
+        # truncating here costs half a code on every value for nothing.
+        return np.rint(rpd12 * (65535.0 / rpd_max)).astype(np.uint16)
 
     # F-235 / F-335 path (PakonIMAu MMX + TLA LUT/matrix)
     lut = load_true_lut(data_dir)
@@ -468,6 +572,8 @@ def _film_base_code(plane: np.ndarray, n_bins: int = 4096) -> int:
 
     The walk itself is the vendor's — ``find_dmin_code_from_hist`` @
     ``0x100093f0…0x1000941f``, high side down, ``thr = n // 1000``.
+
+    Give it the film, not the capture: see ``film_base_window``.
     """
     v = np.clip(plane, 0, n_bins - 1).astype(np.int64).ravel()
     counts = np.bincount(v, minlength=n_bins).tolist()
@@ -475,11 +581,278 @@ def _film_base_code(plane: np.ndarray, n_bins: int = 4096) -> int:
     return scene_ctx.find_dmin_code_from_hist(counts, thr, n_bins=n_bins)
 
 
+# --------------------------------------------------------------------------
+# FindDmin's window — which pixels of the capture are film?
+# --------------------------------------------------------------------------
+#
+# FindDmin is a 99.9th-percentile walk, so "the code above which 0.1 % of the
+# pixels lie" is the clear film base ONLY IF the population it walks is film.
+# Handing it a whole capture instead is what makes it return its "no valid
+# Dmin" sentinel on captures that are correctly exposed.
+#
+# WHAT IS THE VENDOR'S AND WHAT IS OURS — read this before citing any of it.
+#
+#   [VERIFIED, vendor]  The walk itself: `find_dmin_code_from_hist` @
+#       0x100093f0…0x1000941f, thr = n/1000, and the 0 sentinel. Unicorn-golden
+#       against the DLL. Untouched here.
+#   [VERIFIED, vendor]  The CCD window. docs/53 §3.4 marks it [VERIFIED]:
+#       DpiBase16_35 is programmed at pixel offset 62. The same section says,
+#       in as many words, "our port's 32 / 2000 corresponds to no vendor
+#       configuration". Both facts predate this code.
+#   [INFERRED]  That the vendor never has this problem because FindDmin is fed
+#       a detected scene's AREA IMAGE (frame +0x6cac/+0x6cb0/+0x6cb4), so
+#       leader and run-in are excluded by its framing rather than by any test
+#       like the one below. The +0x6cac citation is this repo's own, in
+#       tools/ansel/pipeline/dmin.go; it was NOT re-checked against the binary
+#       for this change — there is no TLA.dll/TLB.dll in the repo or on this
+#       machine, and only r2 is installed, no r2ghidra.
+#   [OURS]  Everything below: the idea of a window as a named thing, the
+#       saturated-line test, its threshold, and the minimum-film guard. No
+#       vendor call site computes any of it. See FILM_BASE_WINDOW_PORTED.
+#
+# Measured over captures/:
+#
+#   strip_cal.bin       0.29 / 0.43 / 0.35 % of pixels at the 4095 ceiling.
+#                       ALL of it in columns 0..45. The sensor never saturates
+#                       on this capture — 0.0000 % at raw 16383.
+#   gold400.bin         6.72 / 6.75 / 6.76 %. ALL of it in lines 0..2105, which
+#                       are 95-100 % clipped; the sensor DOES saturate there
+#                       (4.9 / 6.3 / 6.4 % at raw 16383). That is the clear
+#                       leader, and saturating on it is correct hardware
+#                       behaviour, not over-exposure.
+#   scan-…-181450.bin   0.000 / 0.027 / 0.013 %, i.e. under the 0.1 % threshold
+#                       only by margin. Its clipping is in the head as well.
+#
+# So the window has two edges, and neither of them is exposure.
+
+#: No DLL call site computes this window. The vendor does not need one: on the
+#: [INFERRED] reading above, its framing decides where film is before FindDmin
+#: ever runs. Ours does not — ``find_frames`` splits gold400's fully saturated
+#: leader into (0,900), (900,1800), (1800,2771) and calls them frames — so the
+#: window stands in for that. Same status as ``F135_INVERT_PORTED``: the
+#: constants it is built from are the vendor's, the arrangement is ours.
+FILM_BASE_WINDOW_PORTED = False
+
+#: COLUMNS. docs/53 §3.4 [VERIFIED]: TLB programs the CCD window for
+#: ``DpiBase16_35`` at pixel offset **62** — ``FN_bBeforeScan`` 0x1002df4e and
+#: ``FN_bDrvInitCcd`` 0x1002d6f5 both write idx4 = 62, idx5 = 2062 — and the
+#: one registry key that tunes it (``…\DpiBase16_35\Offset``) is clamped to
+#: [6, 650]. Nothing in TLB ever reads a CCD pixel below the offset.
+VENDOR_CCD_PIXEL_OFFSET = 62
+
+#: What this port programs (``pakon_scan.ScanConfig.pixel_offset``), which
+#: docs/53 §3.4 flags in as many words: "our port's 32 / 2000 corresponds to no
+#: vendor configuration". Capture column *i* is CCD pixel ``pixel_offset + i``,
+#: so at 32 the first 30 columns of every line are pixels the vendor never
+#: digitises. They sit in the illumination roll-off, which is why the unit
+#: flat-field has to amplify them 17-24× (``gain[0]`` = 17.2 / 19.6 / 24.5
+#: against 0.94 mid-line) and why ordinary film density lands on the ceiling
+#: there. They are not film and must not be in the histogram.
+DEFAULT_CCD_PIXEL_OFFSET = 32
+
+#: LINES. OURS, not the vendor's — see FILM_BASE_WINDOW_PORTED. A line of
+#: clear leader or empty gate saturates right across the aperture; a line of
+#: film cannot, because film is never more transparent than its own base. On
+#: these captures the split is at least not a judgement call — gold400 has
+#: 29 076 lines with exactly zero clipped pixels and 2 095 lines 95-100 %
+#: clipped, with 32 lines anywhere in between, so any threshold from 2 % to
+#: 50 % puts the film base within 5 codes of the same answer.
+FILM_BASE_LINE_SATURATION = 0.5
+
+#: The line test cannot tell a saturated line of film from a saturated line of
+#: leader — nothing can, once the line is at the ceiling right across the
+#: aperture. What distinguishes a capture with a leader from a capture that is
+#: simply blown is HOW MUCH of it goes: gold400's leader is 2 105 of 31 203
+#: lines (6.8 %), strip_cal's and scan-…-181450's are none. Below this much
+#: surviving film the window has stopped being a window, so the measurement is
+#: refused rather than taken from whatever happened to survive.
+FILM_BASE_MIN_FILM_FRACTION = 0.5
+
+
+def film_base_col0(capture: Path | str | None = None,
+                   pixel_offset: int | None = None) -> int:
+    """First capture column that is inside the vendor's own CCD window.
+
+    Derived, not hardcoded: it is 30 for every capture in ``captures/``
+    because ``pakon_scan`` took them at offset 32, and it becomes 0 the day a
+    capture is taken at the vendor's own 62.
+    """
+    if pixel_offset is None and capture is not None:
+        cfg = (load_capture_sidecar(capture) or {}).get("config") or {}
+        pixel_offset = cfg.get("pixel_offset")
+    if pixel_offset is None:
+        pixel_offset = DEFAULT_CCD_PIXEL_OFFSET
+    return max(0, VENDOR_CCD_PIXEL_OFFSET - int(pixel_offset))
+
+
+def film_base_line_mask(lin12: np.ndarray, col0: int = 0,
+                        n_bins: int = 4096,
+                        saturation: float = FILM_BASE_LINE_SATURATION,
+                        ) -> np.ndarray:
+    """Which lines of ``lin12`` have film in them (bool, one per line).
+
+    A line is not film when it is saturated across the aperture — that is the
+    clear leader or the empty gate, and it has no film base to contribute.
+    """
+    sat = np.asarray(lin12)[:, col0:] >= (n_bins - 1)
+    if sat.ndim == 3:
+        sat = sat.max(axis=2)
+    return sat.mean(axis=1) < float(saturation)
+
+
+def film_base_window(lin12: np.ndarray,
+                     capture: Path | str | None = None,
+                     pixel_offset: int | None = None,
+                     n_bins: int = 4096) -> dict:
+    """The film area of ``lin12`` plus the numbers a refusal has to quote."""
+    lin = np.asarray(lin12)
+    col0 = film_base_col0(capture, pixel_offset)
+    keep = film_base_line_mask(lin, col0, n_bins=n_bins)
+    win = lin[keep][:, col0:]
+    npx = int(win.shape[0]) * int(win.shape[1])
+    return {
+        "col0": col0,
+        "lines_kept": int(keep.sum()),
+        "lines_total": int(lin.shape[0]),
+        "pixels": npx,
+        "clip_pct": [100.0 * float((win[:, :, c] >= n_bins - 1).sum()) / npx
+                     if npx else 0.0 for c in range(3)],
+        "mask": keep,
+    }
+
+
+def film_base_codes(lin12: np.ndarray,
+                    capture: Path | str | None = None,
+                    pixel_offset: int | None = None,
+                    n_bins: int = 4096) -> tuple[np.ndarray, dict]:
+    """Roll-level FindDmin over the film area. Returns (base, window info).
+
+    Roll-level is deliberate — the base is a property of the stock, not of one
+    frame — so ``lin12`` must be the whole strip, and the window narrows which
+    *pixels* of it are film, never which frames.
+    """
+    lin = np.asarray(lin12)
+    win = film_base_window(lin, capture, pixel_offset, n_bins=n_bins)
+    if win["pixels"] == 0 or (
+            win["lines_kept"]
+            < FILM_BASE_MIN_FILM_FRACTION * max(1, win["lines_total"])):
+        # Too little film left to be measuring a film base over. Hand back
+        # FindDmin's own sentinel so the one refusal below covers this too.
+        win["too_little_film"] = True
+        return np.zeros(3, dtype=np.float64), win
+    sub = lin[win["mask"]][:, win["col0"]:]
+    base = np.array([_film_base_code(sub[:, :, c], n_bins=n_bins)
+                     for c in range(3)], dtype=np.float64)
+    return base, win
+
+
+# The colour-reversal branch of fcn.1000d880 (filmClass 2, PosMatrix at
+# this+0xc8) has no host chain behind it: everything after stage 2 here is
+# written for a negative — the log inversion below, the CN sba/shasta dpis, the
+# FUGC density LUTs. And on this unit the shipped PosMatrix is an uncalibrated
+# 0.25 diagonal with zero pedestals, so it is not usable evidence either.
+F135_REVERSAL_PORTED = False
+
+
+class FilmClassNotPorted(ValueError):
+    """The film path selects a stage-2 branch this host does not implement."""
+
+
+def check_film_class(film_class: int, model: str) -> None:
+    """Refuse a film path whose stage-2 branch is not ported, by name.
+
+    Rendering slide film through the NegMatrix is not a worse render, it is a
+    different transform followed by a negative→positive inversion the frame
+    never needed. Silently doing that is the defect; this is the refusal.
+    """
+    if model != "f135" or int(film_class) != pc.POLY_CLASS_COLREV:
+        return
+    if not F135_REVERSAL_PORTED:
+        raise FilmClassNotPorted(
+            "--film-path POSITIVE selects filmClass 2 (colour reversal, "
+            "PosMatrix at TLB this+0xc8), and the F-135 reversal path is not "
+            "ported: the rest of this chain — the negative→positive log, the "
+            "CN sba/shasta dpis, the FUGC density LUTs — is written for a "
+            "negative, and this unit's PosMatrix is an uncalibrated 0.25 "
+            "diagonal. Use --film-path ColNeg for negative film; there is no "
+            "correct answer for slide yet."
+        )
+
+
+class FilmBaseNotFound(ValueError):
+    """FindDmin returned its "no valid Dmin" sentinel for this data."""
+
+
+def check_film_base(base, lin12=None, n_bins: int = 4096,
+                    window: dict | None = None) -> None:
+    """Refuse a film base of 0 — it is FindDmin's sentinel, not a measurement.
+
+    ``find_dmin_code_from_hist`` walks the histogram down from the top and
+    returns **0** when the top bin alone is already over threshold
+    (``0x100093f0…``'s ``sete``/``and`` case): the data is clipped, so there is
+    no clear-film code to find. Feeding that 0 into the inversion below is not
+    a degraded render, it is a fabricated one — ``base - c9`` clamps to 1,
+    ``log10`` of it is 0, and every pixel comes out at ``fpo - 1000·log10(…)``,
+    i.e. a black frame with no warning anywhere.
+
+    This still fires, and has to. What changed is only *what it is a statement
+    about*: FindDmin now walks the film area (``film_base_window``), so a 0
+    here means **the film itself** is clipped over more than 0.1 % of its area,
+    at the sensor (raw 16383) or at the polynomial's ceiling (TLB.dll @
+    0x1000da11, POLY_MAX 4095). That is the case where lowering the gain is
+    the right answer. It is no longer raised by a clear leader or by the gate
+    edge outside the vendor's CCD window, because those are not film and are
+    no longer in the histogram.
+    """
+    b = np.asarray(base, dtype=np.float64)
+    bad = [i for i in range(3) if b[i] <= 0]
+    if not bad:
+        return
+    if window is not None and window.get("too_little_film"):
+        detail = (f" Only {window['lines_kept']} of "
+                  f"{window['lines_total']} lines are unsaturated across "
+                  f"capture columns {window['col0']}.. — the rest are at the "
+                  f"{n_bins - 1} ceiling right across the aperture. That is "
+                  f"not a leader on a roll of film, it is a capture with "
+                  f"almost no film left in it.")
+    elif window is not None:
+        pct = window["clip_pct"]
+        detail = (f" Measured over the film area — capture columns "
+                  f"{window['col0']}.. (the vendor's CCD window starts at "
+                  f"pixel {VENDOR_CCD_PIXEL_OFFSET}), and the "
+                  f"{window['lines_kept']} of {window['lines_total']} lines "
+                  f"that are not saturated leader/empty gate. Inside that "
+                  f"window {pct[0]:.3f}% / {pct[1]:.3f}% / {pct[2]:.3f}% of "
+                  f"pixels are still at the {n_bins - 1} ceiling "
+                  f"(FindDmin's threshold is 0.1%).")
+    elif lin12 is not None:
+        arr = np.asarray(lin12)
+        pct = [100.0 * float((arr[:, :, c] >= n_bins - 1).mean())
+               for c in range(3)]
+        detail = (f" Clipped at the {n_bins - 1} ceiling: "
+                  f"{pct[0]:.2f}% / {pct[1]:.2f}% / {pct[2]:.2f}% of pixels "
+                  f"(FindDmin's threshold is 0.1%).")
+    else:
+        detail = (" The base was measured by the caller, over the whole roll "
+                  "— not over this block, so this block's own histogram says "
+                  "nothing about it.")
+    raise FilmBaseNotFound(
+        f"F-135 invert: FindDmin found no film base "
+        f"(channel(s) {bad} came back 0, the 'no valid Dmin' sentinel; "
+        f"base = {list(b)}).{detail} Rendering anyway would emit a black "
+        f"frame. The film itself has clipped, not just the leader — re-scan "
+        f"at a lower gain."
+    )
+
+
 def f135_rom12_to_rpd12(lin12: np.ndarray,
                         pedestal: tuple[float, float, float],
                         fpo: tuple[float, float, float],
                         setshifts: tuple[int, int, int] | None,
-                        quiet: bool = False) -> np.ndarray:
+                        quiet: bool = False,
+                        film_base: tuple[float, float, float] | None = None,
+                        capture: Path | str | None = None,
+                        ) -> np.ndarray:
     """(h, w, 3) linear 12-bit poly output → (h, w, 3) RPD12 positive.
 
     Nothing ahead of this inverts: ``fcn.1000d880``'s diagonal on this unit is
@@ -507,11 +880,34 @@ def f135_rom12_to_rpd12(lin12: np.ndarray,
     DPI's ``fpo`` (the orange-mask aim), because the SBA balance that runs next
     is sized to carry it from there to the neutral balance point:
     fpo + setShifts = 1567 / 1542 / 1516 against nbp 1550.
+
+    ``film_base`` overrides the FindDmin measured here. Pass it when the caller
+    already holds the ROLL's film base: it is a property of the stock, not of
+    one frame, and measuring it per frame makes the same negative render
+    differently depending on which frames you happened to export. ``None``
+    measures it from ``lin12``, which is right only when ``lin12`` is the whole
+    strip (which is what ``cmd_strip`` passes).
+
+    When it measures, it measures over the film — ``film_base_window`` — not
+    over every pixel of the capture. ``capture`` is only used to read that
+    capture's own ``pixel_offset`` out of its sidecar; without one the port's
+    32 is assumed.
     """
     lin = np.asarray(lin12, dtype=np.float64)
     ped = np.asarray(pedestal, dtype=np.float64)
-    base = np.array([_film_base_code(lin[:, :, c]) for c in range(3)],
-                    dtype=np.float64)
+    if film_base is not None:
+        base = np.asarray(film_base, dtype=np.float64)
+        check_film_base(base)
+    else:
+        base, win = film_base_codes(lin, capture=capture)
+        check_film_base(base, lin, window=win)
+        if not quiet:
+            print(f"  F-135 invert: FindDmin window = columns "
+                  f"{win['col0']}..{lin.shape[1]}, "
+                  f"{win['lines_kept']}/{win['lines_total']} lines "
+                  f"(film area; clipped "
+                  f"{win['clip_pct'][0]:.3f}/{win['clip_pct'][1]:.3f}/"
+                  f"{win['clip_pct'][2]:.3f}% against FindDmin's 0.1%)")
     base_log = np.log10(np.maximum(base - ped, 1.0))
     dens = 1000.0 * (base_log - np.log10(np.maximum(lin - ped, 1.0)))
     out = np.clip(np.asarray(fpo, dtype=np.float64) + dens, 0, ansel.SHASTA_MAX)
@@ -622,8 +1018,10 @@ REF_LINE_RATE = 60
 # Square-pixel motor for our locked (DpiBase16) exposure triad. See above.
 SQUARE_MOTOR_SPEED = MOTOR_SPEED[16]
 
-# Kept as a named constant because pakon_scan and the app refer to it, but it
-# is NO LONGER a silent fallback: see resolve_transport_scale. The claim that
+# Named only so the discredited claim below has somewhere to live: nothing
+# reads it any more (the --motor-speed help and the app's diagnostics note both
+# quote resolve_transport_scale instead of naming a default that is gone). It
+# is NOT a fallback: see resolve_transport_scale. The claim that
 # the undocumented early captures ran here is contradicted by their own pitch
 # (strip_cal implies ~13900, roll implies ~9900 — both nearer 11467 than
 # 25802, and 25802 would need pitches near 726 lines, not 1349 and 1891).
@@ -770,6 +1168,54 @@ def resolve_transport_scale(
     return ts, src
 
 
+#: Beyond this, the recorded speed and the film in the gate disagree about the
+#: geometry by more than measurement noise, and one of them is wrong. A frame
+#: pitch is 38 mm of real film against a number written down by the scan, so a
+#: few percent is the anchor being slightly off and ten is a different speed.
+TRANSPORT_RESIDUAL_WARN_PCT = 5.0
+
+
+def transport_residual_pct(
+        *,
+        capture: Path | str | None = None,
+        motor_speed: int | float | None = None,
+        line_rate: int | float | None = None,
+        measured_pitch_lines: float | None = None) -> float | None:
+    """(measured − predicted) / predicted × 100 for the frame pitch, or None.
+
+    ``resolve_transport_scale`` computes exactly this whenever it has both a
+    recorded speed and a measured pitch, then folds it into a prose string that
+    nothing reads. It is the ONLY offline check that the recorded speed is the
+    speed the film actually travelled at, so it is also available as a number —
+    a UI can colour it and a caller can compare it against
+    :data:`TRANSPORT_RESIDUAL_WARN_PCT`.
+
+    Returns None when either half is missing: no measured pitch, or no speed
+    from an argument or a sidecar. None means "not checked", never "agrees".
+    """
+    if not measured_pitch_lines:
+        return None
+    speed = float(motor_speed) if motor_speed is not None else None
+    lr = float(line_rate) if line_rate is not None else float(REF_LINE_RATE)
+    if speed is None and capture is not None:
+        meta = load_capture_sidecar(capture) or {}
+        cfg = meta.get("config") if isinstance(meta.get("config"), dict) else {}
+        raw = meta.get("speed", cfg.get("speed"))
+        if raw is None:
+            return None
+        speed = float(raw)
+        raw_lr = (meta.get("line_rate_0x91") or cfg.get("line_rate_0x91")
+                  or meta.get("line_rate"))
+        if raw_lr is not None and line_rate is None:
+            lr = float(raw_lr)
+    if speed is None:
+        return None
+    pred = along_lines_per_mm(speed, lr) * FRAME_PITCH_MM
+    if pred <= 0:
+        return None
+    return (float(measured_pitch_lines) - pred) / pred * 100.0
+
+
 def unsquash_transport(rgb: np.ndarray, scale: float = DEFAULT_TRANSPORT_SCALE) -> np.ndarray:
     """Resample the line (transport) axis so pixels are square.
 
@@ -812,7 +1258,7 @@ def unsquash_transport(rgb: np.ndarray, scale: float = DEFAULT_TRANSPORT_SCALE) 
 # scan lines and keep their measured sign (R +8 / G 0 / B −8). Anything that
 # deskews *after* this rotation — the Go pipeline reads the raw14 TIFF this
 # writes — is looking at an axis that now runs backwards, and must negate
-# them. See analysis/pipeline/main.go's deskew block.
+# them. See tools/ansel/pipeline/main.go's deskew block.
 ROTATE_180_FOR_LENS = True
 
 
@@ -870,6 +1316,15 @@ def cmd_strip(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    if want_color:
+        # Say no before spending five minutes decoding, not after.
+        try:
+            check_film_class(
+                pc.film_class_for_path(film_path),
+                getattr(args, "model", pc.DEFAULT_MODEL))
+        except FilmClassNotPorted as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
 
     words = load_u16(args.input)
     print(f"{args.input}: {words.size} words, "
@@ -984,8 +1439,12 @@ def cmd_strip(args: argparse.Namespace) -> int:
         print(f"colour-correcting model={model} "
               f"{'(unit EEPROM/registry poly)' if model == 'f135' else args.data_dir}"
               f" …")
+        # The film path picks fcn.1000d880's matrix. Hardcoding 1 here is what
+        # made --film-path POSITIVE render slide through the NegMatrix.
         rpd = render_rpd(
             rgb, args.data_dir, offsets=args.offsets, model=model,
+            film_class=pc.film_class_for_path(
+                stock.path if stock else film_path),
         )
         if args.balance:
             print("  pre-Ansel channel balance")
@@ -1043,16 +1502,21 @@ def cmd_strip(args: argparse.Namespace) -> int:
         # sba dpi / AnalyseRoll).
         if args.model == "f135":
             _c = pc.load_unit_matrix("auto")
+            _rpd_max = pc.RPD_MAX_BY_MODEL["f135"]
             rpd12_pos = f135_rom12_to_rpd12(
-                ansel.rpd16_to_rpd12(rpd),
+                ansel.rpd16_to_rpd12(rpd, _rpd_max),
                 (_c[9], _c[19], _c[29]),
                 engine.sba.fpo,
                 engine.setshifts_out,
+                capture=args.input,
             )
             rpd = rpd12_to_u16(rpd12_pos)
-            # AnsShastaCapabilityImpl::analyze is not ported, so the assembled
-            # toneLut has no scene aims to hit. Use the two-anchor stand-in
-            # built from the selected shasta dpi.
+            # rpd12_to_u16 scales by 65535/4095, so render_strip has to come
+            # back out at 4095 — not the F-235 RPD_MAX of 4092.
+            engine.rpd_max = ansel.SHASTA_MAX
+            # See AnselEngine.shasta_stand_in: the Cap-level
+            # AnsShastaCapabilityImpl::analyze is unported, so the assembled
+            # toneLut is not the vendor's curve. Two-anchor stand-in instead.
             engine.shasta_stand_in = True
             print("  F-135 tone: shasta two-anchor stand-in "
                   f"(shadowPercent {engine.shasta.shadow_percent} → black, "
@@ -1366,11 +1830,18 @@ def main() -> int:
                         "(overrides --motor-speed; 1.0 disables). "
                         "Default: derive from speed/line-rate")
     s.add_argument("--motor-speed", type=int, default=None,
+                   # The tail is resolve_transport_scale's own account of what
+                   # it does with no speed, not a paraphrase of it: this line
+                   # once promised "Default without sidecar: 25802" and was
+                   # believed long after the fallback had gone, which is how a
+                   # strip got decoded 2.1x too wide. Quoting the resolver keeps
+                   # the promise and the behaviour the same sentence. (%% —
+                   # argparse %-formats help strings before printing them.)
                    help="transport register 0xA5 used when the strip was "
                         f"captured (hive: 4→{MOTOR_SPEED[4]}, "
                         f"8→{MOTOR_SPEED[8]}, 16→{MOTOR_SPEED[16]}). "
-                        f"gold400.bin was 11467. Default without sidecar: "
-                        f"{LEGACY_DEFAULT_MOTOR_SPEED}")
+                        "No default; without one: "
+                        + resolve_transport_scale()[1].replace("%", "%%"))
     s.add_argument("--dpi-base", type=int, choices=(4, 8, 16), default=None,
                    help="use hive MotorSpeedPlus for this DpiBase as the "
                         "capture speed (same table as pakon_scan)")
@@ -1396,7 +1867,13 @@ def main() -> int:
     v.set_defaults(func=cmd_verify)
 
     args = ap.parse_args()
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (FilmClassNotPorted, FilmBaseNotFound) as e:
+        # These are refusals, not crashes: the data or the film path is
+        # something this host will not guess at. Say so in one line.
+        print(f"error: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

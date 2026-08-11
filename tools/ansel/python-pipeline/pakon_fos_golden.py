@@ -13,7 +13,7 @@ Leaves (all in PakonIMAu.dll, base ``0x10000000``)
 
 Usage
 -----
-``PYTHONPATH=tools/ansel python3 tools/ansel/pakon_fos_golden.py [dll]``
+``PYTHONPATH=tools/ansel/python-pipeline python3 tools/ansel/python-pipeline/pakon_fos_golden.py [dll]``
 """
 from __future__ import annotations
 

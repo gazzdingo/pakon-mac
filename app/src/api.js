@@ -78,6 +78,19 @@ export const undoRoll = (id) => post(`/api/app/roll/${id}/undo`, {});
 export const boundary = (id, body) => post(`/api/app/roll/${id}/boundary`, body);
 export const renameRoll = (id, name) => post(`/api/app/roll/${id}/rename`, { name });
 export const closeRoll = (id) => post(`/api/app/roll/${id}/close`, {});
+/** What an export would write, before it writes anything. Read-only — it stats
+ *  paths and renders nothing — so it is cheap enough to ask on every run.
+ *
+ *  Two collisions, reported separately because they need different words:
+ *  `existing` is "files you already have would be replaced"; `duplicates` is
+ *  "your naming template does not tell these frames apart, so they would
+ *  overwrite each other" — 36 frames into one filename, which is invisible in
+ *  the destination folder afterwards. `on_exist` is the answer:
+ *  ask | skip | overwrite | unique.
+ *
+ *  The backend refuses on its own if `on_exist` is still `ask` and there is a
+ *  collision, so forgetting to call this cannot overwrite anything. */
+export const planExport = (body) => post('/api/app/export/plan', body);
 export const exportRoll = (body) => post('/api/app/export', body);
 export const purge = (body) => post('/api/app/workspace/purge', body);
 export const lookupFilm = (dx) => post('/api/app/film', { dx });
@@ -115,6 +128,28 @@ export function frameUrl(rollId, index, scale, version, maxEdge) {
 }
 
 export const histUrl = (rollId, index) => `/api/app/roll/${rollId}/hist/${index}`;
+
+/** Why a frame image would not load.
+ *
+ *  An <img> onError carries no reason, so a failed render left the stage simply
+ *  empty — indistinguishable from "not decoded yet" when what it actually meant
+ *  was that the backend refused (FindDmin finding no film base, say). Silence
+ *  there sent us hunting a UI bug that was server-side. Re-request the same URL
+ *  so the server's own words reach the screen. */
+export async function frameError(rollId, index, scale, version) {
+  try {
+    const r = await fetch(frameUrl(rollId, index, scale, version));
+    if (r.ok) return 'The image loaded but the browser could not display it.';
+    const body = (await r.text()).trim();
+    try {
+      const j = JSON.parse(body);
+      if (j && j.error) return String(j.error);
+    } catch { /* not JSON — fall through to the raw body */ }
+    return body.slice(0, 500) || `The render service returned ${r.status}.`;
+  } catch (e) {
+    return String((e && e.message) || e);
+  }
+}
 
 /** Poll a job to completion. */
 export async function pollJob(id, onTick, intervalMs = 400) {

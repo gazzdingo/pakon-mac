@@ -374,11 +374,14 @@ class FakeDev:
         pkt = bytes(pkt)
         self._pending = pkt
         kind = "other"
-        if pkt[:1] == b"\x04" and len(pkt) >= 5:
-            if pkt[2] == pc.AD_MOTOR and pkt[4] == pc.CMD_MOTOR_STOP:
+        # `and pkt[2] == pc.AD_MOTOR` belongs in this condition, not inside it:
+        # without it, every type-4 command matched here and fell out of the
+        # chain as "other", so the light board's own command 0x08 was never
+        # recognised and the simulated auto-off was never re-armed.
+        if pkt[:1] == b"\x04" and len(pkt) >= 5 and pkt[2] == pc.AD_MOTOR:
+            if pkt[4] == pc.CMD_MOTOR_STOP:
                 kind, self.motor = "MOTOR_STOP", False
-            elif pkt[2] == pc.AD_MOTOR and pkt[4] in (pc.CMD_MOTOR_FORWARD,
-                                                      pc.CMD_MOTOR_REVERSE):
+            elif pkt[4] in (pc.CMD_MOTOR_FORWARD, pc.CMD_MOTOR_REVERSE):
                 kind, self.motor = "MOTOR_RUN", True
         elif pkt[:5] == b"\x02\x04\x40\x01\x80":
             kind = "LAMP_ON" if pkt[5] else "LAMP_OFF"
@@ -499,11 +502,22 @@ class ScanConfig:
     speed: int = MOTOR_SPEED[16]
     source: str = ""
     warnings: list = field(default_factory=list)
+    #: WHAT THE OPERATOR SAID THE FILM WAS. Not a register — nothing here is
+    #: sent to the scanner — but it is the one thing a capture cannot be
+    #: re-decoded without and the only place it was ever known is the window
+    #: that started the scan. It used to live solely in ``pakon_app.S.jobs``,
+    #: an in-memory dict that dies with the backend, so a capture whose app
+    #: was closed became "some film, probably colour negative" forever. It is
+    #: known before the transport starts, so it goes in the sidecar.
+    film_path: str | None = None            # ColNeg | BnW | POSITIVE | IMPORTED
+    dx: str | None = None                   # "78-13", as typed by the operator
 
     @classmethod
     def from_calibration(cls, cal_dir: str | Path | None = None,
                          dpi_base: int = 16,
-                         speed: int | None = None) -> "ScanConfig":
+                         speed: int | None = None,
+                         film_path: str | None = None,
+                         dx: str | None = None) -> "ScanConfig":
         """Read the exposure triad from the record of what the tables mean.
 
         ``calibration/README.json`` is the only statement anywhere of the
@@ -562,6 +576,8 @@ class ScanConfig:
                       else MOTOR_SPEED.get(dpi_base, MOTOR_SPEED[16])),
             source=str(p),
             warnings=warn,
+            film_path=(str(film_path).strip() or None) if film_path else None,
+            dx=(str(dx).strip() or None) if dx else None,
         )
 
     def to_json(self) -> dict:
@@ -1020,18 +1036,25 @@ def lamp_refresh(link: Link, cfg: "ScanConfig", mode: str = "full") -> bool:
     ok = True
     try:
         if mode in ("full", "drive"):
-            ok &= bool(link.ack(pc.write_register(
+            # acknowledged(), not bool(). `ack(required=False)` returns the raw
+            # response whatever its status byte, so `07 02 40 01` -- the board
+            # saying "no acknowledgement" -- used to count as a successful
+            # refresh. This is the mechanism that has actually been *measured*
+            # keeping the lamp alive (120 s with it, ~60 s without), so a
+            # refresh that was refused has to be reported as one.
+            ok &= acknowledged(link.ack(pc.write_register(
                 pc.AD_LIGHT, pc.REG_LIGHT_LED_DUTY,
                 b"".join(v.to_bytes(2, "little")
                          for v in (on_b, 0, on_r, 0, on_g, cfg.lamp_n))),
                 "lamp refresh 0x82 PWM", required=False))
-            ok &= bool(link.ack(pc.write_register(
+            ok &= acknowledged(link.ack(pc.write_register(
                 pc.AD_LIGHT, pc.REG_LIGHT_LED_LEVELS,
                 bytes((b_lvl, 0, r_lvl, 0, g_lvl))),
                 "lamp refresh 0x81 levels", required=False))
         if mode in ("full", "enable"):
-            ok &= bool(link.ack(pc.lamp_set_mask(pc.LAMP_VISIBLE),
-                                "lamp refresh 0x80 enable", required=False))
+            ok &= acknowledged(link.ack(pc.lamp_set_mask(pc.LAMP_VISIBLE),
+                                        "lamp refresh 0x80 enable",
+                                        required=False))
     except Exception:                                       # noqa: BLE001
         return False
     return ok
@@ -1234,12 +1257,18 @@ class LampHealth:
     fault: str = ""
     polls: int = 0
     failures: int = 0
+    #: True when the last poll could not read ``0x83``, so ``status`` is a
+    #: value from some earlier poll rather than a current reading. Without
+    #: this the sidecar and the UI reprint a stale status byte as though it
+    #: had just been measured.
+    status_stale: bool = False
 
     def to_json(self) -> dict:
         return {
             "ok": self.ok,
             "status": self.status,
             "status_hex": None if self.status is None else f"0x{self.status:02x}",
+            "status_stale": self.status_stale,
             "temp_lb_c": None if self.temp_lb_c is None else round(self.temp_lb_c, 2),
             "temp_mb_c": None if self.temp_mb_c is None else round(self.temp_mb_c, 2),
             "temp_valid": self.temp_valid,
@@ -1262,20 +1291,37 @@ def poll_lamp(link: Link, h: LampHealth) -> LampHealth:
     interfering with the stream mid-loop destroys it (docs/45), and a control
     round trip once a second is 0.3 % of the loop's time. Correctness over
     throughput, in the code whose job is to stop things.
+
+    THE FAILURE COUNTER FOLLOWS ``0x83`` ALONE. It used to advance only when
+    *both* reads failed, so a board that stopped answering the status register
+    while its temperatures still came back was treated as a healthy poll: the
+    counter reset, the previous status byte stayed in ``h.status``, and it was
+    republished every second as a current reading. That is being blind to fault
+    bits 5 and 6 -- the primary lamp-failure detector, and the only direct
+    statement the machine makes about the lamp -- while showing a green light.
+    The temperatures are a secondary signal and cannot stand in for it.
     """
     h.polls += 1
     st = link.read_reg(pc.AD_LIGHT, pc.REG_LIGHT_STATUS, 1)
     temps = link.read_reg(pc.AD_LIGHT, REG_LIGHT_TEMPS, 4)
-    if st is None and temps is None:
+
+    if st is None:
         h.failures += 1
+        # Whatever is in h.status came from an earlier poll. Say so rather
+        # than letting it be read as this poll's answer.
+        h.status_stale = True
         if h.failures >= LAMP_POLL_FAIL_LIMIT:
             h.ok = False
-            h.fault = (f"the light board stopped answering "
-                       f"({h.failures} polls). Nothing is watching the lamp.")
-        return h
-    h.failures = 0
-
-    if st is not None:
+            h.fault = (
+                f"the light board stopped answering register "
+                f"0x{pc.REG_LIGHT_STATUS:02x} ({h.failures} polls"
+                + (", though its temperatures still answer" if temps is not None
+                   else "")
+                + "). Nothing is watching the lamp.")
+            return h
+    else:
+        h.failures = 0
+        h.status_stale = False
         h.status = st[0]
         h.temp_valid = bool(st[0] & LAMP_STATUS_BIT_TEMP_VALID)
         if st[0] & LAMP_STATUS_FAULT_MASK:
@@ -1493,8 +1539,97 @@ def emergency_stop(retries: int = 6, delay: float = 0.25) -> dict:
 
 # ---- what the capture was taken at ----
 
+#: Which DX wins when the operator typed one and the board also read one.
+#:
+#: THE OPERATOR'S. This was the one place in the system where the code and the
+#: interface said opposite things — ``pakon_app.job_open`` preferred the typed
+#: value, while the Scan screen told the user the board's reading "outranks it,
+#: a measurement beats a typed setting". The code is right and the text was
+#: changed, for two reasons that are both about this project rather than about
+#: measurements in general:
+#:
+#:   * ``tools/dx_decode.py`` has never been validated against a real roll, so
+#:     the board's "measurement" is an unvalidated decode of a barcode. It is
+#:     evidence, not ground truth.
+#:   * a typed DX is a deliberate statement about the roll physically in the
+#:     gate. Silently substituting something else for it renders the owner's
+#:     film as a stock they did not choose and tells them nothing.
+#:
+#: Neither value is thrown away: both go in the sidecar with a ``dx_source``
+#: saying which was used, and a disagreement is recorded and surfaced.
+DX_PRECEDENCE = ("typed", "board")
+
+
+def film_selection(cfg: "ScanConfig", res: "ScanResult") -> dict:
+    """What this capture is to be decoded as, and where each part came from.
+
+    Everything here is known before the transport starts except the board's
+    own reading, which is why the stub sidecar can carry the rest of it.
+    """
+    typed = (cfg.dx or "").strip() or None
+    board = None
+    d = res.dx if isinstance(res.dx, dict) else {}
+    p1, p2 = d.get("product"), d.get("specifier")
+    if p1 is not None and p2 is not None:
+        # Same rule as pakon_app.dx_from_sidecar: only a code word that passed
+        # parity and was unambiguous counts as a reading at all.
+        board = f"{int(p1)}-{int(p2)}"
+    used = typed or board
+    return {
+        "film_path": cfg.film_path or None,
+        "dx": used,
+        "dx_typed": typed,
+        "dx_board": board,
+        "dx_source": "typed" if typed else ("board" if board else "none"),
+        "dx_disagreement": (
+            f"the operator typed {typed} and the DX board read {board}; "
+            f"the typed value was used"
+            if typed and board and typed != board else None),
+        "precedence": " > ".join(DX_PRECEDENCE),
+        "note": "the operator's selection, recorded before the transport "
+                "started. A .bin carries no DX packets, so without this the "
+                "film is a guess and the decode falls back to a colour-"
+                "negative default nobody chose.",
+    }
+
+
+def refuse_film_selection(film_path: str | None) -> None:
+    """Refuse a film path that cannot be decoded, BEFORE the film moves.
+
+    ``pakon_decode.check_film_class`` already refuses colour reversal — the
+    F-135 reversal branch is not ported — but it was only ever reached when the
+    capture was opened, which is after the whole roll has gone past the sensor.
+    The operator found out that their scan was unopenable by watching the
+    auto-open fail. Asking the same question here costs nothing and is the
+    difference between a refusal and a wasted roll.
+
+    A decode module that will not import is not evidence that the path is fine,
+    so it is reported as a warning rather than swallowed — but it does not stop
+    a scan, because the alternative is an unimportable module grounding the
+    scanner.
+    """
+    if not film_path:
+        return
+    try:
+        import pakon_color as _pc
+        import pakon_decode as _dec
+    except Exception as e:                                  # noqa: BLE001
+        print(f"warning: could not check --film-path {film_path!r} against "
+              f"the decode path ({e}); the capture may not open",
+              file=sys.stderr)
+        return
+    try:
+        _dec.check_film_class(_pc.film_class_for_path(film_path),
+                              _pc.DEFAULT_MODEL)
+    except _dec.FilmClassNotPorted as e:
+        raise ScanRefused(
+            f"--film-path {film_path} cannot be decoded, so this scan would "
+            f"produce a capture that will not open: {e}") from e
+
+
 def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
-                     gate_desc: dict | None = None) -> dict:
+                     gate_desc: dict | None = None,
+                     status: str = "complete") -> dict:
     """Everything a decode needs that cannot be recovered from the .bin itself.
 
     THE TRANSPORT SPEED IS THE POINT OF THIS FILE. Lines-per-mm along the
@@ -1514,8 +1649,15 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
     dark and gain tables the capture is decodable with at all.
     """
     meta = {
-        "version": 1,
+        "version": 2,
         "capture": str(out),
+        # "in_flight" = the stub written before the transport started, from
+        # everything already known. "complete" = rewritten by run_scan's
+        # finally with the run's own outcome. A reader that finds "in_flight"
+        # is looking at a scan whose process was killed outright (the app's
+        # cancel escalates to SIGKILL after 5 s), and every field below except
+        # the run/lamp/DX results is still true of the capture beside it.
+        "status": status,
         # --- the contract pakon_decode.load_capture_sidecar reads. Top level,
         # by that function's own lookup order, and duplicated under "config"
         # because it accepts either. Do not rename these without changing it.
@@ -1536,6 +1678,12 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
         "exposure": {
             "integration_0x82_idx6": cfg.integration,
             "lamp_pwm_N": cfg.lamp_n,
+            # THE THIRD LEG, in the block whose own note calls the triad three
+            # registers. It was only ever recorded at the top level and under
+            # "transport", so a reader checking "was this capture taken at the
+            # exposure the committed tables are valid for" found two thirds of
+            # the answer in the place that claims to hold all of it.
+            "line_rate_0x91": cfg.line_rate_0x91,
             "levels_R_G_B_Ir": list(cfg.levels),
             "on_counts_R_G_B": list(cfg.on_counts),
             "afe_gains": list(cfg.afe_gains),
@@ -1548,6 +1696,8 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
                     "for this triad.",
         },
         "calibration_source": cfg.source,
+        # What the operator said the film was. See film_selection.
+        "film": film_selection(cfg, res),
         "run_detector": res.run,
         "run": {
             "reason": res.reason,
@@ -1590,7 +1740,8 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
 
 
 def write_capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
-                           gate_desc: dict | None = None) -> str | None:
+                           gate_desc: dict | None = None,
+                           status: str = "complete") -> str | None:
     """Write ``<capture>.scan.json``. Never raises; a scan is not lost over it.
 
     One file, with the name ``pakon_decode.load_capture_sidecar`` already looks
@@ -1600,11 +1751,22 @@ def write_capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
     two quietly disagree. Written from ``run_scan``'s ``finally`` so it also
     exists when a scan aborts, which the ``cmd_run`` version could not
     guarantee.
+
+    CALLED TWICE PER SCAN. The ``finally`` covers every exit that runs Python —
+    abort, cancel, SIGTERM, SIGINT — and none that does not. The app's cancel
+    escalates to ``proc.kill()`` five seconds after the SIGTERM, and a SIGKILL
+    runs no ``finally``: that is exactly how ``strip_cal.bin`` came to exist
+    with no sidecar and cost a day of reverse-engineering. So a ``status:
+    "in_flight"`` stub is written before the transport starts, carrying
+    everything already known — speed, line rate, exposure triad, DPI base and
+    the film selection — and this rewrites it in full afterwards. A partial
+    sidecar beats none, and every field in the stub is already true.
     """
     try:
         p = out.with_suffix(".scan.json")
-        p.write_text(json.dumps(capture_metadata(out, cfg, res, gate_desc),
-                                indent=1))
+        p.write_text(json.dumps(
+            capture_metadata(out, cfg, res, gate_desc, status=status),
+            indent=1))
         return str(p)
     except Exception:                                       # noqa: BLE001
         return None
@@ -1874,6 +2036,18 @@ def run_scan(out_path: str | Path,
             "dx_auto_off_disarmed": bool(lamp) and wd.mode in ("auto", "command"),
             "lamp_watchdog_mode": wd.mode,
         })
+        # THE STUB SIDECAR, BEFORE ANYTHING MOVES. A capture must never exist
+        # without one: the finally below survives aborts, cancel and SIGTERM
+        # but not the SIGKILL the app escalates to five seconds later, and a
+        # .bin with no .scan.json is a file nobody can decode without guessing.
+        # Everything a decode needs — speed, line rate, exposure triad, DPI
+        # base, film selection — is already known here, so it is written here
+        # and rewritten in full at the end. See write_capture_metadata.
+        if not dry_run:
+            res.metadata = write_capture_metadata(out, cfg, res, g.describe(),
+                                                  status="in_flight")
+            log("sidecar", path=res.metadata, status="in_flight",
+                message="stub sidecar written before the transport starts")
         log("phase", phase="connecting", message="clearing FX2 fault state")
         link.clear_fault()
 
@@ -2178,12 +2352,24 @@ def run_scan(out_path: str | Path,
             "film sensors" if film.ended else
             "optical detector" if res.reason == "roll_end" else
             res.reason or "not the end of a roll")
-        if not dry_run and started_motor:
-            # After the fsync above, so the sidecar can never describe a file
-            # that is still being written. Written even on an abort: a scan cut
-            # short still produced a capture, and it is still the only record of
-            # the speed it was taken at.
-            res.metadata = write_capture_metadata(out, cfg, res, g.describe())
+        if not dry_run:
+            if started_motor or out.is_file():
+                # After the fsync above, so the sidecar can never describe a
+                # file that is still being written. Written even on an abort: a
+                # scan cut short still produced a capture, and it is still the
+                # only record of the speed it was taken at. This replaces the
+                # "in_flight" stub written before the transport started.
+                res.metadata = write_capture_metadata(
+                    out, cfg, res, g.describe(), status="complete")
+            else:
+                # Refused or aborted before a single byte was opened for, so
+                # there is no capture. Take the stub with it rather than leave
+                # a sidecar describing a .bin that does not exist.
+                try:
+                    out.with_suffix(".scan.json").unlink()
+                except OSError:
+                    pass
+                res.metadata = None
         # Nothing was ever commanded to move, or nothing was ever sent at all.
         if dry_run or not started_motor:
             marker_clear()
@@ -2325,8 +2511,19 @@ def cmd_run(a) -> int:
         threading.Thread(target=watch_parent, args=(cancel,), daemon=True).start()
 
     try:
-        cfg = ScanConfig.from_calibration(dpi_base=a.base, speed=a.speed)
+        cfg = ScanConfig.from_calibration(dpi_base=a.base, speed=a.speed,
+                                          film_path=a.film_path, dx=a.dx)
     except Exception as e:                                  # noqa: BLE001
+        _emit("error", message=str(e))
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
+    # BEFORE the film moves, not after it has all gone past the sensor. A film
+    # path whose stage-2 branch is not ported produces a capture that cannot be
+    # opened, and the only way anyone found that out was a failed auto-open at
+    # the end of a completed scan. Refuse it here, where nothing has been spent.
+    try:
+        refuse_film_selection(cfg.film_path)
+    except ScanRefused as e:
         _emit("error", message=str(e))
         print(f"refused: {e}", file=sys.stderr)
         return 2
@@ -2429,12 +2626,17 @@ def cmd_sensors(a) -> int:
     the DX emitters, or both?" — which the firmware cannot say, because
     nothing in the image names a pin.
 
-    ``--toggle`` is the only part that writes, and what it writes is the
-    illuminator mask and nothing else. It restores both illuminators on the
-    way out. NOTE that command 0x98 also disarms the board's 10 s auto-off
-    permanently, so after this runs the illuminators will stay in whatever
-    state they were left in until something re-arms it — which is why the last
-    thing it sends is a deliberate one.
+    ``--toggle`` is the only part that writes. It writes the illuminator mask,
+    and then command ``0x08`` to put the board back the way it boots: both
+    illuminators on, with the 10 s auto-off ARMED.
+
+    THE RESTORE HAS TO BE 0x08, NOT 0x98. Every 0x98 clears the arm bit
+    whatever mask it carries (docs/57 s6), so a restore written with 0x98 can
+    only ever leave the illuminators on with their auto-off gone — on
+    indefinitely, with nothing left in the system to switch them off, which is
+    what this used to do while describing itself as "the state it boots into".
+    Since docs/57 s6/s9/s12 cannot yet say whether RC1/RB0 are the DX emitters
+    or the main lamp, that is not a state to leave a machine in.
     """
     link = None
     try:
@@ -2482,11 +2684,33 @@ def cmd_sensors(a) -> int:
                                       "sensors": read_sensors()})
     finally:
         # Whatever happened, leave the board in the state it boots into.
+        #
+        # WHICH 0x98 CANNOT DO. Handler 0x0DC6 clears the arm bit on every
+        # 0x98 whatever the mask says, so `lamp_watchdog_disarm(BOTH)` left the
+        # illuminators on with the 10 s auto-off gone -- on until something
+        # else intervenes, which is the opposite of the reset state this
+        # docstring claimed to restore. The boot state is both on WITH the
+        # counter armed, and command 0x08 is the only thing that produces it
+        # (docs/57 s6). It has been in pakon_commands since the mechanism was
+        # decoded, named so it would not be sent by accident, and never called.
         try:
             if a.toggle:
-                lamp_watchdog_disarm(link, pc.DX_ILLUM_BOTH)
-        except Exception:                                   # noqa: BLE001
-            pass
+                r = link.ack(pc.dx_lamp_restart(),
+                             "0x08 DX lamp restart: illuminators on, "
+                             f"{pc.DX_WATCHDOG_S:.0f} s auto-off RE-ARMED",
+                             required=False)
+                link.dx_illuminator_on = not acknowledged(r)
+                out["restored"] = {
+                    "command": f"0x{pc.CMD_LIGHT_DX_LAMP_RESTART:02X} "
+                               f"dx_lamp_restart",
+                    "acknowledged": acknowledged(r),
+                    "state": "both illuminators on, auto-off re-armed",
+                    "note": "0x98 cannot restore this: every 0x98 clears the "
+                            "arm bit, so it can only leave them on with the "
+                            "auto-off disarmed (docs/57 s6).",
+                }
+        except Exception as e:                              # noqa: BLE001
+            out["restored"] = {"error": str(e)}
         link.close()
 
     print(json.dumps(out, indent=2))
@@ -2547,6 +2771,46 @@ def _trace_events(trace: Path) -> list[dict]:
         except json.JSONDecodeError:
             pass
     return out
+
+
+def _sidecar_faults(out: Path, want_status: str) -> list[str]:
+    """What a decode a year from now would find beside this capture.
+
+    Every field checked here is one the capture cannot be re-decoded without
+    and cannot be recovered from the ``.bin``: the transport speed (geometry),
+    the exposure triad (which dark/gain tables are valid), the DPI base, and
+    what the operator said the film was. Checked as a file on disk rather than
+    as a return value, because the failure this guards against is a process
+    that never returned anything.
+    """
+    p = out.with_suffix(".scan.json")
+    if not p.is_file():
+        return [f"there is no sidecar at {p.name}"]
+    try:
+        m = json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError, UnicodeError) as e:
+        return [f"the sidecar is not readable JSON: {e}"]
+    bad = []
+    if m.get("status") != want_status:
+        bad.append(f"status {m.get('status')!r}, expected {want_status!r}")
+    if not m.get("speed"):
+        bad.append("no transport speed — the geometry is unrecoverable")
+    if not m.get("line_rate_0x91"):
+        bad.append("no line rate")
+    if m.get("dpi_base") is None:
+        bad.append("no dpi_base")
+    exp = m.get("exposure") or {}
+    for k in ("integration_0x82_idx6", "lamp_pwm_N", "line_rate_0x91"):
+        if not exp.get(k):
+            bad.append(f"no exposure.{k} — nothing says which dark/gain "
+                       f"tables this capture is valid with")
+    f = m.get("film") or {}
+    if not f.get("film_path") and not f.get("dx"):
+        bad.append("no film selection — the film is a guess again")
+    if not f.get("dx_source"):
+        bad.append("no dx_source — a typed DX is indistinguishable from a "
+                   "measured one")
+    return bad
 
 
 def _stop_after_run(events: list[dict]) -> bool:
@@ -2837,6 +3101,169 @@ def _selftest_logic() -> int:
           "forever", marker_should_clear({"motor": False, "absent": True}),
           True)
 
+    # ---- a refused refresh is a refused refresh ----
+    #
+    # The 20 s 0x82/0x81/0x80 refresh is the only mechanism ever *measured*
+    # keeping the lamp alive: 120 s with it, ~60 s without. It reported success
+    # on a NAK, and in `--lamp-watchdog command` mode that is load-bearing --
+    # `LampWatchdog.send` only sets `fell_back` on a false, so a board NAKing
+    # every 0x98 kept `refresh_still_needed` false and the refresh never ran at
+    # all. The lamp would die mid-roll with the sidecar reporting rejected: 0.
+    cfg_t = ScanConfig()
+    check("a refresh the board NAKed reports failure",
+          lamp_refresh(_FakeLink(lambda p: NAK), cfg_t), False)
+    check("...through a dead handle too",
+          lamp_refresh(_FakeLink(lambda p: None), cfg_t), False)
+    check("an accepted refresh reports success",
+          lamp_refresh(_FakeLink(lambda p: ACK), cfg_t), True)
+    # The one that matters: a board that NAKs 0x98 must fall back to it.
+    w = LampWatchdog(mode="command")
+    w.send(_FakeLink(lambda p: NAK))
+    check("a board NAKing 0x98 is counted as a rejection", w.rejected, 1)
+    check("...falls back", w.fell_back, True)
+    check("...so the measured refresh runs for the rest of the scan",
+          w.refresh_still_needed, True)
+
+    # ---- a status register that stopped answering is not a healthy lamp ----
+    class _Board:
+        """A light board whose two registers can fail independently."""
+
+        def __init__(self, status, temps):
+            self._status, self._temps = status, temps
+
+        def read_reg(self, _board, reg, _count):
+            if reg == pc.REG_LIGHT_STATUS:
+                return self._status
+            if reg == REG_LIGHT_TEMPS:
+                return self._temps
+            return None
+
+    GOOD_T = (int(40.0 * TEMP_UNITS_PER_C).to_bytes(2, "little")
+              + int(32.0 * TEMP_UNITS_PER_C).to_bytes(2, "little"))
+    h = LampHealth()
+    poll_lamp(_Board(bytes([0x08]), GOOD_T), h)
+    check("a poll that read 0x83 is not stale", h.status_stale, False)
+    check("...and records the status", h.status, 0x08)
+    # 0x83 goes quiet while 0x88 keeps answering: the old code reset the
+    # counter here and reprinted 0x08 forever.
+    blind = _Board(None, GOOD_T)
+    for _ in range(LAMP_POLL_FAIL_LIMIT - 1):
+        poll_lamp(blind, h)
+    check("a status read that failed is counted even though temps answered",
+          h.failures, LAMP_POLL_FAIL_LIMIT - 1)
+    check("...and the retained status byte is marked stale", h.status_stale,
+          True)
+    check("...and it has not yet given up", h.ok, True)
+    poll_lamp(blind, h)
+    check("at the limit the scan is told nothing is watching the lamp",
+          h.ok, False)
+    check("...and says which register went quiet",
+          "0x83" in h.fault and "temperatures still answer" in h.fault, True)
+    # Fault bits still stop a scan, and a recovered read clears the staleness.
+    h2 = LampHealth()
+    poll_lamp(_Board(None, GOOD_T), h2)
+    check("one missed status read does not abort", h2.ok, True)
+    poll_lamp(_Board(bytes([0x08]), GOOD_T), h2)
+    check("a status read that came back clears the stale flag",
+          (h2.status_stale, h2.failures), (False, 0))
+    poll_lamp(_Board(bytes([0x08 | (1 << 5)]), GOOD_T), h2)
+    check("fault bit 5 still stops the scan", h2.ok, False)
+
+    # ---- restoring the board after `sensors --toggle` ----
+    #
+    # The reset state is both illuminators on WITH the counter armed, and 0x98
+    # cannot produce it: the handler clears the arm bit on every 0x98 whatever
+    # the mask. The restore used to be `lamp_watchdog_disarm(BOTH)`, i.e. on
+    # and disarmed -- on indefinitely, while the docstring called it "the state
+    # it boots into". Run against the simulated board's decoded behaviour.
+    check("0x08 is a light-board command, not a mask write",
+          pc.dx_lamp_restart().hex(" "), "04 03 40 00 08")
+    board = FakeDev(_ROOT / "captures" / "no-such-capture.bin")
+    check("the board boots with both on and the auto-off armed",
+          (board.dx_illum, board.dx_illum_armed), (pc.DX_ILLUM_BOTH, True))
+    board.write(EP_CMD_OUT, pc.dx_illuminator(pc.DX_ILLUM_BOTH))
+    check("0x98 leaves them on but disarms the auto-off",
+          (board.dx_illum, board.dx_illum_armed), (pc.DX_ILLUM_BOTH, False))
+    board.write(EP_CMD_OUT, pc.dx_illuminator(pc.DX_ILLUM_OFF))
+    check("...and an off-mask disarms it too", board.dx_illum_armed, False)
+    board.write(EP_CMD_OUT, pc.dx_lamp_restart())
+    check("only 0x08 puts the board back the way it boots",
+          (board.dx_illum, board.dx_illum_armed), (pc.DX_ILLUM_BOTH, True))
+
+    # ---- what the capture says it is ----
+    #
+    # The film selection is the one thing a capture cannot be re-decoded
+    # without and the one thing that was never written down. These are the
+    # precedence rules, run rather than described, because the code and the
+    # interface used to state opposite ones (see DX_PRECEDENCE).
+    def _sel(film_path=None, dx=None, board=None):
+        cfg_f = ScanConfig(film_path=film_path, dx=dx)
+        res_f = ScanResult(path="x.bin", config={})
+        if board is not None:
+            p1, p2 = board
+            res_f.dx = {"product": p1, "specifier": p2}
+        return film_selection(cfg_f, res_f)
+
+    s0 = _sel()
+    check("nothing chosen is recorded as nothing, not as a default",
+          (s0["film_path"], s0["dx"], s0["dx_source"]), (None, None, "none"))
+    s1 = _sel(film_path="ColNeg")
+    check("a film path with no DX is recorded",
+          (s1["film_path"], s1["dx_source"]), ("ColNeg", "none"))
+    s2 = _sel(dx="78-13")
+    check("a typed DX is recorded as typed",
+          (s2["dx"], s2["dx_source"]), ("78-13", "typed"))
+    s3 = _sel(board=(96, 1))
+    check("a board reading with nothing typed is used, and named",
+          (s3["dx"], s3["dx_source"]), ("96-1", "board"))
+    # THE ONE THE UI GOT BACKWARDS. The operator's answer wins; the board's
+    # reading is kept beside it and the disagreement is recorded rather than
+    # resolved out of sight.
+    s4 = _sel(dx="78-13", board=(96, 1))
+    check("typed beats the board", (s4["dx"], s4["dx_source"]),
+          ("78-13", "typed"))
+    check("...and the board's reading is not thrown away", s4["dx_board"],
+          "96-1")
+    check("...and the disagreement is recorded",
+          bool(s4["dx_disagreement"]), True)
+    check("agreement is not reported as a disagreement",
+          _sel(dx="96-1", board=(96, 1))["dx_disagreement"], None)
+    # A half-read code word is not a reading. dx_read only fills product and
+    # specifier when the word passed parity and was unambiguous.
+    check("a partial DX packet is not a reading",
+          _sel(board=(96, None))["dx_source"], "none")
+
+    # The sidecar carries all of it, including in the stub written before the
+    # transport starts -- which is the copy that survives a SIGKILL.
+    cfg_s = ScanConfig.from_calibration(film_path="ColNeg", dx="78-13")
+    meta_s = capture_metadata(Path("x.bin"), cfg_s,
+                              ScanResult(path="x.bin", config=cfg_s.to_json()),
+                              status="in_flight")
+    check("the stub says it is a stub", meta_s["status"], "in_flight")
+    check("...and still carries the speed", meta_s["speed"], cfg_s.speed)
+    check("...and the exposure triad",
+          (meta_s["exposure"]["integration_0x82_idx6"],
+           meta_s["exposure"]["lamp_pwm_N"],
+           meta_s["exposure"]["line_rate_0x91"]),
+          (cfg_s.integration, cfg_s.lamp_n, cfg_s.line_rate_0x91))
+    check("...and the film selection", meta_s["film"]["film_path"], "ColNeg")
+    check("...and the DPI base", meta_s["dpi_base"], cfg_s.dpi_base)
+
+    # Refused before the film moves, not after the roll has gone through.
+    try:
+        refuse_film_selection("POSITIVE")
+        check("colour reversal is refused before the transport starts",
+              "not refused", "refused")
+    except ScanRefused:
+        check("colour reversal is refused before the transport starts",
+              "refused", "refused")
+    for good in (None, "ColNeg", "BnW"):
+        try:
+            refuse_film_selection(good)
+            check(f"{good} is allowed", "allowed", "allowed")
+        except ScanRefused:
+            check(f"{good} is allowed", "refused", "allowed")
+
     # The decoded interval, end to end through pakon_commands.
     check("watchdog is ten seconds", round(pc.DX_WATCHDOG_S, 3), 10.0)
     check("0x98 both on", pc.dx_illuminator().hex(" "), "02 04 40 01 98 03")
@@ -2878,7 +3305,8 @@ def cmd_selftest(a) -> int:
                  close_stdin_after: float | None = None,
                  expect_stop: bool = True, expect_reason: str | None = None,
                  extra_env: dict | None = None,
-                 expect_in_detail: str | None = None):
+                 expect_in_detail: str | None = None,
+                 expect_sidecar: str | None = None):
         nonlocal ok
         trace = tmp / f"{name}.ndjson"
         out = tmp / f"{name}.bin"
@@ -2952,6 +3380,8 @@ def cmd_selftest(a) -> int:
         if expect_in_detail and expect_in_detail not in detail:
             bad.append(f"detail {detail!r} does not mention "
                        f"{expect_in_detail!r}")
+        if expect_sidecar:
+            bad += _sidecar_faults(out, expect_sidecar)
         if elapsed is not None and elapsed > 1.0:
             bad.append(f"stop took {elapsed:.2f} s, over the 1 s budget")
         tail = (f"stop {'via parent recovery' if recovered else 'by the scan'}"
@@ -2977,7 +3407,9 @@ def cmd_selftest(a) -> int:
 
         run_case("time-limit",
                  "the backstop fires even though the film is fine", 40e6,
-                 ["--max-seconds", "6"], expect_reason="time_limit")
+                 ["--max-seconds", "6", "--film-path", "ColNeg",
+                  "--dx", "78-13"],
+                 expect_reason="time_limit", expect_sidecar="complete")
 
         run_case("film-sense-roll-end",
                  "the machine says the film has left the transport, and that "
@@ -2988,9 +3420,12 @@ def cmd_selftest(a) -> int:
                  expect_in_detail="film sensors have read clear")
 
         run_case("sigterm",
-                 "a polite kill; the finally must reach the motor", 20e6,
-                 ["--max-seconds", "120"], kill_after=4.0,
-                 kill_sig=signal.SIGTERM, expect_reason="cancelled")
+                 "a polite kill; the finally must reach the motor, and it "
+                 "rewrites the stub sidecar in full", 20e6,
+                 ["--max-seconds", "120", "--film-path", "BnW"],
+                 kill_after=4.0,
+                 kill_sig=signal.SIGTERM, expect_reason="cancelled",
+                 expect_sidecar="complete")
 
         run_case("sigint",
                  "ctrl-C from a terminal", 20e6,
@@ -3005,9 +3440,36 @@ def cmd_selftest(a) -> int:
 
         run_case("sigkill",
                  "THE HARD ONE: the scan process is killed outright, so no "
-                 "finally runs and the stop has to come from outside", 20e6,
-                 ["--max-seconds", "120"], kill_after=4.0,
-                 kill_sig=signal.SIGKILL)
+                 "finally runs and the stop has to come from outside — and "
+                 "the capture is still self-describing, from the stub sidecar "
+                 "written before the transport started", 20e6,
+                 ["--max-seconds", "120", "--film-path", "ColNeg",
+                  "--dx", "78-13"],
+                 kill_after=4.0, kill_sig=signal.SIGKILL,
+                 expect_sidecar="in_flight")
+
+        # The refusal that has to happen BEFORE the film moves. A film path
+        # whose stage-2 branch is not ported produces a capture that will not
+        # open, and the only way anyone found out was a failed auto-open after
+        # a completed scan.
+        trace_p = tmp / "positive-refused.ndjson"
+        out_p = tmp / "positive-refused.bin"
+        envp = _sim_env(trace_p, capture, 20e6)
+        pp = subprocess.run(
+            [sys.executable, str(_TOOLS / "pakon_scan.py"), "run", str(out_p),
+             "--json", "--max-seconds", "10", "--film-path", "POSITIVE"],
+            env=envp, capture_output=True, timeout=60)
+        moved = any(e.get("kind") == "MOTOR_RUN" for e in _trace_events(trace_p))
+        goodp = (pp.returncode == 2 and not moved and not out_p.is_file()
+                 and not out_p.with_suffix(".scan.json").is_file())
+        print(f"  {'film-path-refused':<22} {'ok   ' if goodp else 'FAIL '} "
+              f"--film-path POSITIVE is refused before the transport starts "
+              f"(exit={pp.returncode}, motor commanded={moved}, "
+              f"capture written={out_p.is_file()})")
+        if not goodp:
+            ok = False
+        print("      check_film_class refuses colour reversal at OPEN, which "
+              "is after the whole roll has gone past the sensor")
 
         # After a SIGKILL the marker is left behind on purpose. A fresh process
         # must notice and stop the machine without being told.
@@ -3058,6 +3520,39 @@ def cmd_selftest(a) -> int:
             ok = False
         print("      deleting it here was the one failure with no second "
               "chance: transport possibly running, stop failed, marker gone")
+        marker_clear()
+
+        # THE WORST CASE, END TO END. The transport is commanded, the board
+        # acts on it, and the acknowledgement never comes back -- so `ack`
+        # raises, safe_stop's own retries are refused too, and the process
+        # exits with the motor possibly turning. `started_motor` used to be set
+        # *after* that ack, so the finally read `not started_motor` and deleted
+        # the marker: the one state from which nothing in the system ever
+        # retries. The simulated board is told to refuse both motor packets
+        # while still obeying them, which is the only way to reach this without
+        # a scanner.
+        marker_clear()
+        trace3 = tmp / "motor-ack-lost.ndjson"
+        env3 = _sim_env(trace3, capture, 20e6)
+        env3[ENV_SIM_NAK] = ",".join((pc.motor_forward().hex(" "),
+                                      pc.motor_stop().hex(" ")))
+        t3 = time.time()
+        p3 = subprocess.run(
+            [sys.executable, str(_TOOLS / "pakon_scan.py"), "run",
+             str(tmp / "motor-ack-lost.bin"), "--json", "--max-seconds", "20"],
+            env=env3, capture_output=True, timeout=120)
+        kept3 = MARKER.is_file()
+        ran3 = any(e.get("kind") == "MOTOR_RUN" for e in _trace_events(trace3))
+        # Exit 1 is this tool's "the transport stop was not confirmed".
+        good3 = kept3 and ran3 and p3.returncode == 1
+        print(f"  {'motor-ack-lost':<22} {'ok   ' if good3 else 'FAIL '} "
+              f"a transport command whose acknowledgement never came back "
+              f"keeps the marker (motor commanded={ran3}, marker kept={kept3}, "
+              f"exit={p3.returncode}, {time.time()-t3:.1f} s)")
+        if not good3:
+            ok = False
+        print("      a lost acknowledgement is not a command the board did "
+              "not execute — the flag follows the packet, not the reply")
         marker_clear()
     finally:
         os.environ.pop(ENV_SIMULATE, None)
@@ -3117,6 +3612,20 @@ def main() -> int:
                         f"base 4). Clamped to {MIN_MAX_SECONDS} s .. that "
                         "speed's ceiling")
     r.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
+    # Neither of these is sent to the scanner. They are the operator's answer
+    # to "what is this film", recorded in the sidecar so the capture can be
+    # re-decoded in a year without anyone having to remember.
+    r.add_argument("--film-path", default=None,
+                   choices=("ColNeg", "BnW", "POSITIVE", "IMPORTED"),
+                   help="what this capture is to be decoded as. Recorded in "
+                        "<output>.scan.json; nothing is sent to the scanner. "
+                        "POSITIVE is refused before the transport starts — "
+                        "the F-135 reversal branch is not ported.")
+    r.add_argument("--dx", default=None, metavar="P1-P2",
+                   help="the DX code the operator read off the cassette, e.g. "
+                        "78-13. Recorded alongside whatever the DX board "
+                        "reads; the typed value is the one used (see "
+                        "DX_PRECEDENCE).")
     r.add_argument("--dry-run", action="store_true",
                    help="build and print the sequence; send nothing")
     r.add_argument("--json", action="store_true", help="NDJSON progress on stdout")

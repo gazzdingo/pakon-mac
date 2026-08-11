@@ -86,6 +86,7 @@ import threading
 import time
 from contextlib import redirect_stdout
 from dataclasses import dataclass, field, asdict
+from functools import lru_cache
 from io import StringIO
 from pathlib import Path
 
@@ -101,6 +102,7 @@ import pakon_color as pc        # noqa: E402
 import pakon_filmstock as film  # noqa: E402
 import pakon_framing as pf      # noqa: E402
 import pakon_ansel as ansel     # noqa: E402
+import pakon_colour_go as gocol  # noqa: E402  — the colour engine, see below
 
 # --------------------------------------------------------------------------
 # parameter model
@@ -260,15 +262,20 @@ def load_kernel(data_dir: str):
     return val
 
 
-def load_poly_coeffs(source: str = "auto"):
-    """F-135 NegMatrix 3×10 (TLB.dll @ 0x1000d880 destination this+0x50)."""
+def load_poly_coeffs(source: str = "auto", film_class: int = 1):
+    """F-135 3×10 matrix for this filmClass.
+
+    ``film_class`` 1/4/8 → NegMatrix (TLB.dll @ 0x1000d880 destination
+    ``this+0x50``); 2 → PosMatrix (``this+0xc8``).
+    """
+    key = ("poly", source, int(film_class))
     with _kernel_lock:
-        hit = _kernel_cache.get(("poly", source))
+        hit = _kernel_cache.get(key)
         if hit is not None:
             return hit
-    coeffs = pc.load_unit_matrix(source)
+    coeffs = pc.load_unit_matrix(source, film_class=film_class)
     with _kernel_lock:
-        _kernel_cache[("poly", source)] = coeffs
+        _kernel_cache[key] = coeffs
     return coeffs
 
 
@@ -327,14 +334,21 @@ def roll_offsets_from_hist(hist: np.ndarray, total: int,
 
 
 def _rpd16(rgb14: np.ndarray, data_dir: str, offset: np.ndarray,
-           model: str = pc.DEFAULT_MODEL) -> np.ndarray:
-    """14-bit → 16-bit-scaled 12-bit RPD (matches ``pakon_decode.render_rpd``)."""
+           model: str = pc.DEFAULT_MODEL,
+           film_class: int = 1) -> np.ndarray:
+    """14-bit → 16-bit-scaled 12-bit RPD (matches ``pakon_decode.render_rpd``).
+
+    ``film_class`` is ``fcn.1000d880``'s matrix dispatch; it comes from the
+    roll's film path via ``pakon_color.film_class_for_path``.
+    """
     if model == "f135":
         # TLB.dll @ 0x1000d880 — F-135 ColNeg stage 2
-        coeffs = load_poly_coeffs()
-        rpd12 = pc.poly_hwc(rgb14, coeffs, film_class=1)
+        dec.check_film_class(film_class, model)
+        coeffs = load_poly_coeffs(film_class=film_class)
+        rpd12 = pc.poly_hwc(rgb14, coeffs, film_class=film_class)
         rpd_max = pc.RPD_MAX_BY_MODEL["f135"]
-        return (rpd12 * (65535.0 / rpd_max)).astype(np.uint16)
+        # rint, not truncate — same expression as pakon_decode.render_rpd.
+        return np.rint(rpd12 * (65535.0 / rpd_max)).astype(np.uint16)
 
     lut, coeff, _m33, _t = load_kernel(data_dir)
     idx = rgb14.astype(np.int32) & 0x3FFF
@@ -343,6 +357,52 @@ def _rpd16(rgb14: np.ndarray, data_dir: str, offset: np.ndarray,
     rpd = np.clip(np.rint(acc + np.asarray(offset, dtype=np.float64)),
                   0, pc.RPD_MAX)
     return (rpd * (65535.0 / pc.RPD_MAX)).astype(np.uint16)
+
+
+@lru_cache(maxsize=4)
+def _rpd16_code_fold(model: str) -> np.ndarray:
+    """u16 RPD → the 12-bit code ``pakon_decode._film_base_code`` histograms.
+
+    Exactly ``rpd16_to_rpd12`` followed by ``clip(0, 4095).astype(int)``, i.e.
+    a truncation, tabulated over the whole u16 domain so a chunk's histogram
+    can be folded instead of its pixels converted.
+    """
+    v = ansel.rpd16_to_rpd12(np.arange(65536, dtype=np.uint16),
+                             pc.RPD_MAX_BY_MODEL[model])
+    return np.clip(v, 0, 4095).astype(np.intp)
+
+
+def poly_pedestals() -> tuple[float, float, float]:
+    """The polynomial's per-channel c9, the pedestal the F-135 invert removes."""
+    c = load_poly_coeffs()
+    return (float(c[9]), float(c[19]), float(c[29]))
+
+
+def scene_rpd12(rgb14: np.ndarray, data_dir: str, offset: np.ndarray,
+                model: str, eng, film_base=None,
+                film_class: int = 1) -> np.ndarray:
+    """14-bit block → the RPD12 ``render_scene`` expects. Stage 2 + F-135 invert.
+
+    THE WHOLE POINT OF THIS FUNCTION is that the F-135 inversion is not
+    optional and not somebody else's job. ``pakon_decode.cmd_strip`` runs it
+    between stage 2 and Ansel; anything else that renders a frame has to run it
+    too, or it emits the negative. There is nothing downstream that would
+    notice: ``apply_correction`` is additive and ``render_scene``'s
+    ``setshifts_out`` branch has no polarity-changing LUT, so a missing
+    inversion is silent all the way to the exported file.
+
+    ``film_base`` is the roll's, not this block's — see
+    ``pakon_decode.f135_rom12_to_rpd12``.
+    """
+    rpd16 = _rpd16(rgb14, data_dir, offset, model=model,
+                   film_class=film_class)
+    rpd12 = ansel.rpd16_to_rpd12(rpd16, pc.RPD_MAX_BY_MODEL[model])
+    if model != "f135":
+        return rpd12
+    return dec.f135_rom12_to_rpd12(
+        rpd12, poly_pedestals(), eng.sba.fpo, eng.setshifts_out,
+        quiet=True, film_base=film_base,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -386,6 +446,17 @@ class Roll:
     sba_default: bool = False
     sync: dict = field(default_factory=dict)
     auto_offsets: list = field(default_factory=list)
+    #: F-135 only: the ROLL's clear-film-base code per channel, in the
+    #: polynomial's linear 12-bit domain (FindDmin over the whole strip's film
+    #: area — ``pakon_decode.film_base_window``, i.e. every frame but not the
+    #: leader and not the gate edge outside the vendor's CCD window). The
+    #: F-135 inversion anchors on it, and it is a property of the stock, so it
+    #: is measured once here rather than per frame — otherwise the same
+    #: negative renders differently depending on which frames you export.
+    #: Empty means a workspace written before this existed; the inversion then
+    #: falls back to the frame's own FindDmin, which is a different (smaller)
+    #: population and can move the render. Re-open the capture to refresh it.
+    film_base: list = field(default_factory=list)
     roll_scale: list = field(default_factory=list)
     trace: list = field(default_factory=list)
     created: float = 0.0
@@ -398,11 +469,37 @@ class Roll:
     #: "we do not know the speed" and "the sidecar says 11467" are different
     #: situations and the geometry is only trustworthy in the second.
     transport_source: str = ""
+    #: (measured − predicted) frame pitch, as a percentage of predicted. The
+    #: only offline check that the recorded speed is the speed the film
+    #: actually travelled at. None = not checked (no pitch, or no speed).
+    transport_residual_pct: float | None = None
+    #: where ``dx`` came from: "typed" (the operator), "board" (the DX sensor
+    #: board, via the capture's .dx.json), "sidecar" (recorded by the scan that
+    #: made this capture) or "" for none. No screen could tell a typed DX from
+    #: a measured one before this existed — Review said "Typed, not read" even
+    #: when the value came off the board.
+    dx_source: str = ""
+    #: Things the owner needs to be told about this roll that are not fatal:
+    #: an exposure triad the committed tables are not valid for, a frame pitch
+    #: that disagrees with the recorded speed, a DX that did not resolve.
+    #: Surfaced in the UI; a silent default is the failure this replaces.
+    warnings: list = field(default_factory=list)
     #: pakon_framing's report for this roll: per-phase counts, the acceptance
     #: window, the pitch and where it came from, and the binarisation level.
     framing: dict = field(default_factory=dict)
     #: Operator override for the INFERRED binarisation threshold. None = Otsu.
     ones_threshold: float | None = None
+
+    #: What the Go colour engine's selections resolved to for this roll — the
+    #: sba key, the shasta key, which lutMap and which FUGC LUT, the contrast
+    #: class, the coefficient source, and the path each came from. Filled on
+    #: the first render (``PakonColorOpen``) and shown in the UI, because "the
+    #: frame went through some stock's tables" and "the frame went through
+    #: NoShift_fugc-generic0225.lut" are different statements and only the
+    #: second is checkable. Derived, so it is not serialised: it follows the
+    #: film selection and a roll whose stock changes must re-resolve it.
+    colour_selection: dict = field(default_factory=dict, repr=False,
+                                   compare=False)
 
     # runtime only
     _rgb: object = field(default=None, repr=False, compare=False)
@@ -420,9 +517,11 @@ class Roll:
     #: deep-copy the memmap and the lock.
     JSON_FIELDS = ("id", "name", "capture", "workspace", "lines", "stock",
                    "dx", "film_path", "sba_key", "sba_default", "sync",
-                   "auto_offsets", "roll_scale", "trace", "created",
+                   "auto_offsets", "film_base", "roll_scale", "trace",
+                   "created",
                    "data_dir", "ansel_root", "model", "transport_scale",
-                   "transport_source", "framing", "ones_threshold")
+                   "transport_source", "transport_residual_pct",
+                   "dx_source", "warnings", "framing", "ones_threshold")
 
     def to_json(self) -> dict:
         d = {k: getattr(self, k) for k in self.JSON_FIELDS}
@@ -461,6 +560,15 @@ class Roll:
         return bool(self.dx or self.film_path or self.sba_key
                     or self.sba_default)
 
+    def film_class(self) -> int:
+        """``fcn.1000d880``'s matrix dispatch for this roll's film path.
+
+        Derived, never stored: it follows the film selection, and a roll whose
+        stock changes has to change matrix with it.
+        """
+        path = (self.stock or {}).get("path") if self.stock else self.film_path
+        return pc.film_class_for_path(path)
+
     def engine(self):
         """Mirrors pakon_decode.cmd_strip's scene construction exactly."""
         if not self.has_film():
@@ -477,14 +585,24 @@ class Roll:
                 iso=self.stock.get("iso"),
             )
         elif self.film_path:
-            scene = ansel.scene_from_filmstock(path=self.film_path)
+            metric = (ansel.maps.METRIC_ROM12 if self.model == "f135"
+                      else ansel.maps.METRIC_PD12)
+            scene = ansel.scene_from_filmstock(path=self.film_path,
+                                               metric=metric)
         else:
             scene = ansel.SceneContext()
         if self.sba_default and not sba_key and not self.stock \
                 and not self.film_path:
             sba_key = "ansel-sba-CN-default"
         key = f"{self.dx}|{self.film_path}|{sba_key}|{self.sba_default}"
-        return load_engine(self.ansel_root, key, scene, sba_key)
+        eng = load_engine(self.ansel_root, key, scene, sba_key)
+        if self.model == "f135":
+            # Both of these are what pakon_decode.cmd_strip sets on the F-135
+            # branch, and both have to be set wherever a frame is rendered —
+            # the engine is shared and cached, so set them on every fetch.
+            eng.rpd_max = ansel.SHASTA_MAX
+            eng.shasta_stand_in = True
+        return eng
 
 
 # --------------------------------------------------------------------------
@@ -513,12 +631,17 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
                  max_lines: int = 0,
                  film_path: str | None = None,
                  sba_key: str | None = None,
-                 sba_default: bool = False) -> Roll:
+                 sba_default: bool = False,
+                 dx_source: str = "") -> Roll:
     """Decode a capture into the workspace cache and detect its frames.
 
     Writes exactly one file — ``rgb14.npy`` in the roll's workspace dir — which
     is render cache, deleted with the workspace. The user's photographs are not
     written anywhere by this function.
+
+    ``dx_source`` records where ``dx`` came from — "typed", "board",
+    "sidecar" — because a screen cannot otherwise tell a value the operator
+    entered from one a sensor read, and those are different claims.
     """
     src = Path(path).resolve()
     ws = Path(workspace) / roll_id
@@ -536,7 +659,56 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
         created=time.time(),
         data_dir=data_dir or dec.DEFAULT_DATA_DIR,
         ansel_root=ansel_root or dec.DEFAULT_ANSEL_ROOT,
+        dx_source=(dx_source or ("typed" if dx else "")),
     )
+
+    # Resolve the stock first: it decides roll.film_class(), and stage 2 runs
+    # below in pass A. Looking it up after the colour work is done is how the
+    # film path stops reaching the matrix dispatch.
+    #
+    # A DX THAT DOES NOT RESOLVE IS AN ERROR, NOT A NULL. This used to be a
+    # bare `except Exception: roll.stock = None`, and the client dropped
+    # `film_path` whenever a DX was typed — so a mistyped code discarded BOTH
+    # the stock and the film path, `has_film()` was still satisfied by the
+    # unresolvable string, and the render walked straight through the refusal
+    # that exists to stop exactly this and landed on `ansel-sba-CN-default`.
+    # The owner's film was rendered as a stock nobody chose, silently.
+    if dx:
+        try:
+            p1, p2 = film.parse_dx(dx)
+            s = film.lookup(p1, p2)
+            roll.stock = {
+                "name": s.name, "manufacturer": s.manufacturer,
+                "path": s.path, "iso": s.iso,
+                "dx_part1": s.dx_part1, "dx_part2": s.dx_part2,
+                "sba_override": s.sba_override,
+            }
+        except Exception as e:                              # noqa: BLE001
+            roll.stock = None
+            if not film_path:
+                raise ValueError(
+                    f"DX {dx!r} does not resolve to a film stock ({e}), and no "
+                    f"film path was chosen either. Rendering it anyway would "
+                    f"mean falling back to a colour-negative default nobody "
+                    f"selected. Correct the DX, or clear it and choose a film "
+                    f"path.") from e
+            # A film path WAS chosen, so there is something real to render
+            # with. Say so loudly rather than silently pretending the DX was
+            # never entered.
+            roll.dx_source = "unresolved"
+            roll.warnings.append(
+                f"DX {dx!r} does not resolve to a known film stock ({e}); "
+                f"this roll is being rendered as {film_path} instead. The "
+                f"stock-specific curves are not being used.")
+
+    # WAS THIS CAPTURE EXPOSED THE WAY THE COMMITTED TABLES ASSUME?
+    # `dec.load_unit_calibration` checks the arrays' shape and nothing else,
+    # while its own docstring says they are valid only for the exposure triad
+    # in calibration/README.json. `attach()` below applies them regardless, so
+    # this is the only place the question gets asked. It warns rather than
+    # refuses — the owner's photographs must stay reachable — but it warns
+    # somewhere a screen can show it.
+    roll.warnings.extend(dec.check_capture_exposure(src))
 
     progress("reading", 0.02, f"reading {src.name}")
     words = dec.load_u16(src)
@@ -565,6 +737,18 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
     rgb = dec.to_rgb14(lines)
     del words, lines
 
+    # Trilinear CCD deskew, on the capture's own (n_lines, ccd) axes and before
+    # the cache is written, so every consumer downstream -- frame slicing, the
+    # Dmin histogram, the framing traces -- sees registered data. This is the
+    # same stage and the same ordering as pakon_decode.cmd_strip; the app went
+    # without it, and rendered channel-misregistered frames while the CLI did
+    # not. The offsets stay in capture scan lines because nothing has rotated
+    # yet -- see ROTATE_180_FOR_LENS in pakon_decode.
+    progress("registering", 0.40, "measuring CCD channel offsets")
+    ccd_offsets = dec.measure_ccd_line_offsets(rgb)
+    rgb = dec.ccd_deskew(rgb, ccd_offsets)
+    roll.sync["ccd_deskew"] = [int(v) for v in ccd_offsets]
+
     progress("caching", 0.45, "writing render cache")
     np.save(roll.cache_path, rgb)
     del rgb
@@ -583,12 +767,49 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
     trace_1d = np.empty(n, dtype=np.float64)
     green_1d = np.empty(n, dtype=np.float64)
     CH = 4096
+    # The F-135 inversion's film base is FindDmin over the WHOLE strip, so its
+    # histogram is accumulated in this pass alongside the 14-bit one. Doing it
+    # per frame instead would make the same negative render differently
+    # depending on which frames were exported.
+    #
+    # Whole strip, but not every pixel of it: FindDmin only means "the clear
+    # film base" over film. dec.film_base_window is the same window
+    # pakon_decode measures over — capture columns inside the vendor's CCD
+    # aperture, and the lines that are not saturated leader / empty gate. It
+    # narrows which PIXELS are film, never which frames, so the measurement
+    # stays roll-level.
+    lin_hist = (np.zeros((3, 4096), dtype=np.int64)
+                if roll.model == "f135" else None)
+    lin_col0 = dec.film_base_col0(roll.capture)
+    lin_px = 0
+    lin_lines = 0
+    fclass = roll.film_class()
     for a0 in range(0, n, CH):
         b0 = min(n, a0 + CH)
         blk = dec.apply_unit_calibration(
             np.asarray(strip[a0:b0]), roll._dark, roll._gain)
         for c in range(3):
             hist[c] += np.bincount(blk[:, :, c].ravel(), minlength=1 << 14)
+        if lin_hist is not None:
+            # Histogram the U16 and fold it, rather than materialising two f64
+            # planes per chunk: the 12-bit code is a pure function of the
+            # 16-bit one, so pushing a 65536-bin count through that function
+            # is the same answer for a fraction of the memory traffic.
+            r16 = _rpd16(blk, roll.data_dir, np.zeros(3),
+                         model=roll.model, film_class=fclass)
+            fold = _rpd16_code_fold(roll.model)
+            # The u16 ceiling folds to 12-bit 4095 and nothing below it does,
+            # so the saturation test is the same one dec runs on the 12-bit
+            # codes — done here on the u16 to keep the fold's memory win.
+            keep = dec.film_base_line_mask(r16, lin_col0, n_bins=1 << 16)
+            win = r16[keep][:, lin_col0:]
+            lin_px += int(win.shape[0]) * int(win.shape[1])
+            lin_lines += int(keep.sum())
+            for c in range(3):
+                h16 = np.bincount(win[:, :, c].ravel(), minlength=65536)
+                lin_hist[c] += np.bincount(
+                    fold, weights=h16, minlength=4096).astype(np.int64)
+            del r16, win
         trace_1d[a0:b0] = blk.mean(axis=(1, 2))
         green_1d[a0:b0] = blk[:, :, 1].mean(axis=1)
         progress("analysing", 0.55 + 0.12 * (b0 / n), f"line {b0} of {n}")
@@ -597,22 +818,42 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
     roll.auto_offsets = [float(v) for v in roll_offsets_from_hist(
         hist, n * dec.PIXELS_PER_LINE, roll.data_dir, model=roll.model)]
 
+    if lin_hist is not None:
+        # Same walk pakon_decode._film_base_code runs, from the same counts:
+        # find_dmin_code_from_hist @ 0x100093f0…0x1000941f, thr = n // 1000.
+        thr = ansel.scene_ctx.find_dmin_thr_n_pixels(lin_px)
+        enough = (lin_px > 0 and lin_lines
+                  >= dec.FILM_BASE_MIN_FILM_FRACTION * max(1, n))
+        roll.film_base = [
+            float(ansel.scene_ctx.find_dmin_code_from_hist(
+                lin_hist[c].tolist(), thr, n_bins=4096))
+            for c in range(3)
+        ] if enough else [0.0, 0.0, 0.0]
+        if any(v <= 0 for v in roll.film_base):
+            # 0 is FindDmin's "no valid Dmin" sentinel. Say so here, where the
+            # clipped fractions are still to hand; dec.check_film_base is what
+            # actually refuses, per frame, at render time. Reaching this now
+            # means the FILM clipped, not the leader — the window already
+            # excluded that.
+            npx = float(lin_px) or 1.0
+            pct = [100.0 * float(lin_hist[c][4095]) / npx for c in range(3)]
+            why = (f"only {lin_lines} of {n} lines are unsaturated across "
+                   f"capture columns {lin_col0}.., which is not a leader on a "
+                   f"roll of film but a capture with almost no film in it"
+                   if not enough else
+                   f"over the film area (columns {lin_col0}.., {lin_lines} of "
+                   f"{n} unsaturated lines) {pct[0]:.3f}% / {pct[1]:.3f}% / "
+                   f"{pct[2]:.3f}% of pixels are still at the 4095 ceiling, "
+                   f"against FindDmin's 0.1% threshold")
+            progress("analysing", 0.69,
+                     f"WARNING: FindDmin found no film base "
+                     f"{[int(v) for v in roll.film_base]} — {why}. Re-scan at "
+                     f"a lower gain. Colour frames will refuse to render.")
+        del lin_hist
+
     progress("frames", 0.70, "framing (five-phase cascade)")
     _frame_roll(roll, trace_1d, green_1d, src)
     del trace_1d, green_1d
-
-    if dx:
-        try:
-            p1, p2 = film.parse_dx(dx)
-            s = film.lookup(p1, p2)
-            roll.stock = {
-                "name": s.name, "manufacturer": s.manufacturer,
-                "path": s.path, "iso": s.iso,
-                "dx_part1": s.dx_part1, "dx_part2": s.dx_part2,
-                "sba_override": s.sba_override,
-            }
-        except Exception:                                   # noqa: BLE001
-            roll.stock = None
 
     # --- pass B: the Ansel roll pass, at full resolution, one frame at a time
     progress("balance", 0.78, "roll scene balance (Ansel pass 1)")
@@ -621,21 +862,32 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
     acc = np.zeros(3, dtype=np.float64)
     trace: list[float] = []
     nf = max(1, len(roll.frames))
+    # The median roll scale is the AnalyseRoll stand-in, and both
+    # AnselEngine.render_strip and render_scene ignore it whenever Preference
+    # setShifts are in play — they fight the setShifts R/G/B ratios. Not
+    # computing it there is what the pipeline does, and it saves a
+    # full-resolution stage-2 pass per frame.
+    want_scale = eng.setshifts_out is None
+    fb = tuple(roll.film_base) if roll.film_base else None
     for i, f in enumerate(roll.frames):
         seg = roll.slice14(f.a, f.b, 1)
-        rpd12 = ansel.rpd16_to_rpd12(
-            _rpd16(seg, roll.data_dir, off, model=roll.model))
-        # analyze_roll_scales averages over the scenes it is given, so calling
-        # it per scene and averaging here is the same number it would return
-        # for the whole list — but bounded to one frame of memory.
-        acc += eng.analyze_roll_scales([rpd12])
+        if want_scale:
+            # analyze_roll_scales averages over the scenes it is given, so
+            # calling it per scene and averaging here is the same number it
+            # would return for the whole list — but bounded to one frame of
+            # memory. It sees the same RPD12 render_scene will, inversion and
+            # all.
+            rpd12 = scene_rpd12(seg, roll.data_dir, off, roll.model, eng,
+                                fb, roll.film_class())
+            acc += eng.analyze_roll_scales([rpd12])
+            del rpd12
         g = float(seg[:, :, 1].mean())
         trace.append(round(-pc.LUT_SCALE * math.log10(max(g, 1.0) / 16383.0)
                            / 1000.0, 4))
-        del seg, rpd12
+        del seg
         progress("balance", 0.78 + 0.20 * ((i + 1) / nf),
                  f"scene {i + 1} of {nf}")
-    roll.roll_scale = [float(v) for v in (acc / nf)]
+    roll.roll_scale = [float(v) for v in (acc / nf)] if want_scale else []
     roll.trace = trace
 
     progress("done", 1.0, f"{len(roll.frames)} frames")
@@ -703,6 +955,20 @@ def _frame_roll(roll: Roll, trace: np.ndarray, green: np.ndarray,
         capture=capture, measured_pitch_lines=pitch)
     roll.transport_scale = float(ts)
     roll.transport_source = ts_src
+    # The recorded speed against the film that actually went past the sensor.
+    # resolve_transport_scale computes this and folds it into its prose; as a
+    # number a screen can colour it, and a large one means the sidecar and the
+    # film disagree about the geometry — which is worth saying out loud,
+    # because the sidecar wins and would otherwise do so silently.
+    resid = dec.transport_residual_pct(capture=capture,
+                                       measured_pitch_lines=pitch)
+    roll.transport_residual_pct = resid
+    if resid is not None and abs(resid) > dec.TRANSPORT_RESIDUAL_WARN_PCT:
+        roll.warnings.append(
+            f"the recorded transport speed predicts a frame pitch {resid:+.1f} % "
+            f"away from the {pitch:.0f} lines actually measured on this film. "
+            f"The recorded speed is being used, so the geometry may be "
+            f"stretched or squashed by about that much.")
 
 
 def _sidecar_speed(capture: Path | str | None) -> float | None:
@@ -805,13 +1071,220 @@ def apply_correction(toned: np.ndarray, p: dict, eng) -> np.ndarray:
     return np.clip(toned + (steps * cv).reshape(1, 1, 3), 0, ansel.SHASTA_MAX)
 
 
+# --------------------------------------------------------------------------
+# which colour engine
+# --------------------------------------------------------------------------
+#
+# THE APP RENDERS THROUGH GO. Everything from the stage-2 polynomial onward —
+# the F-135 inversion, SBA/balance, Shasta, FUGC, the ICC hop — is
+# tools/ansel/pipeline, reached through a c-shared dylib by ctypes
+# (tools/pakon_colour_go.py). This module keeps capture, calibration, CCD
+# deskew, framing, frame slicing, transport geometry, the parameter model and
+# every metadata refusal; it no longer owns any colour arithmetic.
+#
+# THE PYTHON COLOUR CHAIN IS DEPRECATED — present, working, and off. It is
+# reached only by setting PAKON_COLOUR_ENGINE=python, which warns. It is kept
+# rather than deleted for three reasons, in order: the Go engine is being
+# actively corrected right now; the parity harness that would prove Go correct
+# is only just being built; and there has to be a way back if Go regresses in
+# the middle of a scanning session. It is not a place to add features — see
+# the deprecation notice at the top of
+# tools/ansel/python-pipeline/pakon_ansel.py.
+
+COLOUR_ENGINE_ENV = "PAKON_COLOUR_ENGINE"
+
+#: The three choices docs/62 §4.2 says must be explicit. They are stated here,
+#: once, with the reason, rather than defaulted anywhere down the chain.
+#:
+#: coeffSource — docs/62 §2.11. "auto" is not a legal answer: the EEPROM is
+#:   the higher-precision calibration store and the registry is what TLB
+#:   actually read after its "%f" round-trip, and they differ by 14-57 RPD
+#:   codes at (4000,4000,4000). eeprom is what this tree renders today
+#:   (pakon_color.REGISTRY_PATH does not exist here, so "auto" already falls
+#:   through to it); saying so out loud changes no pixel and removes the
+#:   silent disagreement.
+#: stageOrder — fugc-shasta, the vendor's, established from PakonIMAu.dll's
+#:   AnsImaBuilder::getImaTransformGroup / AnsCnPremiumPath::exportParameterPack
+#:   by the phase-1 work; see request.go:OrderFugcShasta. This is NOT the order
+#:   pakon_ansel.render_scene uses, so it is a deliberate visible change.
+#: iccInput — u12. The RPD-side profile's mft2 input table has 4096 entries;
+#:   Python reaches 256 of them only because PIL has no 16-bit RGB mode.
+COLOUR_DEFAULTS = {
+    "coeffSource": os.environ.get("PAKON_COEFF_SOURCE") or "eeprom",
+    "stageOrder": os.environ.get("PAKON_STAGE_ORDER") or "fugc-shasta",
+    "iccInput": os.environ.get("PAKON_ICC_INPUT") or "u12",
+}
+
+
+def colour_engine() -> str:
+    """``"go"`` (the product) or ``"python"`` (deprecated, explicit only)."""
+    want = (os.environ.get(COLOUR_ENGINE_ENV) or "go").strip().lower()
+    if want not in ("go", "python"):
+        raise ValueError(
+            f"{COLOUR_ENGINE_ENV}={want!r} is not 'go' or 'python'. There is "
+            f"no third engine and no automatic choice: an engine that picks "
+            f"itself is one you cannot attribute an image to.")
+    return want
+
+
+def _resolved_film_path(roll: Roll) -> str:
+    """The roll's film path, resolved — not "one of four fields was truthy".
+
+    ``Roll.has_film`` accepts a DX, a film path, an SBA key or the CN default,
+    which was enough for the Python chain because ``scene_from_filmstock``
+    could fall back. It is not enough now: ``check_film_class`` needs the
+    actual path, ``filmPath`` has no wildcard cell in any vendor selector, and
+    docs/62 §4.4 says the contract needs the resolved value. So this refuses in
+    prose rather than letting Go refuse in Go's words.
+    """
+    path = (roll.stock or {}).get("path") if roll.stock else None
+    path = path or roll.film_path
+    if not path:
+        raise ValueError(
+            "no film path. The colour chain dispatches stage 2 on the film "
+            "class (ColNeg / BnW / IMPORTED / POSITIVE) and there is no "
+            "wildcard for it in any vendor selector, so it cannot be guessed "
+            "from an SBA key or the CN default alone. Choose the film for "
+            "this roll.")
+    return str(path)
+
+
+@lru_cache(maxsize=8)
+def _code_values_per_button(dpi_path: str) -> float:
+    """The vendor's button unit, from the Shasta DPI Go selected.
+
+    The parameter model stays here (docs/62 §9) but the *selection* is Go's
+    now, so the file is named by ``PakonColorOpen``'s resolved map and only
+    read here. 75.0 is this stock's value and the documented fallback.
+    """
+    try:
+        with open(dpi_path, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                k, _, v = line.partition("=")
+                if k.strip() == "codeValuesPerButton":
+                    return float(v.split("#")[0].strip())
+    except Exception:                                           # noqa: BLE001
+        pass
+    return 75.0
+
+
+def _go_request(roll: Roll, p: dict) -> "gocol.ColourRequest":
+    """Everything that is not pixels, as the Go engine's request. docs/62 §4."""
+    film_path = _resolved_film_path(roll)
+    stock = roll.stock or {}
+    dx1, dx2 = -1, -1
+    if stock.get("dx_part1") is not None:
+        dx1 = int(stock["dx_part1"])
+        dx2 = int(stock.get("dx_part2") if stock.get("dx_part2") is not None else -1)
+    elif roll.dx:
+        parts = str(roll.dx).split("-")
+        try:
+            dx1 = int(parts[0])
+            dx2 = int(parts[1]) if len(parts) > 1 else -1
+        except ValueError:
+            dx1, dx2 = -1, -1
+
+    base = tuple(int(v) for v in (roll.film_base or ()))
+    if len(base) != 3:
+        # 0 is FindDmin's "no valid Dmin" sentinel, and the Go side refuses it
+        # by name with the clipping numbers. Passing zeros rather than
+        # inventing a base is what makes that refusal happen.
+        base = (0, 0, 0)
+
+    req = gocol.ColourRequest(
+        model=roll.model,
+        dxPart1=dx1, dxPart2=dx2,
+        iso=int(stock.get("iso") or 0),
+        filmPath=film_path,
+        anselPath=ansel.maps.PATH_TO_ANSEL.get(film_path, "CN-Premium"),
+        sourceType=1,
+        sbaKeyOverride=roll.sba_key or "",
+        coeffSource=COLOUR_DEFAULTS["coeffSource"],
+        coeffPath=pc.EEPROM_PATH if COLOUR_DEFAULTS["coeffSource"] == "eeprom"
+        else pc.REGISTRY_PATH,
+        filmBase=base,
+        stageOrder=COLOUR_DEFAULTS["stageOrder"],
+        iccInput=COLOUR_DEFAULTS["iccInput"],
+        fugcMode=1,
+        # Python has already done both: the deskew is carried in the rgb14
+        # cache and the lens 180° is applied by pakon_decode. Doing either
+        # again would be worse than not at all.
+        ccdDeskew=(0, 0, 0),
+        rotate180=False,
+        provenance={
+            "dx": "roll.stock" if stock.get("dx_part1") is not None else "roll.dx",
+            "filmPath": "roll.stock" if (roll.stock or {}).get("path") else "roll.film_path",
+            "filmBase": "roll (FindDmin over the whole strip's film area)",
+            "coeffSource": "pakon_render.COLOUR_DEFAULTS",
+        },
+    )
+
+    # The operator's correction. The button model, the step semantics and the
+    # decision that zero means "add nothing" all stay here; what crosses is
+    # three resolved RPD-code offsets, applied by Go at the same seam
+    # apply_correction uses.
+    steps = correction_steps(p)
+    if steps.any():
+        sel = roll.colour_selection or {}
+        cv = _code_values_per_button(sel.get("shastaFile", ""))
+        req.userOffsets = tuple(float(v) for v in steps * cv)
+    return req
+
+
+def _render_colour_go(roll: Roll, seg: np.ndarray, p: dict) -> np.ndarray:
+    """Calibrated 14-bit frame -> sRGB, through the Go engine."""
+    req = _go_request(roll, p)
+    if not roll.colour_selection:
+        # Once per roll: warms the tables and records which stock's sba /
+        # shasta / fugc files this roll's frames actually go through, so the
+        # app can show it rather than asking the operator to trust it.
+        roll.colour_selection = gocol.open_selection(req)
+        if correction_steps(p).any():
+            # The button unit comes from the Shasta DPI the selection just
+            # named, so a corrected frame has to be re-described once.
+            req = _go_request(roll, p)
+    return gocol.render(seg, req)
+
+
+def _render_colour_python(roll: Roll, seg: np.ndarray, p: dict) -> np.ndarray:
+    """DEPRECATED. The Python colour chain, behind PAKON_COLOUR_ENGINE=python.
+
+    Kept working, and kept off. See the block above ``colour_engine``.
+    """
+    import warnings
+    warnings.warn(
+        "The Python colour chain is deprecated: the app renders through the "
+        "Go engine (tools/ansel/pipeline). This path is reached only because "
+        f"{COLOUR_ENGINE_ENV}=python is set. It is kept so there is a way "
+        "back if Go regresses mid-scan, and it must not gain features — fix "
+        "colour in Go. See docs/62 §12.",
+        DeprecationWarning, stacklevel=2)
+    eng = roll.engine()
+    # scene_rpd12, not _rpd16 alone: on F-135 stage 2 leaves the frame a
+    # NEGATIVE and the inversion happens here. Everything after this point is
+    # additive or a tone LUT and would export the negative without complaint.
+    rpd12 = scene_rpd12(
+        seg, roll.data_dir,
+        np.asarray(roll.auto_offsets, dtype=np.float64),
+        roll.model, eng,
+        tuple(roll.film_base) if roll.film_base else None,
+        roll.film_class(),
+    )
+    scale_v = (np.asarray(roll.roll_scale, dtype=np.float64)
+               if roll.roll_scale else None)
+    toned = _quiet(eng.render_scene, rpd12, scale_v)
+    toned = apply_correction(toned, p, eng)
+    return _quiet(eng.to_srgb, toned)
+
+
 def render_frame(roll: Roll, index: int, params: dict | None = None,
                  scale: str = "preview",
                  max_edge: int | None = None) -> np.ndarray:
     """(capture + parameters) -> one sRGB image. No files, no intermediates.
 
-    With default parameters and ``scale="full"`` this is byte-for-byte the
-    pipeline's own output — see ``pakon_render.py verify``.
+    The colour stages run in Go (docs/62 phase 2). The 14-bit frame slice
+    crosses in memory, on the capture's own grid — before ``unsquash_transport``
+    and before ``rot90`` — and sRGB comes back; nothing is written on the way.
     """
     if index < 0 or index >= len(roll.frames):
         raise IndexError(f"frame {index} of {len(roll.frames)}")
@@ -820,17 +1293,10 @@ def render_frame(roll: Roll, index: int, params: dict | None = None,
     step = SCALES.get(scale, 4)
 
     seg = roll.slice14(f.a, f.b, step)
-    rpd16 = _rpd16(seg, roll.data_dir,
-                   np.asarray(roll.auto_offsets, dtype=np.float64),
-                   model=roll.model)
-    rpd12 = ansel.rpd16_to_rpd12(rpd16)
-
-    eng = roll.engine()
-    scale_v = (np.asarray(roll.roll_scale, dtype=np.float64)
-               if roll.roll_scale else None)
-    toned = _quiet(eng.render_scene, rpd12, scale_v)
-    toned = apply_correction(toned, p, eng)
-    srgb = _quiet(eng.to_srgb, toned)
+    if colour_engine() == "python":
+        srgb = _render_colour_python(roll, seg, p)
+    else:
+        srgb = _render_colour_go(roll, seg, p)
 
     img = dec.to_frame_image(srgb, roll.transport_scale)
     img = _apply_geometry(img, p)
@@ -1035,15 +1501,22 @@ def export_frame(roll: Roll, index: int, dest: Path, fmt: str = "tiff",
     replaced = out.is_file()
 
     if colour == "linear":
-        # The vendor's "Save As Raw": 16-bit RPD, no Ansel, no ICC hop.
+        # The vendor's "Save As Raw": stage 2 only, no Ansel, no ICC hop.
         # Per-frame steps are NOT baked in — they are a correction to the
         # rendered result, and this file is deliberately the data before that.
         # A "one step" equivalent in the RPD domain would be a made-up
         # conversion across the Shasta/FUGC LUTs, so it is not attempted.
+        #
+        # On F-135 this is the polynomial's LINEAR output (what the code calls
+        # rom12), i.e. still a NEGATIVE for negative film — the inversion is
+        # part of the render, and this export is defined as the data before
+        # the render. It is not "16-bit RPD", which in this chain means the
+        # positive density codes f135_rom12_to_rpd12 produces. Anyone reading
+        # these .tif files needs to know which of the two they have.
         seg = roll.slice14(f.a, f.b, 1)
         rpd16 = _rpd16(seg, roll.data_dir,
                        np.asarray(roll.auto_offsets, dtype=np.float64),
-                       model=roll.model)
+                       model=roll.model, film_class=roll.film_class())
         img16 = _apply_geometry(
             dec.to_frame_image(rpd16, roll.transport_scale), p)
         out = out.with_suffix(".tif")

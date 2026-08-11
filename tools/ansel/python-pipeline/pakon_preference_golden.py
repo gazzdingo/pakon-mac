@@ -7,7 +7,7 @@ Builds a minimal blob + output block, enters Preference, reads shifts at
 
 Usage
 -----
-``PYTHONPATH=tools/ansel python3 tools/ansel/pakon_preference_golden.py [dll]``
+``PYTHONPATH=tools/ansel/python-pipeline python3 tools/ansel/python-pipeline/pakon_preference_golden.py [dll]``
 """
 from __future__ import annotations
 

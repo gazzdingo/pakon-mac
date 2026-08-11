@@ -21,11 +21,24 @@ captures/
 # Electron dependencies -- 538 MB, restored with npm install
 app/node_modules/
 app/dist/
+# electron-builder output. Kept separate from app/dist/ because vite's
+# emptyOutDir would otherwise wipe the packaged app (docs/62 s5.3.6).
+app/release/
 .DS_Store
 
-# Go pipeline build artefacts
-analysis/pipeline/pipeline_test
-analysis/pipeline/pakonpipeline
+# Go pipeline build artefacts (pipeline moved analysis/ -> tools/ansel/)
+# pipeline_test is gone: it was an untracked second build of the same package
+# with a misleading name, byte-identical in size and different in content
+# (docs/62 s5.3.7). tools/build-native.sh produces one binary with one name.
+tools/ansel/pipeline/pipeline_test
+tools/ansel/pipeline/pakonpipeline
+tools/libpakon_colour_go.h
+
+# Native build manifest -- written ONLY by tools/build-native.sh, and it
+# describes the untracked binaries on this machine. Not tracked: it would
+# conflict on every build and mean nothing on anyone else's disk. Its absence
+# is what makes the loaders and the packaging hook refuse (docs/62 s5.3.4).
+tools/native-manifest.json
 
 # F-135 pipeline renders (derived from captures/ - personal photographs)
 /output_authentic.png

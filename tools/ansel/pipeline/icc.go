@@ -196,17 +196,27 @@ func loadProfileTag(path string, preferredTag uint32) (*IccMft2, error) {
 		return nil, err
 	}
 
+	// No substitution. A2B0 is device->PCS and B2A0 is PCS->device: they are
+	// each other's INVERSE, so running one where the other was asked for does
+	// not degrade the colour, it reverses the transform — and the result is a
+	// perfectly ordinary-looking image that is wrong end to end. There is no
+	// reading of "the profile is missing the tag I need" that the substitution
+	// answers correctly, so it is an error.
 	tag := iccFindTag(data, preferredTag)
 	if tag == nil {
-		alt := uint32(ICCA2B0Tag)
-		if preferredTag == ICCA2B0Tag {
-			alt = ICCB2A0Tag
+		want, other := "A2B0", "B2A0"
+		if preferredTag == ICCB2A0Tag {
+			want, other = "B2A0", "A2B0"
 		}
-		tag = iccFindTag(data, alt)
-	}
-
-	if tag == nil {
-		return nil, fmt.Errorf("no A2B0/B2A0 tag in %s", path)
+		have := ""
+		if iccFindTag(data, ICCA2B0Tag) != nil {
+			have = " (it has A2B0)"
+		} else if iccFindTag(data, ICCB2A0Tag) != nil {
+			have = " (it has B2A0)"
+		}
+		return nil, fmt.Errorf(
+			"%s: no %s tag%s. %s is the inverse transform, not a fallback",
+			path, want, have, other)
 	}
 
 	return iccMft2Parse(tag)
@@ -232,6 +242,56 @@ func rpd12ToU16(rpd12 int) uint16 {
 		v = 65535
 	}
 	return uint16(v)
+}
+
+// IccRpd12ToSrgb8Depth is IccRpd12ToSrgb8 with the input precision made an
+// explicit choice rather than an accident of whichever library was to hand.
+//
+// U12 hands the 12-bit RPD code straight to the mft2 evaluator, widened to
+// 16 bits. Rpd2Pcs_HR200_QS_v5s10.pf's A2B0 has a 4096-entry input table —
+// it was built to be indexed by a 12-bit code — so every knot is reachable.
+//
+// U8 reproduces what tools/ansel/python-pipeline/pakon_ansel.py does:
+// rpd12_to_icc_u8 quantises to 8 bits (rint(code·255/4095)) and lcms then
+// widens back to 16 bits internally (v·257) before evaluating. That reaches
+// 256 of the 4096 knots. Python does it not as a colour decision but because
+// ImageCms.applyTransform needs a PIL image and PIL has no 16-bit RGB mode.
+//
+// Kept here so the parity harness can put the two engines on the same footing
+// at this tap and show the ICC hop's own contribution.
+func IccRpd12ToSrgb8Depth(rpd2pcs *IccMft2, srgb *IccMft2, rpd []int, depth IccInputDepth) []uint8 {
+	if depth != IccU8 {
+		return IccRpd12ToSrgb8(rpd2pcs, srgb, rpd)
+	}
+	in1 := make([]uint16, 3)
+	for c := 0; c < 3; c++ {
+		v := rpd[c]
+		if v < 0 {
+			v = 0
+		}
+		if v > 4095 {
+			v = 4095
+		}
+		// rint(code * 255 / 4095), then lcms's 8->16 widening v*257.
+		u8 := int(float64(v)*(255.0/4095.0) + 0.5)
+		if u8 > 255 {
+			u8 = 255
+		}
+		in1[c] = uint16(u8 * 257)
+	}
+	pcs := make([]uint16, 3)
+	iccMft2Eval(rpd2pcs, in1, pcs)
+	srgb16 := make([]uint16, 3)
+	iccMft2Eval(srgb, pcs, srgb16)
+	out := make([]uint8, 3)
+	for c := 0; c < 3; c++ {
+		v := uint32(srgb16[c]) * 255 / 65535
+		if v > 255 {
+			v = 255
+		}
+		out[c] = uint8(v)
+	}
+	return out
 }
 
 // IccRpd12ToSrgb8 evaluates the full two-stage ICC render from 12-bit RPD to 8-bit sRGB.

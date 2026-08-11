@@ -1,7 +1,26 @@
+// Fine framing alignment.
+//
+// The primary button here was labelled "Auto Alignment", was enabled, styled
+// as the most important control on the panel — and had no onClick at all. It
+// did nothing, silently, forever.
+//
+// There is a real operation behind that name. The strip is one continuous
+// capture and the frame boundaries are found afterwards, so re-running the
+// detection cascade IS "align the frames automatically". So it is wired to
+// that, named for what it actually does, and asks first — because it replaces
+// every boundary on the roll and can change the frame count, which is not
+// something to trigger by brushing a button. The backend snapshots it, so the
+// way back is one Undo in the correction bench.
 import React from 'react';
 import { frameUrl } from './api';
 
-export default function FramingModal({ open, onClose, roll, sel, onStep }) {
+export default function FramingModal({ open, onClose, roll, sel, onStep, onRedetect, busy }) {
+  const [confirm, setConfirm] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) setConfirm(false);
+  }, [open]);
+
   if (!open || !roll) return null;
 
   const currentFrame = roll.frames[sel] || roll.frames[0];
@@ -42,9 +61,41 @@ export default function FramingModal({ open, onClose, roll, sel, onStep }) {
         </div>
 
         <div className="framing-controls">
-          <button type="button" className="btn primary" style={{ borderRadius: 20, padding: '4px 16px' }}>
-            Auto Alignment
-          </button>
+          {onRedetect ? (
+            confirm ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12.5, color: 'var(--danger-ink)' }}>
+                  Re-detect replaces all {roll.frames.length} boundaries?
+                </span>
+                <button
+                  type="button"
+                  className="btn primary"
+                  style={{ borderRadius: 20, padding: '4px 16px' }}
+                  disabled={busy || undefined}
+                  onClick={async () => {
+                    await onRedetect();
+                    setConfirm(false);
+                  }}
+                >
+                  {busy ? 'Detecting…' : 'Re-detect'}
+                </button>
+                <button type="button" className="btn" onClick={() => setConfirm(false)}>
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="btn primary"
+                style={{ borderRadius: 20, padding: '4px 16px' }}
+                disabled={busy || undefined}
+                onClick={() => setConfirm(true)}
+                title="Re-run the frame detection cascade over the whole strip"
+              >
+                Re-detect frames
+              </button>
+            )
+          ) : null}
 
           <span className="num" style={{ color: 'var(--mute)', fontSize: 12.5 }}>
             Position: {Math.round(((sel + 1) / roll.frames.length) * 100)}%

@@ -1,7 +1,10 @@
-// Scan — design/variants/console-scan.html.
+// Step 1 — scan. design/variants/console-scan.html.
 //
 // Same furniture as Review: settings rail left, machine rail right, the strip
-// in the middle, the roll along the floor.
+// in the middle, the roll along the floor. Step 1 is always reachable, so this
+// is also where a second roll starts: nothing has to be closed or restarted
+// first, and the machine rail on the right is the only place its condition is
+// answerable in full.
 //
 // Scan strip is now the primary action and it drives the transport. What that
 // costs in this screen is honesty about state: while a scan runs the centre
@@ -39,7 +42,7 @@ const PERFS = Array.from({ length: 48 }, (_, i) => i);
  * change between one look and the next, and a button that cannot be pressed
  * cannot say so. */
 
-function blockedReason(hw, scanJob) {
+export function blockedReason(hw, scanJob) {
   if (!hw) return { title: 'Checking', why: 'The machine has not been probed yet.', fix: 'recheck' };
   if (scanJob?.status === 'running') return { title: 'Scanning', why: 'A scan is already running.', fix: null };
   /* A scan owned by a *different* process — normally a backend that outlived
@@ -174,6 +177,40 @@ function Live({ job, onCancel, busy, open, onOpenAnyway, onDismiss }) {
         <span className="sp" />
         <span className="quiet">{gate.note}</span>
       </div>
+
+      {/* THE MIS-LOAD WARNINGS, WHICH NOTHING USED TO SHOW.
+          FilmSense reports FILM TAIL FIRST and FILM EMULSION DOWN off the DX
+          status nibble, once each, the moment it first sees them. They were
+          emitted by the scan child, flattened into a single `warning` scalar
+          that each later warning overwrote, and rendered by no screen at all —
+          so the one condition the operator could still act on (stop, reload,
+          rescan) was the one they were never told about.
+
+          Not modal, and it does not stop the scan: whether a mis-load should
+          abort is a separate decision, and these bits come from a DX decoder
+          that has never been validated against a real roll. Showing them is
+          not in doubt. */}
+      {(job.warnings || []).length ? (
+        <div style={{ display: 'grid', gap: 6, margin: '0 0 14px' }}>
+          {job.warnings.map((text) => {
+            const misload = /TAIL FIRST|EMULSION DOWN/i.test(text);
+            return (
+              <div
+                key={text}
+                style={{
+                  background: misload ? 'var(--danger-flat)' : 'var(--soft)',
+                  color: misload ? 'var(--danger-ink)' : 'inherit',
+                  borderRadius: 'var(--r-sm)',
+                  padding: '9px 11px',
+                  fontSize: 12,
+                }}
+              >
+                {text}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div className="filmwrap" style={{ flexDirection: 'column', gap: 18, justifyContent: 'center' }}>
         <div
@@ -338,8 +375,28 @@ function StartSheet({ open, hw, next, onClose, onStart }) {
   const hi = hw?.limits?.speed_max ?? 32766;
   const sN = Number(speed);
   const tN = Number(secs);
+  /* The film selection has to be answerable BEFORE the film moves, because
+     both ways of getting it wrong used to surface only after the whole roll
+     had gone past the sensor:
+
+       * a DX that does not resolve was swallowed into `stock = null`, and the
+         roll reached the colour default with no film path either;
+       * `POSITIVE` maps to filmClass 2, which `dec.check_film_class` refuses
+         (F135_REVERSAL_PORTED = false) — as a failed auto-open, after the scan.
+
+     The backend refuses both at `/api/app/scan` too. This is the same refusal
+     said early enough to act on. */
+  const dxTyped = (next?.dx || '').trim();
+  const dxUnresolved = !!dxTyped && !next?.stock;
+  const filmUnsupported = !dxTyped && next?.film_path === 'POSITIVE';
+  const filmBlocked = dxUnresolved
+    ? `DX ${dxTyped} does not match a film stock. Correct it, or clear it and use the film path.`
+    : filmUnsupported
+      ? 'Positive (colour reversal) cannot be decoded — the F-135 reversal path is not ported, so this scan would produce a capture that will not open.'
+      : null;
   const bad =
-    !Number.isFinite(sN) || sN < lo || sN > hi || !Number.isFinite(tN) || tN <= 0;
+    !Number.isFinite(sN) || sN < lo || sN > hi || !Number.isFinite(tN) || tN <= 0
+    || !!filmBlocked;
 
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
@@ -457,16 +514,48 @@ function StartSheet({ open, hw, next, onClose, onStart }) {
           <span className="quiet" style={{ flex: 1 }}>
             Decodes as{' '}
             <span className="num">{next?.dx ? next.dx : next?.film_path || 'ColNeg'}</span>
-            {next?.stock ? ` · ${next.stock.name}` : ''} · opens in Roll
+            {next?.stock ? ` · ${next.stock.name}` : ''}
+            {next?.dx ? ' · typed' : ''} · recorded in the sidecar · opens in Roll
           </span>
           <Info side="left">
-            Unless the DX board reads a code off this roll, which outranks it —
-            a measurement beats a typed setting. It usually reads nothing:{' '}
-            <span className="num">dx_from_sidecar</span> only reports a code that
-            passed parity and was unambiguous, and the decoder has never been
-            validated against a real roll.
+            {/* This used to say the board's reading outranks a typed one — "a
+                measurement beats a typed setting" — which was the opposite of
+                what the code has always done. The code is right and this text
+                was changed: tools/dx_decode.py has never been validated
+                against a real roll, so the board's reading is an unvalidated
+                decode, while a typed DX is a deliberate statement about the
+                roll in the gate. Substituting one for the other silently
+                renders the owner's film as a stock they did not choose. */}
+            <b>What you type here wins.</b> If the DX board also reads a code
+            off this roll, both are recorded and the sidecar says which was
+            used — but the typed value is the one that decides. The board's
+            reading is <span className="num">tools/dx_decode.py</span>, which
+            has never been validated against a real roll, so it is evidence,
+            not ground truth. It usually reads nothing at all: only a code word
+            that passed parity and was unambiguous counts as a reading.
+            <br />
+            <br />
+            Both this and the film path are written into{' '}
+            <span className="num">&lt;capture&gt;.scan.json</span> before the
+            transport starts, so the capture can be re-opened in a year without
+            anyone having to remember what was in the gate.
           </Info>
         </div>
+
+        {filmBlocked ? (
+          <div
+            style={{
+              background: 'var(--danger-flat)',
+              color: 'var(--danger-ink)',
+              borderRadius: 'var(--r-sm)',
+              padding: '9px 11px',
+              marginBottom: 12,
+              fontSize: 12,
+            }}
+          >
+            {filmBlocked}
+          </div>
+        ) : null}
 
         {err ? (
           <div
@@ -501,9 +590,20 @@ function StartSheet({ open, hw, next, onClose, onStart }) {
                   speed: sN,
                   max_seconds: tN,
                   name: name.trim(),
-                  // Carried into the job record, so the capture decodes
-                  // itself with what was chosen here.
-                  film_path: next?.dx ? undefined : (next?.film_path || 'ColNeg'),
+                  /* Carried into the job record AND onto the scan child's
+                     command line, so the capture's own sidecar records what
+                     was chosen here.
+
+                     BOTH, always. This used to send `film_path: undefined`
+                     whenever a DX was typed, on the theory that the DX
+                     resolves the film path. It does — when it resolves. When
+                     it does not, the backend swallowed the failed lookup into
+                     `stock = None` and the roll arrived with no film path
+                     either, satisfying `has_film()` with an unresolvable
+                     string and walking through the refusal to a
+                     colour-negative default nobody chose. The DX still wins;
+                     the film path is the floor it falls back to. */
+                  film_path: next?.film_path || 'ColNeg',
                   dx: next?.dx || undefined,
                   lamp_refresh: refresh ? (hw?.limits?.lamp_refresh_s ?? 20) : 0,
                   lamp_refresh_mode: refresh ? 'full' : 'off',
@@ -611,7 +711,20 @@ export default function Scan({
                 <>
                   What the capture this scan makes will be decoded as. No default is
                   assumed from the film: a capture carries no DX packets, so the
-                  stock is stated here.
+                  stock is stated here — and it is written into the capture's{' '}
+                  <span className="num">.scan.json</span> before the transport
+                  starts, so it survives this window.
+                  <br />
+                  <br />
+                  <b>Positive is disabled, not missing.</b> Colour reversal is
+                  filmClass 2, whose stage-2 branch is not ported —{' '}
+                  <span className="num">F135_REVERSAL_PORTED = False</span>. The
+                  rest of the chain after it (the negative→positive log, the CN
+                  sba/shasta dpis, the FUGC density LUTs) is written for a
+                  negative, and this unit's PosMatrix is an uncalibrated 0.25
+                  diagonal. Scanning a slide roll would produce a capture that
+                  refuses to open, and it would only say so once the film had
+                  already gone through — so it is refused here instead.
                 </>
               }
             >
@@ -621,7 +734,10 @@ export default function Scan({
                 options={[
                   ['ColNeg', 'Colour neg'],
                   ['BnW', 'B&W'],
-                  ['POSITIVE', 'Positive'],
+                  // Third element = disabled. `dec.check_film_class` refuses
+                  // this after the scan; refusing it before is the same
+                  // answer, given while it still costs nothing.
+                  ['POSITIVE', 'Positive', true],
                 ]}
                 onChange={(v) => setNext((n) => ({ ...n, film_path: v, dx: '' }))}
               />
@@ -633,9 +749,16 @@ export default function Scan({
               info={
                 <>
                   Typed, not read — it overrides the film path above when it
-                  resolves. Captures carry no DX packets, and{' '}
+                  resolves, and it also beats whatever the DX board reads off
+                  this roll. Captures carry no DX packets, and{' '}
                   <span className="num">tools/dx_decode.py</span> has never been validated against a
-                  real roll.
+                  real roll, so the board's reading is evidence rather than
+                  ground truth. Both go in the capture's sidecar with a{' '}
+                  <span className="num">dx_source</span> saying which was used.
+                  <br />
+                  <br />
+                  A code that does not match a stock is refused before the film
+                  moves — it used to be swallowed, taking the film path with it.
                 </>
               }
             >
@@ -652,6 +775,11 @@ export default function Scan({
               <span className="quiet" style={{ fontSize: 12 }}>
                 {stock.name}
                 {stock.iso ? ` · ISO ${stock.iso}` : ''}
+              </span>
+            ) : next.dx.trim() ? (
+              <span style={{ fontSize: 12, color: 'var(--danger-ink)' }}>
+                No stock matches DX {next.dx.trim()} — Scan strip is refused
+                until this resolves or is cleared.
               </span>
             ) : null}
           </Grp>

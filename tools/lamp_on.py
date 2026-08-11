@@ -158,9 +158,25 @@ def main() -> int:
             mx, mn = sensor_level(d)
             print(f"   t+{time.time()-t0:5.1f}s  sensor max={mx:5} mean={mn:6.0f}")
             time.sleep(3)
-        send(d, bytes([0x02, 0x04, LIGHT_BOARD, 0x01, 0x80, 0x00]), "lamp off")
     finally:
-        usb.util.release_interface(d, 0)
+        # UNCONDITIONAL, and before the interface is released. The off used to
+        # be the last statement of the `try`, so ctrl-C during the 45 s hold
+        # loop -- the ordinary way to end this tool -- and any USB error inside
+        # sensor_level both exited with the lamp still enabled. Only the
+        # interface release was protected. lamp_first_light.py:130 and
+        # spin_motor.py:149 have always done it this way; this now matches.
+        #
+        # Sent even on the --off path, where it is a free retry of a packet
+        # that has already been sent once.
+        try:
+            send(d, bytes([0x02, 0x04, LIGHT_BOARD, 0x01, 0x80, 0x00]),
+                 "LAMP OFF (unconditional)")
+        except Exception as e:                              # noqa: BLE001
+            # Never let this hide the error that brought us here, and never
+            # let it cost us the interface release either.
+            print(f"  !! the lamp off packet could not be sent: {e}")
+        finally:
+            usb.util.release_interface(d, 0)
     return 0
 
 

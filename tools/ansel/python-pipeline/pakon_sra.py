@@ -36,10 +36,19 @@ SRA_FWD_LUT_SIZE = 4096
 SRA_MAKE_LUTS_PORTED = False  # makeSRALUTS @ 0x10594b78 not ported
 
 
+class SraLutParseError(ValueError):
+    """The .lut file did not parse as ``AnsCommonSraFwdLutDPI`` ASCII."""
+
+
 def load_sra_fwd_lut(path: Path) -> np.ndarray:
     """Load ``AnsCommonSraFwdLutDPI`` ASCII → ``(4096,)`` int32 table.
 
     Index = RPD code. Does **not** run ``makeSRALUTS``.
+
+    Raises rather than returning a partial table. This used to hand back an
+    all-zero LUT whenever nothing parsed — a silent, perfectly well-formed
+    table that maps every RPD code to 0, i.e. a flat frame. A caller cannot
+    tell that apart from a real table, so there is no honest fallback here.
     """
     rows: list[int] = []
     declared: int | None = None
@@ -64,12 +73,28 @@ def load_sra_fwd_lut(path: Path) -> np.ndarray:
         if s.isdigit() or (s.startswith("-") and s[1:].isdigit()):
             rows.append(int(s))
     n_target = declared if declared and declared > 0 else SRA_FWD_LUT_SIZE
-    table = np.zeros(SRA_FWD_LUT_SIZE, dtype=np.int32)
     n = min(len(rows), SRA_FWD_LUT_SIZE, n_target)
-    if n:
-        table[:n] = rows[:n]
-        if n < SRA_FWD_LUT_SIZE:
-            table[n:] = rows[n - 1]
+    if n == 0:
+        raise SraLutParseError(
+            f"{path}: no SRA_FORWARDLUT rows parsed "
+            f"(SRA_NUM_FORWARDLUT = {declared!r}, {len(rows)} integer lines "
+            f"found). An all-zero table would map every RPD code to 0 and "
+            f"render a flat frame, so this refuses instead."
+        )
+    if declared is not None and declared != SRA_FWD_LUT_SIZE:
+        raise SraLutParseError(
+            f"{path}: SRA_NUM_FORWARDLUT = {declared}, expected "
+            f"{SRA_FWD_LUT_SIZE}. The table is indexed by RPD code; a "
+            f"different length is a different metric, not a shorter table."
+        )
+    if len(rows) < n_target:
+        raise SraLutParseError(
+            f"{path}: SRA_NUM_FORWARDLUT = {n_target} but only {len(rows)} "
+            f"rows parsed. Padding with the last value would invent the top "
+            f"of the curve."
+        )
+    table = np.zeros(SRA_FWD_LUT_SIZE, dtype=np.int32)
+    table[:n] = rows[:n]
     return table
 
 

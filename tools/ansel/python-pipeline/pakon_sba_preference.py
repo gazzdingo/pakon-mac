@@ -74,7 +74,7 @@ LUT build ``0x1006c4f0`` (``out[i]=master[i+shift]``). ``getShifts`` copies
 applies ``setshifts_12(A, A)`` OUT (gated on ``PREFERENCE_SHIFTS_PORTED``
 and ``SETSHIFTS_12_PORTED``); raw ``+0x3a38`` is never apply input for CN.
 
-Apply helper: ``tools/ansel/pakon_sba_apply.py``.
+Apply helper: ``tools/ansel/python-pipeline/pakon_sba_apply.py``.
 """
 from __future__ import annotations
 

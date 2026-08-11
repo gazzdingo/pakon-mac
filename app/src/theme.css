@@ -43,7 +43,7 @@
   --danger-ink: #b0104a;
   --danger-flat: rgba(243, 18, 96, 0.1);
   --focus: #006fee;
-  --background: #ededef;        /* furniture ground */
+  --background: #ffffff;        /* furniture ground */
   --stage: #d4d4d4;             /* image surround — strictly neutral */
   --chR: #c2313b;
   --chG: #1b7f4b;
@@ -293,26 +293,34 @@ kbd {
   color: var(--faint);
   white-space: nowrap;
 }
+/* the reference screens — not steps, and deliberately smaller than they were
+   when they shared a switcher with Scan, Roll and Export */
 .modes {
   display: flex;
   gap: 2px;
   background: var(--content2);
   padding: 3px;
   border-radius: var(--r-md);
+  flex: none;
 }
 .mode {
-  padding: 4px 12px;
+  padding: 4px 11px;
   border-radius: var(--r-sm);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--mute);
+  white-space: nowrap;
 }
 .mode:hover {
   color: var(--foreground);
 }
+/* Selected is solid blue. That is the rule for everything that navigates —
+   the steps below and these — and it is not the rule for a settings segment
+   (.seg), which states a value rather than a place. */
 .mode.on {
-  background: var(--content1);
-  color: var(--foreground);
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
   box-shadow: var(--sh-1);
 }
 .themeswap {
@@ -342,39 +350,128 @@ kbd {
   display: block;
 }
 
-/* twin progress lanes — capture and export ran concurrently on the vendor's
-   machine and that is what made a lab fast, so both are always on screen */
-.lanes {
+/* ── the three steps ────────────────────────────────────────────────────────
+   Scan, edit, export — one roll's whole journey, in the order it happens.
+
+   This is the old twin capture/export lane bar with the missing middle put
+   back: capture was step 1's progress and export was step 3's, and they ran
+   concurrently on the vendor's machine, which is what made a lab fast — so a
+   step that is working goes on working while you stand on another one, and
+   this bar is where you see it from. A cell is laid out exactly as a lane was:
+   what / bar / figure / action. */
+.steps {
   display: flex;
   align-items: stretch;
-  height: 46px;
+  height: 52px;
   flex: none;
   background: var(--content1);
   border-bottom: 1px solid var(--divider);
 }
-.lane {
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  min-width: 0;
+  flex: 1;
+  position: relative;
+}
+.step + .step {
+  border-left: 1px solid var(--divider);
+}
+.stepgo {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 0 16px;
-  min-width: 0;
   flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 2px 0 14px;
 }
-.lane + .lane {
-  border-left: 1px solid var(--divider);
+.stepgo:not([disabled]):hover {
+  background: var(--soft);
 }
-.lane .what {
+.stepgo[disabled] {
+  cursor: default;
+}
+.stepno {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex: none;
+  font: 600 11px/1 var(--font-mono);
+  color: var(--faint);
+  box-shadow: inset 0 0 0 1px var(--content4);
+}
+/* Selected is solid blue — the badge, and a rule along the floor of the cell
+   so the current step reads from across the room. */
+.step.on .stepno {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: none;
+}
+.step.on::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--primary);
+}
+.step.on .what .lbl {
+  color: var(--primary-ink);
+}
+/* A step that is not reachable yet dims its number and its name — and NOT the
+   line that says what it is waiting for, which is the whole reason it is not
+   simply greyed out. */
+.step.shut .stepno,
+.step.shut .what .lbl {
+  opacity: 0.5;
+}
+.step .what {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  min-width: 132px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
-.lane .what b {
+.step .what b {
   font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--foreground);
+}
+.step .what b.ok {
+  color: var(--ok-ink);
+}
+.step .what b.warn {
+  color: var(--warn-ink);
+}
+.step .what b.bad {
+  color: var(--danger-ink);
+}
+.step .what b.quiet {
+  color: var(--faint);
+  font-weight: 500;
+}
+.step .bar {
+  flex: 0 1 88px;
+  min-width: 30px;
+}
+.step .pc {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  font-weight: 600;
+  min-width: 38px;
+  text-align: right;
+  flex: none;
+  color: var(--mute);
 }
 .bar {
   flex: 1;
@@ -393,14 +490,6 @@ kbd {
 }
 .bar.warnfill i {
   background: var(--warning);
-}
-.lane .pc {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 12.5px;
-  font-weight: 600;
-  min-width: 38px;
-  text-align: right;
 }
 
 .body {
@@ -1511,3 +1600,19 @@ input[type='checkbox'] {
   cursor: pointer;
 }
 
+
+/* A frame that would not render. Empty space reads as "not decoded yet"; the
+   backend's reason has to reach the screen. */
+.stage-fail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  max-width: 620px;
+  margin: auto;
+  text-align: center;
+}
+.stage-fail b { color: var(--danger, #f31260); }
+.stage-fail .quiet { line-height: 1.45; word-break: break-word; }

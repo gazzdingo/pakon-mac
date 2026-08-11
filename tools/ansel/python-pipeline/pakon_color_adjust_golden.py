@@ -22,7 +22,7 @@ Covers:
 
 Usage
 -----
-``PYTHONPATH=tools/ansel python3 tools/ansel/pakon_color_adjust_golden.py [imau.dll]``
+``PYTHONPATH=tools/ansel/python-pipeline python3 tools/ansel/python-pipeline/pakon_color_adjust_golden.py [imau.dll]``
 ``# optional kodakcms path via env KODAKCMS_DLL``
 """
 from __future__ import annotations

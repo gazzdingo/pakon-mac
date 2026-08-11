@@ -1,5 +1,5 @@
 {
-  "name": "pakon-scan",
+  "name": "pakon-mac",
   "version": "0.2.0",
   "description": "Scanning application for the Kodak Pakon F-135 — macOS, Windows and Linux",
   "main": "main.js",
@@ -24,26 +24,92 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^10.0.4",
+    "cross-env": "^10.1.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
     "tailwindcss": "^4.3.3",
-    "vite": "^8.2.1"
+    "vite": "^8.2.1",
+    "wait-on": "^9.1.0"
   },
   "build": {
-    "appId": "com.langfordlee.pakonscan",
-    "productName": "Pakon Scan",
-    "files": ["main.js", "preload.js", "dist/**/*"],
+    "appId": "com.langfordlee.pakonmac",
+    "productName": "Pakon Mac",
+    "afterPack": "build/afterPack.js",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "dist/**/*"
+    ],
     "extraResources": [
       {
         "from": "../tools",
         "to": "tools",
-        "filter": ["**/*", "!**/__pycache__/**", "!**/WRITES_LOCKED"]
+        "filter": [
+          "*.py",
+          "native-manifest.json",
+          "libpakon_color.dylib",
+          "libpakon_colour_go.dylib",
+          "libpakon_color.so",
+          "libpakon_colour_go.so",
+          "pakon_color.dll",
+          "pakon_colour_go.dll",
+          "ansel/python-pipeline/*.py",
+          "ansel/python-pipeline/libpakon_ansel.dylib",
+          "ansel/python-pipeline/libpakon_ansel.so",
+          "ansel/python-pipeline/pakon_ansel.dll",
+          "!**/__pycache__/**",
+          "!**/WRITES_LOCKED"
+        ]
       },
-      { "from": "../calibration", "to": "calibration" },
-      { "from": "../research/film-products.json", "to": "research/film-products.json" }
+      {
+        "from": "../vendor/ansel",
+        "to": "vendor/ansel",
+        "filter": [
+          "**/*",
+          "!**/.DS_Store"
+        ]
+      },
+      {
+        "from": "../backups/eeprom-i2c",
+        "to": "backups/eeprom-i2c",
+        "filter": [
+          "*.bin"
+        ]
+      },
+      {
+        "from": "../calibration",
+        "to": "calibration"
+      },
+      {
+        "from": "../research/film-products.json",
+        "to": "research/film-products.json"
+      }
     ],
-    "mac": { "category": "public.app-category.photography", "target": ["dmg", "zip"] },
-    "win": { "target": ["nsis"] },
-    "linux": { "target": ["AppImage", "deb"], "category": "Graphics" }
+    "mac": {
+      "category": "public.app-category.photography",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "src/icons/icon_512x512.png"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "src/icons/icon_512x512.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Graphics",
+      "icon": "dist/assets/icons/pakon-mac-icon.png"
+    }
   }
 }

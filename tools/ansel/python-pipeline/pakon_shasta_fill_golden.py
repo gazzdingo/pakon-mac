@@ -6,7 +6,7 @@ Injects synthetic / cited aim+param vectors (work ``+0x2b0`` role as
 
 Usage
 -----
-``PYTHONPATH=tools/ansel python3 tools/ansel/pakon_shasta_fill_golden.py [dll]``
+``PYTHONPATH=tools/ansel/python-pipeline python3 tools/ansel/python-pipeline/pakon_shasta_fill_golden.py [dll]``
 """
 from __future__ import annotations
 

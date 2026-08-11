@@ -11,7 +11,7 @@ against itself.
 
 Usage
 -----
-``PYTHONPATH=tools/ansel python3 -m pakon_setshifts_golden [dll] [lut]``
+``PYTHONPATH=tools/ansel/python-pipeline python3 -m pakon_setshifts_golden [dll] [lut]``
 
 Defaults look under the Update-3 install tree used for RE.
 """

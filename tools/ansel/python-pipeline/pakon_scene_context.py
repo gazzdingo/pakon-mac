@@ -134,7 +134,8 @@ bAddScene desc or ScpLut-remapped ``path+0x3c``).
 ``SCENE_CONTEXT_DMIN_PORTED = True`` — bag I/O + pack/unpack + ScpLut
 remap + bAddScene pack + AddScene desc pack + getCnContext path load +
 FindDmin ``+0x6cac`` leaf + ColNeg 1px remap. AneOrder build orch
-``0x1027e9d0`` still open for ``SHASTA_ANALYZE_PORTED``.
+``0x1027e9d0`` is ported too (``pakon_ane_order.ANE_ORDER_PORTED``), which is
+what ``pakon_shasta.SHASTA_ANALYZE_PORTED = True`` records.
 """
 from __future__ import annotations
 

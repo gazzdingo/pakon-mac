@@ -1,12 +1,17 @@
 // The Console — shell.
 //
-// Two bars across the top (mode, then the twin capture/export lanes), three
-// columns under them, the roll along the floor. The screens swap the centre
-// and the right rail; the furniture does not move.
+// ONE PAGE, THREE STEPS: scan → edit → export, in the order a roll of film
+// actually goes through them. They used to be three screens off a mode
+// switcher that also carried Config and Diagnostics, which made one linear
+// process read as five unrelated places.
+//
+// Two bars across the top (the roll's identity and the reference screens, then
+// the three steps), three columns under them, the roll along the floor. A step
+// swaps the centre and the rails; the furniture does not move.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Btn, Chip, Info, Spinner, TopBar, Lanes, useTheme } from './components';
+import { Btn, Chip, Info, Spinner, TopBar, Steps, useTheme } from './components';
 import Review from './Review';
-import Scan from './Scan';
+import Scan, { blockedReason } from './Scan';
 import ExportScreen from './Export';
 import ConfigScreen from './Config';
 import FramingModal from './FramingModal';
@@ -14,35 +19,153 @@ import ContactSheetModal from './ContactSheetModal';
 import { Calibration, Diagnostics } from './Info';
 import * as api from './api';
 
+/* Third element = why this one cannot be chosen. `POSITIVE` maps to
+   filmClass 2, whose stage-2 branch is not ported (F135_REVERSAL_PORTED =
+   false), so `dec.check_film_class` refuses it — and used to do so only once
+   the capture was already being opened. Offered-and-refused is worse than not
+   offered, so it is shown disabled with the reason attached. */
 const FILM_PATHS = [
   ['ColNeg', 'Colour neg'],
   ['BnW', 'B&W'],
-  ['POSITIVE', 'Positive'],
+  ['POSITIVE', 'Positive', 'colour reversal is not ported — F135_REVERSAL_PORTED = false'],
   ['IMPORTED', 'Imported'],
 ];
 
-/** Which screen the application opens on.
+/** Which STEP the application opens on.
  *
  *  This used to be the constant `'review'`, which made the product's primary
  *  entry point a text field you typed `/path/to/capture.bin` into. Scanning a
- *  roll — the thing the machine is for — was a side door. The screen the app
- *  lands on should be decided by whether there is a machine to scan with.
+ *  roll — the thing the machine is for — was a side door. The step the app
+ *  lands on should be decided by whether there is a machine to scan with, and
+ *  by whether there is already work waiting.
  *
  *  A scan already in flight always wins: it outlives this window, so a
- *  relaunch has to show it rather than an idle screen with a Scan button.
+ *  relaunch has to show it rather than an idle step with a Scan button.
  *
  *  `present` and not `state === 'ready'` on purpose. A scanner that is plugged
  *  in but has no firmware, or is plugged in and not answering, still belongs
- *  on the Scan screen — that screen is the only place that says what is wrong
- *  with it and offers a recheck. Sending it to Review would hide the one fact
- *  the user needs.
+ *  on step 1 — that step is the only place that says what is wrong with it and
+ *  offers a recheck. Sending it to step 2 would hide the one fact the user
+ *  needs.
  *
- *  With no scanner the app opens on Review, where opening a capture is the
- *  primary action and the absence is stated rather than left to be inferred
- *  from a greyed-out button on a screen nobody was sent to. */
-export function bootMode(hw) {
+ *  With no scanner and no capture the app still opens on step 1, because that
+ *  is where the absence is stated, where Recheck is live, and where
+ *  `Open capture…` sits. Sending someone to step 2 to be told it needs a
+ *  capture would state the same absence one step further from the thing that
+ *  can fix it. With no scanner but a roll already open, step 2 is where the
+ *  work is and there is nothing to gain by making them press it. */
+export function bootMode(hw, hasRoll) {
   if (hw?.scan_job) return 'scan';
-  return hw?.present ? 'scan' : 'review';
+  if (hw?.present) return 'scan';
+  return hasRoll ? 'review' : 'scan';
+}
+
+/** The three steps, as they are right now: what each is doing, how far along,
+ *  and — for one that cannot be reached — what it is waiting for.
+ *
+ *  These are facts, not tab labels. Step 2 needs a capture and step 3 needs
+ *  frames, and both say so in the words of whatever is actually missing rather
+ *  than greying out and leaving it to be guessed. Step 1 is always reachable:
+ *  re-scanning is not a restart, and the machine's own trouble is reported on
+ *  the step itself, where Recheck is.
+ *
+ *  Progress belongs to the step, not to the screen. The scan job, the decode
+ *  that follows it and the export job all live in App state, so all three keep
+ *  running and keep being visible while the user is standing somewhere else. */
+export function stepRows(hw, scanJob, autoOpen, exportJob, exporting, roll) {
+  const scanning = scanJob?.status === 'running';
+  const elapsed = scanJob?.elapsed ?? (scanJob?.seconds || 0);
+  const cap = scanJob?.max_seconds || 0;
+  const gate = api.GATE[scanJob?.window?.state || 'unknown'] || api.GATE.unknown;
+  const blocked = blockedReason(hw, scanJob);
+
+  const decoding = autoOpen?.status === 'running';
+  const frames = roll?.frames || [];
+  const adjusted = frames.filter((f) => f.adjusted).length;
+  const queue = frames.filter((f) => !f.params?.rejected).length;
+
+  const results = exportJob?.results || [];
+  const written = results.filter((r) => r.status === 'written').length;
+  const epct = exportJob ? Math.round((exportJob.progress || 0) * 100) : null;
+
+  /* Step 1. The machine's verdict is `blockedReason`'s — the same sentence the
+     Scan step's own footer shows, from the same function, so the bar and the
+     screen can never disagree about why film is not moving. */
+  const scan = {
+    id: 'scan',
+    label: 'Scan',
+    ok: true,
+    running: scanning,
+    state: scanning
+      ? `${api.fmtClock(elapsed)} · ${gate.label} · ${api.fmtBytes(scanJob.bytes)}`
+      : scanJob && scanJob.status !== 'running'
+        ? scanJob.message || (scanJob.status === 'error' ? 'Scan failed' : 'Scan ended')
+        : blocked
+          ? blocked.title
+          : hw?.simulated
+            ? 'Simulated scanner'
+            : 'Ready',
+    tone: scanning
+      ? ''
+      : scanJob?.status === 'error'
+        ? 'bad'
+        : scanJob?.status === 'done'
+          ? ''
+          : blocked
+            ? 'warn'
+            : 'ok',
+    warn: scanning,
+    pct: scanning && cap ? Math.min(100, (elapsed / cap) * 100) : 0,
+    pc: scanning ? api.fmtClock(Math.max(0, cap - elapsed)) : null,
+  };
+
+  /* Step 2 needs a capture. The decode that turns one into frames is step 2's
+     own progress and is reported here, so the 26 s wait is not a screen with a
+     spinner you have to stay on. */
+  const why2 = decoding ? null : scanning ? 'Scanning' : 'Needs a capture';
+  const review = {
+    id: 'review',
+    label: 'Edit',
+    ok: !!roll,
+    state: decoding
+      ? autoOpen.message || autoOpen.phase || 'Decoding'
+      : roll
+        ? `${frames.length} frame${frames.length === 1 ? '' : 's'}${
+            adjusted ? ` · ${adjusted} adjusted` : ''
+          }`
+        : why2,
+    tone: roll || decoding ? '' : 'quiet',
+    warn: decoding,
+    pct: decoding ? (autoOpen.progress || 0) * 100 : 0,
+    pc: decoding ? `${Math.round((autoOpen.progress || 0) * 100)} %` : null,
+  };
+
+  /* Step 3 needs frames. Not "a roll" — a roll every frame of which has been
+     rejected has nothing to write, and saying `Needs a capture` there would be
+     the wrong sentence. */
+  const exp = {
+    id: 'export',
+    label: 'Export',
+    ok: queue > 0,
+    running: exporting,
+    state: exporting
+      ? exportJob?.message || exportJob?.phase || 'Working'
+      : exportJob?.status === 'error'
+        ? exportJob.error?.slice(0, 60) || 'Export failed'
+        : written
+          ? `${written} written`
+          : !roll
+            ? 'Needs frames'
+            : queue
+              ? `${queue} ready`
+              : 'Every frame rejected',
+    tone: exportJob?.status === 'error' ? 'bad' : queue || exporting ? '' : 'quiet',
+    warn: exporting,
+    pct: exporting || exportJob?.status === 'done' ? epct : 0,
+    pc: epct == null || (!exporting && exportJob?.status !== 'done') ? null : `${epct} %`,
+  };
+
+  return [scan, review, exp];
 }
 
 /** Machine state, split honestly: what the app reads now, and what is not
@@ -65,6 +188,21 @@ export function bootMode(hw) {
  *  the freshest data in the system. Otherwise they read from the probe, and if
  *  that probe was served from cache the row says `cached` rather than dressing
  *  a stale number up as a live one. */
+/* Where `roll.transport_scale` came from, in one word, from the prose
+   `resolve_transport_scale` returns. The full sentence is in the row's Info;
+   this is what has to be readable at a glance beside the number, because a
+   scale of 1.0000 means two completely different things depending on it. */
+export function scaleKind(roll) {
+  const s = roll?.transport_source || '';
+  if (!s) return 'unrecorded';
+  if (s.includes('UNKNOWN')) return 'UNKNOWN';
+  if (s.startsWith('explicit')) return 'explicit';
+  if (s.startsWith('sidecar')) return 'sidecar';
+  if (s.startsWith('measured')) return 'measured pitch';
+  if (s.startsWith('DpiBase')) return 'DpiBase default';
+  return 'derived';
+}
+
 export function machineRows(boot, roll, hw, scanJob, calState) {
   const cal = boot?.calibration;
   /* The scanner's own EEPROM calibration, as distinct from the exposure
@@ -258,6 +396,60 @@ export function machineRows(boot, roll, hw, scanJob, calState) {
       ],
       ['Capture intact', sync ? `${sync.pct_clean} %` : '—', sync?.losses === 0 ? 'good' : sync ? 'warn' : ''],
       ['Sync losses', sync ? sync.losses : '—', sync?.losses === 0 ? 'good' : sync ? 'bad' : ''],
+      /* THE GEOMETRY, AND WHETHER IT IS KNOWN.
+         `roll.transport_source` has existed and been serialised all along with
+         no consumer at all, and its own field comment says why it should have
+         one: "we do not know the speed" and "the sidecar says 11467" are
+         different situations. On screen they were identical — scale 1.0000
+         either way — so a capture with no sidecar looked exactly like one
+         whose recorded speed happened to be the square one. */
+      [
+        'Transport scale',
+        roll ? `${(roll.transport_scale ?? 1).toFixed(4)} · ${scaleKind(roll)}` : '—',
+        roll ? (scaleKind(roll) === 'UNKNOWN' ? 'warn' : 'good') : 'na',
+        <>
+          The resample factor that makes pixels square. Lines per mm along the
+          travel direction go as <span className="num">1/speed</span>, so this is a
+          property of <b>this capture</b>, not a constant.
+          {roll?.transport_source ? (
+            <>
+              <br />
+              <br />
+              <span className="num">{roll.transport_source}</span>
+            </>
+          ) : null}
+          <br />
+          <br />
+          <b>UNKNOWN is not 1.0.</b> With no recorded speed and no measured
+          pitch the geometry is left alone and said to be unknown, rather than a
+          speed being guessed — which is why the source is shown next to the
+          number and not instead of it.
+        </>,
+      ],
+      [
+        'Pitch residual',
+        roll?.transport_residual_pct == null
+          ? 'not checked'
+          : `${roll.transport_residual_pct >= 0 ? '+' : ''}${roll.transport_residual_pct.toFixed(1)} %`,
+        roll?.transport_residual_pct == null
+          ? 'na'
+          : Math.abs(roll.transport_residual_pct) > 5 ? 'warn' : 'good',
+        <>
+          The recorded speed predicts a frame pitch; the framing cascade measures
+          one over <span className="num">38</span> mm of real film. This is the
+          difference, and it is the <b>only offline check</b> that the speed in the
+          sidecar is the speed the film actually travelled at.
+          <br />
+          <br />
+          The sidecar wins when they disagree — it is a recorded fact, not an
+          estimate — so a large residual is worth seeing rather than being
+          resolved silently. Over <span className="num">5 %</span> is flagged.
+          <br />
+          <br />
+          <span className="num">not checked</span> means one half was missing: no
+          measured pitch, or no recorded speed. It never means they agree.
+        </>,
+      ],
       ['Words per line', boot ? '6000 · 3 ch' : '—'],
       [
         'Infrared plane',
@@ -342,7 +534,11 @@ function OpenDialog({ open, onClose, onOpened, captures }) {
       const { id } = await api.openCapture({
         path,
         name: name.trim() || undefined,
-        film_path: dx.trim() ? undefined : filmPath,
+        /* BOTH, always — see the auto-open below. A DX that fails to look up
+           used to take the film path with it, and the roll then satisfied
+           `has_film()` with an unresolvable string and rendered as a default
+           nobody chose. The DX still wins when it resolves. */
+        film_path: filmPath,
         dx: dx.trim() || undefined,
       });
       const final = await api.pollJob(id, setJob, 300);
@@ -409,11 +605,32 @@ function OpenDialog({ open, onClose, onOpened, captures }) {
                 onClick={() => {
                   setPath(c.path);
                   if (!name) setName(c.saved_name || c.name.replace(/\.bin$/, ''));
+                  /* Seed from what the scan wrote down. This is the payoff of
+                     recording the film selection in the capture's sidecar:
+                     nobody has to remember, and nothing has to be guessed. */
+                  if (c.recorded_dx) setDx(c.recorded_dx);
+                  if (c.recorded_film_path) setFilmPath(c.recorded_film_path);
                 }}
               >
                 <span className="num" style={{ flex: 1, fontSize: 12 }}>
                   {c.name}
                 </span>
+                {/* What this capture already says it is, and who said so.
+                    `dx_read` has been computed by list_captures all along
+                    with no consumer, so a DX the board measured looked exactly
+                    like one somebody typed — which is to say, like nothing. */}
+                {c.recorded_dx || c.recorded_film_path ? (
+                  <Chip tone={c.dx_source === 'board' ? 'ok' : 'info'}>
+                    {c.recorded_dx || c.recorded_film_path}
+                    {c.dx_source === 'board'
+                      ? ' · read'
+                      : c.dx_source === 'typed'
+                        ? ' · typed'
+                        : ''}
+                  </Chip>
+                ) : c.dx_read ? (
+                  <Chip tone="ok">{c.dx_read} · read</Chip>
+                ) : null}
                 {c.has_sidecar ? <Chip tone="info">{c.adjusted} saved</Chip> : null}
                 <span className="num" style={{ fontSize: 11, color: 'var(--faint)' }}>
                   {api.fmtBytes(c.bytes)}
@@ -453,21 +670,27 @@ function OpenDialog({ open, onClose, onOpened, captures }) {
                 </span>
               </>
             ) : (
-              <span className="quiet">No stock matches that DX.</span>
+              <span style={{ color: 'var(--danger-ink)' }}>
+                No stock matches that DX — Open is refused until it resolves or is
+                cleared. It used to be swallowed, taking the film path with it and
+                landing on a colour-negative default nobody chose.
+              </span>
             )}
           </div>
         ) : (
           <div className="field" style={{ marginBottom: 12 }}>
             <span className="lbl">Film path</span>
             <div className="seg" role="radiogroup" aria-label="Film path">
-              {FILM_PATHS.map(([id, label]) => (
+              {FILM_PATHS.map(([id, label, disabledWhy]) => (
                 <button
                   key={id}
                   type="button"
                   role="radio"
                   aria-checked={filmPath === id}
                   className={filmPath === id ? 'on' : ''}
-                  onClick={() => setFilmPath(id)}
+                  disabled={disabledWhy ? true : undefined}
+                  title={disabledWhy || undefined}
+                  onClick={() => !disabledWhy && setFilmPath(id)}
                 >
                   {label}
                 </button>
@@ -516,7 +739,9 @@ function OpenDialog({ open, onClose, onOpened, captures }) {
           <Btn variant="flat" disabled={busy} onClick={onClose}>
             Cancel
           </Btn>
-          <Btn variant="primary" disabled={!path || busy} onClick={go}>
+          {/* A DX that matches nothing is refused by the backend as well; this
+              is the same refusal said before the click rather than after it. */}
+          <Btn variant="primary" disabled={!path || busy || (!!dx.trim() && !film)} onClick={go}>
             {busy ? 'Opening…' : 'Open'}
           </Btn>
         </div>
@@ -529,10 +754,24 @@ function OpenDialog({ open, onClose, onOpened, captures }) {
 
 function CleanupDialog({ state, onDone }) {
   const [sel, setSel] = useState(() => new Set(state.rolls.map((r) => r.id)));
+  // Raw captures are NOT selected by default. A render cache is regenerable
+  // and a capture is not, so the two halves of this dialog do not deserve the
+  // same default.
+  const [capSel, setCapSel] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
+  const captures = state.captures || [];
   const chosen = state.rolls.filter((r) => sel.has(r.id));
-  const bytes = chosen.reduce((a, r) => a + r.bytes, 0);
+  const chosenCaps = captures.filter((c) => capSel.has(c.name));
+  const bytes =
+    chosen.reduce((a, r) => a + r.bytes, 0) + chosenCaps.reduce((a, c) => a + c.bytes, 0);
   const atRisk = chosen.filter((r) => r.adjusted > r.exported);
+
+  const toggle = (set, put, key) => {
+    const n = new Set(set);
+    if (n.has(key)) n.delete(key);
+    else n.add(key);
+    put(n);
+  };
 
   return (
     <div className="scrim">
@@ -541,40 +780,92 @@ function CleanupDialog({ state, onDone }) {
           <span className="title">Scans from a previous session</span>
           <span className="sp" />
           <Info side="left">
-            The workspace holds raw captures and the render cache. It is regenerable from the capture
-            files and is normally cleared on quit; the app was force-quit or crashed last time.
+            {/* This used to read "The workspace holds raw captures and the
+                render cache", which was false in both directions: the
+                workspace holds rgb14.npy and roll.json, and the captures were
+                somewhere else entirely and were never cleared at all. */}
+            Two different things, listed separately because they are not equally
+            replaceable. The <b>render cache</b> holds{' '}
+            <span className="num">rgb14.npy</span> and{' '}
+            <span className="num">roll.json</span> and is rebuilt from a capture
+            on demand. A <b>raw capture</b> is the scan itself — the film passed
+            the sensor once to make it, and deleting it means running the roll
+            through again.
+            <br />
+            <br />
+            Both are normally cleared on quit; the app was force-quit or crashed
+            last time, so they are still here.
           </Info>
         </div>
 
-        <div className="rows" style={{ marginBottom: 12, maxHeight: 280, overflowY: 'auto' }}>
-          {state.rolls.map((r) => (
-            <label key={r.id}>
-              <input
-                type="checkbox"
-                checked={sel.has(r.id)}
-                onChange={(e) => {
-                  const n = new Set(sel);
-                  if (e.target.checked) n.add(r.id);
-                  else n.delete(r.id);
-                  setSel(n);
-                }}
-              />
-              <span style={{ flex: 1 }}>{r.name}</span>
-              {r.adjusted > r.exported ? <Chip tone="warn">{r.adjusted} adjusted, {r.exported} exported</Chip> : null}
-              <span className="num" style={{ fontSize: 11, color: 'var(--faint)' }}>
-                {api.fmtDate(r.mtime)}
-              </span>
-              <span className="num" style={{ fontSize: 11, width: 72, textAlign: 'right' }}>
-                {api.fmtBytes(r.bytes)}
-              </span>
-            </label>
-          ))}
-        </div>
+        {state.rolls.length ? (
+          <>
+            <span className="lbl">Render cache</span>
+            <div className="rows" style={{ margin: '4px 0 12px', maxHeight: 190, overflowY: 'auto' }}>
+              {state.rolls.map((r) => (
+                <label key={r.id}>
+                  <input
+                    type="checkbox"
+                    checked={sel.has(r.id)}
+                    onChange={() => toggle(sel, setSel, r.id)}
+                  />
+                  <span style={{ flex: 1 }}>{r.name}</span>
+                  {r.adjusted > r.exported ? (
+                    <Chip tone="warn">
+                      {r.adjusted} adjusted, {r.exported} exported
+                    </Chip>
+                  ) : null}
+                  <span className="num" style={{ fontSize: 11, color: 'var(--faint)' }}>
+                    {api.fmtDate(r.mtime)}
+                  </span>
+                  <span className="num" style={{ fontSize: 11, width: 72, textAlign: 'right' }}>
+                    {api.fmtBytes(r.bytes)}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </>
+        ) : null}
+
+        {captures.length ? (
+          <>
+            <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              Raw captures
+              <Chip tone="warn">cannot be remade without rescanning</Chip>
+            </span>
+            <div className="rows" style={{ margin: '4px 0 12px', maxHeight: 190, overflowY: 'auto' }}>
+              {captures.map((c) => (
+                <label key={c.name}>
+                  <input
+                    type="checkbox"
+                    checked={capSel.has(c.name)}
+                    onChange={() => toggle(capSel, setCapSel, c.name)}
+                  />
+                  <span className="num" style={{ flex: 1, fontSize: 12 }}>
+                    {c.name}
+                  </span>
+                  {c.adjusted > c.exported ? (
+                    <Chip tone="warn">
+                      {c.adjusted} adjusted, {c.exported} exported
+                    </Chip>
+                  ) : null}
+                  <span className="num" style={{ fontSize: 11, color: 'var(--faint)' }}>
+                    {api.fmtDate(c.mtime)}
+                  </span>
+                  <span className="num" style={{ fontSize: 11, width: 72, textAlign: 'right' }}>
+                    {api.fmtBytes(c.bytes)}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </>
+        ) : null}
 
         {atRisk.length ? (
           <p className="quiet" style={{ marginBottom: 12 }}>
-            Adjustments are kept regardless — they live outside the workspace. Deleting removes the
-            bulk capture cache only.
+            Adjustments are kept regardless — they live outside the workspace, keyed to the capture.
+            They re-apply if that capture is reopened, so keeping the capture is what keeps them
+            useful.
           </p>
         ) : null}
 
@@ -584,11 +875,14 @@ function CleanupDialog({ state, onDone }) {
           </Btn>
           <Btn
             variant="primary"
-            disabled={busy || !chosen.length}
+            disabled={busy || !(chosen.length || chosenCaps.length)}
             onClick={async () => {
               setBusy(true);
               try {
-                await api.purge({ ids: chosen.map((r) => r.id) });
+                await api.purge({
+                  ids: chosen.map((r) => r.id),
+                  captures: chosenCaps.map((c) => c.name),
+                });
               } finally {
                 setBusy(false);
                 onDone();
@@ -618,9 +912,27 @@ export default function App() {
   const [sel, setSel] = useState(0);
   const [openDlg, setOpenDlg] = useState(false);
   const [framingOpen, setFramingOpen] = useState(false);
+  const [framingBusy, setFramingBusy] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [cleanup, setCleanup] = useState(null);
+  /* THE EXPORT, HELD HERE AND NOT IN THE EXPORT STEP.
+     It used to be React state inside the Export screen, which meant leaving
+     the screen unmounted the component that was polling the job: the progress
+     vanished from the bar, the poll's last `setJob` landed on a dead
+     component, and coming back showed an idle export that was in fact still
+     writing files. In a one-page flow, walking back to step 2 mid-export is a
+     normal thing to do, so the job — and the settings that produced it — live
+     above the steps. */
   const [exportJob, setExportJob] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [collision, setCollision] = useState(null);
+  const [exportCfg, setExportCfg] = useState({
+    format: 'tiff',
+    colour: 'linear',
+    template: '{roll}_{frame:02}_{stock}',
+    dest: '~/Pictures/Film',
+    subfolder: true,
+  });
   const [hw, setHw] = useState(null);
   const [hwBusy, setHwBusy] = useState(false);
   const [scanJob, setScanJob] = useState(null);
@@ -641,13 +953,20 @@ export default function App() {
                        phase: 'scanning' });
         }
         setHw(b.hardware || null);
-        setMode(bootMode(b.hardware));
         const rs = await api.rolls();
         setRolls(rs);
         if (rs.length) setRoll(rs[0]);
+        // After the rolls, not before: which step to open on depends on
+        // whether there is already work waiting as well as on the machine.
+        setMode(bootMode(b.hardware, rs.length > 0));
         setReady(true);
+        // Leftovers a previous session should have cleared. Raw captures count
+        // too now: they are the 700 MB items, and until they lived in the temp
+        // tree nothing could see them, so a crash left them on disk for good.
         const stale = b.workspace.rolls.filter((r) => !rs.some((x) => x.id === r.id));
-        if (stale.length) setCleanup({ ...b.workspace, rolls: stale });
+        const staleCaps = b.workspace.captures || [];
+        if (stale.length || staleCaps.length)
+          setCleanup({ ...b.workspace, rolls: stale, captures: staleCaps });
       } catch (e) {
         setFatal(String(e.message || e));
       }
@@ -819,9 +1138,17 @@ export default function App() {
         const { id } = await api.openCapture({
           path: scanJob.path,
           name: w.name || undefined,
-          // Same precedence as the Open dialog: a DX code resolves the film
-          // path, so sending both would let them disagree.
-          film_path: w.dx ? undefined : (w.film_path || undefined),
+          /* Same precedence as the Open dialog — a DX code resolves the film
+             path — but BOTH are sent. Dropping `film_path` whenever a DX was
+             typed meant a DX that failed to look up discarded the film path
+             as well: the backend swallowed the failed lookup into
+             `stock = null`, `has_film()` was still satisfied by the
+             unresolvable string, and the roll walked through the refusal that
+             exists to stop exactly that and rendered as a colour-negative
+             default nobody chose. They cannot disagree, because the DX wins
+             when it resolves and the film path is only the floor when it does
+             not. */
+          film_path: w.film_path || undefined,
           dx: w.dx || undefined,
         });
         const final = await api.pollJob(id, (j) => alive && setAutoOpen(j), 300);
@@ -896,9 +1223,78 @@ export default function App() {
     setRolls((rs) => rs.map((x) => (x.id === r.id ? r : x)));
   }, []);
 
+  /* Run the export, from here, so it survives being navigated away from.
+   *
+   * `onExist` is the answer to a collision — ask | skip | overwrite | unique.
+   * Without one this plans first and hands the plan back as a sheet: the
+   * backend refuses a collision on its own when the answer is still `ask`, so
+   * the sheet is the polite path and not the safety. */
+  const runExport = useCallback(
+    async (onExist) => {
+      if (!roll) return;
+      const cfg = exportCfg;
+      const format = cfg.colour === 'linear' ? 'tiff' : cfg.format;
+      const body = {
+        roll: roll.id,
+        frames: roll.frames.filter((f) => !f.params?.rejected).map((f) => f.index),
+        format,
+        colour: cfg.colour,
+        template: cfg.template,
+        dest: cfg.dest,
+        subfolder: cfg.subfolder,
+      };
+      if (!onExist) {
+        try {
+          const plan = await api.planExport(body);
+          if (plan.needs_confirm) return setCollision(plan);
+        } catch (e) {
+          // A plan that cannot be made is not a reason to export blind: the
+          // backend refuses a collision anyway, so fall through and let it.
+          console.error('export plan failed', e);
+        }
+      }
+      setCollision(null);
+      setExporting(true);
+      setExportJob(null);
+      try {
+        const { id } = await api.exportRoll({ ...body, ...(onExist ? { on_exist: onExist } : {}) });
+        const final = await api.pollJob(id, setExportJob, 350);
+        setExportJob(final);
+        // A refusal comes back as a job, not a throw. Put the sheet up rather
+        // than showing the raw message in the error chip.
+        if (final.needs_confirm && final.plan) setCollision(final.plan);
+        updateRoll(await api.roll(roll.id));
+      } catch (e) {
+        setExportJob({ status: 'error', error: String(e.message || e) });
+      } finally {
+        setExporting(false);
+      }
+    },
+    [roll, exportCfg, updateRoll],
+  );
+
+  /* Re-run the frame detection cascade over the whole strip — what the
+     framing panel's "Auto Alignment" button was named for and never did. The
+     backend snapshots the boundaries first, so Undo in the correction bench
+     is the way back. */
+  const redetectFrames = useCallback(async () => {
+    if (!roll?.id) return;
+    setFramingBusy(true);
+    try {
+      updateRoll(await api.boundary(roll.id, { op: 'redetect' }));
+    } finally {
+      setFramingBusy(false);
+    }
+  }, [roll?.id, updateRoll]);
+
   const machine = useMemo(
     () => machineRows(boot, roll, hw, scanJob, calState),
     [boot, roll, hw, scanJob, calState],
+  );
+
+  const steps = useMemo(
+    () => stepRows(hw, scanJob, autoOpen, exportJob, exporting, roll),
+    [hw, scanJob, autoOpen, exportJob, exporting, roll],
   );
 
   if (fatal)
@@ -925,7 +1321,7 @@ export default function App() {
   return (
     <div className="app">
       <TopBar mode={mode} setMode={setMode} roll={roll} dark={dark} setDark={setDark} />
-      <Lanes exportJob={exportJob} scanJob={scanJob} onStopScan={stopScanner} />
+      <Steps mode={mode} setMode={setMode} rows={steps} onStopScan={stopScanner} />
 
       {mode === 'review' ? (
         <Review
@@ -939,9 +1335,6 @@ export default function App() {
           onGoExport={() => setMode('export')}
           onOpenFraming={() => setFramingOpen(true)}
           onOpenContactSheet={() => setContactOpen(true)}
-          hw={hw}
-          hwBusy={hwBusy}
-          onRecheckHw={recheckHw}
           onGoScan={() => setMode('scan')}
           machine={[...machine.read, ...machine.unwired]}
         />
@@ -966,14 +1359,25 @@ export default function App() {
           onPickRoll={(id) => api.roll(id).then(setRoll)}
         />
       ) : mode === 'config' ? (
-        <ConfigScreen boot={boot} hw={hw} />
+        <ConfigScreen
+          boot={boot}
+          hw={hw}
+          hwBusy={hwBusy}
+          onRecheckHw={recheckHw}
+          scanJob={scanJob}
+        />
       ) : mode === 'export' ? (
         <ExportScreen
           roll={roll}
-          setRoll={updateRoll}
           sel={sel}
           setSel={setSel}
-          onJob={setExportJob}
+          cfg={exportCfg}
+          setCfg={setExportCfg}
+          job={exportJob}
+          running={exporting}
+          collision={collision}
+          onRun={runExport}
+          onCancelCollision={() => setCollision(null)}
           onGoReview={() => setMode('review')}
         />
       ) : mode === 'diagnostics' ? (
@@ -988,6 +1392,8 @@ export default function App() {
         roll={roll}
         sel={sel}
         onStep={setSel}
+        busy={framingBusy}
+        onRedetect={redetectFrames}
       />
 
       <ContactSheetModal

@@ -99,11 +99,14 @@ OFFSET_SCALE = 1              # TLA offset scale, cfg+0x2c
 MODELS = ("f135", "f235")
 DEFAULT_MODEL = "f135"
 
-DEFAULT_DATA_DIR = ("/Users/guy/Downloads/Pakon Update 2/fx35install/"
-                    "program files/Pakon/F-X35 COM SERVER/Config/ColorCorrection")
-ANSEL_PROFILE_DIR = ("/Users/guy/Downloads/Pakon Update 2/fx35install/"
-                     "program files/Pakon/F-X35 COM SERVER/anselinstalldir/"
-                     "dataPathItems/profile")
+# Vendor Ansel / ColorCorrection data ships in-repo under vendor/ansel, laid
+# out exactly as an F-X35 COM SERVER install, so a fresh checkout resolves with
+# no flags. PAKON_FX35_ROOT points at a real install instead; --data-dir still
+# overrides both. See vendor/README.md.
+FX35_ROOT = os.environ.get("PAKON_FX35_ROOT") or os.path.join(REPO, "vendor", "ansel")
+DEFAULT_DATA_DIR = os.path.join(FX35_ROOT, "Config", "ColorCorrection")
+ANSEL_PROFILE_DIR = os.path.join(
+    FX35_ROOT, "anselinstalldir", "dataPathItems", "profile")
 EEPROM_PATH = os.path.join(REPO, "backups", "eeprom-i2c", "eeprom_52.bin")
 REGISTRY_PATH = os.path.join(REPO, "research", "windows-registry",
                              "pakon_registry_full.txt")
@@ -674,6 +677,29 @@ def poly_pixel(rgb, coeffs):
 # same document's section 5.1 corrects docs/11 for the TLA path.
 POLY_CLASSES_COLNEG = (1, 4, 8)
 POLY_CLASS_COLREV = 2
+
+#: Ansel film path (``ColNeg`` / ``BnW`` / ``POSITIVE`` / ``IMPORTED``) → the
+#: filmClass ``fcn.1000d880`` dispatches its matrix on. BnW and IMPORTED are
+#: 4 / 8 in the vendor's table, but 1, 4 and 8 all read the same matrix at
+#: ``this+0x50``, so 1 is the same arithmetic for them. POSITIVE is the one
+#: that differs: filmClass 2 reads ``this+0xc8``, the PosMatrix.
+FILM_CLASS_BY_PATH = {
+    "ColNeg": 1,
+    "BnW": 1,
+    "IMPORTED": 1,
+    "POSITIVE": POLY_CLASS_COLREV,
+}
+
+
+def film_class_for_path(path: str | None) -> int:
+    """Film path → filmClass. Unknown/None is the colour-negative default.
+
+    Callers that hardcode ``film_class=1`` render slide film through the
+    NegMatrix, which is not a degraded result — it is a different matrix.
+    """
+    if not path:
+        return 1
+    return FILM_CLASS_BY_PATH.get(str(path), 1)
 
 
 def poly_plane(planes, coeffs, film_class: int = 1):

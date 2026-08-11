@@ -11,16 +11,17 @@ Ansel overrides live under anselinstalldir (sba-*.dpi) and are applied later.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_DB = REPO / "research" / "film-products.json"
-DEFAULT_INI = Path(
-    "/Users/guy/Downloads/Pakon Update 2/fx35install/"
-    "program files/Pakon/F-X35 COM SERVER/Config/ColorCorrection/defaults.ini"
-)
+# vendor/ansel mirrors an F-X35 COM SERVER install (see vendor/README.md);
+# PAKON_FX35_ROOT overrides it with a real one.
+FX35_ROOT = Path(os.environ.get("PAKON_FX35_ROOT") or REPO / "vendor" / "ansel")
+DEFAULT_INI = FX35_ROOT / "Config" / "ColorCorrection" / "defaults.ini"
 
 # Pseudo-products from defaults.ini
 PATH_COLNEG = "ColNeg"

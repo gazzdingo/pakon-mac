@@ -1,15 +1,18 @@
 package main
 
 import (
-	"os"
 	"bufio"
+	"flag"
 	"fmt"
 	"image"
 	"image/color"
-	"math"
+	"image/png"
+	"log"
+	"os"
 	"strconv"
 	"strings"
 
+	"golang.org/x/image/tiff"
 )
 
 // F135InvertPorted records that the F-135 negative->positive step in
@@ -341,9 +344,9 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 			if model == "f135" {
 				polyOut := PolyPixel([3]int{r, g, b}, coeffs)
 
-				outR = float32(clamp4k(polyOut[0]))
-				outG = float32(clamp4k(polyOut[1]))
-				outB = float32(clamp4k(polyOut[2]))
+				outR = float32(profile.SraLut[clamp4k(polyOut[0])])
+				outG = float32(profile.SraLut[clamp4k(polyOut[1])])
+				outB = float32(profile.SraLut[clamp4k(polyOut[2])])
 
 				if x == 0 && y == 0 {
 					fmt.Printf("DEBUG pixel[0,0] raw=%d,%d,%d polyOut=%v\n",
@@ -444,54 +447,7 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 		sel.Sba.NeutralUnderConstraint, sel.Sba.NeutralOverConstraint, sel.Sba.Pcls)
 	setshiftsOut := SetShifts12(prefA, prefA, band3.Planar, band3.NumLut)
 
-	if model == "f135" {
-		var filmBase [3]int
-		if req.FilmBase != [3]int{} {
-			filmBase = req.FilmBase
-		} else {
-			fb := frameDminRgbFromPlanes(planeR, planeG, planeB, 4096)
-			filmBase = [3]int{int(fb[0]), int(fb[1]), int(fb[2])}
-		}
-		logf("DEBUG F-135 math: FilmBase=%v\n", filmBase)
-		var ped [3]float64
-		for c := 0; c < 3; c++ {
-			ped[c] = float64(coeffs[c*10+9])
-		}
-		var baseLog [3]float64
-		for c := 0; c < 3; c++ {
-			v := float64(filmBase[c]) - ped[c]
-			if v < 1.0 {
-				v = 1.0
-			}
-			baseLog[c] = math.Log10(v)
-		}
-		fmt.Printf("DEBUG: f135 film base (linear 12-bit) = %v  poly pedestal c9 = %.2f/%.2f/%.2f\n",
-			filmBase, ped[0], ped[1], ped[2])
-		planeR = planeR[:0]
-		planeG = planeG[:0]
-		planeB = planeB[:0]
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				for c := 0; c < 3; c++ {
-					lin := rpd12[y][x][c] - ped[c]
-					if lin < 1.0 {
-						lin = 1.0
-					}
-					v := float64(fpo[c]) + 1000.0*(baseLog[c]-math.Log10(lin))
-					if v < 0 {
-						v = 0
-					}
-					if v > 4095 {
-						v = 4095
-					}
-					rpd12[y][x][c] = v
-				}
-				planeR = append(planeR, int(rpd12[y][x][0]))
-				planeG = append(planeG, int(rpd12[y][x][1]))
-				planeB = append(planeB, int(rpd12[y][x][2]))
-			}
-		}
-	}
+	// SRA LUT inversion already applied at the PolyPixel stage.
 
 	frameDmin := frameDminRgbFromPlanes(planeR, planeG, planeB, 4096)
 
@@ -589,9 +545,88 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 			F135InvertPorted, ShastaAnalyzePorted)
 	}
 
-	return emit(outImg, bypassImg)
+	return emit(outImg, nil)
 }
 
 func main() {
-	// Replaced by cabi.go
+	if len(os.Args) == 1 {
+		// No args -> act as C-shared library, do nothing
+		return
+	}
+
+	modelFlag := flag.String("model", "f135", "scanner model (f135 or f235)")
+	flag.Parse()
+	args := flag.Args()
+
+	if len(args) < 2 {
+		fmt.Fprintf(os.Stderr, "Usage: %s [-model f135|f235] <input.tiff> <output.png>\n", os.Args[0])
+		os.Exit(1)
+	}
+
+	inputPath := args[0]
+	outputPath := args[1]
+
+	inFile, err := os.Open(inputPath)
+	if err != nil {
+		log.Fatalf("failed to open input file: %v", err)
+	}
+	defer inFile.Close()
+
+	img, err := tiff.Decode(inFile)
+	if err != nil {
+		log.Fatalf("failed to decode TIFF: %v", err)
+	}
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	fr := &frame{
+		h:  height,
+		w:  width,
+		px: make([][][3]int, height),
+	}
+
+	for y := 0; y < height; y++ {
+		fr.px[y] = make([][3]int, width)
+		for x := 0; x < width; x++ {
+			r, g, b, _ := img.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
+			fr.px[y][x] = [3]int{int(r), int(g), int(b)}
+		}
+	}
+
+	req := &RenderRequest{
+		Model:       *modelFlag,
+		FilmPath:    "ColNeg",
+		DXPart1:     96,
+		DXPart2:     -1,
+		AnselPath:   "CN-Premium",
+		CoeffSource: CoeffEeprom,
+		CoeffPath:   "../../../backups/eeprom-i2c/eeprom_52.bin",
+		StageOrder:  OrderFugcShasta,
+		IccInput:    IccU12,
+		FugcMode:    2,
+	}
+
+	anselRoot := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER/anselinstalldir/dataPathItems"
+	fx35Root := "/Users/guy/Downloads/Pakon Update 2/fx35install/program files/Pakon/F-X35 COM SERVER"
+
+	eng, err := OpenEngine(fx35Root, anselRoot, req)
+	if err != nil {
+		log.Fatalf("OpenEngine failed: %v", err)
+	}
+
+	logf := func(format string, a ...any) { fmt.Printf(format, a...) }
+	
+	emit := func(out, bypass *image.RGBA) error {
+		outF, err := os.Create(outputPath)
+		if err != nil {
+			return err
+		}
+		defer outF.Close()
+		return png.Encode(outF, out)
+	}
+
+	if err := processImage(fr, req, eng, logf, emit); err != nil {
+		log.Fatalf("processImage failed: %v", err)
+	}
 }

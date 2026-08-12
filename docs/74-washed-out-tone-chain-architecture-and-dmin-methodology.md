@@ -22,20 +22,28 @@ from any per-scene pixel analysis. This is now the second concrete
 candidate cause this doc has raised and ruled out on real evidence, not
 just re-confirmed something already known.
 
-**Third update, same day — the most consequential one, and it isn't a
-software finding at all**: §6 below establishes that every capture this
+**Third update, same day**: §6 below establishes that every capture this
 doc (and, per its own dating, almost certainly all eleven `docs/66`
 passes before it) has ever tested was captured **before** this session's
 own real hardware fixes — a scanning-lamp duty-cycle recalibration
 (open-gate duty roughly doubled for green, quintupled for blue) and a
 genuine CCD dark-pedestal encoding bug fix, both landed 2026-08-12, both
-after every real-photo capture in this repo. No capture exists yet under
-the corrected calibration to test against. This doesn't retract §1-5's
+after every real-photo capture in this repo. This doesn't retract §1-5's
 software findings — they're real, about real code, independent of which
-capture they were checked on — but it means five software leads have now
-been ruled out one at a time against data that was never clean of two
-significant, since-fixed hardware defects, and nobody has yet checked
-the cheap, obvious thing: does a fresh capture look different.
+capture they were checked on — but it raises the question of whether the
+whole investigation had been running against uncleanly-calibrated data.
+
+**Fourth update, same day — §6's own recommendation, tested, and it does
+NOT explain the defect**: §7 below finds that a real roll captured
+*after* the recalibration already exists (via the app's own live API, not
+a new capture triggered by this session), renders it through the same
+real production path, and finds the washed-out defect survives
+unchanged — darkest 1% still ~65-90/255, and the blue-clipping symptom is
+if anything *worse* on fresh data (23-44% vs. the original 18-22%). So
+§6's hardware-calibration hypothesis, while a real and independently
+worth-knowing fact about this project's own test data, is now also ruled
+out as *the* explanation, joining §1-5's software findings in the
+"real, checked, not the cause" column. Six for six.
 
 Written 2026-08-12, a fresh read-only investigation into `docs/66`'s
 "washed out" defect, picking up exactly where the eleventh pass's own "What
@@ -528,6 +536,56 @@ standards, but requires the physical scanner, so per this project's own
 hardware-safety rules it should be run by the owner, interactively, not
 launched autonomously from a background session.
 
+## 7 — §6 tested directly, same day: a real post-recalibration roll exists
+now, and the defect survives it — if anything, worse
+
+§6 recommended capturing one real roll under the corrected calibration as
+the single highest-leverage next step, and flagged it as needing the
+owner at the physical scanner. That happened within the same session —
+the app's own backend (`pakon_app.py`, already running, queried live via
+its `/api/app/rolls` endpoint rather than guessed at) reports a real roll,
+`scan-20260812-091633`, captured **09:16:33**, i.e. *after* the
+recalibration chain finished at 08:21. Its capture file lives outside
+this repo, at `~/Library/Caches/PakonScan/captures/` (the app's own
+cache directory, not `captures/` — this is why §6's filesystem search of
+the repo found nothing newer). Its own roll-wide `FindDmin` (queried live
+from the app, not re-derived) already shows the calibration fix's effect
+directly in the data: `film_base = [3219, 2580, 2492]`, dramatically
+higher than `gold400.bin`'s `[2200, 1352, 1217]` — exactly the outcome
+§6's lamp-duty numbers predicted.
+
+**Rendered three real frames from this new roll**, same code path as §4
+(`pakon_render.open_capture` → `scene_rpd12` → `AnselEngine.render_scene`
+→ `.to_srgb`, real roll-wide film base, nothing mocked):
+
+```
+                    sRGB [p1, p50, p99]                          % pixels
+                R              G              B                  B ≥ 239
+frame 0    [ 88,187,252]  [ 86,200,252]  [ 88,221,254]            23.2%
+frame 1    [ 79,149,248]  [ 84,199,250]  [ 86,212,254]            39.1%
+frame 2    [ 63,152,252]  [ 90,203,252]  [ 88,234,254]            44.2%
+```
+
+**The defect survives.** Darkest 1% of pixels still sits at sRGB
+63-90/255 — no real blacks, the same defect in kind and magnitude as
+every capture tested before the recalibration. And on the specific
+"blue channel clipping toward white" symptom `docs/68`'s handover
+originally quantified at 18-22% — it is **worse** here, 23-44% across
+these three frames, not better.
+
+**This corrects §6's own framing, not the software findings above it.**
+The hardware fixes were real (`film_base` moving from ~1200-2400 to
+~2500-3200 confirms the lamp-duty change genuinely changed what the CCD
+reads) and are presumably still worth having for other reasons, but they
+are **not the explanation for the washed-out defect** — this doc's own
+"if the numbers move substantially..." test in §6 has now been run, and
+they didn't move in the direction that would explain it. The five
+software findings in §1-5 (tone chain architecture, Dmin methodology,
+`fpo` provenance) stand as before; §6 is downgraded from "the
+highest-leverage next step" to "a real, now-tested, ruled-out
+possibility" — the same status as §2-5's other candidates. The priority
+list below is updated accordingly.
+
 ## What this changes about the open item list
 
 `docs/66`'s eleventh pass left two things open: FUGC's near-identity
@@ -540,33 +598,34 @@ Dmin/level hypothesis is checked on real production data and is not the
 cause (§2-4); the most architecturally attractive remaining software
 hypothesis this doc itself raised — a missing per-scene `fpo` — is
 checked against fresh DLL disassembly and is not the cause either (§5);
-and §6 finds that every test this investigation has ever run, across all
-twelve passes now, used data captured before this session's own real
-lamp-duty and CCD dark-pedestal fixes. Updated priority order — §6 goes
-first, because it's the cheapest to act on and it changes how much the
-rest of this list matters:
+and the hardware-recalibration hypothesis §6 raised has now actually
+been tested against a real post-fix roll (§7) and is **also** not the
+cause — if anything the blue-clipping symptom is worse on fresh data.
+Six converging "real finding, not the cause" results. Updated priority
+order:
 
-1. **Capture one real roll under the current calibration and re-run this
-   doc's own checks against it (§6).** No RE work, no code changes —
-   just data nobody has generated yet. If the washed-out numbers move
-   substantially, most of the software search below drops in priority.
-   Needs the physical scanner, so per this project's hardware-safety
-   rules it's for the owner to run interactively, not something to
-   launch from a background session.
-2. **The four unreplicated stages
+1. **The four unreplicated stages
    (`analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff`)
-   are the single most concrete remaining *software* lead**, if item 1
-   doesn't resolve it. Every other software candidate this doc and the
-   eleven `docs/66` passes together have checked — the tone chain's math
-   and design (§1), `apply_balance_shifts`'s mechanism and real shipped
-   values (`docs/66` eleventh pass), the Dmin/level chain end to end on
-   real production data (§2-4), and `fpo`'s own provenance (§5) — comes
-   back "correct, not the cause."
-3. **FUGC's near-identity dmin correction** — still not live-DLL-verified
+   are now the single most concrete remaining lead, software or
+   otherwise.** Every other candidate this doc and the eleven `docs/66`
+   passes together have checked — the tone chain's math and design (§1),
+   `apply_balance_shifts`'s mechanism and real shipped values (`docs/66`
+   eleventh pass), the Dmin/level chain end to end on real production
+   data both before and after the hardware fix (§2-4, §7), `fpo`'s own
+   provenance (§5) — comes back "correct, not the cause."
+2. **FUGC's near-identity dmin correction** — still not live-DLL-verified
    per the eleventh pass's own note (`pakon_fugc_golden.py`'s
    `setLutInfo` cases were confirmed host-vs-host, not against the real
-   DLL specifically). Cheaper than item 2 if whoever picks this up wants
+   DLL specifically). Cheaper than item 1 if whoever picks this up wants
    a quick sanity check first.
+3. **Worth stating plainly after six convergent negative results**: it
+   remains possible this is not a software or hardware-calibration
+   defect at all — that these negatives' real exposure genuinely sits
+   where SBA/Preference's fixed per-stock `fpo` (§5) doesn't fully
+   compensate for, and the vendor's own real output would look similar
+   on the same source material. Not tested (would need the real DLL's
+   own end-to-end output on one of these exact frames), but it belongs
+   on the list of live possibilities now, not just "the four stages."
 4. **Fix the measurement harness's Dmin methodology anyway — real bug,
    just not the cause.** `measure_python_autotone.py`'s `film_base=None`
    on a lone TIFF is still measuring "the frame's own highlights" and
@@ -620,3 +679,17 @@ both parsed as JSON, not eyeballed. No capture content was read for
 this section — only its filesystem timestamp and the separately-stored
 calibration config, consistent with this project's rule against
 describing `captures/` contents.
+
+§7's roll was identified via the running app's own `/api/app/rolls`
+endpoint (`pakon_app.py`, already running as this project's own backend,
+queried read-only over the loopback HTTP API it already exposes — no
+new capture was triggered, no hardware was touched, nothing about this
+session's own tooling fired any new scanner activity) rather than
+assumed or guessed. The capture itself was then opened and rendered
+through the same unmodified `tools/pakon_render.open_capture` /
+`scene_rpd12` / `AnselEngine.render_scene` / `.to_srgb` path §4 used, in
+this session's own scratch workspace — the app's own live workspace for
+this roll was never read from or written to. Only aggregate percentile
+and clip-fraction statistics are reported above, per this project's rule
+against describing `captures/` (or, here, the app's own cache directory)
+contents.

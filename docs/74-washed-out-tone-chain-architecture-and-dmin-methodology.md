@@ -22,6 +22,21 @@ from any per-scene pixel analysis. This is now the second concrete
 candidate cause this doc has raised and ruled out on real evidence, not
 just re-confirmed something already known.
 
+**Third update, same day — the most consequential one, and it isn't a
+software finding at all**: §6 below establishes that every capture this
+doc (and, per its own dating, almost certainly all eleven `docs/66`
+passes before it) has ever tested was captured **before** this session's
+own real hardware fixes — a scanning-lamp duty-cycle recalibration
+(open-gate duty roughly doubled for green, quintupled for blue) and a
+genuine CCD dark-pedestal encoding bug fix, both landed 2026-08-12, both
+after every real-photo capture in this repo. No capture exists yet under
+the corrected calibration to test against. This doesn't retract §1-5's
+software findings — they're real, about real code, independent of which
+capture they were checked on — but it means five software leads have now
+been ruled out one at a time against data that was never clean of two
+significant, since-fixed hardware defects, and nobody has yet checked
+the cheap, obvious thing: does a fresh capture look different.
+
 Written 2026-08-12, a fresh read-only investigation into `docs/66`'s
 "washed out" defect, picking up exactly where the eleventh pass's own "What
 is still open" list left off (FUGC's dmin correction; the four unreplicated
@@ -427,50 +442,133 @@ architecture already treats `AnalyseRoll`'s stand-in as superseded here,
 not silently missing.) No further static or live work on this specific
 question is recommended — it's closed, not just paused.
 
+## 6 — Every capture this investigation (all twelve passes, this doc
+included) has ever tested predates this session's own hardware fixes —
+and the lamp-duty change alone is large
+
+This is the most consequential finding in this doc, and it sits earlier
+than anything above: not in the render pipeline at all, but in the raw
+capture data every pass has been feeding it.
+
+**The dates, checked directly, not assumed:**
+
+```
+captures/gold400.bin                          captured 2026-08-07
+captures/out_test/frames/08_raw14.tiff         captured 2026-08-09
+calibration/README.pre-dutyfix-...json         2026-08-12 00:28  (first recal step)
+calibration/README.json (current)              2026-08-12 08:21  (last of 5 recal steps)
+```
+
+Every real-photographic-content capture in this repo — including both
+captures this doc itself used in §1-5, and (per `docs/68`'s own account)
+almost certainly the reference frame and "real roll" every one of
+`docs/66`'s eleven prior passes used too — was captured **before** this
+session's own physical recalibration chain even started. The only
+captures dated on or after 2026-08-12 in this repo (`vf_bright.bin`,
+`vf_bright2.bin`, `vf_p1.bin`, `flat_bright_01.bin`, `flat_dark_01.bin`)
+are calibration-target captures (view-finder / flat-field references),
+not real photographic negatives — there is currently **no real-scene
+capture anywhere in this repo taken under the corrected calibration.**
+
+**What actually changed is not small.** Diffing `calibration/README.json`
+(current) against `README.pre-dutyfix-20260812-002813.json` (the oldest
+preserved snapshot, closest to what `gold400.bin`/`08_raw14.tiff` would
+have been scanned under) shows the scanning-lamp open-gate duty cycle
+(`on_counts_R_G_B`) changed from:
+
+```
+OLD (pre-fix, what every test capture used): R=492  G=239  B=104
+NEW (current, post-fix):                     R=643  G=580  B=508
+```
+
+R +31%, **G +143%, B +388%**. The current file's own `duty_note` explains
+why: *"The vendor stored duties for this unit ([702,371,158] open-gate)
+clipped 97 percent of an empty gate on this hardware — its LEDs read
+well below their 2022 values — so the vendor METHOD was applied rather
+than its stored numbers."* Separately (per `docs/68`, and confirmed
+present in this checkout's `tools/pakon_scan.py` at the AD9826 offset
+encoding site, ~line 1716): a genuine CCD analog-front-end register bug
+— 9-bit sign-magnitude sent as two's complement — *"silently zeroed the
+dark pedestal at certain configs"*, fixed the same session, same day.
+
+**Why this matters for everything above.** A blue channel scanned at
+roughly a fifth of its correct lamp duty (and green at under half) reads
+much closer to the CCD's own dark-noise floor for every pixel — which
+directly compresses that channel's achievable dynamic range and pushes
+its whole histogram toward the low-signal end, independent of anything
+in the render pipeline. That is the same *shape* of defect this whole
+investigation has been chasing in software: a narrow native code span
+(§ — the ~800-900 code post-balance span measured on the reference
+frame), and a pronounced, hard-to-explain R-vs-B asymmetry (blue
+consistently the most compressed/clipped channel in every measurement
+this doc and `docs/66` have made). A zeroed dark pedestal on top of that
+would independently push measured "black" upward, compounding it.
+
+**What this is not.** This is not a demonstrated fix — no capture exists
+yet to test it against, and this doc does not claim the software findings
+in §1-5 are wrong or unnecessary (the tone chain's architecture, the
+Dmin methodology gap, and `fpo`'s provenance are all real findings about
+real code, independent of what capture data they were checked against).
+It is a real, dated, quantified fact that **the input data itself has
+never been clean of two significant, since-fixed hardware defects**, and
+no test in this investigation's history has controlled for that.
+
+**The single highest-leverage next step, and it needs no more RE work at
+all**: capture one real roll of real photographic film under the current
+(post-2026-08-12) calibration, and re-run this doc's own §1-4 percentile
+checks (or `tools/measure_shadow_clip.py`) against it. If the washed-out
+numbers substantially improve on fresh data, this was hardware all
+along and the four-unreplicated-stages / FUGC-live-verification leads in
+"What this changes about the open item list" below drop in priority
+sharply. If they don't improve, that's strong evidence the software
+leads are still live and this was a real but insufficient contributing
+factor. Either way this is now the load-bearing unknown, and it is a
+data point, not a re-derivation — cheap by this investigation's
+standards, but requires the physical scanner, so per this project's own
+hardware-safety rules it should be run by the owner, interactively, not
+launched autonomously from a background session.
+
 ## What this changes about the open item list
 
 `docs/66`'s eleventh pass left two things open: FUGC's near-identity
 dmin correction, and the four unreplicated
 `analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff` stages.
 Both are **still open** — nothing in this doc closes either one. What
-this doc's five sections *do* close, cumulatively: the tone chain's own
+this doc's sections *do* close, cumulatively: the tone chain's own
 architecture is now fully characterized and is not the cause (§1); the
 Dmin/level hypothesis is checked on real production data and is not the
-cause (§2-4); and the most architecturally attractive remaining
+cause (§2-4); the most architecturally attractive remaining software
 hypothesis this doc itself raised — a missing per-scene `fpo` — is
-checked against fresh DLL disassembly and is not the cause either (§5).
-Updated priority order for whoever picks this up next:
+checked against fresh DLL disassembly and is not the cause either (§5);
+and §6 finds that every test this investigation has ever run, across all
+twelve passes now, used data captured before this session's own real
+lamp-duty and CCD dark-pedestal fixes. Updated priority order — §6 goes
+first, because it's the cheapest to act on and it changes how much the
+rest of this list matters:
 
-1. **The four unreplicated stages
+1. **Capture one real roll under the current calibration and re-run this
+   doc's own checks against it (§6).** No RE work, no code changes —
+   just data nobody has generated yet. If the washed-out numbers move
+   substantially, most of the software search below drops in priority.
+   Needs the physical scanner, so per this project's hardware-safety
+   rules it's for the owner to run interactively, not something to
+   launch from a background session.
+2. **The four unreplicated stages
    (`analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff`)
-   are now the single most concrete remaining lead**, not one of several.
-   Every other candidate this doc and the eleven `docs/66` passes
-   together have checked — the tone chain's math and design (§1),
-   `apply_balance_shifts`'s mechanism and real shipped values (`docs/66`
-   eleventh pass), the Dmin/level chain end to end on real production
-   data (§2-4), and `fpo`'s own provenance (§5) — comes back "correct,
-   not the cause." This is real, if unglamorous, progress: the search
-   space has narrowed from "somewhere in six subsystems plus three
-   upstream stages" to "one specific set of four stages, or nothing left
-   that's a software bug at all" (see item 3).
-2. **FUGC's near-identity dmin correction** — still not live-DLL-verified
+   are the single most concrete remaining *software* lead**, if item 1
+   doesn't resolve it. Every other software candidate this doc and the
+   eleven `docs/66` passes together have checked — the tone chain's math
+   and design (§1), `apply_balance_shifts`'s mechanism and real shipped
+   values (`docs/66` eleventh pass), the Dmin/level chain end to end on
+   real production data (§2-4), and `fpo`'s own provenance (§5) — comes
+   back "correct, not the cause."
+3. **FUGC's near-identity dmin correction** — still not live-DLL-verified
    per the eleventh pass's own note (`pakon_fugc_golden.py`'s
    `setLutInfo` cases were confirmed host-vs-host, not against the real
-   DLL specifically). Cheaper than item 1 if whoever picks this up wants
+   DLL specifically). Cheaper than item 2 if whoever picks this up wants
    a quick sanity check first.
-3. **Worth stating plainly given how much has now been ruled out**: it
-   remains possible this is not a software defect at all — that this
-   project's reference frame(s) and test roll(s) are negatives whose
-   real exposure/calibration genuinely sits where SBA/Preference's fixed
-   per-stock `fpo` (§5) doesn't fully compensate for, and the vendor's
-   own real output would look similar on the same source material. This
-   doc does not claim that — it has not been tested (would need the real
-   DLL's own end-to-end output on this exact frame, the one thing no
-   pass has yet obtained) — but after five converging "correct, not the
-   cause" results, it belongs on the list of live possibilities, not
-   just "the four stages."
 4. **Fix the measurement harness's Dmin methodology anyway — real bug,
-   just not this one.** `measure_python_autotone.py`'s `film_base=None`
+   just not the cause.** `measure_python_autotone.py`'s `film_base=None`
    on a lone TIFF is still measuring "the frame's own highlights" and
    calling it film base, which is simply wrong regardless of its effect
    on the washed-out symptom. Cheap fix, worth doing for its own sake
@@ -512,3 +610,13 @@ exhaustive over the whole binary (`r2`'s `/x` raw byte search, not a
 `.text`-only or function-scoped search), so "exactly three occurrences,
 all reads" is a complete statement about this DLL, not a sample. All
 three sites were disassembled and read in full, not skimmed.
+
+§6's dates and calibration numbers were read directly off filesystem
+metadata (`stat`, not assumed from filenames) and the calibration
+directory's own preserved `.pre-*-<timestamp>.json` snapshots (this
+project's own "never delete a calibration" convention, which is what
+made this comparison possible at all) and the current `README.json`,
+both parsed as JSON, not eyeballed. No capture content was read for
+this section — only its filesystem timestamp and the separately-stored
+calibration config, consistent with this project's rule against
+describing `captures/` contents.

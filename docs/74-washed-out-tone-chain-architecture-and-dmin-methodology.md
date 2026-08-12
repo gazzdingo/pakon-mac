@@ -11,6 +11,17 @@ still produces the same "no real blacks" result (darkest 1% at sRGB
 exactly. The defect is confirmed real and independent of this
 methodology gap, not an artifact of it.
 
+**Second update, same day**: §5 below checks the next most promising lead
+this doc itself raised — that `fpo` ("opening RGB", the fixed value the
+whole SBA/Preference shift chain anchors to) might be missing a real
+per-scene source in the vendor DLL, silently replaced by this port with a
+static per-film-stock default. Checked directly against the real DLL,
+freshly re-extracted: refuted. `fpo` genuinely is DPI-file-static in the
+vendor's own code too, populated once at `.dpi`-parse time, not derived
+from any per-scene pixel analysis. This is now the second concrete
+candidate cause this doc has raised and ruled out on real evidence, not
+just re-confirmed something already known.
+
 Written 2026-08-12, a fresh read-only investigation into `docs/66`'s
 "washed out" defect, picking up exactly where the eleventh pass's own "What
 is still open" list left off (FUGC's dmin correction; the four unreplicated
@@ -354,31 +365,111 @@ its effect on this one symptom), but it is conclusively **not** the
 explanation, and the investigation should not spend further time on it as
 a root-cause candidate.
 
+## 5 — `fpo` is genuinely DPI-static in the real DLL too — a promising
+lead, checked and ruled out
+
+§1-4 leave one architecturally attractive hypothesis unchecked: `fpo`
+("opening RGB", the single value the whole SBA/Preference shift chain
+anchors to — see §4's per-frame numbers) is, in this project's own
+Python port, read straight from the shipped `.dpi` file
+(`pakon_ansel.SbaParams.load`: `fpo = d["fpo"]`, and every
+`preference_shifts_*` function in `pakon_sba_preference.py` takes `fpo`
+as a plain parameter — no pixel/histogram data anywhere in that call
+chain). If the *real* DLL instead derived `fpo` per-scene from actual
+roll content — plausibly via the genuinely-unported
+`CiColorCorrectionAnsel::AnalyzeRoll` / `analyzeBalanceOrder`'s own
+`pass1`/FOS/`pass2` sequence, `ANALYSE_ROLL_PORTED=False`,
+`pakon_analyse_roll.py`'s own "UNKNOWN/blockers" list still carries
+*"Preference / `+0x4d0e` → no alternate `+0x3a38` writer"* and
+*"pass1/FOS/pass2 bodies; FPO/scale memory layout: UNKNOWN"* — that would
+directly explain why this port's fixed-per-stock `fpo` leaves every
+frame sitting wherever its actual exposure happens to land, with nothing
+downstream (§1) able to correct for it.
+
+**Checked directly against the real DLL** (`PakonIMAu.dll`, re-extracted
+fresh from `research/sdk/PAKONF135.iso` this pass, MD5
+`eea9dcf78ee21d4f7c515a6c2512242d` — confirmed identical to the file
+every prior pass used before relying on it). A raw byte-pattern search
+for the little-endian displacement `0e 4d 00 00` (i.e. every
+compile-time-constant `[reg+0x4d0e]` memory operand anywhere in the
+binary, read or write) finds **exactly three occurrences in the whole
+DLL**: `0x10214e32`, `0x10214f29`, `0x102150e1`. All three disassemble to
+the same shape — `lea eax, [ecx+0x4d0e]` immediately followed by reading
+`dword [eax]`/`word [eax+N]` and copying it elsewhere (a small family of
+near-identical "pack scene fields into an output blob" accessor
+functions, one of which — `0x10214f20` — `pakon_sba_preference.py`
+already cites by address, `PREF_IN_PLUS_0x28`/etc, from a prior pass).
+**None of the three is a write.** There is no other place in the entire
+DLL that references this exact field by its compile-time offset.
+
+This corroborates a comment already sitting in `pakon_sba_preference.py`
+(pre-dating this pass, easy to miss reading top-to-bottom rather than
+chasing this specific question) that already answers it directly:
+*"Nested opening RGB = `AnsSbaDPI+0x80` fpo (docs/48). Ctor defaults @
+`0x10289ad0`/`ad6`/`adc` — overwritten by `readAscii` when dpi loads."*
+`fpo` genuinely is populated once, at DPI-file-parse time
+(`readAscii`), from the shipped `.dpi` text — not from any per-scene
+pixel analysis — in the **real vendor DLL itself**, not just in this
+project's port. The port's choice to read it straight from the parsed
+DPI file is therefore correct, not a gap.
+
+**Verdict: a real, well-motivated hypothesis, checked with fresh
+disassembly against the real DLL, and refuted.** `ANALYSE_ROLL_PORTED`'s
+own `pass1`/FOS/`pass2` sequence remains genuinely unported and its real
+output is still undetermined — but it does not feed `fpo`. (Circumstantial
+support this doesn't matter for CN-Enhanced specifically:
+`tools/pakon_render.py`'s own comment on `AnalyseRoll`'s port stand-in,
+"median roll scale", already notes *"Preference OUT is the channel
+balance — skip median roll_scale (it cancels R/G/B ratios from
+setShifts)"* whenever Preference/setShifts is active, which it is on
+every path this investigation has touched — i.e. this project's own
+architecture already treats `AnalyseRoll`'s stand-in as superseded here,
+not silently missing.) No further static or live work on this specific
+question is recommended — it's closed, not just paused.
+
 ## What this changes about the open item list
 
 `docs/66`'s eleventh pass left two things open: FUGC's near-identity
 dmin correction, and the four unreplicated
 `analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff` stages.
-Both are still open — nothing here closes either. §4 closes the Dmin
-methodology question this pass itself raised in §2/§3: real, but not the
-cause. Updated priority order for whoever picks this up next:
+Both are **still open** — nothing in this doc closes either one. What
+this doc's five sections *do* close, cumulatively: the tone chain's own
+architecture is now fully characterized and is not the cause (§1); the
+Dmin/level hypothesis is checked on real production data and is not the
+cause (§2-4); and the most architecturally attractive remaining
+hypothesis this doc itself raised — a missing per-scene `fpo` — is
+checked against fresh DLL disassembly and is not the cause either (§5).
+Updated priority order for whoever picks this up next:
 
-1. **Reframe the open question — this is now the sole live lead.** §4
-   establishes, on a real roll's real frame through the real render path
-   with a rigorously correct Dmin, that the defect is not a Dmin/level
-   issue at all. Combined with §1's architecture finding, the right
-   question is "why does this scene's own analyzed content
-   (`effMin`/`effMax`, and the whole post-balance histogram) sit so far
-   above the pipeline's fixed 1550 neutral anchor in the first place" —
-   entirely upstream of `analyzeAutoTone`, whose own math is proven
-   bit-exact and whose *design* is a neutral-point-protecting curve, not
-   a levels stretch. That question sits in: SBA/Preference's own
-   neutral-point matching (mechanism and *shipped* values already proven
-   bit-exact by the eleventh pass, but not necessarily "vendor-intended
-   for this scene" per that pass's own hedge), FUGC's near-identity dmin
-   correction (still unverified live against the real DLL per the
-   eleventh pass's own note), or the four still-unreplicated stages.
-2. **Fix the measurement harness's Dmin methodology anyway — real bug,
+1. **The four unreplicated stages
+   (`analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff`)
+   are now the single most concrete remaining lead**, not one of several.
+   Every other candidate this doc and the eleven `docs/66` passes
+   together have checked — the tone chain's math and design (§1),
+   `apply_balance_shifts`'s mechanism and real shipped values (`docs/66`
+   eleventh pass), the Dmin/level chain end to end on real production
+   data (§2-4), and `fpo`'s own provenance (§5) — comes back "correct,
+   not the cause." This is real, if unglamorous, progress: the search
+   space has narrowed from "somewhere in six subsystems plus three
+   upstream stages" to "one specific set of four stages, or nothing left
+   that's a software bug at all" (see item 3).
+2. **FUGC's near-identity dmin correction** — still not live-DLL-verified
+   per the eleventh pass's own note (`pakon_fugc_golden.py`'s
+   `setLutInfo` cases were confirmed host-vs-host, not against the real
+   DLL specifically). Cheaper than item 1 if whoever picks this up wants
+   a quick sanity check first.
+3. **Worth stating plainly given how much has now been ruled out**: it
+   remains possible this is not a software defect at all — that this
+   project's reference frame(s) and test roll(s) are negatives whose
+   real exposure/calibration genuinely sits where SBA/Preference's fixed
+   per-stock `fpo` (§5) doesn't fully compensate for, and the vendor's
+   own real output would look similar on the same source material. This
+   doc does not claim that — it has not been tested (would need the real
+   DLL's own end-to-end output on this exact frame, the one thing no
+   pass has yet obtained) — but after five converging "correct, not the
+   cause" results, it belongs on the list of live possibilities, not
+   just "the four stages."
+4. **Fix the measurement harness's Dmin methodology anyway — real bug,
    just not this one.** `measure_python_autotone.py`'s `film_base=None`
    on a lone TIFF is still measuring "the frame's own highlights" and
    calling it film base, which is simply wrong regardless of its effect
@@ -411,3 +502,13 @@ per this project's rule against describing `captures/` contents; no pixel
 data, image, or per-pixel content from this or any capture is reproduced
 anywhere in this file. No port file was changed by this pass; the only
 "write" was this doc.
+
+§5's DLL was re-extracted this pass from `research/sdk/PAKONF135.iso`
+(`fx35install/program files/Pakon/F-X35 COM SERVER/PakonIMAu.dll` on the
+mounted volume) rather than reused from any cached copy, and its MD5
+(`eea9dcf78ee21d4f7c515a6c2512242d`) was checked equal to the one every
+prior `docs/66` pass cites before relying on it. The `0x4d0e` search was
+exhaustive over the whole binary (`r2`'s `/x` raw byte search, not a
+`.text`-only or function-scoped search), so "exactly three occurrences,
+all reads" is a complete statement about this DLL, not a sample. All
+three sites were disassembled and read in full, not skimmed.

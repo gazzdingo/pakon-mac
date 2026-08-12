@@ -1,6 +1,16 @@
 # The washed-out defect — tone-chain architecture, and a real methodology
 # gap in all eleven prior passes' own acceptance numbers
 
+**Update, same day, same pass**: §4 below settles the question §2/§3 left
+open, with a real production render on a real roll. Short version: fixing
+the Dmin methodology gap does **not** make the washed-out defect go away —
+using the real, correctly-measured roll-wide film base on an actual real
+roll's actual frame, through the actual `render_scene` production path,
+still produces the same "no real blacks" result (darkest 1% at sRGB
+~70-110/255), matching `docs/68`'s own real-roll figure (~90-114) almost
+exactly. The defect is confirmed real and independent of this
+methodology gap, not an artifact of it.
+
 Written 2026-08-12, a fresh read-only investigation into `docs/66`'s
 "washed out" defect, picking up exactly where the eleventh pass's own "What
 is still open" list left off (FUGC's dmin correction; the four unreplicated
@@ -271,42 +281,112 @@ compute `film_base` correctly, per docs/73's own confirmation that
 base unconditionally") rather than a lone exported TIFF, before drawing
 any further conclusions from "real roll" numbers.
 
+## 4 — Settled directly: a real roll, real production render, correctly-
+measured roll-wide Dmin — the defect survives
+
+§3 above was circumstantial (the tenth pass's script wasn't preserved).
+This section settles it directly, with a real capture and the real
+production code path, not a re-derivation.
+
+**Method.** `tools/pakon_render.open_capture` (the same function the real
+app/CLI uses to open a roll) was run against `captures/gold400.bin` — a
+real capture with genuine clear-leader content, already cited by
+`pakon_decode.py`'s own comments as the reference example for the
+leader/film line-saturation split (2,105 leader lines, ~29,000 film
+lines, 31,203 total). This runs the **real** whole-strip `FindDmin` pass
+(`pakon_render.py` lines ~817-912, the exact code §2 read but did not yet
+run end-to-end) and produced a real `roll.film_base`:
+
+```
+roll.film_base (whole-strip FindDmin, real leader lines excluded): R=2200  G=1352  B=1217
+```
+
+For frame index 1 of that same roll (1,578 real lines, a real
+photographic frame, no synthetic data), the same single-frame-fallback
+method §2 exercised (`dec.film_base_codes(poly, capture=None)` on just
+that frame's own slice, no leader in view) gives:
+
+```
+per-frame (buggy) base for this one frame:                     R=1961  G=1301  B=1174
+```
+
+Confirms §2's direction on real data: the buggy per-frame method
+under-measures the true base by a real, modest amount here (R +12%, G
++4%, B +4% once corrected) — not the ×1.3-×3.0 synthetic range §2.3 used
+to test direction/sensitivity, but the same direction, on a real roll
+this time, not speculation.
+
+**The actual test**: rendered this same real frame twice, through the
+real `AnselEngine.render_scene` (`shasta_mod.AUTO_TONE_PORTED = True`,
+the real ninth-pass tone chain, identical to every prior pass), once with
+each base, everything else held fixed (same `eng`, same `off`, same
+frame data):
+
+```
+                          sRGB [p1, p50, p99]
+                    R                G                B
+BUGGY per-frame:    [ 98, 231, 254]  [70, 186, 232]   [67, 182, 221]
+REAL roll-wide:     [108, 234, 254]  [74, 186, 232]   [72, 184, 222]
+```
+
+Two things this settles:
+
+1. **Direction confirmed on real data, not just the log-formula argument
+   in §2.3**: the correctly-measured (higher) roll-wide base renders
+   *slightly brighter*, not darker. Fixing the methodology bug moves the
+   frame a few sRGB codes in the wrong direction to explain "washed out."
+2. **The defect is real, and is not the Dmin methodology bug**: even with
+   the correct, real, whole-strip-measured film base, on a real roll,
+   through the real production render path, the darkest 1% of this
+   frame's pixels still lands at sRGB **~70-110 out of 255** — no real
+   blacks, the exact defect `docs/68`'s handover describes ("~90-114"),
+   reproduced independently here with a controlled, methodology-clean
+   input. This frame was not cherry-picked for the defect — it's simply
+   frame index 1 of a real capture already in this repo, rendered through
+   the same code every prior pass used.
+
+**What this means for §3's speculation**: it doesn't matter anymore
+whether the tenth pass's own "real roll" cross-check happened to hit the
+same bug — even a rigorously bug-free Dmin measurement on an independent
+real roll reproduces the same washed-out result. The methodology gap in
+§2 is still real and still worth fixing (it's simply wrong, regardless of
+its effect on this one symptom), but it is conclusively **not** the
+explanation, and the investigation should not spend further time on it as
+a root-cause candidate.
+
 ## What this changes about the open item list
 
 `docs/66`'s eleventh pass left two things open: FUGC's near-identity
 dmin correction, and the four unreplicated
 `analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff` stages.
-Both are still open — nothing here closes either. What this pass adds,
-in priority order for whoever picks this up next:
+Both are still open — nothing here closes either. §4 closes the Dmin
+methodology question this pass itself raised in §2/§3: real, but not the
+cause. Updated priority order for whoever picks this up next:
 
-1. **Fix the measurement harness's Dmin methodology before trusting any
-   further absolute-brightness number out of it.** Concretely: either (a)
-   run the acceptance test through `tools/pakon_render.py`'s real
-   `Roll`-based path against an actual multi-frame roll capture (which
-   already computes `film_base` correctly, per docs/73), or (b) if a
-   single-frame harness must be kept for convenience, supply a
-   plausible/measured real clear-film base explicitly rather than
-   `film_base=None`, and say so in the acceptance-test output. This is
-   cheap (no new RE) and directly affects the trustworthiness of every
-   number `docs/66` has published so far — including whether the
-   frame's own effMin/effMax genuinely sit where the eleven passes
-   measured them, or move once a correct Dmin is used.
-2. **Reframe the open question**: given §1's architecture finding, the
-   right question is no longer "is `analyzeAutoTone` doing something
-   wrong" (eleven passes' worth of evidence says no, its math is
-   bit-exact and its *design* is a neutral-point-protecting curve, not a
-   levels stretch) — it is "why does this scene's own analyzed content
+1. **Reframe the open question — this is now the sole live lead.** §4
+   establishes, on a real roll's real frame through the real render path
+   with a rigorously correct Dmin, that the defect is not a Dmin/level
+   issue at all. Combined with §1's architecture finding, the right
+   question is "why does this scene's own analyzed content
    (`effMin`/`effMax`, and the whole post-balance histogram) sit so far
-   above the pipeline's fixed 1550 neutral anchor in the first place."
-   That question sits entirely upstream of `analyzeAutoTone`: in
-   SBA/Preference's own neutral-point matching (mechanism and *shipped*
-   values already proven bit-exact by the eleventh pass, but not
-   necessarily "vendor-intended for this scene" per that pass's own
-   hedge), in FUGC's near-identity dmin correction (still unverified live
-   against the real DLL per the eleventh pass's own note), or in the four
-   still-unreplicated stages. Item 1 above should happen first, since a
-   corrected Dmin will shift the very histogram all of this analysis is
-   run against.
+   above the pipeline's fixed 1550 neutral anchor in the first place" —
+   entirely upstream of `analyzeAutoTone`, whose own math is proven
+   bit-exact and whose *design* is a neutral-point-protecting curve, not
+   a levels stretch. That question sits in: SBA/Preference's own
+   neutral-point matching (mechanism and *shipped* values already proven
+   bit-exact by the eleventh pass, but not necessarily "vendor-intended
+   for this scene" per that pass's own hedge), FUGC's near-identity dmin
+   correction (still unverified live against the real DLL per the
+   eleventh pass's own note), or the four still-unreplicated stages.
+2. **Fix the measurement harness's Dmin methodology anyway — real bug,
+   just not this one.** `measure_python_autotone.py`'s `film_base=None`
+   on a lone TIFF is still measuring "the frame's own highlights" and
+   calling it film base, which is simply wrong regardless of its effect
+   on the washed-out symptom. Cheap fix, worth doing for its own sake
+   (any future acceptance number that isn't purely relative will
+   otherwise inherit this): thread a real roll-wide base through, the
+   way `tools/pakon_render.py`'s own `open_capture`/`scene_rpd12` already
+   do (§4's own method is a working, minimal example of exactly this).
 
 ## Verification
 
@@ -320,3 +400,14 @@ eleven prior passes used) — no new subsystem math was written, no golden
 file was touched, no flag was flipped. `find captures -iname roll.json`
 was run read-only, over aggregate filenames only, consistent with this
 project's rule against describing `captures/` contents.
+
+§4 additionally ran the real, unmodified `tools/pakon_render.open_capture`
+and `pakon_render.scene_rpd12`/`AnselEngine.render_scene`/`.to_srgb`
+against `captures/gold400.bin` (a real capture already in this repo, real
+leader + real film, 31,203 lines, 16 real frames) end to end — no
+synthetic data, no mocked stages, the same code path the app itself opens
+a roll through. Only aggregate percentile statistics are reported above,
+per this project's rule against describing `captures/` contents; no pixel
+data, image, or per-pixel content from this or any capture is reproduced
+anywhere in this file. No port file was changed by this pass; the only
+"write" was this doc.

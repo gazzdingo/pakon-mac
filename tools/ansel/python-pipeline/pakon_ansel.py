@@ -377,6 +377,177 @@ def shasta_two_anchor_tone(rpd12: np.ndarray,
     return out
 
 
+def real_auto_tone(rpd12: np.ndarray, scene_type: int = 0) -> np.ndarray:
+    """The REAL ``ColorNegativePath::analyzeAutoTone`` chain, replacing
+    ``shasta_two_anchor_tone`` above.
+
+    Wires ``pakon_autotone.analyze_auto_tone``'s shell (Unicorn-verified,
+    ``AUTOTONE_SHELL_PORTED = True``) to the six already individually
+    Unicorn-verified subsystem ports -- ``pakon_cna`` / ``pakon_dra`` /
+    ``pakon_toneHelper`` / ``pakon_contrast`` / ``pakon_ast`` / ``pakon_citras``
+    -- threading each stage's REAL output into the next exactly the way the
+    DLL threads ``ctx+0x64d0``: cna's ``LuminanceHist``/``EdgeHist``/
+    ``ToneScaleLut`` feed dra and toneHelper; dra's ``DraLut`` feeds
+    toneHelper (as a read-only scalar input, see pakon_autotone's stage-3
+    note: toneHelper never rewrites the tone object) and contrast; contrast's
+    ``OutToneLut`` is the chain's FINAL tone object -- ast and citras-analyze
+    both read it afterward but neither writes it back
+    (``pakon_autotone.py``'s stage-5/stage-7 notes: "ast writes its float LUT
+    into its own Impl... and nothing in analyzeAutoTone reads it back";
+    citras.analyze's result is likewise never assigned to ``ctx.tone_object``)
+    -- so ``OutToneLut`` is exactly what this function applies to the image,
+    the same "single shared vendor-shaped curve, looked up by clamped code
+    value" contract every ``*Lut`` field in this chain already uses
+    internally (``dra.compose_tone``, ``contrast``'s own LUT construction).
+
+    This is a pure-Python assembly of already Unicorn-verified pieces -- it
+    does not re-derive or guess at any subsystem's own arithmetic, and it is
+    NOT itself a claim that the ASSEMBLED chain has been proven bit-exact
+    against the real DLL end to end (that is a separate, still in-progress
+    verification, ``pakon_autotone_assembled_golden.py`` -- Phase 6.1 in
+    docs/66). What IS true here: every subsystem this wiring calls is
+    independently Unicorn-verified against the real DLL in isolation (see
+    each subsystem's own golden file), and this function's only job is to
+    hand each one's real output to the next exactly as ``pakon_autotone.py``'s
+    already-proven shell says to.
+
+    ``scene_type`` (``ctx+0x44``) defaults to 0, the same default
+    ``pakon_autotone.AutoToneContext()`` itself uses -- this integration has
+    no other source for a real per-frame scene-type classification (a
+    separate, unported capability; docs/64), so 0 is the shell's own
+    documented default, not a value invented here.
+    """
+    import pakon_ast as ast_mod
+    import pakon_autotone as at
+    import pakon_citras as citras_mod
+    import pakon_citras_driver as citras_driver
+    import pakon_cna as cna_mod
+    import pakon_contrast as contrast_mod
+    import pakon_dra as dra_mod
+    import pakon_toneHelper as th_mod
+
+    x = rpd12.astype(np.float64)
+    height, width = int(x.shape[0]), int(x.shape[1])
+
+    # pakon_cna.CnaImage: "pixels is an interleaved R,G,B int16 buffer, three
+    # shorts per pixel, width*height pixels, row-major with no padding."
+    clipped = np.clip(np.rint(x), -32768, 32767).astype(np.int16)
+    image = cna_mod.CnaImage(
+        width=width, height=height,
+        pixels=clipped.reshape(-1).tolist(),
+    )
+
+    dra_params = dra_mod.DraParams.load(dra_mod.VENDOR_DRA_DIR)
+    th_params = th_mod.load_params()
+    contrast_dpi = DEFAULT_ANSEL_ROOT / "contrast" / "contrast-CNEnhanced.dpi"
+    cx_params = contrast_mod.parse_dpi(contrast_dpi.read_text())
+    ast_params_obj = ast_mod.AstParams.defaults()
+    ct_params = citras_mod.default_params()
+
+    class _RealAutoTone(at.AutoToneSubsystems):
+        """Wires the pointer->sequence callables ``AutoToneSubsystems``'s own
+        acquire methods expect to whatever the PREVIOUS real stage actually
+        produced -- the same pattern
+        ``pakon_autotone_assembled_golden.RealSubsystems`` uses for its own
+        (still separately in-progress) DLL-comparison harness, reimplemented
+        here rather than imported so this render-path integration does not
+        depend on a concurrently-changing test file.
+        """
+
+        def __init__(self) -> None:
+            self.dra_params = dra_params
+            self.tone_helper_params = th_params
+            self.contrast_params = cx_params
+            self.dra_lum_hist = lambda ptr: self._cna.luminance_hist
+            self.dra_edge_hist = lambda ptr: self._cna.edge_hist
+            self.dra_tone_lut = lambda ptr: self._cna.tone_scale_lut
+            self.tone_helper_lum_hist = lambda ptr: self._cna.luminance_hist
+            self.tone_helper_edge_hist = lambda ptr: self._cna.edge_hist
+            self.tone_helper_tone_lut = lambda ptr: self._dra.DraLut
+            self.contrast_tone_lut = lambda ptr: self._dra.DraLut
+            self.ast_tone_lut = lambda ptr: self.contrast_state.results.OutToneLut
+
+        def ast_analyze(self, holder, tone):
+            if not at.AST_ANALYZE_PORTED:
+                self._unported("AST_ANALYZE_PORTED", "ast.analyze")
+            lut = self.ast_tone_lut
+            if callable(lut):
+                lut = lut(tone)
+            if self.ast_state is None:
+                self.ast_state = ast_mod.AstSubsystem(params=ast_params_obj)
+            self.ast_state.analyze(lut if tone else None)
+
+        def citras_analyze(self, holder, lut_size, tone):
+            if not at.CITRAS_ANALYZE_PORTED:
+                self._unported("CITRAS_ANALYZE_PORTED", "citras.analyze")
+            if self.citras_state is None:
+                self.citras_state = citras_mod.CitrasState(params=ct_params)
+            lut = self.contrast_state.results.OutToneLut if tone else None
+            return citras_mod.citras_analyze(self.citras_state, lut, lut_size)
+
+    subs = _RealAutoTone()
+    ctx = at.AutoToneContext(scene_type=scene_type)
+    capset = at.make_default_capability_set()
+    status = at.analyze_auto_tone(ctx, capset, holder=None, arg2=image,
+                                  subsystems=subs)
+    if status:
+        raise RuntimeError(f"analyzeAutoTone failed: {status}")
+
+    if ctx.tone_object == 0:
+        # Epilogue zeroed the tone object (sceneType == 1, 0x100fcb29) -- no
+        # tone curve. Nothing in this chain's own scope establishes what a
+        # null-tone-object caller downstream does with that, so the
+        # conservative choice is to pass the frame through unchanged rather
+        # than guess -- not a derived vendor behaviour.
+        return x
+
+    lut = subs.contrast_state.results.OutToneLut
+    if not lut:
+        raise RuntimeError(
+            "analyzeAutoTone: ctx.tone_object was non-zero but "
+            "contrast_state.results.OutToneLut is empty -- the shell and "
+            "contrast disagree about whether a tone LUT was produced.")
+    # THE REAL VENDOR APPLY -- `ImaCitrasOpBase::virtual_40` (0x10169350),
+    # ported in pakon_citras_driver.py. This REPLACES, wholesale, the interim
+    # stand-in that used to live here (tone the luminance, broadcast the
+    # delta to R/G/B, then scale by a hand-tuned 0.90). Both of that
+    # stand-in's improvised parts are gone: the delta-broadcast turns out to
+    # have been the right SHAPE for the wrong reason (the vendor really does
+    # add a single-band luminance delta to all three channels -- that is
+    # `virtual_56`'s `term + base` with a 1-band base), and the 0.90 is
+    # simply deleted, not replaced by another constant, because it was
+    # compensating for the missing gradient-avoidance stage that now exists.
+    #
+    # What the real chain does, in one line: the tone curve is looked up not
+    # at the pixel's own luminance but at an index pulled toward a heavily
+    # smoothed (block-averaged, Gaussian-blurred, upsampled) luminance
+    # reference by a per-pixel, gradient-driven weight -- full pull in smooth
+    # regions, minimal pull near edges -- and the resulting delta is added to
+    # R/G/B and clamped to citras's own [minValue, maxValue]. See
+    # pakon_citras_driver.py's module docstring for the stage-by-stage
+    # derivation with a VA on every line.
+    #
+    # citras's own eight scalar parameters come from the SAME
+    # `pakon_citras.default_params()` block `citras_analyze` above already
+    # validates against, mapped onto the object layout
+    # `ImaI16CitrasOp`'s ctor actually uses (which adds `bDoClipping`, a
+    # field with no .dpi source that the ctor hard-codes to 1 -- see the
+    # driver module's PARAMETERS section).
+    p = citras_driver.CitrasOpParams(
+        sigma=ct_params.sigma,
+        block_size=ct_params.blockSize,
+        min_avoidance=ct_params.minAvoidance,
+        max_gradient=ct_params.maxGradient,
+        low_gradient_threshold=ct_params.lowGradientThreshold,
+        high_gradient_threshold=ct_params.highGradientThreshold,
+        min_value=ct_params.minValue,
+        max_value=ct_params.maxValue,
+    )
+    toned = citras_driver.apply_citras(clipped, np.asarray(lut, dtype=np.int64),
+                                       p)
+    return toned.astype(np.float64)
+
+
 def linked_percentile_tone(
     rpd12: np.ndarray,
     *,
@@ -677,58 +848,35 @@ class AnselEngine:
                 x.astype(np.int32), self.setshifts_out
             ).astype(np.float64)
             balanced = x
-            # Assemble Cap toneLut from live image sampling when unset
-            # (7b970/7b3c0 → 935d0 → builder → setToneLut). Mid-aims from
-            # FindDmin + Laplacian collectData dens when ANALYZE is True.
-            if self.shasta_stand_in:
-                # Stands in for ColorNegativePath::analyzeAutoTone 0x100fb730
-                # (cna → dra → toneHelper → contrast → ast → citras), NOT for
-                # Shasta, which never runs for CN-Enhanced. That chain is not
-                # ported — see AUTO_TONE_PORTED in pakon_shasta.py for the call
-                # map, the enable bytes, the toneHelper DPI resolution and why
-                # it cannot be ported piecewise.
-                x = shasta_two_anchor_tone(x, self.shasta)
-            elif (
-                shasta_mod.SHASTA_TONE_LUT_PORTED
-                and self.tone_lut is None
-                and self.shasta.dpi is not None
-            ):
-                rgb16 = np.clip(x, 0, self.shasta.max_value).astype(np.int16)
-                tone, _bn, _cap, _w = shasta_mod.assemble_scene_tone_lut(
-                    self.shasta.dpi,
-                    rgb16,
-                    setshifts_out=self.setshifts_out,
-                )
-                self.tone_lut = tone
-            if self.shasta_stand_in:
-                pass  # already toned above
-            elif (
-                shasta_mod.SHASTA_TONE_LUT_PORTED
-                and self.tone_lut is not None
-            ):
-                lut = self.tone_lut
-                img = np.clip(x, 0, len(lut) - 1).astype(np.int16)
-                if shasta_mod.SHASTA_APPLY_PORTED:
-                    x = shasta_mod.ima_shasta_op_apply(img, lut).astype(
-                        np.float64
-                    )
-                else:
-                    planes = [
-                        shasta_mod.ima_shasta_apply_i16(img[:, :, c], lut)
-                        for c in range(3)
-                    ]
-                    x = np.stack(planes, axis=-1).astype(np.float64)
-            else:
-                x = linked_percentile_tone(
-                    x,
-                    white=self.shasta.white,
-                    shadow_percent=self.shasta.shadow_percent,
-                    highlight_percent=self.shasta.highlight_percent,
-                    max_value=self.shasta.max_value,
-                )
             # FUGC: ebp14 = setShifts OUT @ +0x4b6; ebp18 = FindDmin on
             # post-balance RPD (bag dmin stand-in). Mode≠2 → setLutInfo;
             # mode==2 → bias @ 0x101f79b0 + plane LUT + work metrics.
+            #
+            # Computed here, right after balance and BEFORE the tone stage,
+            # because that is the vendor's real order for CN-Enhanced (the
+            # only path this project's F-135 render targets) -- NOT applied
+            # yet; where `apply_lut` gets applied to `x` depends on
+            # `self.shasta_stand_in` below. Evidence: PakonIMAu.dll
+            # (MD5 eea9dcf78ee21d4f7c515a6c2512242d) AnsCnEnhancedPath::
+            # exportParameterPack @ 0x10065990 (confirmed live via its own
+            # repeated self-naming string push, not inferred) calls
+            # ColorNegativePath::exportFugc (0x100ff770) at instruction
+            # 0x1006613d, then LATER calls ColorNegativePath::exportAutoTone
+            # (0x10106f30, self-named, and itself finds/exports the same six
+            # cna/dra/contrast/ast/pfd/citras capabilities analyzeAutoTone
+            # threads -- confirmed the same "autoTone" stage, not a
+            # coincidence of naming) at 0x100662d0 -- FUGC's export precedes
+            # autoTone's export in program order. Pack order is render order
+            # (AnsImaBuilder::getImaTransformGroup @ 0x100346a0 connects
+            # operands strictly in emission order, re-confirmed live here at
+            # its "input"/"output" binding sites 0x1003a9e3/0x1003aac3 -- no
+            # reordering stage exists). This corrects the previous order
+            # (tone before FUGC, inherited from before this project's
+            # CN-Enhanced-specific exportParameterPack disassembly existed --
+            # see docs/66 §6.2 for the full derivation and why the old order
+            # produced a washed-out render once the real analyzeAutoTone's
+            # narrower compressed output was fed through FUGC's LUT).
+            apply_lut = None
             if (
                 fugc_mod.FUGC_AIM_PROVENANCE_PORTED
                 and self.setshifts_out is not None
@@ -773,7 +921,68 @@ class AnselEngine:
                         arg_ebp18=ebp18,
                         cap_params_aim=self.fugc_afilm_aim_dmin,
                     )
-                x = apply_1d_lut(x, apply_lut)
+            # Assemble Cap toneLut from live image sampling when unset
+            # (7b970/7b3c0 → 935d0 → builder → setToneLut). Mid-aims from
+            # FindDmin + Laplacian collectData dens when ANALYZE is True.
+            if self.shasta_stand_in:
+                # Stands in for ColorNegativePath::analyzeAutoTone 0x100fb730
+                # (cna → dra → toneHelper → contrast → ast → citras), NOT for
+                # Shasta, which never runs for CN-Enhanced. See AUTO_TONE_PORTED
+                # in pakon_shasta.py: the six-subsystem chain is now
+                # individually Unicorn-verified and assembled in pure Python
+                # by real_auto_tone() above.
+                #
+                # FUGC applies FIRST here (see the stage-order comment above
+                # `apply_lut`'s computation) -- the vendor's CN-Enhanced order
+                # is balance → FUGC → … → autoTone, not the reverse.
+                if apply_lut is not None:
+                    x = apply_1d_lut(x, apply_lut)
+                if shasta_mod.AUTO_TONE_PORTED:
+                    x = real_auto_tone(x)
+                else:
+                    x = shasta_two_anchor_tone(x, self.shasta)
+            elif (
+                shasta_mod.SHASTA_TONE_LUT_PORTED
+                and self.tone_lut is None
+                and self.shasta.dpi is not None
+            ):
+                rgb16 = np.clip(x, 0, self.shasta.max_value).astype(np.int16)
+                tone, _bn, _cap, _w = shasta_mod.assemble_scene_tone_lut(
+                    self.shasta.dpi,
+                    rgb16,
+                    setshifts_out=self.setshifts_out,
+                )
+                self.tone_lut = tone
+            if self.shasta_stand_in:
+                pass  # FUGC + tone both already applied above
+            elif (
+                shasta_mod.SHASTA_TONE_LUT_PORTED
+                and self.tone_lut is not None
+            ):
+                lut = self.tone_lut
+                img = np.clip(x, 0, len(lut) - 1).astype(np.int16)
+                if shasta_mod.SHASTA_APPLY_PORTED:
+                    x = shasta_mod.ima_shasta_op_apply(img, lut).astype(
+                        np.float64
+                    )
+                else:
+                    planes = [
+                        shasta_mod.ima_shasta_apply_i16(img[:, :, c], lut)
+                        for c in range(3)
+                    ]
+                    x = np.stack(planes, axis=-1).astype(np.float64)
+                if apply_lut is not None:
+                    x = apply_1d_lut(x, apply_lut)
+            else:
+                x = linked_percentile_tone(
+                    x,
+                    white=self.shasta.white,
+                    shadow_percent=self.shasta.shadow_percent,
+                    highlight_percent=self.shasta.highlight_percent,
+                    max_value=self.shasta.max_value,
+                )
+                if apply_lut is not None:
+                    x = apply_1d_lut(x, apply_lut)
             # ColorAdjust after FUGC (IMAu save-path contrast/unsharp gate).
             # Factory-zero params → skip (DEFAULT_SKIP). Contrast LUT when
             # leaf ported + non-zero; unsharp apply still WALL.

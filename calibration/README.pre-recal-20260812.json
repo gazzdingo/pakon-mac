@@ -1,0 +1,55 @@
+{
+  "unit": "Kodak Pakon F-135 Plus, owner's unit (U34 repaired 2026-08-06)",
+  "captured": "2026-08-07",
+  "config": {
+    "dpi_base": "DpiBase16_35",
+    "integration_0x82_idx6": 4093,
+    "lamp_pwm_N": 982,
+    "line_rate_0x91": 60,
+    "levels_R_G_B_Ir": [
+      4,
+      20,
+      11,
+      0
+    ],
+    "on_counts_R_G_B": [
+      462,
+      231,
+      98
+    ],
+    "afe_gains": [
+      13,
+      13,
+      13
+    ],
+    "afe_offsets": [
+      -18,
+      -26,
+      -20
+    ],
+    "fpga_ctrl": "0x0061",
+    "pixel_offset": 32,
+    "pixel_height": 2000
+  },
+  "dark_source": {
+    "lines": 14482,
+    "losses": 0,
+    "means": [
+      1120.5,
+      1443.0,
+      1160.9
+    ]
+  },
+  "bright_source": {
+    "lines": 7626,
+    "losses": 0,
+    "means": [
+      50204.6,
+      49962.2,
+      49916.2
+    ],
+    "note": "deliberately ~50000 not the vendor's 64000 target so no channel clips"
+  },
+  "usage": "Tables are EP 0x86 wire u16. Decode: dark14=dark/4; (raw14-dark14)*gain \u2192 clamp 14-bit. Gate uses wire as-is.",
+  "domain": "wire_u16"
+}

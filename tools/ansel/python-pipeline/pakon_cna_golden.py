@@ -1313,6 +1313,32 @@ def main(argv: list[str]) -> int:
         ("n=500 wide",
          [int(300 * math.exp(-((i - 250) ** 2) / 5000.0)) + 1
           for i in range(500)], 500, 155),
+        # A real scanned roll's dark-half edge-bucket histogram drove
+        # `in_sigma` to NaN on 100% of its 40 frames (a genuine x87
+        # negative-variance rounding outcome on real data, live-DLL-confirmed
+        # against the exact real histogram -- not reproduced here, per this
+        # project's rule against committing anything capture-derived). This
+        # is the smallest synthetic shape found that reproduces the same real
+        # DLL behaviour bit-for-bit (also live-DLL-confirmed): almost all mass
+        # in one bucket, with a single stray count one bucket over stopping
+        # the variance from being exactly representable. Before the
+        # `0x1022ce98` int32-store-truncation fix, this made every `hist_
+        # resample` caller's crossing search in `analyze_image._half` walk
+        # unboundedly past `n_buckets` instead of landing on 0 immediately.
+        ("near-spike n=500 (NaN sigma)",
+         [1_000_000 if i == 50 else (1 if i == 51 else 0)
+          for i in range(500)], 500, 50),
+        # The even more degenerate cousin: ALL mass in exactly one bucket.
+        # Mathematically zero variance, but not exactly representable once
+        # the moments round through float32, so this ALSO comes back NaN on
+        # real hardware (live-DLL-confirmed) rather than the "sigma == 0.0
+        # exactly" a naive reading would expect -- which is what exposed the
+        # separate, previously-unwrapped `ratio`/`step` divides
+        # (0x1022cdf5..0x1022ce07, 0x1022ce33..0x1022ce3d) to a genuine
+        # `ZeroDivisionError` in the port whenever the real and port-computed
+        # variance rounding happened to disagree at exactly 0.0.
+        ("exact spike n=500 (zero-variance divide)",
+         [1_000_000 if i == 50 else 0 for i in range(500)], 500, 50),
     ]
     scale = cna.f32(p.darkScale / p.bucketSize)
     for label, hist, n, pivot in resample_cases:
@@ -1324,13 +1350,29 @@ def main(argv: list[str]) -> int:
             n_bad += 1
             print(f"  {label:<16} DLL RUN FAILED: {exc}")
             continue
-        h = cna.hist_resample(p, hist, n, pivot, scale, p.darkMaxContrastGain)
+        try:
+            h = cna.hist_resample(p, hist, n, pivot, scale,
+                                  p.darkMaxContrastGain)
+        except Exception as exc:                      # noqa: BLE001
+            n_bad += 1
+            print(f"  {label:<16} PORT RAISED: {exc}")
+            continue
         msgs = []
-        ok = _cmp(label + " inSigma", h.in_sigma, r_in, msgs)
+        # `_cmp`'s `==` is correct for every ordinary case, but NaN != NaN,
+        # so a genuinely-matching "both sides are the real indefinite QNaN"
+        # result must be checked with `isnan`, not `==`, or a real pass would
+        # print as a false FAIL.
+        if math.isnan(r_in) or math.isnan(h.in_sigma):
+            ok = math.isnan(r_in) and math.isnan(h.in_sigma)
+            if not ok:
+                msgs.append(f"    {label} inSigma: port={h.in_sigma} "
+                            f"dll={r_in}")
+        else:
+            ok = _cmp(label + " inSigma", h.in_sigma, r_in, msgs)
         ok = _cmp(label + " outSigma", h.out_sigma, r_out, msgs) and ok
         ok = _cmp(label + " out", h.out, r_arr, msgs) and ok
         n_bad += not ok
-        print(f"  {label:<16} inSigma={r_in:.6f} outSigma={r_out:.6f} "
+        print(f"  {label:<16} inSigma={r_in!r} outSigma={r_out:.6f} "
               f"{'OK' if ok else 'FAIL'}")
         for m in msgs:
             print(m)

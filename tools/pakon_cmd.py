@@ -107,6 +107,13 @@ def exchange(dev, pkt: bytes, timeout: int = 2000, verbose: bool = True):
 
 
 def open_scanner():
+    # Widening this to admit F-235 (0x0F05:0x35F2) / F-335 (0x0F05:0xF335)
+    # is a deliberate, separate decision -- see the same warning, and the
+    # board-address dispatch that would need to be wired in here first, at
+    # the VID/PID gate in tools/pakon_scan.py (Link.open / board_address)
+    # and the evidence in tools/pakon_commands.py's BOARD_ADDRESSES. The
+    # ADDRESSES dict below is F-135-only and is harmless only because this
+    # gate keeps other models from ever reaching it.
     dev = usb.core.find(idVendor=0x0F05, idProduct=0xF135)
     if dev is None:
         return None

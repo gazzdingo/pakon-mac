@@ -584,7 +584,18 @@ SHASTA_ON_CN_RENDER_PATH = False
 # size-matching hit both take the same continue path. Any port of dra must
 # implement "miss continues" from the start (see tools/ansel/pipeline/shasta.go
 # for the mirrored Go-side note).
-AUTO_TONE_PORTED = False
+#
+# Flipped True 2026-08-11 at the owner's explicit request, to view the real
+# port's current output directly rather than only trust the shadow-clip
+# metric -- NOT because the Phase 6 acceptance criterion passed. It did not:
+# the metric moved hugely (27.83% -> 0.00% shadow clip) but the actual
+# rendered image is visibly washed-out/foggy, the same "bypass" signature
+# shasta.go's own comment documents (~191/212/220 vs the far-too-light
+# 215.7/231.4/235.3 reference). See docs/66-autotone-port-plan.md Phase 6.2
+# for the full writeup and the open question this is investigating. Flip
+# back to False once the downstream-stage mismatch is understood, unless the
+# owner wants it left on for continued comparison.
+AUTO_TONE_PORTED = True
 
 # ShastaParams early scalars (ctor 0x100543b0 / dump 0x101280a0)
 SHASTA_PARAMS_METRIC_GRAY_OFF = 0x38

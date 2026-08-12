@@ -57,6 +57,14 @@ HOST = 0x10
 SPEED_MIN, SPEED_MAX = 0x03E8, 0x7FFE
 MAX_SECONDS = 5.0
 
+#: --long raises the cap to this. The 5 s default exists because this tool's
+#: original job was a few seconds of "does the repaired PICM actually turn the
+#: motor", where a runaway is pure downside. Respooling a roll is a different
+#: job with a real reason to run longer, so it gets an explicit opt-in rather
+#: than a quietly-raised default: the operator has to say they meant it, and
+#: the stop still goes out from the finally: block on every exit path.
+MAX_SECONDS_LONG = 60.0
+
 CMD_FORWARD, CMD_REVERSE, CMD_STOP = 0xA0, 0xA1, 0xA2
 
 
@@ -116,12 +124,18 @@ def main() -> int:
     ap.add_argument("--seconds", type=float, default=1.0,
                     help=f"how long to run (hard cap {MAX_SECONDS})")
     ap.add_argument("--reverse", action="store_true", help="drive reverse")
+    ap.add_argument("--long", action="store_true",
+                    help=f"raise the run-time cap from {MAX_SECONDS:.0f}s to "
+                         f"{MAX_SECONDS_LONG:.0f}s. For respooling film, where "
+                         f"a longer continuous run is the point. Watch the "
+                         f"machine.")
     ap.add_argument("--speed-only", action="store_true",
                     help="write the speed register and stop there -- nothing moves")
     args = ap.parse_args()
 
     speed = max(SPEED_MIN, min(SPEED_MAX, args.speed))
-    secs = max(0.0, min(MAX_SECONDS, args.seconds))
+    cap = MAX_SECONDS_LONG if args.long else MAX_SECONDS
+    secs = max(0.0, min(cap, args.seconds))
     if speed != args.speed:
         print(f"speed clamped to legal range: {args.speed} -> {speed}")
 

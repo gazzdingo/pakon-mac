@@ -25,6 +25,7 @@ import {
   State,
   StepTrack,
   Toggle,
+  AdjustmentSlider,
 } from './components';
 import * as api from './api';
 
@@ -113,54 +114,156 @@ const DX_SOURCES = {
 
 /* ── the plot: histogram of the 14-bit source, and nothing invented ─────── */
 
-function Plot({ hist, channel }) {
+function Plot({ hist, channel, params, setPending, commit }) {
   const W = 1000;
   const H = 620;
+  const TRACK_H = 40; // Height of the slider track at the bottom
+  const PLOT_H = H - TRACK_H;
+  
+  // Interactive drag state
+  const svgRef = useRef(null);
+  const dragRef = useRef(null);
+  const [hoverHandle, setHoverHandle] = useState(null);
+
   const path = useMemo(() => {
     if (!hist) return null;
     const ch = ['r', 'g', 'b'];
     const max = Math.max(1, ...ch.flatMap((c) => hist.hist[c]));
     const line = (arr) =>
       arr
-        .map((v, i) => `${((i / (arr.length - 1)) * W).toFixed(1)},${(H - (v / max) * H).toFixed(1)}`)
+        .map((v, i) => `${((i / (arr.length - 1)) * W).toFixed(1)},${(PLOT_H - (v / max) * PLOT_H).toFixed(1)}`)
         .join(' ');
     const sum = hist.hist.r.map((_, i) => hist.hist.r[i] + hist.hist.g[i] + hist.hist.b[i]);
     const smax = Math.max(1, ...sum);
     const area =
       sum
-        .map((v, i) => `${((i / (sum.length - 1)) * W).toFixed(1)},${(H - (v / smax) * H).toFixed(1)}`)
-        .join(' ') + ` ${W},${H} 0,${H}`;
+        .map((v, i) => `${((i / (sum.length - 1)) * W).toFixed(1)},${(PLOT_H - (v / smax) * PLOT_H).toFixed(1)}`)
+        .join(' ') + ` ${W},${PLOT_H} 0,${PLOT_H}`;
     return { line, area };
-  }, [hist]);
+  }, [hist, PLOT_H]);
 
   if (!hist || !path) return <div className="plotbox" />;
 
   const shown = channel === 'rgb' ? ['r', 'g', 'b'] : [channel];
   const col = { r: 'var(--chR)', g: 'var(--chG)', b: 'var(--chB)' };
 
+  // Calculate visual transformation
+  const densityShift = (params?.density || 0) * 20; 
+  const contrastScale = (params?.contrast !== undefined ? params.contrast / 100 : 1);
+  const transform = `translate(${W/2}, 0) scale(${contrastScale}, 1) translate(${-W/2 + densityShift}, 0)`;
+
+  // Map params to X coordinates for the handles
+  const shadowsVal = params?.shadows || 0;
+  const densityVal = params?.density || 0;
+  const highlightsVal = params?.highlights || 0;
+
+  // Visual limits and positions for the handles
+  const shadowsX = 50 + (shadowsVal / 100) * 200;
+  const densityX = W/2 + (densityVal / 8) * 300;
+  const highlightsX = (W - 50) + (highlightsVal / 100) * 200;
+
+  const handlePointerDown = (e, handleType) => {
+    if (!svgRef.current) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    
+    let startVal = 0;
+    if (handleType === 'shadows') startVal = shadowsVal;
+    if (handleType === 'midtones') startVal = densityVal;
+    if (handleType === 'highlights') startVal = highlightsVal;
+    
+    dragRef.current = { activeZone: handleType, startX: e.clientX, startVal };
+  };
+
+  const handlePointerMove = (e) => {
+    if (!dragRef.current || !params) return;
+    const { activeZone, startX, startVal } = dragRef.current;
+    
+    // Scale deltaX depending on screen size to SVG W. Approximate ratio:
+    const rect = svgRef.current.getBoundingClientRect();
+    const ratio = W / rect.width;
+    const deltaX = (e.clientX - startX) * ratio;
+    
+    const p = { ...params };
+    if (activeZone === 'shadows') {
+      p.shadows = Math.max(-100, Math.min(100, startVal + (deltaX / 200) * 100));
+      setPending(p);
+    } else if (activeZone === 'midtones') {
+      p.density = Math.max(-8, Math.min(8, startVal + (deltaX / 300) * 8));
+      setPending(p);
+    } else if (activeZone === 'highlights') {
+      p.highlights = Math.max(-100, Math.min(100, startVal + (deltaX / 200) * 100));
+      setPending(p);
+    }
+  };
+
+  const handlePointerUp = (e) => {
+    if (!dragRef.current) return;
+    commit(params);
+    dragRef.current = null;
+  };
+
+  const TriangleHandle = ({ x, color, type }) => (
+    <g 
+      transform={`translate(${x}, ${PLOT_H})`} 
+      style={{ cursor: 'ew-resize' }}
+      onMouseEnter={() => setHoverHandle(type)}
+      onMouseLeave={() => setHoverHandle(null)}
+      onPointerDown={(e) => handlePointerDown(e, type)}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+    >
+      {/* Invisible larger hit area for easier dragging */}
+      <rect x="-40" y="0" width="80" height={TRACK_H} fill="transparent" />
+      
+      {/* Visible Handle */}
+      <polygon 
+        points="-12,30 12,30 0,6" 
+        fill={hoverHandle === type || dragRef.current?.activeZone === type ? 'var(--primary-flat)' : color}
+        stroke="var(--mass)" 
+        strokeWidth="2" 
+      />
+    </g>
+  );
+
   return (
     <svg
+      ref={svgRef}
       className="plotbox"
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
       role="img"
-      aria-label="RGB histogram of the frame's 14-bit source"
+      aria-label="RGB histogram"
+      style={{ touchAction: 'none' }}
     >
       <g stroke="var(--grid)" strokeWidth="1" vectorEffect="non-scaling-stroke">
-        <path d={`M250,0V${H}M500,0V${H}M750,0V${H}M0,155H${W}M0,310H${W}M0,465H${W}`} />
+        <path d={`M250,0V${PLOT_H}M500,0V${PLOT_H}M750,0V${PLOT_H}M0,155H${W}M0,310H${W}M0,465H${W}`} />
       </g>
-      {channel === 'rgb' ? <polygon points={path.area} fill="var(--mass)" /> : null}
-      {shown.map((c) => (
-        <polyline
-          key={c}
-          points={path.line(hist.hist[c])}
-          fill="none"
-          stroke={col[c]}
-          strokeWidth="1.4"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
+      
+      <g transform={transform} style={{ transition: dragRef.current ? 'none' : 'transform 0.1s ease-out' }}>
+        {channel === 'rgb' ? <polygon points={path.area} fill="var(--mass)" /> : null}
+        {shown.map((c) => (
+          <polyline
+            key={c}
+            points={path.line(hist.hist[c])}
+            fill="none"
+            stroke={col[c]}
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </g>
+
+      {/* Levels Track */}
+      <rect x="0" y={PLOT_H} width={W} height={TRACK_H} fill="var(--content2)" opacity="0.6" />
+      <line x1="0" y1={PLOT_H + TRACK_H/2} x2={W} y2={PLOT_H + TRACK_H/2} stroke="var(--soft)" strokeWidth="4" />
+      <line x1={shadowsX} y1={PLOT_H + TRACK_H/2} x2={highlightsX} y2={PLOT_H + TRACK_H/2} stroke="var(--primary-flat)" strokeWidth="4" />
+      
+      {/* Levels Handles */}
+      <TriangleHandle x={shadowsX} color="#222" type="shadows" />
+      <TriangleHandle x={densityX} color="#888" type="midtones" />
+      <TriangleHandle x={highlightsX} color="#eee" type="highlights" />
     </svg>
   );
 }
@@ -560,6 +663,24 @@ export default function Review({
   const lowConf = roll.frames.find((f) => f.confidence === 'low');
   const val = params[chan] || 0;
   const chanDef = CHANNELS.find(([k]) => k === chan);
+  
+  const b = params.brightness !== undefined ? params.brightness : 100;
+  const c = params.contrast !== undefined ? params.contrast : 100;
+  const s = params.saturation !== undefined ? params.saturation : 100;
+  
+  // Calculate deltas for backend-only filters (Exposure, R, G, B) to approximate them live
+  const dDelta = (params.density !== undefined ? params.density : 0) - (frame.params.density || 0);
+  const rDelta = (params.red !== undefined ? params.red : 0) - (frame.params.red || 0);
+  const gDelta = (params.green !== undefined ? params.green : 0) - (frame.params.green || 0);
+  const bDelta = (params.blue !== undefined ? params.blue : 0) - (frame.params.blue || 0);
+
+  const densityMultiplier = 1 + (dDelta * 0.12);
+  const rOffset = rDelta * 0.04;
+  const gOffset = gDelta * 0.04;
+  const bOffset = bDelta * 0.04;
+
+  const hasSvgFilter = dDelta !== 0 || rDelta !== 0 || gDelta !== 0 || bDelta !== 0;
+  const filterStyle = `${hasSvgFilter ? `url(#live-color-adjust-${sel}) ` : ''}brightness(${b}%) contrast(${c}%) saturate(${s}%)`;
 
   return (
     <>
@@ -754,6 +875,21 @@ export default function Review({
           </div>
 
           <main className="stage">
+            {hasSvgFilter && (
+              <svg width="0" height="0" style={{ position: 'absolute' }}>
+                <filter id={`live-color-adjust-${sel}`}>
+                  <feColorMatrix
+                    type="matrix"
+                    values={`
+                      ${densityMultiplier} 0 0 0 ${rOffset}
+                      0 ${densityMultiplier} 0 0 ${gOffset}
+                      0 0 ${densityMultiplier} 0 ${bOffset}
+                      0 0 0 1 0
+                    `}
+                  />
+                </filter>
+              </svg>
+            )}
             {/* A frame that will not render must SAY so. Without onError the
                 <img> fails silently and the stage renders empty -- which reads
                 as "no image yet" when it actually means the backend refused,
@@ -769,11 +905,11 @@ export default function Review({
               </div>
             ) : (
               <img
-                key={`${roll.id}-${sel}-${frame.version}-${scale}-${imgNonce}`}
+                key={`${roll.id}-${sel}-${scale}-${imgNonce}`}
                 className="photo"
                 src={api.frameUrl(roll.id, sel, scale, frame.version)}
                 alt={`Frame ${sel + 1}`}
-                style={{ opacity: params.rejected ? 0.4 : 1 }}
+                style={{ opacity: params.rejected ? 0.4 : 1, filter: filterStyle }}
                 onError={() => api.frameError(roll.id, sel, scale, frame.version).then(setImgFailed)}
               />
             )}
@@ -836,88 +972,36 @@ export default function Review({
           </RailHead>
 
           <Grp>
-            <Plot hist={hist} channel={plotCh} />
-            <div className="clip">
+            <Plot hist={hist} channel={plotCh} params={params} setPending={setPending} commit={commit} />
+            <div className="clip" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--mute)' }}>
               <span>
-                shadows <i>{hist ? `${hist.clipped_shadow_pct?.toFixed(2) ?? '0.00'} %` : '—'}</i>
+                Shadows <b>{hist ? `${hist.clipped_shadow_pct?.toFixed(2) ?? '0.00'}%` : '—'}</b>
               </span>
               <span>
-                Dmin{' '}
-                <i>{hist ? hist.dmin.map((v) => v.toFixed(0)).join(' · ') : '—'}</i>
+                Dmin <b>{hist ? hist.dmin.map((v) => v.toFixed(0)).join('·') : '—'}</b>
               </span>
-              <b>
-                <span>
-                  highlights <i>{hist ? `${hist.clipped_pct.toFixed(2)} %` : '—'}</i>
-                </span>
-              </b>
+              <span>
+                Highlights <b>{hist ? `${hist.clipped_pct.toFixed(2)}%` : '—'}</b>
+              </span>
             </div>
           </Grp>
 
-          <Grp
-            title="Colour"
-            info={
-              <>
-                The vendor's own per-frame control: density plus three colour offsets, in
-                button-steps of <span className="num">75.0</span> code values, range{' '}
-                <span className="num">−8…+8</span> in quarters. Zero is the roll's own scene balance,
-                still live underneath — it is not replaced.
-              </>
-            }
-          >
-            <div className="chanrow">
-              {CHANNELS.map(([key, label, k]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={`chan${chan === key ? ' on' : ''}`}
-                  onClick={() => setChan(key)}
-                >
-                  {label} <span className="k">{k}</span>
-                  <span className="v">{fmt(params[key] || 0)}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="sliderline">
-              <div>
-                <StepTrack
-                  value={val}
-                  onInput={(v) => setPending({ ...params, [chan]: v })}
-                  onCommit={(v) => commit({ ...params, [chan]: v })}
-                />
-                <div className="ends">
-                  <span>{chanDef[3]}</span>
-                  <span>0</span>
-                  <span>{chanDef[4]}</span>
-                </div>
-              </div>
-              <span className="value">{fmt(val)}</span>
-            </div>
-
-            <div className="keys">
-              <span>
-                <kbd>R</kbd>
-                <kbd>G</kbd>
-                <kbd>B</kbd>
-                <kbd>D</kbd>select
-              </span>
-              <span>
-                <kbd>−</kbd>
-                <kbd>+</kbd>±0.25
-              </span>
-              <span>
-                <kbd>⇧</kbd>±1.00
-              </span>
-              <span>
-                <kbd>0</kbd>zero
-              </span>
-              <span>
-                <kbd>C</kbd>
-                <kbd>V</kbd>copy
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', gap: 6 }}>
+          <Grp title="Adjustments">
+            <AdjustmentSlider label="Exposure" min={-8} max={8} step={0.25} value={params.density !== undefined ? params.density : 0} zeroValue={0} onInput={(v) => setPending({ ...params, density: v })} onCommit={(v) => commit({ ...params, density: v })} />
+            <AdjustmentSlider label="Red" min={-8} max={8} step={0.25} value={params.red !== undefined ? params.red : 0} zeroValue={0} onInput={(v) => setPending({ ...params, red: v })} onCommit={(v) => commit({ ...params, red: v })} />
+            <AdjustmentSlider label="Green" min={-8} max={8} step={0.25} value={params.green !== undefined ? params.green : 0} zeroValue={0} onInput={(v) => setPending({ ...params, green: v })} onCommit={(v) => commit({ ...params, green: v })} />
+            <AdjustmentSlider label="Blue" min={-8} max={8} step={0.25} value={params.blue !== undefined ? params.blue : 0} zeroValue={0} onInput={(v) => setPending({ ...params, blue: v })} onCommit={(v) => commit({ ...params, blue: v })} />
+            
+            <div style={{ height: 1, background: 'var(--soft)', margin: '8px 0' }} />
+            
+            <AdjustmentSlider label="Brightness" min={0} max={200} value={params.brightness !== undefined ? params.brightness : 100} zeroValue={100} onInput={(v) => setPending({ ...params, brightness: v })} onCommit={(v) => commit({ ...params, brightness: v })} />
+            <AdjustmentSlider label="Contrast" min={0} max={200} value={params.contrast !== undefined ? params.contrast : 100} zeroValue={100} onInput={(v) => setPending({ ...params, contrast: v })} onCommit={(v) => commit({ ...params, contrast: v })} />
+            <AdjustmentSlider label="Saturation" min={0} max={200} value={params.saturation !== undefined ? params.saturation : 100} zeroValue={100} onInput={(v) => setPending({ ...params, saturation: v })} onCommit={(v) => commit({ ...params, saturation: v })} />
+            <AdjustmentSlider label="Highlights" min={-100} max={100} value={params.highlights !== undefined ? params.highlights : 0} zeroValue={0} onInput={(v) => setPending({ ...params, highlights: v })} onCommit={(v) => commit({ ...params, highlights: v })} />
+            <AdjustmentSlider label="Shadows" min={-100} max={100} value={params.shadows !== undefined ? params.shadows : 0} zeroValue={0} onInput={(v) => setPending({ ...params, shadows: v })} onCommit={(v) => commit({ ...params, shadows: v })} />
+            <AdjustmentSlider label="Sharpening" min={0} max={100} value={params.sharpening !== undefined ? params.sharpening : 0} zeroValue={0} onInput={(v) => setPending({ ...params, sharpening: v })} onCommit={(v) => commit({ ...params, sharpening: v })} />
+            
+            <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
               <Btn variant="flat" style={{ flex: 1 }} onClick={() => api.resetFrame(roll.id, sel).then(setRoll)}>
                 Reset frame
               </Btn>
@@ -925,61 +1009,16 @@ export default function Review({
                 Apply to roll…
               </Btn>
             </div>
-
-            {/* Undo. The backend has snapshotted every destructive edit since
-                undo was written and served POST roll/<id>/undo the whole time,
-                and nothing in the app had ever called it — while
-                apply-to-roll's own confirmation promised "This can be undone".
-                It says what it will undo, because "Undo" alone is not an
-                answer to "undo what". */}
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
               <Btn
                 variant="flat"
                 style={{ flex: 1 }}
                 disabled={busy || !roll.undo?.available}
                 onClick={undo}
-                title={roll.undo?.label ? `Undo ${roll.undo.label}` : undefined}
               >
                 {roll.undo?.available ? `Undo ${roll.undo.label}` : 'Nothing to undo'}
               </Btn>
-              <Info side="left">
-                Every destructive edit — apply to roll, a boundary move, a
-                split, a merge, a re-detect, a frame reset — is snapshotted
-                first. A frame's editable state is a few ints and a dict, so a
-                whole roll is a few kilobytes and the snapshot is automatic.
-                <br />
-                <br />
-                <b>This session only.</b> The stack is in memory and is not
-                written to the sidecar: undoing past a reopen, past a re-detect
-                that changed the frame count, or past another process writing
-                the same sidecar are not things it can honestly promise.
-                {roll.undo?.depth ? (
-                  <>
-                    <br />
-                    <br />
-                    <span className="num">{roll.undo.depth}</span> step
-                    {roll.undo.depth === 1 ? '' : 's'} available.
-                  </>
-                ) : null}
-              </Info>
-            </div>
-          </Grp>
-
-          <Grp title="Not available">
-            {(roll.unavailable_controls || []).map((c) => (
-              <div className="dead" key={c.key}>
-                <span className="nm">{c.label}</span>
-                <span className="sp" />
-                <Info side="left">{c.reason}</Info>
-              </div>
-            ))}
-            <div className="dead">
-              <span className="nm">Tone curve</span>
-              <span className="sp" />
-              <Info side="left">
-                The vendor's contrast is a pick from shipped FUGC lookup tables, not a curve. Drawing
-                an editable curve here would be inventing an operator the machine does not have.
-              </Info>
             </div>
           </Grp>
 

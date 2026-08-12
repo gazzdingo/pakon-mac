@@ -101,6 +101,7 @@ import pakon_decode as dec      # noqa: E402  (theirs — call, do not modify)
 import pakon_color as pc        # noqa: E402
 import pakon_filmstock as film  # noqa: E402
 import pakon_framing as pf      # noqa: E402
+import pakon_gate as gate       # noqa: E402
 import pakon_ansel as ansel     # noqa: E402
 import pakon_colour_go as gocol  # noqa: E402  — the colour engine, see below
 
@@ -489,6 +490,16 @@ class Roll:
     framing: dict = field(default_factory=dict)
     #: Operator override for the INFERRED binarisation threshold. None = Otsu.
     ones_threshold: float | None = None
+    #: Per-roll multiplier on the committed calibration's gain table. 1.0 (the
+    #: default) is the committed calibration, unchanged. Exists for a roll
+    #: whose real content pushes past the digital 12-bit ceiling after the
+    #: committed gain is applied -- confirmed on 2026-08-11 to be a pure
+    #: post-capture amplification effect (the raw 14-bit data itself never
+    #: reached the sensor's own ceiling), so backing off the gain in software,
+    #: on the capture already in hand, is the correct fix, not a re-scan. Set
+    #: once per roll at open time; applied every time ``attach()`` loads the
+    #: gain table, so it survives a reload from ``roll.json``.
+    gain_scale: float = 1.0
 
     #: What the Go colour engine's selections resolved to for this roll — the
     #: sba key, the shasta key, which lutMap and which FUGC LUT, the contrast
@@ -521,7 +532,8 @@ class Roll:
                    "created",
                    "data_dir", "ansel_root", "model", "transport_scale",
                    "transport_source", "transport_residual_pct",
-                   "dx_source", "warnings", "framing", "ones_threshold")
+                   "dx_source", "warnings", "framing", "ones_threshold",
+                   "gain_scale")
 
     def to_json(self) -> dict:
         d = {k: getattr(self, k) for k in self.JSON_FIELDS}
@@ -545,6 +557,8 @@ class Roll:
                 self._rgb = np.load(self.cache_path, mmap_mode="r")
             if self._dark is None:
                 self._dark, self._gain, _ = dec.load_unit_calibration()
+                if self.gain_scale != 1.0:
+                    self._gain = self._gain * self.gain_scale
         return self._rgb
 
     def slice14(self, a: int, b: int, step: int = 1) -> np.ndarray:
@@ -632,7 +646,8 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
                  film_path: str | None = None,
                  sba_key: str | None = None,
                  sba_default: bool = False,
-                 dx_source: str = "") -> Roll:
+                 dx_source: str = "",
+                 gain_scale: float = 1.0) -> Roll:
     """Decode a capture into the workspace cache and detect its frames.
 
     Writes exactly one file — ``rgb14.npy`` in the roll's workspace dir — which
@@ -660,6 +675,7 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
         data_dir=data_dir or dec.DEFAULT_DATA_DIR,
         ansel_root=ansel_root or dec.DEFAULT_ANSEL_ROOT,
         dx_source=(dx_source or ("typed" if dx else "")),
+        gain_scale=gain_scale,
     )
 
     # Resolve the stock first: it decides roll.film_class(), and stage 2 runs
@@ -732,6 +748,33 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
         "bytes": int(src.stat().st_size),
         "truncated": bool(max_lines and n < n_all),
     }
+
+    # Which lines are really film, for framing's "present" mask -- computed on
+    # the RAW wire lines with the same live Gate classifier the scan itself
+    # runs, not the broken clear_level-on-calibrated-data path below. Confirmed
+    # 2026-08-11: pakon_framing.DEFAULT_CLEAR_LEVEL is a wire-domain constant
+    # (~50000 scale), but open_capture()'s own trace_1d/green_1d are the
+    # dark/gain-*calibrated* 14-bit domain (~16383 ceiling) -- comparing one
+    # against the other means "gate empty" is never detected at all, so every
+    # capture "found" zero real frames and blindly tiled the whole thing.
+    # pakon_gate.Gate operates on these same raw wire lines, so there is no
+    # domain mismatch to have, and it is independently verified: run against
+    # real 2026-08-07 reference captures it reproduces the same FILM/CLEAR/DARK
+    # split the live scan itself recorded.
+    present = None
+    try:
+        gt = gate.Gate.from_calibration()
+        W = gate.WINDOW_LINES
+        present = np.zeros(n, dtype=bool)
+        for a0 in range(0, n, W):
+            b0 = min(n, a0 + W)
+            v = gt.classify_lines(lines[a0:b0])
+            present[a0:b0] = (v.state == gate.FILM)
+    except Exception as e:                                    # noqa: BLE001
+        roll.warnings.append(
+            f"framing's film-present mask could not be computed from the raw "
+            f"gate classifier ({type(e).__name__}: {e}); falling back to the "
+            f"calibrated-domain estimate, which is known unreliable")
 
     progress("unpacking", 0.30, f"{n} lines x {dec.PIXELS_PER_LINE} px")
     rgb = dec.to_rgb14(lines)
@@ -852,7 +895,7 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
         del lin_hist
 
     progress("frames", 0.70, "framing (five-phase cascade)")
-    _frame_roll(roll, trace_1d, green_1d, src)
+    _frame_roll(roll, trace_1d, green_1d, src, present=present)
     del trace_1d, green_1d
 
     # --- pass B: the Ansel roll pass, at full resolution, one frame at a time
@@ -895,7 +938,8 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
 
 
 def _frame_roll(roll: Roll, trace: np.ndarray, green: np.ndarray,
-                capture: Path | str | None = None) -> None:
+                capture: Path | str | None = None,
+                present: np.ndarray | None = None) -> None:
     """Run the vendor's framing cascade and settle the roll's geometry.
 
     WHY THE CASCADE AND NOT ``dec.find_frames``
@@ -919,7 +963,8 @@ def _frame_roll(roll: Roll, trace: np.ndarray, green: np.ndarray,
         frames, report = pf.find_frames_traces(
             trace, green,
             speed=_sidecar_speed(capture),
-            ones_threshold=roll.ones_threshold)
+            ones_threshold=roll.ones_threshold,
+            present=present)
     except Exception as e:                                      # noqa: BLE001
         # Never lose a roll to a framing failure: fall back to the single-pass
         # detector on the 1-D trace, and say in the report that we did.
@@ -1300,6 +1345,24 @@ def render_frame(roll: Roll, index: int, params: dict | None = None,
 
     img = dec.to_frame_image(srgb, roll.transport_scale)
     img = _apply_geometry(img, p)
+
+    b = float(p.get("brightness", 100)) / 100.0
+    c = float(p.get("contrast", 100)) / 100.0
+    s = float(p.get("saturation", 100)) / 100.0
+    sh = float(p.get("sharpening", 0)) / 100.0
+    
+    if b != 1.0 or c != 1.0 or s != 1.0 or sh > 0.0:
+        from PIL import Image, ImageEnhance, ImageFilter
+        im = Image.fromarray(img, "RGB")
+        if b != 1.0:
+            im = ImageEnhance.Brightness(im).enhance(b)
+        if c != 1.0:
+            im = ImageEnhance.Contrast(im).enhance(c)
+        if s != 1.0:
+            im = ImageEnhance.Color(im).enhance(s)
+        if sh > 0.0:
+            im = im.filter(ImageFilter.UnsharpMask(radius=2, percent=sh * 150, threshold=3))
+        img = np.asarray(im, dtype=np.uint8)
 
     if max_edge:
         h, w = img.shape[:2]

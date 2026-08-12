@@ -173,9 +173,15 @@ write site already identified. Start there instead of re-deriving it.
 - `SCREAMING_SNAKE_CASE_PORTED = True/False` flags, one `pakon_<capability>.py`
   file, `False`-flagged code paths `raise RuntimeError` rather than
   silently no-op.
-- Python ports + Unicorn-verifies against the real DLL; Go gets the verified
-  result transcribed after, as terse constants. Don't invert this — Go isn't
-  where the reverse-engineering happens.
+- **Python is the conversion path from the vendor DLL**: it's what Unicorn
+  (a Python library) can verify bit-exact against real DLL execution, so
+  every new capability's reverse-engineering happens there first. Go gets
+  the verified result ported over afterward, as terse constants, and
+  compiled down for the performance the render path needs — Go is the
+  destination, not where the reverse-engineering happens. This means Go's
+  colour science will generally lag Python's by however many ports haven't
+  been transcribed yet — that's an expected, temporary state during active
+  work, not a sign Python is a deprecated or secondary engine.
 - `tools/re/reachability.py` is the canonical BFS/reachable-set/set-diff
   tool, calibrated against Shasta's published numbers. Use it to scope
   `area` the same way it scoped `analyzeAutoTone`'s subsystems, rather than

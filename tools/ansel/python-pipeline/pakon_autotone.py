@@ -396,6 +396,58 @@ from pakon_citras import CITRAS_ANALYZE_PORTED  # noqa: E402
 PFD_ANALYZE_PORTED = False
 
 # ---------------------------------------------------------------------------
+# Phase 6.1 -- ASSEMBLED verification, strictly separate from Phase 6.2
+# ---------------------------------------------------------------------------
+# This is NOT the same thing as ``pakon_shasta.AUTO_TONE_PORTED`` (still
+# False, and not touched here -- that flag flips only when Phase 6.2 swaps
+# the render path, a later, separate, more consequential step).  This flag
+# says: the assembled Python chain above (this module's ``analyze_auto_tone``
+# driving a real, non-stub ``AutoToneSubsystems`` -- every ``*_acquire``/
+# ``*_analyze`` method here calls straight into the real ported subsystem,
+# not a pattern stub, once every ``*_PORTED`` flag above is True) has been
+# run field-by-field against the REAL DLL's ``0x100fb730`` executing whole,
+# start to finish, with NO subsystem entry points hooked -- the real Cap
+# wrappers falling through into the real cna/dra/toneHelper/contrast/ast/
+# citras Impl bodies for real, in one Unicorn call -- and everything
+# compared (every ``AUTOTONE_WORK_LAYOUT`` scalar, plus every subsystem's own
+# full result object and every LUT/histogram array, dword for dword) agreed,
+# across 7 scenarios (flat/uniform, gradient, high-contrast banded, two
+# pseudo-random images at realistic pixel counts, and two ``scene_type``
+# variants).  See ``pakon_autotone_assembled_golden.py``.
+#
+# One real integration-class bug was found and fixed by this verification,
+# in exactly the way this step exists to catch: neither subsystem's own
+# leaf-level golden ever fed it a genuinely degenerate real-DLL-producible
+# input, because each one's own synthetic test data was hand-shaped to avoid
+# it.  A perfectly flat (edgeless) test image legitimately makes cna's real
+# ``EdgeHist`` all-zero, and ``pakon_toneHelper.compute_metrics`` then divides
+# by that histogram's total unconditionally -- the real DLL does not trap
+# (FPCW 0x027f masks the x87 zero-divide exception and produces a
+# correctly-signed infinity), but the port's plain Python ``/`` raised
+# ``ZeroDivisionError``.  Fixed with an IEEE-754-shaped masked-division
+# helper (``pakon_toneHelper._x87_div``, mirroring the same class of fix
+# ``pakon_ast._x87_div`` already made once before on this project) at both
+# risk sites in ``compute_metrics``.  The identical class of bug was also
+# found and fixed the same way in ``pakon_cna.analyze_image``'s ``_half``
+# (``pakon_cna._x87_div``), triggered by a pseudo-random image with an
+# all-zero-in-places resampled bucket histogram.  Both fixes were re-verified
+# against their own subsystem's full pre-existing golden suite (still 100%
+# passing) before being counted here.
+#
+# A separate, real, reproducible divergence was investigated and NOT fixed:
+# an unrealistically tiny (100-pixel, 46-edge-pixel) synthetic image drove
+# cna's dark/light-half percentile-crossing search to land exactly at index
+# 0, and the real DLL's ToneScaleLut came back perfectly flat where the port
+# computed a real curve -- reproduced with cna's OWN standalone golden
+# harness too, so it is not an artefact of the assembled wiring.  Re-run at
+# every larger, still-"pseudo-random" size from 16x16 pixels up: zero
+# divergence, every time.  A real scanned frame is millions of pixels, never
+# ~100, so -- same standard as ``pakon_dra_golden.py``'s own documented
+# out-of-range-pixel note -- this is recorded, not chased further or
+# "fixed" by guessing at an untraced tie-break.
+AUTOTONE_ASSEMBLED_VERIFIED = True
+
+# ---------------------------------------------------------------------------
 # addresses
 # ---------------------------------------------------------------------------
 

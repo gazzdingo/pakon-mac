@@ -45,6 +45,20 @@ worth-knowing fact about this project's own test data, is now also ruled
 out as *the* explanation, joining §1-5's software findings in the
 "real, checked, not the cause" column. Six for six.
 
+**Fifth update, same day**: §8 traces every stage from raw capture to
+final sRGB on the fresh post-recalibration roll and finds the dynamic
+range collapses at exactly one point — the negative→positive log
+inversion (`f135_rom12_to_rpd12`) — while every stage before and after it
+preserves span. This is also the one stage in the whole chain with no
+DLL call site to Unicorn-verify against, unlike everything else this doc
+and `docs/66` have checked. Not proven wrong; now the sharpest concrete
+lead. Separately, in parallel: a real vendor-app comparison (running the
+actual Pakon `PSI.exe` against real hardware and comparing its own output
+directly) is in progress on separate hardware as of this writing — not
+part of this doc's own evidence, noted here so a later reader knows to
+check whether that landed before treating this doc's own priority list
+as current.
+
 Written 2026-08-12, a fresh read-only investigation into `docs/66`'s
 "washed out" defect, picking up exactly where the eleventh pass's own "What
 is still open" list left off (FUGC's dmin correction; the four unreplicated
@@ -586,6 +600,81 @@ highest-leverage next step" to "a real, now-tested, ruled-out
 possibility" — the same status as §2-5's other candidates. The priority
 list below is updated accordingly.
 
+## 8 — A full stage-by-stage trace, raw capture to sRGB, on the fresh
+post-recalibration roll: where the compression actually happens
+
+Requested directly: trace every stage from decode to image and find
+where it washes out. Traced frame 1 of the same fresh, post-recalibration
+roll §7 used (`scan-20260812-091633`, captured 09:16, after the 08:21
+recalibration), through every real stage boundary in the actual
+production code (`Roll.attach`/`slice14` → `poly_hwc` →
+`f135_rom12_to_rpd12` → `apply_balance_shifts` →
+`build_setlutinfo_apply_lut` → `render_scene`'s real `analyzeAutoTone` →
+`to_srgb`), reporting each channel's `[p1, p50, p99]` and the
+`p99−p1` span at every boundary:
+
+```
+stage                         R span   G span   B span   domain   R span %
+0. raw 14-bit (pre-cal)        10351     7025     6770    16383      63%
+1. calibrated 14-bit            9761     6706     6564    16383      60%
+2. poly (colour matrix)         2587     1916     1700     4095      63%
+3. inv16 (neg→pos inversion)     785      924     1064     4095      19%
+4. post balance shifts           785      924     1064     4095      19%
+5. post FUGC                     786      935     1065     4095      19%
+6-7. FINAL toned (autoTone)      677      756      868     4095      17%
+8. sRGB                          169      166      168      255      66%*
+```
+(*sRGB's own "span" isn't directly comparable — the ICC profile is
+steeply nonlinear, see below.)
+
+**The compression happens in exactly one place: the negative→positive
+log inversion (stage 2→3).** Every stage before it preserves the
+*fractional* span of its own domain almost exactly (raw and calibrated
+14-bit both ~60-63%; poly, rescaled onto the 12-bit domain, is *still*
+~63% — a matrix transform, not a compressor). The inversion collapses
+that to ~17-19% of the 4095 domain in one step. Every stage *after* it —
+balance shifts, FUGC, the full real `analyzeAutoTone` chain — leaves the
+span essentially unchanged (785→677 for R, a mild net *narrowing*, not a
+stretch). This is the same conclusion §1 reached by reading `dra`'s own
+LUT values instead of measuring end-to-end spans, now confirmed a second,
+independent way, on fresh data, with the full chain traced rather than
+one subsystem: **nothing downstream of the inversion is a levels/contrast
+stretch, so whatever code range the inversion produces is what survives
+to the final image**, then gets visually amplified by the ICC profile's
+own steep response curve in exactly this code region (pass 10's own
+table: RPD-12 800-2300 maps to essentially the *entire* sRGB 0-254 range;
+above ~2300 the curve is already flat).
+
+**Is the inversion's own compression a bug, or is it how this format is
+supposed to work?** Genuinely open, and this doc does not resolve it —
+but it's now clear exactly what to check. `f135_rom12_to_rpd12`'s own
+docstring documents the design intent directly: `rpd12 = fpo + 1000 *
+(log10(filmBase − c9) − log10(poly − c9))` is a **density-referenced**
+encoding (RPD = "Reflection/Reproduction Print Density × 1000", a
+standard photofinishing convention, not an arbitrary constant) where
+`filmBase` (Dmin, clear film) is anchored to land at `fpo`, which balance
+then carries to the neutral point (`fpo + setShifts ≈ nbp = 1550`,
+confirmed in the docstring's own worked numbers). A real negative's own
+usable density range is conventionally well under half of what a 4095
+(≈4.1 density units) domain could represent, so *some* compression
+relative to the raw/poly domains may be entirely correct and expected —
+consistent with everything found in §1 about this being a
+density/paper-referred system, not a display-linear one. What is **not**
+settled: whether the specific numbers this formula produces — the exact
+"1000" scale, the pedestal removal, `fpo`'s placement — reproduce the
+*real* vendor formula's own numbers, because **this is the single
+least-verified stage in the entire chain**: `F135_INVERT_PORTED = False`
+is not a partial-port flag like the others in this doc, it's an
+acknowledgment that no DLL call site was ever found for this specific
+hardware path — the formula was reconstructed from first principles and
+"confirmed correct by the owner's own eye on a real photo," never
+Unicorn-verified bit-exact against the real DLL the way every stage
+after it has been. Every other stage in this seven-finding investigation
+that *has* been checked against the real DLL has come back correct; this
+is the one stage that structurally can't be checked that way (no
+reference implementation exists to check against) and has the largest
+single effect on the final code range of anything in the chain.
+
 ## What this changes about the open item list
 
 `docs/66`'s eleventh pass left two things open: FUGC's near-identity
@@ -598,35 +687,51 @@ Dmin/level hypothesis is checked on real production data and is not the
 cause (§2-4); the most architecturally attractive remaining software
 hypothesis this doc itself raised — a missing per-scene `fpo` — is
 checked against fresh DLL disassembly and is not the cause either (§5);
-and the hardware-recalibration hypothesis §6 raised has now actually
-been tested against a real post-fix roll (§7) and is **also** not the
-cause — if anything the blue-clipping symptom is worse on fresh data.
-Six converging "real finding, not the cause" results. Updated priority
-order:
+the hardware-recalibration hypothesis §6 raised has now actually been
+tested against a real post-fix roll (§7) and is **also** not the cause —
+if anything the blue-clipping symptom is worse on fresh data; and §8's
+full stage-by-stage trace pins the compression down to one specific,
+narrow location — the negative→positive log inversion — rather than
+anywhere in the six subsystems everyone (including this doc) had been
+scrutinizing. Updated priority order:
 
-1. **The four unreplicated stages
+1. **§8's finding is now the sharpest lead of everything in this doc**:
+   `f135_rom12_to_rpd12` (`F135_INVERT_PORTED = False`) is the one stage
+   in the entire chain with no DLL call site to Unicorn-verify against —
+   every other stage that's been checked against the real DLL has come
+   back correct, and this is the one stage that structurally can't be
+   checked that way, at exactly the point in the pipeline where the
+   dynamic range collapses. Not proven wrong — the density-referenced
+   design may make this compression correct by convention — but it is
+   now the most concrete remaining thing to scrutinize, and unlike the
+   item below it doesn't require reverse-engineering unexplored DLL
+   territory, only auditing a formula this project already wrote and
+   documented.
+2. **The four unreplicated stages
    (`analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff`)
-   are now the single most concrete remaining lead, software or
+   remain a concrete lead, software or
    otherwise.** Every other candidate this doc and the eleven `docs/66`
    passes together have checked — the tone chain's math and design (§1),
    `apply_balance_shifts`'s mechanism and real shipped values (`docs/66`
    eleventh pass), the Dmin/level chain end to end on real production
    data both before and after the hardware fix (§2-4, §7), `fpo`'s own
    provenance (§5) — comes back "correct, not the cause."
-2. **FUGC's near-identity dmin correction** — still not live-DLL-verified
+3. **FUGC's near-identity dmin correction** — still not live-DLL-verified
    per the eleventh pass's own note (`pakon_fugc_golden.py`'s
    `setLutInfo` cases were confirmed host-vs-host, not against the real
-   DLL specifically). Cheaper than item 1 if whoever picks this up wants
+   DLL specifically). Cheaper than item 2 if whoever picks this up wants
    a quick sanity check first.
-3. **Worth stating plainly after six convergent negative results**: it
-   remains possible this is not a software or hardware-calibration
-   defect at all — that these negatives' real exposure genuinely sits
-   where SBA/Preference's fixed per-stock `fpo` (§5) doesn't fully
-   compensate for, and the vendor's own real output would look similar
-   on the same source material. Not tested (would need the real DLL's
-   own end-to-end output on one of these exact frames), but it belongs
-   on the list of live possibilities now, not just "the four stages."
-4. **Fix the measurement harness's Dmin methodology anyway — real bug,
+4. **Worth stating plainly after seven convergent findings**: it remains
+   possible this is not a software or hardware-calibration defect at
+   all — that these negatives' real exposure genuinely sits where
+   SBA/Preference's fixed per-stock `fpo` (§5) doesn't fully compensate
+   for, and the vendor's own real output would look similar on the same
+   source material. Not tested (would need the real DLL's own
+   end-to-end output on one of these exact frames — see the note at the
+   top of this doc about a real vendor-app comparison now in progress),
+   but it belongs on the list of live possibilities, not just "the four
+   stages" or "the inversion formula."
+5. **Fix the measurement harness's Dmin methodology anyway — real bug,
    just not the cause.** `measure_python_autotone.py`'s `film_base=None`
    on a lone TIFF is still measuring "the frame's own highlights" and
    calling it film base, which is simply wrong regardless of its effect
@@ -693,3 +798,13 @@ this roll was never read from or written to. Only aggregate percentile
 and clip-fraction statistics are reported above, per this project's rule
 against describing `captures/` (or, here, the app's own cache directory)
 contents.
+
+§8 traced the same frame §7 already established shows the defect,
+through every real intermediate array the production code itself
+produces (`Roll.attach()`'s raw cache, `Roll.slice14()`'s calibrated
+output, `pc.poly_hwc`'s direct return, `pr.scene_rpd12`'s direct return,
+`sba_apply.apply_balance_shifts`'s direct return, the FUGC apply LUT's
+direct output, `AnselEngine.render_scene`'s final output, and
+`AnselEngine.to_srgb`'s output) — no stage was skipped or approximated,
+and every function called is the same unmodified production code every
+other section of this doc has been exercising. No port file changed.

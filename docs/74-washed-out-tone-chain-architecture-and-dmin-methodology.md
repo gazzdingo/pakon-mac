@@ -802,6 +802,40 @@ not answer. It would need either the real DLL's own output (the pending
 comparison) or a documented factory calibration procedure for `fpo`
 itself, neither of which this pass has.
 
+## 10 — Correction: FUGC's `setLutInfo` was already real-DLL-verified,
+including the exact near-identity case — this item is closed, not open
+
+This doc's own priority list (below, until this section) carried
+"FUGC's near-identity dmin correction — still not live-DLL-verified" as
+item 3, citing the eleventh pass's own hedge (`pakon_fugc_golden.py`'s
+`setLutInfo` cases "confirmed host-vs-host, not against the real DLL
+specifically"). Picking that up directly rather than re-deriving it: it
+was wrong, or at least stale. `pakon_fugc_golden.py`'s `run_set_lut_info`
+already drives a genuine Unicorn execution of the real
+`0x101f82c0`/`setLutInfo` entry point (`uc.emu_start` against the actual
+DLL bytes, with hooked memory reads for the output LUT) — this is not
+host-vs-host, and hasn't been since a *different*, earlier pass (`docs/66`
+§"6.2 — parallel track… Track 1", 2026-08-11, not the eleventh pass)
+added it while fixing a real, separate bug (`set_lut_info_channel` used
+to raise on negative offsets; the real DLL handles them gracefully).
+
+Ran it directly against the freshly re-extracted, MD5-verified DLL (same
+one §5 confirmed): **all 12 offset cases pass, including
+`identity_shipped_frame offsets=(0, -1, 1)` — the exact near-identity
+case this whole thread has been asking about.** That case's offsets
+(`0, -1, 1`) are described in the test's own comment as "this frame's
+near-no-op offsets" — i.e., this is not a generic sanity check, it's the
+specific input shape the reference frame's own FUGC stage actually sees,
+and the real DLL reproduces the port's own near-identity output for it
+exactly.
+
+**FUGC's near-identity behaviour is therefore not an open question — it
+is confirmed, bit-exact, real-DLL-verified correct.** The eleventh
+pass's hedge was accurate as a statement about what that pass itself had
+personally re-checked, but the underlying coverage already existed and
+this pass has now independently re-run it and confirmed it still holds.
+Removed from the priority list below as a live lead.
+
 ## What this changes about the open item list
 
 `docs/66`'s eleventh pass left two things open: FUGC's near-identity
@@ -841,19 +875,15 @@ scrutinizing. Updated priority order:
    calibration procedure this project doesn't currently have.
 2. **The four unreplicated stages
    (`analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff`)
-   remain a concrete lead, software or
-   otherwise.** Every other candidate this doc and the eleven `docs/66`
+   are now the sole remaining concrete software lead** — FUGC (§10) is
+   closed. Every other candidate this doc and the eleven `docs/66`
    passes together have checked — the tone chain's math and design (§1),
    `apply_balance_shifts`'s mechanism and real shipped values (`docs/66`
-   eleventh pass), the Dmin/level chain end to end on real production
-   data both before and after the hardware fix (§2-4, §7), `fpo`'s own
-   provenance (§5) — comes back "correct, not the cause."
-3. **FUGC's near-identity dmin correction** — still not live-DLL-verified
-   per the eleventh pass's own note (`pakon_fugc_golden.py`'s
-   `setLutInfo` cases were confirmed host-vs-host, not against the real
-   DLL specifically). Cheaper than item 2 if whoever picks this up wants
-   a quick sanity check first.
-4. **Worth stating plainly after seven convergent findings**: it remains
+   eleventh pass), FUGC's own near-identity behaviour (§10), the
+   Dmin/level chain end to end on real production data both before and
+   after the hardware fix (§2-4, §7), `fpo`'s own provenance (§5) —
+   comes back "correct, not the cause."
+3. **Worth stating plainly after eight convergent findings**: it remains
    possible this is not a software or hardware-calibration defect at
    all — that these negatives' real exposure genuinely sits where
    SBA/Preference's fixed per-stock `fpo` (§5) doesn't fully compensate
@@ -863,7 +893,7 @@ scrutinizing. Updated priority order:
    top of this doc about a real vendor-app comparison now in progress),
    but it belongs on the list of live possibilities, not just "the four
    stages" or "the inversion formula."
-5. **Fix the measurement harness's Dmin methodology anyway — real bug,
+4. **Fix the measurement harness's Dmin methodology anyway — real bug,
    just not the cause.** `measure_python_autotone.py`'s `film_base=None`
    on a lone TIFF is still measuring "the frame's own highlights" and
    calling it film base, which is simply wrong regardless of its effect

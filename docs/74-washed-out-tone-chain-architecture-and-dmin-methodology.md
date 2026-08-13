@@ -1066,6 +1066,32 @@ That removes every caveat above and enables a real stage-by-stage
 comparison against the port's own intermediate arrays, the way §8 traced
 the port's own pipeline. Not yet done as of this writing.
 
+## 14 — DX code check: this doc's own renders have already been using
+the default stock the whole time, and it makes no difference anyway
+
+Raised directly: the fresh roll's auto-detected DX (`dx_part1=4,
+dx_part2=4`, shown as `"4-4"` in the app's own `/api/app/rolls`) is
+known wrong for this film. Worth checking whether that's been quietly
+affecting every render in this doc.
+
+**It hasn't, for two independent reasons.** First: every render §4
+onward in this doc constructed its own `Roll`/`AnselEngine` via
+`open_capture(..., film_path="ColNeg")`, which — per `Roll.engine()`'s
+own branch order (`if self.stock: … elif self.film_path: …`) — never
+threads a DX code through at all; it always took the generic-fallback
+path, the same one `scene_from_filmstock`'s own docstring calls
+`stock_defaulted`. None of this doc's numbers ever depended on "4-4"
+being right, because none of them used it. Second, checked directly by
+constructing the engine both ways on the same frame: `dx_part1=4,
+dx_part2=4` and the no-DX default both resolve to the *identical* file,
+`sba-CN-default.dpi`, with identical `fpo`, identical `setShifts`, and
+byte-identical rendered output — `"4-4"` isn't a code this project's
+maps table has a specific stock-DPI entry for, so it falls through to
+the same generic default regardless. Whether `"4-4"` is the right DX
+code for this film is a real question worth fixing in the app's own
+detection, but it has had zero effect on anything measured in this
+document.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is

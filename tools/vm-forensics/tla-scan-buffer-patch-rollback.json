@@ -1,0 +1,14 @@
+[
+ {
+  "offset": 4723999700,
+  "original": "4e003a000000",
+  "new": "43003a000000",
+  "desc": "TLA\\Scan HiResPath 'N:' -> 'C:'"
+ },
+ {
+  "offset": 4724000996,
+  "original": "00000000",
+  "new": "c0120000",
+  "desc": "TLA\\Scan HiResMegabytesTotal 0 -> 4800"
+ }
+]

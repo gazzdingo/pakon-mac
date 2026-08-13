@@ -645,6 +645,38 @@ own steep response curve in exactly this code region (pass 10's own
 table: RPD-12 800-2300 maps to essentially the *entire* sRGB 0-254 range;
 above ~2300 the curve is already flat).
 
+**Reconfirmed, not taken on one frame's word.** Re-ran the full trace
+independently: byte-identical numbers on a second run (no caching
+artifact). Then ran the narrower `poly% → inv16% → toned%` span check
+across 5 frames of this same fresh roll and, separately, 3 frames of the
+old pre-recalibration `gold400.bin` (2 different rolls, both
+calibration states):
+
+```
+fresh roll (post-recal)         poly%              inv16%             toned%
+  frame 0                 [59.2,42.6,36.9]   [21.9,23.2,25.2]   [19.0,20.5,21.7]
+  frame 1                 [63.2,46.8,41.5]   [19.2,22.6,26.0]   [16.5,18.5,21.2]
+  frame 2                 [62.3,43.6,38.3]   [22.0,23.2,24.6]   [18.9,19.9,20.6]
+  frame 3                 [59.7,43.9,39.4]   [18.5,21.4,24.6]   [13.0,15.1,17.2]
+  frame 4                 [58.6,42.9,39.1]   [17.9,20.1,23.7]   [13.9,15.8,19.1]
+
+gold400.bin (pre-recal)         poly%              inv16%             toned%
+  frame 0                 [39.2,18.1,11.6]   [24.6,19.4,19.2]   [16.8,12.6,13.3]
+  frame 1                 [44.7,24.1,15.5]   [30.0,24.4,23.2]   [19.9,14.5,12.7]
+  frame 2                 [49.1,24.7,15.8]   [30.0,23.3,21.3]   [21.4,14.4,12.1]
+```
+
+Same shape in all 8 frames across both rolls: poly stage always well
+above the inv16/toned stages (roughly double or more), the drop always
+lands at the inversion step, and toning never recovers it — only ever
+narrows it slightly further. The old roll's poly-stage numbers are
+themselves lower for G/B (consistent with §6's own finding that this
+roll's lamp duty was weak on those channels), but the *shape* of the
+collapse — real headroom pre-inversion, collapsed post-inversion, flat
+through toning — is identical regardless of which roll or which
+calibration state. This is a structural property of the pipeline as
+currently written, not a one-frame artifact or a one-roll artifact.
+
 **Is the inversion's own compression a bug, or is it how this format is
 supposed to work?** Genuinely open, and this doc does not resolve it —
 but it's now clear exactly what to check. `f135_rom12_to_rpd12`'s own
@@ -807,4 +839,11 @@ output, `pc.poly_hwc`'s direct return, `pr.scene_rpd12`'s direct return,
 direct output, `AnselEngine.render_scene`'s final output, and
 `AnselEngine.to_srgb`'s output) — no stage was skipped or approximated,
 and every function called is the same unmodified production code every
-other section of this doc has been exercising. No port file changed.
+other section of this doc has been exercising. Re-run independently
+after the fact specifically to check it wasn't a fluke: the full
+per-percentile trace reproduced byte-for-byte identical on a second run,
+and the narrower `poly%→inv16%→toned%` span check was then run across 5
+frames of the fresh roll and 3 frames of the old pre-recalibration
+`gold400.bin` — 8 frames, 2 rolls, both calibration states, same
+collapse-at-inversion shape every time. No port file changed by any of
+this.

@@ -707,6 +707,101 @@ is the one stage that structurally can't be checked that way (no
 reference implementation exists to check against) and has the largest
 single effect on the final code range of anything in the chain.
 
+## 9 — Pushed further into the inversion formula: the "1000" scale isn't
+the lever, and balance parks every frame's shadow within ~35 codes of
+`dra`'s own pivot, on every single frame of the fresh roll
+
+Two follow-up checks on §8's lead, both against the fresh
+post-recalibration roll, both self-correcting along the way.
+
+**Check 1 — is the inversion's own "1000" density scale a plausible
+culprit?** Recomputed `f135_rom12_to_rpd12`'s own formula
+(`out = fpo + scale·(log10(base−c9) − log10(poly−c9))`, clamped) with
+`scale` swept from 1000 (shipped) to 2500, same frame, same real
+`base`/`c9`/`fpo`:
+
+```
+scale    R [p1, p99, span]        G [p1, p99, span]        B [p1, p99, span]
+1000     [ 874, 1658,  785]       [1242, 2166,  924]       [1385, 2449, 1064]
+1300     [ 872, 1892, 1020]       [1240, 2440, 1201]       [1385, 2768, 1384]
+1600     [ 871, 2126, 1255]       [1237, 2715, 1478]       [1385, 3087, 1703]
+2000     [ 869, 2438, 1569]       [1234, 3082, 1848]       [1384, 2135, 1128]
+2500     [ 866, 2827, 1961]       [1230, 3539, 2310]       [1384, 4044, 2661]
+```
+
+Scaling this constant up does widen the span substantially — but almost
+entirely by pushing the **highlight** end up; `p1` (the shadow point)
+barely moves at all (R: 874→866 across the whole 2.5× sweep). This
+follows directly from the formula's own structure: at `poly ≈ base`
+(true Dmin, the darkest possible reading), the log-difference term is
+already ≈0 by construction, so scaling a near-zero term by any factor
+still leaves it ≈0 and `rpd12 ≈ fpo` regardless of `scale`. **This rules
+out the "1000" constant as an explanation for "no real blacks"
+specifically** — it's the wrong knob; it could only ever explain a
+too-narrow *highlight* range, not a too-high shadow floor. (It doesn't
+rule the constant out as *wrong* for other reasons — just not as this
+symptom's cause.)
+
+**Check 2 — does `dra`'s shadow band ever actually get real room to
+work, on this roll?** §1 found it a complete no-op on the `docs/66`
+reference frame. First pass at checking this on the fresh roll used the
+wrong number — raw `inv16`'s own `p1` (which *is* comfortably below
+`lowFixedPoint`=1550 on every frame) — before catching that balance runs
+before `cna`/`dra` ever see the data. Redone against what actually feeds
+the tone chain, `apply_balance_shifts`'s own output, across all 10 frames
+of the roll:
+
+```
+frame  R margin   G margin   B margin      (positive = below lowFixedPoint, dra CAN engage)
+  0      -53        -33        -33
+  1       -6         12         14
+  2      -32        -23        -15
+  3      -25        -10         -2
+  4      -29        -11         -1
+  5      -30        -16         -5
+  6      -12         -2          5
+  7      -32        -21        -11
+  8       -5         11         15
+  9      -26        -12         -9
+max      -5         12         15
+```
+
+**R never drops below `lowFixedPoint` on any of the 10 frames — dra's
+shadow band never engages for red on this entire roll.** G/B dip below
+it on a handful of frames, by at most 12-15 codes — a sliver, not a real
+working range. This isn't scene-dependent noise: `setShifts_out =
+(683, 297, 151)` and `fpo = (879, 1250, 1386)` are the same for every
+frame on this roll (balance is a fixed per-stock formula, §5), so this
+~35-code band around 1550 is structurally where every frame's shadow
+point lands, by calibration, not by chance. It matches the design intent
+`f135_rom12_to_rpd12`'s own docstring already states outright — `fpo +
+setShifts` is *supposed* to land near `nbp` (1550) — which means
+`dra`'s low-band mechanism having almost nothing to do is not an
+accident of these particular photos; it's what this calibration produces
+on any negative shot on this stock with this unit's current fpo/setShift
+values.
+
+**What this newly, sharply raises, not yet checked**: `fpo` is a
+*generic*, shipped-with-the-stock constant (§5, confirmed DPI-static,
+identical across every CN-default stock variant per the eleventh pass);
+`base` (Dmin) and `c9` (the polynomial pedestal) are *measured on this
+specific unit*. The formula's own construction guarantees `rpd12(Dmin) =
+fpo` regardless of a unit's own base/c9 values — so `fpo` can't be
+"wrong for this unit" in the sense of not matching Dmin, that's true by
+definition. But `fpo`'s own *value* (879/1250/1386) was presumably tuned
+by the vendor against a factory-fresh, factory-typical unit's own
+characteristics — and this repo already has independent, documented
+evidence this specific unit measurably drifts from its own factory
+calibration (`docs/68`'s own account: "this unit's LEDs read well below
+their 2022 registry values"). Whether that same kind of drift also
+shifts where a *typical* negative's own density lands relative to a
+generic `fpo` — i.e., whether this unit needs a unit-specific `fpo`
+adjustment the same way it needed a unit-specific lamp-duty
+recalibration — is a genuinely new question this pass raises and does
+not answer. It would need either the real DLL's own output (the pending
+comparison) or a documented factory calibration procedure for `fpo`
+itself, neither of which this pass has.
+
 ## What this changes about the open item list
 
 `docs/66`'s eleventh pass left two things open: FUGC's near-identity
@@ -727,18 +822,23 @@ narrow location — the negative→positive log inversion — rather than
 anywhere in the six subsystems everyone (including this doc) had been
 scrutinizing. Updated priority order:
 
-1. **§8's finding is now the sharpest lead of everything in this doc**:
-   `f135_rom12_to_rpd12` (`F135_INVERT_PORTED = False`) is the one stage
-   in the entire chain with no DLL call site to Unicorn-verify against —
-   every other stage that's been checked against the real DLL has come
-   back correct, and this is the one stage that structurally can't be
-   checked that way, at exactly the point in the pipeline where the
-   dynamic range collapses. Not proven wrong — the density-referenced
-   design may make this compression correct by convention — but it is
-   now the most concrete remaining thing to scrutinize, and unlike the
-   item below it doesn't require reverse-engineering unexplored DLL
-   territory, only auditing a formula this project already wrote and
-   documented.
+1. **Sharpened by §9: it's specifically `fpo`'s own numeric value, not
+   the inversion formula's "1000" scale, that's the concrete open
+   question.** §9 ruled the scale constant out directly (it can only
+   move the highlight end; the shadow point is pinned to `fpo` by the
+   formula's own construction) and showed, across all 10 frames of the
+   fresh roll, that balance parks every frame's shadow within ~35 codes
+   of `dra`'s pivot — R never once dips below it. Since `fpo` is generic
+   (shared across every shipped stock variant) while this unit is
+   already documented to drift from its own factory calibration
+   elsewhere (the lamp-duty fix), whether `fpo` also needs a
+   unit-specific adjustment — something no shipped DPI file would
+   contain and no amount of re-reading the DLL's own generic constants
+   would surface — is now the sharpest concrete open question. This
+   doesn't require reverse-engineering unexplored DLL territory (`fpo`'s
+   provenance is already settled, §5); it requires either the pending
+   real-DLL/real-app comparison, or a documented factory `fpo`
+   calibration procedure this project doesn't currently have.
 2. **The four unreplicated stages
    (`analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff`)
    remain a concrete lead, software or
@@ -847,3 +947,14 @@ frames of the fresh roll and 3 frames of the old pre-recalibration
 `gold400.bin` — 8 frames, 2 rolls, both calibration states, same
 collapse-at-inversion shape every time. No port file changed by any of
 this.
+
+§9's scale sweep re-derived `f135_rom12_to_rpd12`'s own formula directly
+from real `base`/`c9`/`fpo` values (not approximated) at five scale
+values; its "margin" table ran `sba_apply.apply_balance_shifts` (the
+already-Unicorn-verified, real-DLL-bit-exact function this whole
+investigation has relied on since `docs/66`'s eleventh pass) on all 10
+real frames of the fresh roll, not a sample. The first ("Check 2") pass
+at this used the wrong array (pre-balance `inv16`) and produced a
+misleading result; caught and corrected within the same investigation
+rather than left in — the corrected numbers are what's reported above.
+No port file changed.

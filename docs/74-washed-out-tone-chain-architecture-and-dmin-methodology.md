@@ -59,6 +59,18 @@ part of this doc's own evidence, noted here so a later reader knows to
 check whether that landed before treating this doc's own priority list
 as current.
 
+**Sixth update, 2026-08-13 — the decisive one**: §13 reports the real
+vendor-app comparison landed. The real vendor software, running on this
+exact physical unit, produces genuine deep blacks (sRGB p1 ≈ 9-33/255)
+on real film — an order of magnitude below this port's own 60-110/255,
+every roll, every frame, this doc has ever measured. **This settles the
+question §12's own "worth stating plainly" item raised**: it is not
+vendor-intended behaviour, not a hardware or calibration limit — it is a
+real, fixable defect somewhere in this port. Caveated (signature-carved
+from a VM disk image, apparently black & white film, 8-bit JPEG, small
+verified-coherent sample) but the caveats bound the *precision*, not the
+*direction*, of the finding — see §13 for the full honest accounting.
+
 Written 2026-08-12, a fresh read-only investigation into `docs/66`'s
 "washed out" defect, picking up exactly where the eleventh pass's own "What
 is still open" list left off (FUGC's dmin correction; the four unreplicated
@@ -968,70 +980,160 @@ mean working through a meaningful fraction of 732 functions, an
 undertaking on the same scale as the citras driver's multi-pass saga,
 not something to continue unprompted past this point.
 
+## 13 — Settled: the real vendor software produces genuine deep blacks on
+real film. The washed-out look is a port defect, not vendor-intended,
+not a hardware limit.
+
+**2026-08-13, from `finding/f235-and-vendor-shadows` on the private
+remote** (a separate Claude Code session working from the Parallels/
+Windows side, with the real F-135 physically connected — not this
+session, not simulated). This closes the one question every section
+above could not: what does the *real* vendor DLL, running the *real*
+vendor software, produce on real film from this exact unit.
+
+**Measured directly on frames recovered from the vendor software's own
+render**, 8-bit luminance:
+
+```
+frame     size         p0.1   p1    p50   p99
+img_48    2941×1960     6      9    135   229
+img_77    2941×1960    31     33    109   226
+23 coherent frames (median)   11    18     —    —
+```
+
+Compare to the port's own numbers throughout this doc: darkest 1% at
+sRGB **60-110/255**, every roll, every frame, before and after the
+hardware recalibration. The vendor's own render puts the same statistic
+at **9-33/255** — a full order of magnitude lower, genuine deep black,
+not "less washed out."
+
+**Conclusion, stated as plainly as the evidence allows: the washed-out
+look is a port artefact.** Not the scanner, not this unit's calibration,
+not the film stock, not (per §9's structural argument, now empirically
+confirmed rather than just architecturally suspected) something the
+vendor's own tone chain also fails to do. Whatever produces real blacks
+in the vendor's own pipeline, this port's own `analyzeAutoTone`
+assembly — bit-exact against the real DLL leaf-by-leaf, per eleven
+`docs/66` passes and this doc's own five further checks — is not
+reproducing it end to end.
+
+**How the frames were obtained, honestly caveated** (from the source
+doc, not softened here): PSI has no configured off-machine export path,
+so frames were recovered by raw signature-carving the VM's virtual disk
+image, read-only, while the VM ran. Carving cannot follow NTFS
+fragmentation, so a majority of the 83 candidates are scrambled
+fragments, not real images — one, `img_81`, decoded cleanly and measured
+`p1 = 0.6` (apparently perfect blacks) but is confirmed scrambled noise
+containing a black rectangle; three others measured artificially dark
+in a way that would have supported the *wrong* conclusion and are also
+mis-carves. Real frames were separated from corrupted ones by a
+row/column discontinuity ratio (natural images ≈1.0; fragment-spliced
+ones run 3.6-14.1) — only `img_48` (1.18) and `img_77` (1.25) pass, and
+`img_48` was additionally confirmed by eye as a complete, coherent
+photograph. Two further real caveats: the recovered frames appear to be
+**black & white**, not the colour negative this port's own defect is
+tracked against — a like-for-like test of the tone/shadow mechanism, not
+yet a full colour-pipeline comparison — and they're 8-bit JPEG, adequate
+for "are there real blacks" but not for a stage-by-stage numeric
+comparison, which needs 16-bit TIFF.
+
+**Separately, and worth recording since it explains real trouble along
+the way**: getting to this measurement surfaced a genuine, unrelated
+finding — the scanner had **F-235 firmware loaded in the FX2's volatile
+RAM** (PID `0x35F2`, a loaded-firmware identity, not the `0xF235`
+bootloader personality this thread discussed earlier in this
+conversation, which remains correctly diagnosed and unaffected). This
+came from firmware-load activity during earlier hardware/EEPROM work
+this month, persisted because FX2 firmware survives until *mains* power
+is removed (a USB replug is not enough), and explains both the vendor
+software's own initialization failures and why the wrong `TLA\Scan`
+registry path (`ScannerType 7`, F-235's) was bound instead of
+`TLB\Scan` (this unit's real `ScannerType 1351`, serial 16275). Fixed by
+a mains power-cycle followed by `tools/pakon_load.py`, this project's
+own loader, which correctly re-loads F-135 firmware — full derivation in
+`docs/53-f235-firmware-state-and-buffer-fix.md` on the same branch. This
+never affected any of this project's own Python/Go renders (`gold400.bin`,
+every `scan-20260812-*.bin`, everything §1-12 above tested): `pakon_scan.py`'s
+own connection gate has always hard-required PID `0xF135` to open at
+all, so nothing this doc measured was ever captured through
+mis-loaded firmware.
+
+**What would make this fully definitive**: a clean export — colour
+negative film, PSI's own default automatic settings, no manual exposure/
+contrast correction, saved as 16-bit TIFF via USB mass storage (already
+passes through to this VM) rather than recovered from the disk image.
+That removes every caveat above and enables a real stage-by-stage
+comparison against the port's own intermediate arrays, the way §8 traced
+the port's own pipeline. Not yet done as of this writing.
+
 ## What this changes about the open item list
+
+**§13 changes the question this list is answering.** It used to be "is
+this even a bug." It no longer is: the real vendor software, on this
+exact unit, produces genuine deep blacks (§13 — sRGB p1 9-33/255 vs.
+this port's own 60-110/255, an order of magnitude apart). Item 3 below
+(prior wording: "may be vendor-correct for this exposure") is **refuted,
+not just deprioritised** — kept here struck through, not deleted, so the
+record shows it was a real hypothesis that got a real answer, not
+quietly dropped. Everything else on this list keeps its prior status;
+what changes is confidence that finishing it will find a real,
+fixable bug rather than a dead end.
 
 `docs/66`'s eleventh pass left two things open: FUGC's near-identity
 dmin correction, and the four unreplicated
 `analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff` stages.
-Both are **still open** — nothing in this doc closes either one. What
-this doc's sections *do* close, cumulatively: the tone chain's own
-architecture is now fully characterized and is not the cause (§1); the
-Dmin/level hypothesis is checked on real production data and is not the
-cause (§2-4); the most architecturally attractive remaining software
-hypothesis this doc itself raised — a missing per-scene `fpo` — is
-checked against fresh DLL disassembly and is not the cause either (§5);
-the hardware-recalibration hypothesis §6 raised has now actually been
-tested against a real post-fix roll (§7) and is **also** not the cause —
-if anything the blue-clipping symptom is worse on fresh data; and §8's
-full stage-by-stage trace pins the compression down to one specific,
-narrow location — the negative→positive log inversion — rather than
-anywhere in the six subsystems everyone (including this doc) had been
-scrutinizing. Updated priority order:
+FUGC is now closed (§10). The four stages are **still open** — this doc
+made real progress (§11-12) without closing them. What this doc's
+sections close, cumulatively: the tone chain's own architecture is fully
+characterized and is not the cause (§1); the Dmin/level hypothesis is
+checked on real production data, before and after the hardware fix, and
+is not the cause (§2-4, §7); the most architecturally attractive
+software hypothesis this doc itself raised — a missing per-scene
+`fpo` — is checked against fresh DLL disassembly and is not the cause
+(§5); FUGC's near-identity behaviour is confirmed correct against the
+real DLL (§10); §8-9's full stage trace pins the compression to the
+negative→positive log inversion specifically and rules out its own
+"1000" scale constant as the mechanism; and §13 now confirms, with real
+(if caveated) vendor-software evidence, that this is a genuine port
+defect, not vendor-intended behaviour. Updated priority order:
 
-1. **Sharpened by §9: it's specifically `fpo`'s own numeric value, not
-   the inversion formula's "1000" scale, that's the concrete open
-   question.** §9 ruled the scale constant out directly (it can only
-   move the highlight end; the shadow point is pinned to `fpo` by the
-   formula's own construction) and showed, across all 10 frames of the
-   fresh roll, that balance parks every frame's shadow within ~35 codes
-   of `dra`'s pivot — R never once dips below it. Since `fpo` is generic
-   (shared across every shipped stock variant) while this unit is
-   already documented to drift from its own factory calibration
-   elsewhere (the lamp-duty fix), whether `fpo` also needs a
-   unit-specific adjustment — something no shipped DPI file would
-   contain and no amount of re-reading the DLL's own generic constants
-   would surface — is now the sharpest concrete open question. This
-   doesn't require reverse-engineering unexplored DLL territory (`fpo`'s
-   provenance is already settled, §5); it requires either the pending
-   real-DLL/real-app comparison, or a documented factory `fpo`
-   calibration procedure this project doesn't currently have.
-2. **The four unreplicated stages
+1. **The four unreplicated stages
    (`analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff`)
-   are the sole remaining concrete software lead** — FUGC (§10) is
-   closed. §11 made real progress here (the real analyze-time call
-   order, the shared-`holder` fact, and `balanceAreaImage`'s own
-   `find("area")` channel ruled out specifically) without closing the
-   item — `analyzeArea` itself (732 functions), `analyzeAttributes`,
-   `analyzeFalloff`, `balanceAreaImage`'s own miss-path body, and three
-   still-unidentified call targets in the driver remain unread. Every
-   *other* candidate this doc and the eleven `docs/66` passes together
-   have checked — the tone chain's math and design (§1),
-   `apply_balance_shifts`'s mechanism and real shipped values (`docs/66`
-   eleventh pass), FUGC's own near-identity behaviour (§10), the
-   Dmin/level chain end to end on real production data both before and
-   after the hardware fix (§2-4, §7), `fpo`'s own provenance (§5) —
-   comes back "correct, not the cause."
-3. **Worth stating plainly after eight convergent findings**: it remains
+   are the sole remaining concrete software lead**, and §13 raises the
+   stakes on finishing this from "worth checking" to "very likely where
+   the real bug lives," since every other software mechanism has now
+   been checked against the real DLL and confirmed correct. §11 made
+   real progress (the real analyze-time call order, the shared-`holder`
+   fact connecting these stages to `cna`/`dra`'s own inputs,
+   `balanceAreaImage`'s own `find("area")` channel ruled out
+   specifically) and §12 read `analyzeArea`'s entry function directly
+   (idempotency-guarded, geometrically-shaped, not obviously tonal) —
+   without closing the item. `analyzeArea`'s own 732-function body,
+   `analyzeAttributes`, `analyzeFalloff`, `balanceAreaImage`'s own
+   miss-path, and three still-unidentified call targets remain unread.
+2. **`fpo`'s own numeric value** (§9): whether this generic,
+   shipped-with-the-stock constant needs a unit-specific correction the
+   way this unit's lamp duty did — not resolvable by more DLL reading
+   (`fpo`'s provenance is already settled, §5); needs either a
+   definitive vendor-output comparison (partially available now via
+   §13, though on B&W film — a colour-negative vendor comparison would
+   settle this specifically) or a documented factory `fpo` calibration
+   procedure this project doesn't have.
+3. ~~Worth stating plainly after eight convergent findings: it remains
    possible this is not a software or hardware-calibration defect at
-   all — that these negatives' real exposure genuinely sits where
-   SBA/Preference's fixed per-stock `fpo` (§5) doesn't fully compensate
-   for, and the vendor's own real output would look similar on the same
-   source material. Not tested (would need the real DLL's own
-   end-to-end output on one of these exact frames — see the note at the
-   top of this doc about a real vendor-app comparison now in progress),
-   but it belongs on the list of live possibilities, not just "the four
-   stages" or "the inversion formula."
-4. **Fix the measurement harness's Dmin methodology anyway — real bug,
+   all... the vendor's own real output would look similar on the same
+   source material.~~ **Refuted by §13.** The vendor's own real output
+   on this exact unit does not look similar — it has real blacks. Kept
+   here, struck through, as the record of a real hypothesis that was
+   tested and closed, not silently dropped.
+4. **Get the definitive vendor comparison** — §13's own "what would make
+   this fully definitive": colour negative film (not B&W), PSI's
+   default automatic settings, exported as 16-bit TIFF via USB mass
+   storage rather than carved from the disk image. Removes every
+   caveat in §13 at once and enables a real stage-by-stage comparison
+   against this port's own intermediate arrays (§8's own method is a
+   ready-made template for that comparison once the file exists).
+5. **Fix the measurement harness's Dmin methodology anyway — real bug,
    just not the cause.** `measure_python_autotone.py`'s `film_base=None`
    on a lone TIFF is still measuring "the frame's own highlights" and
    calling it film base, which is simply wrong regardless of its effect
@@ -1155,3 +1257,15 @@ address distinguishing "geometric helper" from "unidentified" above was
 checked against `pakon_analyse_roll.py`'s own catalogued constants, not
 assumed from context. No port file changed; no Unicorn execution
 attempted.
+
+§13's own evidence and methodology live entirely in
+`docs/53-f235-firmware-state-and-buffer-fix.md` and
+`docs/54-vendor-render-shadow-measurement.md` on the private remote's
+`finding/f235-and-vendor-shadows` branch (`git fetch private`, not
+merged into this branch — cite those docs directly for anything beyond
+the summary above, including the full carving methodology, the
+row/column discontinuity check, and the registry/firmware forensics).
+This section only summarizes and cross-references; it does not
+re-derive or re-verify that work independently. No port file changed by
+this session as a result of §13 — it's a finding to act on, not yet
+acted on.

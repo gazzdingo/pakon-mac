@@ -836,6 +836,85 @@ personally re-checked, but the underlying coverage already existed and
 this pass has now independently re-run it and confirmed it still holds.
 Removed from the priority list below as a live lead.
 
+## 11 — The four unreplicated stages, picked up directly: the real
+analyze-time call order and a first concrete (and ruled-out) cross-
+capability mechanism
+
+`docs/66`'s second/eighth/tenth passes established `analyzeArea`/
+`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff` all run between FUGC
+and `autoTone` at **export** time, but explicitly left "whether any
+mutate the pixel buffer `cna`/`dra` subsequently read… unclear yet" and
+"not advanced by a live trace" every time it came up. Picked this up
+directly, at the **analyze**-time driver instead (the one that actually
+runs during rendering, not the export-pack-construction one pass 10
+already read) — `AnsCnEnhancedPath`'s own per-scene analyze routine,
+`0x10069490`-`0x10069d80` (already cited, but not fully disassembled, by
+`docs/reports/autotone-scope-2026-08-10/falloff.md`).
+
+**The real call order, read directly from a full disassembly of this
+routine** (self-naming/address-matched against every constant already
+catalogued in `pakon_analyse_roll.py`, not guessed):
+
+```
+… → analyzeFugc (0x100fed00)
+  → balanceAreaImage (0x10102b20)
+  → analyzeArea (0x100e16d0)
+  → analyzeAttributes (0x100fb3d0)
+  → [0x10112f30 — not yet identified]
+  → analyzeFalloff (0x100fe960)
+  → [0x100fb080 — not yet identified]
+  → analyzeAutoTone (0x100fb730)          ← cna/dra/… all acquire here
+  → analyzeSharpening (0x10106780)
+  → [0x101081e0 — likely defects]
+  → [0x100e04a0 — not yet identified]
+```
+
+Confirms the order the tenth pass already established from export-time
+evidence, now from the side that actually matters (render-time
+execution), and adds real precision: `balanceAreaImage`,
+`analyzeArea`, `analyzeFalloff`, and `analyzeAutoTone` are **all four
+called with the identical argument** — `&[ebp+0xc]` at every one of
+these call sites. Cross-checked against `pakon_autotone.py`'s own
+already-Unicorn-verified docstring for `analyzeAutoTone` itself: *"holder
+is `[ebp+0xc]`, a by-value refcounted pointer"* — the exact same object
+every one of the six tone subsystems' `acquire`/`analyze` calls receive.
+This is a real, concrete, previously-undocumented fact: whatever these
+"unreplicated" stages do to the shared `holder`, `analyzeAutoTone`'s own
+subsystems receive that *same* object afterward — a genuine channel for
+cross-stage influence that no prior pass had located (they knew these
+stages ran nearby in program order; not that they share memory with the
+already-verified subsystems).
+
+**First concrete candidate through that channel, checked and ruled
+out.** `balanceAreaImage` — by name, the most immediately relevant of
+these to a "balance"/washed-out investigation — opens by calling
+`AnsSceneContext::find` (`0x10020a40`, the exact `CAP_FIND_BY_NAME`
+mechanism `dra`'s already-verified "lighting" lookup uses) for the
+literal string `"area"`. Read the branch that follows the result flag
+(`bl`, set by `setne` off the miss-sentinel comparison) in full: **a
+*hit* (area's results already present) leads straight to an exception
+throw** (`ColorNegativePath::balanceAreaImage`, `cnMethods.cpp` — a
+genuine error path, not a "use area's data" branch); **a *miss* falls
+through to the function's normal body.** Since `analyzeArea` runs *after*
+`balanceAreaImage` in this same driver (per the call order above) and
+nothing else populates `"area"` before this point for a fresh render,
+this lookup is a miss on every real F-135 negative — the same
+"defined, non-fatal miss" pattern `dra`'s own `find("lighting")` already
+established, not a live data-consumption path. **This specific
+mechanism does not carry `analyzeArea`'s output into balance.**
+
+**What's still genuinely open, sized honestly**: `balanceAreaImage`'s own
+*miss*-path body (what it does on every normal render, not yet read past
+the branch above), `analyzeArea` itself (732 functions, the single
+largest capability found in this whole project per `docs/65`),
+`analyzeAttributes`/`analyzeFalloff`'s own bodies, and the three
+addresses above not yet identified at all. Establishing the call order
+and the shared-`holder` fact was tractable in the time available; fully
+resolving whether any of these bodies write a `holder` field one of the
+six tone subsystems reads is the same order of effort as the citras
+driver's own multi-pass saga in `docs/66` — not something to finish in
+one more sitting.
+
 ## What this changes about the open item list
 
 `docs/66`'s eleventh pass left two things open: FUGC's near-identity
@@ -875,9 +954,15 @@ scrutinizing. Updated priority order:
    calibration procedure this project doesn't currently have.
 2. **The four unreplicated stages
    (`analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff`)
-   are now the sole remaining concrete software lead** — FUGC (§10) is
-   closed. Every other candidate this doc and the eleven `docs/66`
-   passes together have checked — the tone chain's math and design (§1),
+   are the sole remaining concrete software lead** — FUGC (§10) is
+   closed. §11 made real progress here (the real analyze-time call
+   order, the shared-`holder` fact, and `balanceAreaImage`'s own
+   `find("area")` channel ruled out specifically) without closing the
+   item — `analyzeArea` itself (732 functions), `analyzeAttributes`,
+   `analyzeFalloff`, `balanceAreaImage`'s own miss-path body, and three
+   still-unidentified call targets in the driver remain unread. Every
+   *other* candidate this doc and the eleven `docs/66` passes together
+   have checked — the tone chain's math and design (§1),
    `apply_balance_shifts`'s mechanism and real shipped values (`docs/66`
    eleventh pass), FUGC's own near-identity behaviour (§10), the
    Dmin/level chain end to end on real production data both before and
@@ -988,3 +1073,20 @@ at this used the wrong array (pre-balance `inv16`) and produced a
 misleading result; caught and corrected within the same investigation
 rather than left in — the corrected numbers are what's reported above.
 No port file changed.
+
+§10 was verified by directly running `pakon_fugc_golden.py` against the
+freshly re-extracted, MD5-checked DLL (§5's own copy) — not by re-citing
+the file's own docstring claims. §11's call-order table and the
+`balanceAreaImage` branch analysis were both read from a full `r2`
+disassembly of `0x10069490`-`0x10069d80` and `0x10102b20` onward — every
+call target address was cross-checked against `pakon_analyse_roll.py`'s
+own already-catalogued constants (`PATH_ANALYZE_FUGC`,
+`PATH_BALANCE_AREA_IMAGE`, `PATH_ANALYZE_AREA`,
+`PATH_ANALYZE_ATTRIBUTES`, `PATH_ANALYZE_FALLOFF`,
+`PATH_ANALYZE_SHARPENING`) rather than assumed from proximity, and the
+shared-`holder` argument was confirmed by literal byte match against
+`[ebp+0xc]`, cross-referenced against `pakon_autotone.py`'s own
+independently-already-verified identification of that exact offset. No
+Unicorn execution was attempted for §11 (static disassembly only,
+explicitly scoped that way — see §11's own closing paragraph on cost);
+no port file changed.

@@ -915,6 +915,59 @@ six tone subsystems reads is the same order of effort as the citras
 driver's own multi-pass saga in `docs/66` — not something to finish in
 one more sitting.
 
+## 12 — A third independent post-recalibration roll still washes out;
+`analyzeArea`'s own entry function read directly
+
+**Wash check, 2026-08-13.** The app's own `/api/app/rolls` endpoint
+still shows only `scan-20260812-091633` (§7's roll) as opened, but its
+own cache directory (`~/Library/Caches/PakonScan/captures/`, checked
+directly, read-only) has a capture the app hasn't opened yet:
+`scan-20260812-094912.bin`, captured 09:50 the same day — a third,
+independent, post-recalibration roll nobody has looked at through this
+lens before. Rendered three of its frames through the same unmodified
+production path as §7/§8:
+
+```
+                    sRGB [p1, p50, p99]                  % pixels B ≥ 239
+frame 0    R[88,189,254]  G[84,200,253]  B[84,221,254]         26.7%
+frame 1    R[72,142,250]  G[80,198,251]  B[79,212,254]         41.0%
+frame 2    R[45,147,254]  G[87,202,253]  B[83,235,254]         46.7%
+```
+
+Same defect, same magnitude, third roll in a row. §7's finding holds.
+
+**`analyzeArea`'s own entry function** (`0x100e16d0`, the exact address
+called from the analyze-time driver in §11), read in full via a proper
+function-bounded disassembly (499 lines): it opens with the identical
+`find("area")` self-guard `balanceAreaImage` uses (checking whether area
+has already been analyzed for this scene — an idempotency guard, not a
+data-consumption path), then its own visible top-level calls are
+dominated by a cluster of small helper functions (`0x100dc060`-
+`0x100dc650`, unread individually) and two calls to `0x10199680` — the
+address `pakon_analyse_roll.py` already cites as the
+`"minArea4BaseWidth/Height"` strings, i.e. **geometric/dimensional setup,
+not tonal computation** — plus repeated calls to the same validation/
+error-throw helper (`0x1001f770`) seen throughout this project's own
+disassembly work. No histogram, density, or brightness-shaped call is
+visible at this level. The function ends with local-object cleanup and a
+plain `ret`, no visible "register my result under this name" call back
+into the shared `holder` the way `find()` implies a counterpart `add()`
+must exist somewhere.
+
+**Honestly scoped**: this is the *entry* function only — one address out
+of `area`'s own 732. Its real defect-detection math (if any of it
+touches tone) is necessarily buried in the un-traced sub-calls, chiefly
+two still-unidentified addresses (`0x101186c0`, `0x101a3500`) and the
+`0x100dcXXX` helper cluster. What this pass *does* establish: nothing
+at the entry level resembles the kind of computation that would feed a
+global brightness/level correction — the visible shape matches "area" 's
+own name and role (spatial dust/scratch/blemish masking) more than a
+tonal one. That's suggestive, not conclusive, and doesn't close the item
+— consistent with §11's own honest sizing, fully resolving this would
+mean working through a meaningful fraction of 732 functions, an
+undertaking on the same scale as the citras driver's multi-pass saga,
+not something to continue unprompted past this point.
+
 ## What this changes about the open item list
 
 `docs/66`'s eleventh pass left two things open: FUGC's near-identity
@@ -1090,3 +1143,15 @@ independently-already-verified identification of that exact offset. No
 Unicorn execution was attempted for §11 (static disassembly only,
 explicitly scoped that way — see §11's own closing paragraph on cost);
 no port file changed.
+
+§12's roll check queried the running app's own `/api/app/rolls` endpoint
+and its cache directory's own file listing (both read-only) rather than
+assume no new data existed, then rendered the newly-found capture
+through the same unmodified production path every other section of this
+doc uses. Its `analyzeArea` read used `af`+`pdf` (explicit function
+boundary, not a raw byte-range guess) to get the complete, correctly
+bounded 499-line disassembly of `0x100e16d0`, and every call target
+address distinguishing "geometric helper" from "unidentified" above was
+checked against `pakon_analyse_roll.py`'s own catalogued constants, not
+assumed from context. No port file changed; no Unicorn execution
+attempted.

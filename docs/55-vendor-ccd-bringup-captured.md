@@ -1,5 +1,10 @@
 # 55 — The vendor's real CCD bring-up, captured from a live scan
 
+> **INCOMPLETE — see `docs/59`.** The "46 distinct writes" below came from a
+> regex that matched only 3-byte-payload packets, so every lamp, LED and
+> threshold write was dropped. The real count is 126. The CCD table here is
+> correct as far as it goes; the light board is in `docs/59`.
+
 **Date: 2026-08-13.** Ground truth, not inference. Captured with API Monitor
 hooking `DeviceIoControl` inside `PSI.exe` while it initialised the scanner.
 This **supersedes the ordering** in `docs/42`, which was reconstructed

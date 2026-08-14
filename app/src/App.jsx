@@ -66,6 +66,20 @@ export default function App() {
   // poll that re-delivers a finished job cannot decode it twice.
   const opened = useRef(new Set());
 
+  useEffect(() => {
+    if (!window.pakon) return;
+    const clean1 = window.pakon.onMenuNewScan && window.pakon.onMenuNewScan(() => {
+      setScanModalOpen(true);
+    });
+    const clean2 = window.pakon.onMenuImportBin && window.pakon.onMenuImportBin(() => {
+      setOpenDlgOpen(true);
+    });
+    return () => {
+      if (clean1) clean1();
+      if (clean2) clean2();
+    };
+  }, []);
+
   const selectTab = useCallback(
     (id) => {
       setActiveTab(id);

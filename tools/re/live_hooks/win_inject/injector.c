@@ -20,32 +20,66 @@
  * target. docs/68-handover.md confirms this project's target is
  * genuinely "32-bit Windows XP-only" (line 10).
  *
+ * BUILD NOTE: compiled with `-nostartfiles`, linked with `-Wl,-e,_MyMain`
+ * -- no CRT startup, no `argc`/`argv` provided by a CRT wrapper. The
+ * process's raw command line is parsed by hand (mincrt.h's mc_get_argn,
+ * built on GetCommandLineA) and every exit path calls ExitProcess()
+ * itself, since there is no CRT `main`-return-to-exit-code translation
+ * without it. See mincrt.h's header comment for why this toolchain needs
+ * this to produce a binary that will actually start on Windows XP.
+ *
  * USAGE
  * -----
  *     injector.exe <PSI.exe | pid> <full path to hookdll.dll>
  *
  * Exits 0 on a confirmed-successful LoadLibraryA in the target (remote
  * thread's exit code, i.e. the returned HMODULE, is nonzero), nonzero
- * otherwise, with a plain-English reason printed to stdout.
+ * otherwise, with a plain-English reason printed to the console.
  */
 
 #include <windows.h>
 #include <tlhelp32.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "mincrt.h"
+
+static void Say(const char *s) { mc_console_write(s); }
+
+static void SayLine(const char *s) {
+    mc_console_write(s);
+    mc_console_write("\r\n");
+}
+
+static void SayU32Line(const char *prefix, unsigned long v, const char *suffix) {
+    char buf[16];
+    StrBuf sb;
+    Say(prefix);
+    sb_init(&sb, buf, sizeof(buf));
+    sb_put_u32_dec(&sb, v);
+    Say(buf);
+    SayLine(suffix ? suffix : "");
+}
+
+static void SayHex32Line(const char *prefix, unsigned long v, const char *suffix) {
+    char buf[10];
+    StrBuf sb;
+    Say(prefix);
+    sb_init(&sb, buf, sizeof(buf));
+    sb_put_hex8(&sb, v);
+    Say(buf);
+    SayLine(suffix ? suffix : "");
+}
 
 static DWORD FindProcessIdByName(const char *name) {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snap == INVALID_HANDLE_VALUE) return 0;
-
     PROCESSENTRY32 pe;
-    pe.dwSize = sizeof(pe);
     DWORD found = 0;
     int matches = 0;
 
+    if (snap == INVALID_HANDLE_VALUE) return 0;
+
+    pe.dwSize = sizeof(pe);
     if (Process32First(snap, &pe)) {
         do {
-            if (lstrcmpiA(pe.szExeFile, name) == 0) {
+            if (mc_streq_ci(pe.szExeFile, name)) {
                 matches++;
                 found = pe.th32ProcessID;
             }
@@ -54,120 +88,123 @@ static DWORD FindProcessIdByName(const char *name) {
     CloseHandle(snap);
 
     if (matches > 1) {
-        printf("Multiple processes named '%s' are running -- pass a "
-               "numeric PID instead to disambiguate.\n", name);
+        SayLine("Multiple processes with that name are running -- pass a numeric PID instead to disambiguate.");
         return 0;
     }
     return found;
 }
 
-int main(int argc, char **argv) {
-    if (argc != 3) {
-        printf(
-            "Usage: injector.exe <PSI.exe | pid> <full path to hookdll.dll>\n"
-            "\n"
-            "  Injects hookdll.dll into an already-running target process\n"
-            "  via classic OpenProcess/VirtualAllocEx/WriteProcessMemory/\n"
-            "  CreateRemoteThread(LoadLibraryA). Run this AFTER PSI is\n"
-            "  already running (see ../README.md for the full sequence).\n"
-        );
-        return 2;
+/* Custom entry point (see build.sh: -Wl,-e,_MyMain). Every path out of
+ * this function calls ExitProcess itself -- there is no CRT to return
+ * to. */
+void MyMain(void) {
+    char arg1[MAX_PATH], arg2[MAX_PATH];
+    DWORD pid = 0;
+    char fullDllPath[MAX_PATH];
+    DWORD fullLen;
+    DWORD attrs;
+    HANDLE hProcess;
+    SIZE_T pathBytes;
+    LPVOID remoteMem;
+    SIZE_T written;
+    BOOL wroteOk;
+    HMODULE hKernel32;
+    FARPROC pLoadLibraryA;
+    HANDLE hThread;
+    DWORD exitCode;
+
+    if (!mc_get_argn(1, arg1, sizeof(arg1)) || !mc_get_argn(2, arg2, sizeof(arg2))) {
+        SayLine("Usage: injector.exe <PSI.exe | pid> <full path to hookdll.dll>");
+        SayLine("");
+        SayLine("  Injects hookdll.dll into an already-running target process via");
+        SayLine("  classic OpenProcess/VirtualAllocEx/WriteProcessMemory/");
+        SayLine("  CreateRemoteThread(LoadLibraryA). Run this AFTER PSI is already");
+        SayLine("  running (see ../README.md for the full sequence).");
+        ExitProcess(2);
     }
 
-    const char *targetArg = argv[1];
-    const char *dllPath = argv[2];
-
-    DWORD pid = 0;
-    {
-        char *end;
-        DWORD asNumber = strtoul(targetArg, &end, 10);
-        if (*end == '\0' && asNumber != 0) {
-            pid = asNumber;
-        } else {
-            pid = FindProcessIdByName(targetArg);
-        }
+    if (mc_is_all_digits(arg1)) {
+        pid = mc_atoul(arg1);
+    } else {
+        pid = FindProcessIdByName(arg1);
     }
     if (pid == 0) {
-        printf("Could not find a running process matching '%s'. Make sure "
-               "PSI is already running (Task Manager, or `tasklist` from a "
-               "cmd prompt, should show it) before running this.\n", targetArg);
-        return 1;
+        Say("Could not find a running process matching '");
+        Say(arg1);
+        SayLine("'. Make sure PSI is already running (Task Manager, or `tasklist`");
+        SayLine("from a cmd prompt, should show it) before running this.");
+        ExitProcess(1);
     }
-    printf("Target PID: %lu\n", pid);
+    SayU32Line("Target PID: ", pid, "");
 
-    /* Resolve dllPath to an absolute path -- CreateRemoteThread's
-     * LoadLibraryA call runs with the TARGET process's current directory,
-     * not ours, so a relative path here would very likely fail to
-     * resolve inside the target. */
-    char fullDllPath[MAX_PATH];
-    DWORD fullLen = GetFullPathNameA(dllPath, MAX_PATH, fullDllPath, NULL);
+    /* Resolve to an absolute path -- CreateRemoteThread's LoadLibraryA
+     * call runs with the TARGET process's current directory, not ours,
+     * so a relative path here would very likely fail to resolve inside
+     * the target. */
+    fullLen = GetFullPathNameA(arg2, MAX_PATH, fullDllPath, NULL);
     if (fullLen == 0 || fullLen >= MAX_PATH) {
-        printf("Could not resolve full path for '%s'.\n", dllPath);
-        return 1;
+        Say("Could not resolve full path for '"); Say(arg2); SayLine("'.");
+        ExitProcess(1);
     }
-    DWORD attrs = GetFileAttributesA(fullDllPath);
+    attrs = GetFileAttributesA(fullDllPath);
     if (attrs == INVALID_FILE_ATTRIBUTES) {
-        printf("'%s' does not exist or is not accessible.\n", fullDllPath);
-        return 1;
+        Say("'"); Say(fullDllPath); SayLine("' does not exist or is not accessible.");
+        ExitProcess(1);
     }
-    printf("DLL path (resolved): %s\n", fullDllPath);
+    Say("DLL path (resolved): "); SayLine(fullDllPath);
 
-    HANDLE hProcess = OpenProcess(
+    hProcess = OpenProcess(
         PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION |
         PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
         FALSE, pid);
     if (hProcess == NULL) {
-        printf("OpenProcess failed (error %lu). Common cause: not running "
-               "as the same user / not enough privilege, or the process "
-               "is protected. Try running injector.exe as Administrator.\n",
-               GetLastError());
-        return 1;
+        SayU32Line("OpenProcess failed (error ", GetLastError(),
+                    "). Common cause: not running as the same user / not enough");
+        SayLine("privilege, or the process is protected. Try running injector.exe as Administrator.");
+        ExitProcess(1);
     }
 
-    size_t pathBytes = lstrlenA(fullDllPath) + 1;
-    LPVOID remoteMem = VirtualAllocEx(hProcess, NULL, pathBytes,
-                                       MEM_COMMIT | MEM_RESERVE,
-                                       PAGE_READWRITE);
+    pathBytes = mc_strlen(fullDllPath) + 1;
+    remoteMem = VirtualAllocEx(hProcess, NULL, pathBytes,
+                                MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (remoteMem == NULL) {
-        printf("VirtualAllocEx failed (error %lu).\n", GetLastError());
+        SayU32Line("VirtualAllocEx failed (error ", GetLastError(), ").");
         CloseHandle(hProcess);
-        return 1;
+        ExitProcess(1);
     }
 
-    SIZE_T written = 0;
-    BOOL wroteOk = WriteProcessMemory(hProcess, remoteMem, fullDllPath,
-                                       pathBytes, &written);
+    written = 0;
+    wroteOk = WriteProcessMemory(hProcess, remoteMem, fullDllPath, pathBytes, &written);
     if (!wroteOk || written != pathBytes) {
-        printf("WriteProcessMemory failed (error %lu).\n", GetLastError());
+        SayU32Line("WriteProcessMemory failed (error ", GetLastError(), ").");
         VirtualFreeEx(hProcess, remoteMem, 0, MEM_RELEASE);
         CloseHandle(hProcess);
-        return 1;
+        ExitProcess(1);
     }
 
-    HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
-    FARPROC pLoadLibraryA = GetProcAddress(hKernel32, "LoadLibraryA");
+    hKernel32 = GetModuleHandleA("kernel32.dll");
+    pLoadLibraryA = GetProcAddress(hKernel32, "LoadLibraryA");
     if (pLoadLibraryA == NULL) {
-        printf("Could not resolve kernel32!LoadLibraryA locally (this "
-               "should never fail).\n");
+        SayLine("Could not resolve kernel32!LoadLibraryA locally (this should never fail).");
         VirtualFreeEx(hProcess, remoteMem, 0, MEM_RELEASE);
         CloseHandle(hProcess);
-        return 1;
+        ExitProcess(1);
     }
 
-    HANDLE hThread = CreateRemoteThread(
+    hThread = CreateRemoteThread(
         hProcess, NULL, 0,
         (LPTHREAD_START_ROUTINE)(void *)pLoadLibraryA, remoteMem, 0, NULL);
     if (hThread == NULL) {
-        printf("CreateRemoteThread failed (error %lu).\n", GetLastError());
+        SayU32Line("CreateRemoteThread failed (error ", GetLastError(), ").");
         VirtualFreeEx(hProcess, remoteMem, 0, MEM_RELEASE);
         CloseHandle(hProcess);
-        return 1;
+        ExitProcess(1);
     }
 
-    printf("Remote thread created, waiting for LoadLibraryA to return...\n");
+    SayLine("Remote thread created, waiting for LoadLibraryA to return...");
     WaitForSingleObject(hThread, INFINITE);
 
-    DWORD exitCode = 0;
+    exitCode = 0;
     GetExitCodeThread(hThread, &exitCode);
 
     CloseHandle(hThread);
@@ -175,22 +212,18 @@ int main(int argc, char **argv) {
     CloseHandle(hProcess);
 
     if (exitCode == 0) {
-        printf(
-            "LoadLibraryA returned NULL in the target process -- the DLL "
-            "did NOT load. Common causes: wrong architecture (hookdll.dll "
-            "must be 32-bit, matching PSI.exe -- confirmed 32-bit PE32 for "
-            "these vendor DLLs, docs/70 line 105), a missing dependency "
-            "next to hookdll.dll, or hookdll.dll's own DllMain returning "
-            "FALSE. Nothing on the real scanner was touched by this "
-            "failure -- it never got far enough to install any hook.\n");
-        return 1;
+        SayLine("LoadLibraryA returned NULL in the target process -- the DLL did NOT load.");
+        SayLine("Common causes: wrong architecture (hookdll.dll must be 32-bit, matching");
+        SayLine("PSI.exe -- confirmed 32-bit PE32 for these vendor DLLs, docs/70 line 105),");
+        SayLine("a missing dependency next to hookdll.dll, or hookdll.dll's own DllMain");
+        SayLine("returning FALSE. Nothing on the real scanner was touched by this failure");
+        SayLine("-- it never got far enough to install any hook.");
+        ExitProcess(1);
     }
 
-    printf(
-        "Success: hookdll.dll loaded in the target process at 0x%08lx.\n"
-        "It will now try to install its hooks on a background thread and "
-        "start writing a JSONL log next to hookdll.dll (or at "
-        "HOOKDLL_LOG_PATH). Go trigger a real scan in PSI's own UI now.\n",
-        exitCode);
-    return 0;
+    SayHex32Line("Success: hookdll.dll loaded in the target process at 0x", exitCode, ".");
+    SayLine("It will now try to install its hooks on a background thread and start");
+    SayLine("writing a JSONL log next to hookdll.dll (or at HOOKDLL_LOG_PATH). Go");
+    SayLine("trigger a real scan in PSI's own UI now.");
+    ExitProcess(0);
 }

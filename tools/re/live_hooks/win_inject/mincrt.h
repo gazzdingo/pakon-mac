@@ -83,24 +83,13 @@ static int mc_is_all_digits(const char *s) {
     return 1;
 }
 
-/* Freestanding memcpy/memset -- MinHook's own vendored source (buffer.c,
- * hook.c, trampoline.c, hde32.c) calls both by name. build.sh compiles
- * those files with `-Dmemcpy=mc_memcpy -Dmemset=mc_memset` for the
- * freestanding (hookdll.dll) build only -- upstream MinHook source is
- * never modified (see vendor/minhook/VENDOR.md), only macro-redirected at
- * the call site via the compiler command line. */
-static void *mc_memcpy(void *dst, const void *src, unsigned long n) {
-    unsigned char *d = (unsigned char *)dst;
-    const unsigned char *s = (const unsigned char *)src;
-    while (n--) *d++ = *s++;
-    return dst;
-}
-
-static void *mc_memset(void *dst, int v, unsigned long n) {
-    unsigned char *d = (unsigned char *)dst;
-    while (n--) *d++ = (unsigned char)v;
-    return dst;
-}
+/* MinHook's own vendored source (buffer.c, hook.c, trampoline.c,
+ * hde32.c) calls memcpy/memset directly, by their real names -- those are
+ * provided with genuine external linkage by freestanding_memfuncs.c (its
+ * own header comment explains why that's a separate translation unit
+ * rather than defined here: a macro-redirect approach collided with
+ * mingw's own restrict-qualified memcpy/memset declarations in
+ * string.h). Nothing in this header needs to know about that. */
 
 static void *mc_alloc(SIZE_T n) {
     return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, n);

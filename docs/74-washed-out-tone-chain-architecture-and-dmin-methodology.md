@@ -2992,6 +2992,87 @@ logic only. No Python port file was written (no `pakon_area.py` or
 pixel-application port) — per §28.2/§28.5's own conclusion, there is
 nothing live to port.
 
+## 29 — `fpo`'s per-unit-value question (open item list #2), settled with
+live evidence from this exact unit: it genuinely runs the generic stock
+value, byte-for-byte, no per-unit correction anywhere.
+
+This doc's own "what changes about the open item list" section (below)
+has carried, since §5, an open question distinct from §5's own settled
+one: §5 ruled out any per-unit *correction mechanism* in the DLL (no
+code path derives `fpo` from anything but the shipped `.dpi` text at
+parse time). What stayed open was narrower and not resolvable by more
+DLL reading: whether the generic, shipped-with-every-unit `fpo` value
+itself happens to be wrong for *this specific* scanner, the way this
+project's own lamp duty cycle turned out to need a real, measured,
+unit-specific correction earlier in this same investigation. Settling
+that needs to see what value the real software actually loads and uses
+on this real, physical unit — not what the shipped file says it *should*
+load.
+
+Tonight's live hook capture (`tools/re/live_hooks/win_inject`, real
+`hookcore.c`-based injection into the real `PSI.exe`/`PakonIMAu.dll` on
+the real XP box, MinHook-based, real hardware, not emulated) gives
+exactly that, for the first time in this investigation. The stock value,
+read directly from the shipped `sba-CN-default.dpi` this project already
+loads (`vendor/ansel/anselinstalldir/dataPathItems/sba/SbaDPI/
+sba-CN-default.dpi:12`):
+
+```
+fpo = 879 1250 1386
+```
+
+`sba_preference` (`PakonIMAu.dll` `0x1028c780`) is one of the 23 real,
+cited hook targets in this capture, and `pakon_sba_preference.py`'s own
+header comment (line 11, pre-dating this pass) already documents its
+real argument shape: *"Nested opening RGB = dpi `fpo`"* — the function
+receives `fpo` packed as three 16-bit halves. Every one of the 7 real
+`sba_preference` calls recorded in `live_hooks_20260814-102329.jsonl`
+(uploaded by the project owner from the real XP box tonight) carries the
+identical packed value at the same stack slot:
+
+```
+stack_dwords[8] = 0x04e2036f   ->  low16=0x036f=879 (R)   high16=0x04e2=1250 (G)
+stack_dwords[9] = 0xffba056a   ->  low16=0x056a=1386 (B)
+```
+
+Checked mechanically across the whole capture, not eyeballed on one
+call: decoding `(R, G, B)` from every `sba_preference enter` event's
+`stack_dwords[8:10]` and collecting the distinct triples seen yields
+exactly one value, present in all 7 calls — `{(879, 1250, 1386)}`. No
+scatter, no partial match, no near-miss requiring interpretation: this
+real unit's real, currently-running software, captured live during an
+actual attempted scan tonight, is using the exact same generic stock
+`fpo` every other F-135 unit's shipped install also has.
+
+**What this settles.** Combined with §5's own static finding (no
+mechanism exists to load anything else), this closes the open-item-list
+#2 question completely, not just narrows it: it is not merely that the
+DLL has no *path* to a per-unit `fpo` — this specific, real, physical
+unit's real software, observed live, genuinely is not using one. If this
+unit's `fpo` needed a hardware-specific correction the way its lamp duty
+did, that correction is not happening anywhere in the running software
+tonight. `fpo`'s numeric value is not a live candidate for the residual
+shadow gap either, joining the four unreplicated stages (§25-§28) as a
+closed line of inquiry.
+
+**Honestly caveated.** This capture is partial — it stopped mid-scan
+(the same real-hardware run whose log ends abruptly inside a
+`tlb_polypixel`/`icc_effect_op`/`icc_xform_apply` loop, still under
+active troubleshooting as of this section) — so it does not cover a
+complete, successful scan end to end, only the portion that ran before
+the stop. All 7 `sba_preference` calls captured happen to agree, which
+is meaningful (a bug that only manifested after the capture's own cutoff
+point can't be ruled out by this evidence alone), but a clean, complete
+capture covering a full successful scan would close this more finally
+than a partial one. The packed-value read (`stack_dwords[8:10]`) relies
+on `pakon_sba_preference.py`'s own pre-existing "Nested opening RGB =
+dpi fpo" documentation for the argument's identity rather than this
+pass independently re-deriving the calling convention from fresh
+disassembly — consistent with, not contradicted by, every other
+independent confirmation of that same struct/argument mapping elsewhere
+in this doc (§5, §9, §14), but noted plainly as inherited rather than
+re-derived this pass.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is

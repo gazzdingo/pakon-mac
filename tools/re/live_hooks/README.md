@@ -1,28 +1,73 @@
-# Live Frida hooks — real vendor pipeline, real scan, real Windows VM
+# Live pipeline hooks — real vendor pipeline, real scan, real Windows VM
 
-**What this is.** A Frida instrumentation harness that hooks the REAL
-`PakonIMAu.dll` / `TLA.dll` / `TLB.dll`, live, inside a real running `PSI.exe`
+**What this is.** Two independent, interchangeable ways to hook the REAL
+`PakonIMAu.dll` / `TLA.dll` / `TLB.dll`, live, inside a real running PSI
 process, during a real scan of real film — not static Unicorn emulation, not
-disk-image carving. It logs every hooked function's entry/exit (raw
+disk-image carving. Both log every hooked function's entry/exit (raw
 registers, stack, and best-effort buffer previews) to structured JSONL,
 tagged with a `call_id` per invocation and a `frame_id` per scene, so a human
 can diff each real intermediate stage directly against this port's own
 Python pipeline (`tools/ansel/python-pipeline/pakon_ansel.py` and friends)
 run on the same frame.
 
-**Why Frida, not x32dbg/x64dbg or an injected DLL.** Frida needs no target
-rebuild, attaches to an already-running or freshly-spawned process without
-installing a driver, and its JS agent runs inside the target process with
-full read access to its memory — which is exactly what's needed to dump
-buffer contents at each hook, not just register values at a breakpoint. A
-debugger script (x64dbg) could do the same job but requires manual
-breakpoint scripting per hook and a human present to step through it, rather
-than a single script that runs unattended through an entire scan and streams
-structured output. An injected IAT-hooking DLL would need a real build step
-and target-process cooperation to load, which a debugger-free live capture
-doesn't need. Given `PakonIMAu.dll`/`TLA.dll`/`TLB.dll` are documented
-32-bit PE (PE32, `docs/62`), Frida's stock Windows support handles this
-without any special configuration.
+- **`native/`** — a standalone, prebuilt `hookload.exe` + `hookdll.dll`, no
+  Python, no Frida, no install step. **Use this one** if the target machine
+  is genuine Windows XP (see below for why) — this is what this project's
+  own target VM actually needs.
+- **`agent.js` + `host.py`** (this directory) — the Frida-based path. Keep
+  this documented and available for a NEWER Windows target (Windows 7+),
+  where it's genuinely less work than the native path; see "Does this run
+  on Windows XP" just below for why it is not the right choice for XP
+  itself.
+
+## Does this run on Windows XP?
+
+**The Frida path (`agent.js`/`host.py`): no, not on genuine Windows XP,**
+and this project's own docs confirm the target really is XP —
+`docs/68-handover.md`: *"shipped with 32-bit Windows XP-only drivers and has
+no vendor support on any modern OS."* Two independent, stacked blockers,
+checked directly rather than assumed:
+
+1. **CPython itself dropped Windows XP support in 3.5** (October 2015) —
+   the official python.org installers for 3.5 and later require Windows
+   Vista or newer; Python 3.4 is the last release that officially supports
+   XP, and current `frida`/`frida-tools` wheels are not published for it.
+   `pip install frida frida-tools` as instructed further down simply cannot
+   complete on a genuine XP box.
+2. **Frida's own native core has never had solid, maintained XP support.**
+   A user-reported XP failure in `frida-website` issue #8 (2014) went
+   unanswered; the project's own position (per its GitHub issue history) is
+   that the SDK has been built against a toolchain/runtime that assumed no
+   further XP demand since the VS2013-era upgrade, and XP support would
+   only be revived by a volunteer XP maintainer stepping up, which hasn't
+   happened.
+
+(The debugger-script fallback originally considered instead of Frida,
+`x32dbg`/`x64dbg`, was checked too and is **also** not an option on current
+builds: `x64dbg/x64dbg` issue #2545 confirms a Dec-2020 snapshot switched to
+`PSAPI_VERSION 2`, which needs Windows 7+, breaking XP support going
+forward — the last snapshot confirmed still XP-compatible was
+`2020-12-14_15-31`. Chasing down and trusting a 5-year-old debugger build
+for something that touches a live, hardware-controlling process was judged
+not worth it next to building `native/` fresh, verified end-to-end in this
+repo, instead.)
+
+**The native path (`native/`): yes**, and it's built and verified for
+exactly that in this checkout, not just claimed. `hookload.exe` and
+`hookdll.dll` are cross-compiled 32-bit PE binaries that import **nothing
+but `KERNEL32.dll`** (no CRT of any kind — see `native/minicrt.h` and
+`native/build.sh` for exactly why even the C runtime was dropped) and are
+stamped with a 5.1 (Windows XP) subsystem/OS version. `native/build.sh`
+re-verifies the import table with `objdump` on every build and fails the
+build if anything else shows up — this isn't a claim taken on faith, it's
+checked mechanically every time. See `native/README` section below for the
+full walkthrough.
+
+**Why not an injected IAT-hooking DLL as a compromise, or x32dbg's old
+snapshot?** `native/` effectively **is** the injected-DLL approach — that
+was always the documented fallback if Frida wasn't practical. Once genuine
+XP support ruled out Frida, building it for real (rather than a stale
+debugger snapshot) was the direct, verifiable choice.
 
 **What's here:**
 
@@ -34,8 +79,82 @@ without any special configuration.
 - `host.py` — the Python controller (runs as a normal process, uses the
   `frida` pip package to attach/spawn, loads `agent.js`, and streams its
   `send()` messages to a JSONL log file on disk).
+- `native/hookload.exe` + `native/hookdll.dll` — **prebuilt, ready to copy
+  onto the XP VM and run as-is.** `native/hookload.c` / `native/hookdll.c` /
+  `native/common.h` / `native/minicrt.h` are the source; `native/build.sh`
+  is the exact cross-compile command (needs `i686-w64-mingw32-gcc`, e.g.
+  `brew install mingw-w64` on macOS) if you ever need to rebuild after
+  editing the hook table.
 
-## Setup, on the Windows VM, once
+## Using the native tool (`native/`) — the one to use on real XP
+
+**On the Windows XP machine:**
+
+1. Copy `native/hookload.exe` and `native/hookdll.dll` into the **same
+   folder** together (`hookload.exe` looks for `hookdll.dll` right next to
+   itself). Nothing else needs installing — no Python, no Visual C++
+   redistributable, no .NET. If you ever rebuild from source, re-copy both
+   files again as a pair; they're not independently versioned.
+2. **Self-test before the real thing** (strongly recommended — this
+   confirms the whole inject → breakpoint → log → single-step → re-arm
+   pipeline actually works on your specific machine before you trust it on
+   a real scan, since none of this could be tested against real Windows
+   XP or the real vendor DLLs while building it):
+   - Create an empty file named `selftest.flag` in the same folder as the
+     two binaries.
+   - Run `hookload.exe notepad` (or open Notepad first, then run
+     `hookload.exe` with no argument and pick it from the list).
+   - Within a couple of seconds, `pakon_hooks_pid<PID>.jsonl` should start
+     growing with `"hook_id":"selftest_gettickcount"` entries (Notepad, like
+     almost every Windows process, calls `GetTickCount` constantly) —
+     `"event":"enter"` and `"event":"leave"` pairs, with real register/stack
+     data. If you see those, the mechanism works end to end on this
+     machine.
+   - Delete `selftest.flag` before moving on (see below for why).
+3. **The real run.** Delete (or never create) `selftest.flag` — leaving it
+   in place also hooks `GetTickCount`, which fires so often it would flood
+   the log for no diagnostic value during an actual scan. Run:
+   ```
+   hookload.exe pakon
+   ```
+   (or whatever your PSI executable is actually named — `hookload.exe` with
+   no argument lists every running process so you can pick the right one
+   if "pakon" doesn't match). It prints the exact log file path, something
+   like `pakon_hooks_pid4212.jsonl` next to the two binaries.
+4. **Trigger a real scan** in the target application's own UI now — every
+   hook that actually gets called during the scan appends to that JSONL
+   file in real time (tail it, or just watch its size grow).
+5. There's no explicit "stop" step — the hooks stay installed for the life
+   of that process. Close the target application (or just stop watching
+   the log) when you're done. If you want the hooks fully removed without
+   closing the target, there's currently no unload command built in;
+   killing/restarting the target process is the clean way to reset.
+
+**Log format** is the same JSON-lines shape as the Frida path (`call_id`,
+`frame_id`, `hook_id`, `event`, `regs`, `stack`, `pointer_scan`,
+`known_constant_hits`) — see "Diffing against the Python pipeline" below,
+which applies to both paths identically. One native-specific field:
+`"approximate_address"` mirrors `agent.js`'s per-hook flag for the two
+addresses with a citation ambiguity (see the hook table below).
+
+**Multithreading note.** The native tool uses one-byte `INT3` software
+breakpoints, the same technique every from-scratch Windows debugger uses —
+deliberately, not an inline jmp-trampoline hook (a trampoline needs a real
+x86 length disassembler to safely relocate the bytes it overwrites; getting
+that wrong corrupts the target's code, and this touches a live process
+driving real hardware mid-scan — a 1-byte patch, always fully restored
+before the real instruction runs, has no equivalent failure mode). This has
+one disclosed, honest limitation: a few-instruction race window during the
+restore/single-step/re-arm sequence on one thread, where a *different*
+thread hitting the exact same address at that exact moment will run the
+real instruction unlogged rather than triggering the breakpoint. This is a
+known property of software breakpoints in multithreaded targets in general,
+not specific to this file — see the comment at the top of
+`native/hookdll.c` for the full explanation, including how entry+exit
+pairing is tracked per-thread (TLS-based call stack, keyed by the real
+return address read off the stack at function entry).
+
+## Setup, on the Windows VM, once (Frida path only — see above for native)
 
 1. Install Python 3 on the Windows VM if it isn't already there (any recent
    3.x; this was written against no version-specific Frida API).
@@ -117,7 +236,7 @@ confirmed which pointer is the real pixel/scanline buffer, to get a full
 byte-exact capture into `session1_buffers/` for direct comparison against
 the Python pipeline's own array at the equivalent stage.
 
-## Hook table (see `agent.js` for the authoritative, cited list)
+## Hook table (see `agent.js` and `native/common.h` for the authoritative, cited list — hand-kept in sync between the two, same ids)
 
 | id | module | VA (assumed base `0x10000000`) | what it is |
 |---|---|---|---|

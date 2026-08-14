@@ -1,0 +1,8 @@
+# Build outputs -- rebuild with ./build.sh (needs Homebrew mingw-w64).
+*.o
+*.exe
+*.dll
+*.obj
+
+# Wine self-test log output (test-run only, never a real capture).
+live_hooks_*.jsonl

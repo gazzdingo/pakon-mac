@@ -1,0 +1,28 @@
+# Copy this to `hooks.cfg` next to hookdll.dll on the XP box to override
+# which hooks are enabled / exit-hooked, without a rebuild. Not required --
+# if hooks.cfg is missing, the built-in defaults apply (every confirmed
+# address enabled with entry+exit; the two `approximate: true` addresses
+# -- fugc_mode_dispatch, tlb_f135_poly_remap -- disabled until you've
+# verified them live). See ../README.md for the full hook table and
+# per-address citations.
+#
+# Syntax:
+#   # comment
+#   EXIT=on|off              global default for entry+exit vs entry-only
+#   <hook_id>=on|off          enable/disable one hook entirely
+#   <hook_id>.exit=on|off     entry+exit vs entry-only for one hook
+#
+# Example: the two approximate-address hooks are OFF by default -- if
+# you've confirmed fugc_mode_dispatch's real entry address from a live
+# disassembly on the XP box and want to try it:
+#
+# fugc_mode_dispatch=on
+
+# Example: tla_colneg_mmx_kernel is described in its own citation as "the
+# inner MMX kernel itself" -- if a first live run shows it firing at high
+# frequency (large log volume / noticeable slowdown), turn off just its
+# exit-hooking (keeps entry markers, drops the return-address-swap
+# overhead), or disable it entirely:
+#
+# tla_colneg_mmx_kernel.exit=off
+# tla_colneg_mmx_kernel=off

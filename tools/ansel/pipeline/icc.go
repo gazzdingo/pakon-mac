@@ -129,14 +129,23 @@ func linterp1D(table []uint16, n int, vNorm float64) float64 {
 	return float64(table[lo])*(1.0-frac) + float64(table[lo+1])*frac
 }
 
-func trilinearClut(m *IccMft2, inNorm []float64, out []float64) {
+// clutNode is a plain function rather than a closure captured over m: this
+// runs 8x per output channel for every pixel in the frame (icc.go's own
+// call site is main.go's per-pixel loop), and a closure stored in a local
+// var escapes to the heap on every trilinearClut call. Passing clut/g/no
+// explicitly keeps this on the stack.
+func clutNode(clut []uint16, g, no, c0, c1, c2, k int) float64 {
+	return float64(clut[(((c0*g+c1)*g+c2)*no)+k])
+}
+
+// inNorm is always 3 values (RGB in) — an array, not a slice, so callers on
+// the per-pixel path do not allocate to build it.
+func trilinearClut(m *IccMft2, inNorm [3]float64, out []float64) {
 	g := m.Grid
 	no := m.NOut
 
-	q := make([]float64, 3)
-	lo := make([]int, 3)
-	hi := make([]int, 3)
-	frac := make([]float64, 3)
+	var q, frac [3]float64
+	var lo, hi [3]int
 
 	for c := 0; c < 3; c++ {
 		q[c] = inNorm[c] * float64(g-1)
@@ -151,35 +160,45 @@ func trilinearClut(m *IccMft2, inNorm []float64, out []float64) {
 		frac[c] = q[c] - float64(lo[c])
 	}
 
-	node := func(c0, c1, c2, k int) float64 {
-		return float64(m.Clut[(((c0*g+c1)*g+c2)*no)+k])
-	}
-
+	clut := m.Clut
 	for k := 0; k < no; k++ {
-		v := node(lo[0], lo[1], lo[2], k)*(1.0-frac[0])*(1.0-frac[1])*(1.0-frac[2]) +
-			node(lo[0], lo[1], hi[2], k)*(1.0-frac[0])*(1.0-frac[1])*frac[2] +
-			node(lo[0], hi[1], lo[2], k)*(1.0-frac[0])*frac[1]*(1.0-frac[2]) +
-			node(lo[0], hi[1], hi[2], k)*(1.0-frac[0])*frac[1]*frac[2] +
-			node(hi[0], lo[1], lo[2], k)*frac[0]*(1.0-frac[1])*(1.0-frac[2]) +
-			node(hi[0], lo[1], hi[2], k)*frac[0]*(1.0-frac[1])*frac[2] +
-			node(hi[0], hi[1], lo[2], k)*frac[0]*frac[1]*(1.0-frac[2]) +
-			node(hi[0], hi[1], hi[2], k)*frac[0]*frac[1]*frac[2]
+		v := clutNode(clut, g, no, lo[0], lo[1], lo[2], k)*(1.0-frac[0])*(1.0-frac[1])*(1.0-frac[2]) +
+			clutNode(clut, g, no, lo[0], lo[1], hi[2], k)*(1.0-frac[0])*(1.0-frac[1])*frac[2] +
+			clutNode(clut, g, no, lo[0], hi[1], lo[2], k)*(1.0-frac[0])*frac[1]*(1.0-frac[2]) +
+			clutNode(clut, g, no, lo[0], hi[1], hi[2], k)*(1.0-frac[0])*frac[1]*frac[2] +
+			clutNode(clut, g, no, hi[0], lo[1], lo[2], k)*frac[0]*(1.0-frac[1])*(1.0-frac[2]) +
+			clutNode(clut, g, no, hi[0], lo[1], hi[2], k)*frac[0]*(1.0-frac[1])*frac[2] +
+			clutNode(clut, g, no, hi[0], hi[1], lo[2], k)*frac[0]*frac[1]*(1.0-frac[2]) +
+			clutNode(clut, g, no, hi[0], hi[1], hi[2], k)*frac[0]*frac[1]*frac[2]
 		out[k] = v
 	}
 }
 
+// maxIccOutStack bounds the stack-allocated scratch iccMft2Eval uses for
+// clutOut. Both profiles this pipeline loads (Rpd2Pcs_HR200_QS_v5s10.pf,
+// Srgb_v2.pf) are 3-channel, so this is headroom, not a tight fit — anything
+// larger falls back to a heap allocation rather than mis-sizing.
+const maxIccOutStack = 8
+
 func iccMft2Eval(m *IccMft2, inVals []uint16, outVals []uint16) {
-	inNorm := make([]float64, 3)
+	var inNorm [3]float64
 	for c := 0; c < 3; c++ {
 		rawNorm := float64(inVals[c]) / 65535.0
 		afterTin := linterp1D(m.TableIn[c*m.NTableIn:], m.NTableIn, rawNorm)
 		inNorm[c] = afterTin / 65535.0
 	}
 
-	clutOut := make([]float64, m.NOut)
+	no := m.NOut
+	var clutOutArr [maxIccOutStack]float64
+	clutOut := clutOutArr[:0]
+	if no <= maxIccOutStack {
+		clutOut = clutOutArr[:no]
+	} else {
+		clutOut = make([]float64, no)
+	}
 	trilinearClut(m, inNorm, clutOut)
 
-	for k := 0; k < m.NOut; k++ {
+	for k := 0; k < no; k++ {
 		norm := clutOut[k] / 65535.0
 		v := linterp1D(m.TableOut[k*m.NTableOut:], m.NTableOut, norm)
 		vi := uint32(v + 0.5)
@@ -259,11 +278,17 @@ func rpd12ToU16(rpd12 int) uint16 {
 //
 // Kept here so the parity harness can put the two engines on the same footing
 // at this tap and show the ICC hop's own contribution.
-func IccRpd12ToSrgb8Depth(rpd2pcs *IccMft2, srgb *IccMft2, rpd []int, depth IccInputDepth) []uint8 {
+// rpd and the return are fixed 3-element arrays, not slices: this runs once
+// per pixel (main.go's processImage loop), and a slice literal built at the
+// call site plus a slice returned from here were two more heap allocations
+// on top of the ones iccMft2Eval used to make — profiled at ~39% of a
+// render's CPU time before this and the iccMft2Eval/trilinearClut changes
+// above, almost all of it runtime.mallocgc / madvise, not colour maths.
+func IccRpd12ToSrgb8Depth(rpd2pcs *IccMft2, srgb *IccMft2, rpd [3]int, depth IccInputDepth) [3]uint8 {
 	if depth != IccU8 {
 		return IccRpd12ToSrgb8(rpd2pcs, srgb, rpd)
 	}
-	in1 := make([]uint16, 3)
+	var in1 [3]uint16
 	for c := 0; c < 3; c++ {
 		v := rpd[c]
 		if v < 0 {
@@ -279,11 +304,11 @@ func IccRpd12ToSrgb8Depth(rpd2pcs *IccMft2, srgb *IccMft2, rpd []int, depth IccI
 		}
 		in1[c] = uint16(u8 * 257)
 	}
-	pcs := make([]uint16, 3)
-	iccMft2Eval(rpd2pcs, in1, pcs)
-	srgb16 := make([]uint16, 3)
-	iccMft2Eval(srgb, pcs, srgb16)
-	out := make([]uint8, 3)
+	var pcs [3]uint16
+	iccMft2Eval(rpd2pcs, in1[:], pcs[:])
+	var srgb16 [3]uint16
+	iccMft2Eval(srgb, pcs[:], srgb16[:])
+	var out [3]uint8
 	for c := 0; c < 3; c++ {
 		v := uint32(srgb16[c]) * 255 / 65535
 		if v > 255 {
@@ -295,9 +320,8 @@ func IccRpd12ToSrgb8Depth(rpd2pcs *IccMft2, srgb *IccMft2, rpd []int, depth IccI
 }
 
 // IccRpd12ToSrgb8 evaluates the full two-stage ICC render from 12-bit RPD to 8-bit sRGB.
-func IccRpd12ToSrgb8(rpd2pcs *IccMft2, srgb *IccMft2, rpd []int) []uint8 {
-	in1 := make([]uint16, 3)
-	pcs := make([]uint16, 3)
+func IccRpd12ToSrgb8(rpd2pcs *IccMft2, srgb *IccMft2, rpd [3]int) [3]uint8 {
+	var in1, pcs [3]uint16
 	for c := 0; c < 3; c++ {
 		v := rpd[c]
 		if v < 0 {
@@ -308,12 +332,12 @@ func IccRpd12ToSrgb8(rpd2pcs *IccMft2, srgb *IccMft2, rpd []int) []uint8 {
 		}
 		in1[c] = rpd12ToU16(v)
 	}
-	iccMft2Eval(rpd2pcs, in1, pcs)
+	iccMft2Eval(rpd2pcs, in1[:], pcs[:])
 
-	srgb16 := make([]uint16, 3)
-	iccMft2Eval(srgb, pcs, srgb16)
+	var srgb16 [3]uint16
+	iccMft2Eval(srgb, pcs[:], srgb16[:])
 
-	srgbOut := make([]uint8, 3)
+	var srgbOut [3]uint8
 	for c := 0; c < 3; c++ {
 		v := uint32(srgb16[c]) * 255 / 65535
 		if v > 255 {

@@ -209,6 +209,74 @@ export function StepTrack({ value, min = -8, max = 8, step = 0.25, onInput, onCo
   );
 }
 
+/** A slider whose zero (or, for a 0-200 gain, its centre at 100) is marked
+ *  with a detent, same as StepTrack — used for the fuller Brightness /
+ *  Contrast / Saturation / Highlights / Shadows / Sharpening bench, which
+ *  StepTrack's fixed −8…+8 range doesn't fit. */
+export function AdjustmentSlider({ label, value, min, max, step = 1, onInput, onCommit, disabled, zeroValue = 0 }) {
+  const ref = useRef(null);
+
+  const clamp = (v) => Math.max(min, Math.min(max, v));
+
+  const from = useCallback(
+    (clientX) => {
+      const r = ref.current.getBoundingClientRect();
+      const raw = min + ((clientX - r.left) / r.width) * (max - min);
+      return clamp(Math.round(raw / step) * step);
+    },
+    [min, max, step],
+  );
+
+  const down = (e) => {
+    if (disabled) return;
+    e.preventDefault();
+    ref.current.setPointerCapture(e.pointerId);
+    onInput?.(from(e.clientX));
+    const move = (ev) => onInput?.(from(ev.clientX));
+    const up = (ev) => {
+      ref.current?.releasePointerCapture?.(ev.pointerId);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      onCommit?.(from(ev.clientX));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const at = ((value - min) / (max - min)) * 100;
+  const zero = ((zeroValue - min) / (max - min)) * 100;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span className="lbl">{label}</span>
+        <span className="num" style={{ fontSize: 11, color: 'var(--mute)' }}>
+          {typeof value === 'number' ? value.toFixed(step < 1 ? 2 : 0) : value}
+        </span>
+      </div>
+      <div
+        ref={ref}
+        className="track"
+        onPointerDown={down}
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-disabled={disabled || undefined}
+        style={disabled ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+      >
+        <span className="detent" style={{ left: `${zero}%` }} />
+        <span
+          className="fill"
+          style={{ left: `${Math.min(zero, at)}%`, width: `${Math.abs(at - zero)}%` }}
+        />
+        <span className="knob" style={{ left: `${at}%` }} />
+      </div>
+    </div>
+  );
+}
+
 /* ── the last line ──────────────────────────────────────────────────────── */
 
 /** Catch a render throw and show it, instead of unmounting the application.

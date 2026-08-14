@@ -310,6 +310,38 @@ def f32(v) -> float:
     return struct.unpack("<f", struct.pack("<f", float(v)))[0]
 
 
+#: x87's "real indefinite" QNaN, sign bit set (``0xffc00000`` as float32) --
+#: what a masked-exception 0.0/0.0 produces.  Same constant
+#: ``pakon_ast.X87_INDEFINITE`` documents; duplicated here rather than
+#: cross-imported so this file stays self-contained, matching this file's own
+#: ``f32`` (also duplicated per subsystem rather than shared).
+X87_INDEFINITE = -math.nan
+
+
+def _x87_div(num: float, den: float) -> float:
+    """``fdivr``/``fdiv`` under FPCW ``0x027f``'s masked exceptions.
+
+    Found by Phase 6.1's assembled run: ``compute_metrics`` (below) divides
+    ``1.0f`` by the sum of four ``calcWork`` counts, and by ``calcStats``'
+    own ``count``.  Both are 0 on a genuine, real-DLL-producible input this
+    port's own leaf-level tests never happened to construct -- an entirely
+    edgeless (perfectly flat) image legitimately makes ``edge_hist`` all
+    zero, so every one of the four tone-range ``calcWork`` counts is 0 too.
+    The real DLL does not crash or trap here: FPCW ``0x027f`` masks the
+    zero-divide exception, so ``fdivr`` silently produces a correctly-signed
+    infinity (or, for the unreachable-here ``0.0/0.0`` shape, the "real
+    indefinite" QNaN above) and keeps executing.  Python's ``/`` raises
+    ``ZeroDivisionError`` on both, which is not what the real DLL does --
+    see ``pakon_ast._x87_div``, the same fix already made there for the same
+    class of bug.
+    """
+    if den == 0.0:
+        if num == 0.0:
+            return X87_INDEFINITE
+        return math.copysign(math.inf, num) * math.copysign(1.0, den)
+    return num / den
+
+
 # ---------------------------------------------------------------------------
 # the metric enum — the 31-entry char* table at 0x106993a0
 #
@@ -1288,7 +1320,7 @@ def compute_metrics(p: ToneHelperParams, lum_hist: Sequence[int],
         # scale = 1.0f / (float)total, in ST(0) (fild dword ; fdivr [1.0f]).
         # `total` is the sum of the four calcWork counts, accumulated in EBP
         # (0x101db289, 0x101db361, 0x101db403, 0x101db4be) -- an integer.
-        scale = f32(1.0) / float(total)
+        scale = _x87_div(f32(1.0), float(total))
         e_low = scale * w_low                        # fmul dword [esi+4]
         e_mlo = scale * w_mlo                        # fmul dword [esi+8]
         e_mhi = scale * w_mhi                        # fmul dword [esi+0x10]
@@ -1316,7 +1348,7 @@ def compute_metrics(p: ToneHelperParams, lum_hist: Sequence[int],
         # ---- 0x101db596 .. 0x101db5b6 -----------------------------------
         # scale2 = 1.0f / (float)count, `count` being calcStats' own
         # out-parameter at [esi] (fild dword [esi]), NOT the calcWork total.
-        scale2 = f32(1.0) / float(g["count"])
+        scale2 = _x87_div(f32(1.0), float(g["count"]))
         g["distance"] = f32(scale2 * dist)
         g["intersection"] = f32(scale2 * inter)
 

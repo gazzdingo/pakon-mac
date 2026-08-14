@@ -201,11 +201,19 @@ DESC_DMIN_R_OFF = 0x54
 DESC_DMIN_G_OFF = 0x58
 DESC_DMIN_B_OFF = 0x5C
 DMIN_BYTES = 6
-# Stage-2 ColNeg constants (TLA MMX kernel / pakon_color)
-_COLNEG_LUT_SIZE = 16384
-_COLNEG_COEFF_FIXED = 8192
-_COLNEG_RPD_MAX = 4092
+# Stage-2 ColNeg constants (TLA MMX kernel / pakon_color). Only
+# _COLNEG_LUT_SIZE is arithmetic here — the rest are cited kernel facts kept
+# for the record; the arithmetic itself is pakon_color.render_pixel_f235's.
+_COLNEG_LUT_SIZE = 16384  # and 0x3fff @ 0x1001c57e — index FOLDS, not clamps
+_COLNEG_COEFF_FIXED = 8192  # buildContext scale, TLA 0x10012eb0
+_COLNEG_RPD_MAX = 4092  # paddw 0x8000 / paddusw 0x7003 / psubusw 0xf003
 _COLNEG_PLANAR_WIDTH = 4  # MMX chunk; only pixel0 seeded from frame dmin
+# width 4 → (width & 3) == 0 @ 0x1001c763, so the x87 scalar tail at
+# 0x1001c785 runs ZERO times and MMX rounding is the whole answer.
+COLNEG_PLANAR_WIDTH = _COLNEG_PLANAR_WIDTH  # public alias for the goldens
+COLNEG_PLANAR_SCAN_EXPORT = 0x100064D0  # PIColorCorrectColNegPlanarScan
+COLNEG_PLANAR_KERNEL = 0x1001C470  # MMX body it tail-calls
+COLNEG_PLANAR_SCALAR_TAIL = 0x1001C785  # x87 (width mod 4) tail — not taken
 
 
 def pack_dmin_rgb(r: int, g: int, b: int) -> bytes:
@@ -418,6 +426,34 @@ def addscene_colneg_remap_dmin_rgb(
     closed form (LUT → 3×4 → clamp ``0…4092``) to that single pixel —
     same arithmetic as ``pakon_color.render_pixel_f235`` / TLA ``0x1001c470``.
 
+    **This used to be re-derived here as a float closed form, and that was
+    a real off-by-one bug** — the one `pakon_shasta_aim_golden.py`'s
+    ``colneg_1px remap TLA`` case flagged as a "known failure" for six
+    passes. The old body summed all three products and divided ONCE::
+
+        acc = Σ_c coeff[k][c] * dens[c] / 8192 ; v = int(acc / 8 + offset[k])
+
+    The kernel does not do that. ``0x1001c684…0x1001c68a`` is three
+    separate ``pmulhw``, i.e. each product is independently truncated to
+    its signed high word — ``floor(coeff*dens / 65536)`` — and only then
+    are the three floors added with ``paddsw``. Σ floor(x_c) ≤ floor(Σ x_c),
+    so the "sum first, divide once" form is systematically HIGH, by exactly
+    one code whenever the discarded fractions of the three products carry.
+    ``pakon_color.render_pixel_f235``'s own docstring already warned this is
+    a different function (docs/58 §14.4); this function claimed to match it
+    and then did the other thing. Delegate instead of re-deriving.
+
+    Verified against the real DLL, not against the other host port: the
+    TLA call site pushes ``width=4`` (``push 4`` @ ``0x1003f840``/
+    ``0x1003f85d``), and ``0x1001c4cc`` (``shr ecx,2``) plus ``0x1001c763``
+    (``and edx, 0x80000003`` → ``je`` past the tail) mean a width of 4 is
+    handled entirely by the MMX block with ZERO iterations of the x87
+    scalar tail at ``0x1001c785``. So the MMX rounding *is* the vendor
+    answer here; the tail's different 1-LSB rounding never runs. Driving
+    the real ``PIColorCorrectColNegPlanarScan`` (``0x100064d0``) under
+    Unicorn on the TLA buffer shape agrees with ``render_pixel_f235``
+    bit-exactly and disagrees with the old body on 5 of 7 probes.
+
     ColRev (``JT+0x4c``) shares this kernel then applies extra
     ``ColRevLut*`` stages — **not** included here; use
     ``addscene_film_uses_colrev`` for dispatch only.
@@ -425,18 +461,22 @@ def addscene_colneg_remap_dmin_rgb(
     F-135 / TLB does **not** use this leaf for roll prime — see
     ``addscene_colneg_remap_dmin_rgb_f135`` (``TLB.dll @ 0x10034b9b``).
     """
-    raw = (int(r) & (_COLNEG_LUT_SIZE - 1), int(g) & (_COLNEG_LUT_SIZE - 1), int(b) & (_COLNEG_LUT_SIZE - 1))
-    dens = [float(lut[c]) for c in raw]
-    out: list[int] = []
-    for i in range(3):
-        acc = sum(int(coeff[i][c]) * dens[c] for c in range(3)) / float(_COLNEG_COEFF_FIXED)
-        v = int(acc / 8.0 + float(offset[i]))
-        if v < 0:
-            v = 0
-        elif v > _COLNEG_RPD_MAX:
-            v = _COLNEG_RPD_MAX
-        out.append(v)
-    return out[0], out[1], out[2]
+    import os
+    import sys
+
+    _tools = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    if _tools not in sys.path:
+        sys.path.insert(0, _tools)
+    import pakon_color as pc  # noqa: E402
+
+    raw = (
+        int(r) & (_COLNEG_LUT_SIZE - 1),
+        int(g) & (_COLNEG_LUT_SIZE - 1),
+        int(b) & (_COLNEG_LUT_SIZE - 1),
+    )
+    # TLA 0x1001c470: pmulhw x3 → paddsw → paddsw offset → paddw 0x8000 /
+    # paddusw 0x7003 / psubusw 0xf003 (clamp 0…_COLNEG_RPD_MAX).
+    return pc.render_pixel_f235(raw, lut, coeff, offset)
 
 
 def addscene_colneg_remap_dmin_rgb_f135(

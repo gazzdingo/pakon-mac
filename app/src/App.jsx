@@ -22,6 +22,7 @@ import ScanModal from './ScanModal';
 import ExportModal from './ExportModal';
 import Boundaries from './Boundaries';
 import { OpenDialog, CleanupDialog } from './Dialogs';
+import CalibrationBanner, { useCalibrationSetup } from './CalibrationSetup';
 import * as api from './api';
 
 export default function App() {
@@ -345,6 +346,11 @@ export default function App() {
 
   const openedFromScan = scanJob != null;
 
+  // Self-calibration: starts itself the moment `boot` names a scanner that
+  // needs it — not gated behind any screen, so it fires whether or not
+  // anyone ever looks at this window.
+  const cal = useCalibrationSetup(boot);
+
   if (fatal)
     return (
       <div className="app" style={{ display: 'grid', placeItems: 'center' }}>
@@ -381,6 +387,7 @@ export default function App() {
         dark={dark}
         setDark={setDark}
       />
+      <CalibrationBanner boot={boot} setup={cal.setup} job={cal.job} retry={cal.retry} />
 
       <div className="body" style={{ gridTemplateColumns: '1fr' }}>
         {activeTab === 'new' && scanJob ? (

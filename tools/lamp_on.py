@@ -43,7 +43,22 @@ EXPOSURE = 1549
 N = round(EXPOSURE * 0.6)
 ON = N // 2
 
-CLAMP = {"R": 8, "G": 24, "B": 24, "Ir": 8}
+# fcn.100203c0 has TWO clamp rows and which one applies depends on whether IR
+# is enabled. This file drives the VISIBLE channels with IR off by default
+# (mask 0x01), so the IR-OFF row is the one that binds:
+#
+#     IR on   R<=8  G<=24  B<=24  Ir<=8
+#     IR off  R<=4  G<=20  B<=20  Ir<=0
+#
+# It used to carry the IR-ON row unconditionally, which meant a default run
+# drove R at 8 -- DOUBLE its real ceiling -- and G/B at 24 against 20, for the
+# default 45 s hold. That clamp lives in the vendor's HOST software, not in the
+# light board, so nothing downstream would have caught it. The IR-off row is
+# lower because with IR disabled the three visible channels share the cycle
+# between them and each is lit for longer, so the same level is more average
+# power on the die.
+CLAMP_IR_ON = {"R": 8, "G": 24, "B": 24, "Ir": 8}
+CLAMP_IR_OFF = {"R": 4, "G": 20, "B": 20, "Ir": 0}
 
 
 def open_dev():
@@ -135,6 +150,7 @@ def main() -> int:
         print(f"dark baseline: max={mx} mean={mn:.0f}\n")
 
         ch = args.channel
+        CLAMP = CLAMP_IR_ON if args.ir else CLAMP_IR_OFF
         lv = dict(B=0, Ir=0, R=0, G=0)
         on = dict(on_B=0, on_Ir=0, on_R=0, on_G=0)
         for name in (["R", "G", "B"] if ch == "all" else [ch]):

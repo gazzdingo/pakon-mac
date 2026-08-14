@@ -105,7 +105,16 @@ def probe_status() -> dict:
 
 
 def open_loaded_scanner():
-    """Claim the loaded F-135 interface for EP 0x86 reads. No register writes."""
+    """Claim the loaded F-135 interface for EP 0x86 reads. No register writes.
+
+    Widening this to admit F-235 (0x0F05:0x35F2) / F-335 (0x0F05:0xF335) is a
+    deliberate, separate decision -- see the same warning, and the
+    board-address dispatch that would need to be wired in here first, at the
+    VID/PID gate in tools/pakon_scan.py (Link.open / board_address) and the
+    evidence in tools/pakon_commands.py's BOARD_ADDRESSES. This function
+    issues no register writes today, but anything built on top of it that
+    starts sending commands would inherit whatever board addresses it uses.
+    """
     import usb.core
     import usb.util
 

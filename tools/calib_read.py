@@ -54,6 +54,7 @@ HERE = Path(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, str(HERE))
 
 import calib_device as cd       # noqa: E402
+import calib_resolve as cres    # noqa: E402
 import calib_store as cs        # noqa: E402
 import calib_verify as cv       # noqa: E402
 
@@ -118,21 +119,46 @@ def open_store(explicit: Path | None, *,
 
 def connect_report(store: cs.CalibrationStore, transport: cd.Transport,
                    guard: cd.PowerCycleGuard) -> dict:
-    """What the app shows on connect. Causes no I2C traffic whatsoever."""
+    """What the app shows on connect. Causes no I2C traffic whatsoever.
+
+    The scanner state comes from USB enumeration and the marker probe, which
+    are 0xA0 requests answered by the FX2's USB core in hardware; the
+    calibration half is a pure lookup in the store, done by calib_resolve. No
+    branch of this function can reach I2C, and none of it decides to read --
+    ``action`` is at most a suggestion for a button.
+    """
     sel = store.selection()
     have = store.has_calibration()
     state = transport.state()
+    res = cres.resolve(store)
     out = {
         "scanner": {"state": state, "id": transport.describe()},
         "have_calibration": have,
         "selection": sel,
+        "resolution": res,
         "store": str(store.root),
     }
+    if res["state"] == cres.AMBIGUOUS:
+        # Several units in the store and nothing readable says which is
+        # plugged in. Reading would answer it and is precisely what must not
+        # happen automatically, so this asks the person instead.
+        out["action"] = "choose-unit"
+        out["headline"] = res["headline"]
+        return out
     if have:
         out["action"] = "none"
+        # Deliberately not "calibration for THIS scanner is saved". Nothing
+        # here has established that the connected unit is the stored one --
+        # every F-135 reports the same USB serial, and the real serial is
+        # inside the page we are avoiding re-reading. Naming the serial lets
+        # the owner check it against the label; claiming identity we have not
+        # established would be a lie the software cannot back up.
         out["headline"] = (
-            f"Calibration for this scanner is already saved "
-            f"({sel['stamp']}). It will not be read again.")
+            f"Using stored calibration for scanner {res['serial']} "
+            f"({sel['stamp']}). Nothing will be read from the scanner."
+            if res["serial"] is not None else
+            f"A stored calibration is in force ({sel['stamp']}). It will not "
+            f"be read again.")
     elif state == cd.DEVICE_ABSENT:
         out["action"] = "connect-scanner"
         out["headline"] = ("No calibration is stored yet, and no scanner is "
@@ -363,6 +389,8 @@ def main() -> int:
         print(f"\nscanner  {rep['scanner']['id']}  ({rep['scanner']['state']})")
         print(f"store    {rep['store']}")
         print(f"\n{rep['headline']}")
+        for w in rep["resolution"]["warnings"]:
+            print(f"\n  ** {w}")
         sel = rep["selection"]
         if sel["reads"]:
             if sel["message"]:

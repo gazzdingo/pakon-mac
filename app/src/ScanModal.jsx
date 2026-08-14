@@ -116,6 +116,11 @@ export default function ScanModal({ open, onClose, hw, hwBusy, scanJob, onRechec
                 try {
                   await onStart({
                     base,
+                    // Base 4/8 have no calibration of their own, so the
+                    // backend always warns on them; that warning is the
+                    // "not calibrated" caption already shown above, not a
+                    // second confirmation to ask for here.
+                    force: base !== 16,
                     speed,
                     max_seconds: hw?.limits?.default_seconds ?? 360,
                     name: name.trim(),

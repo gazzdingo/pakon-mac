@@ -78,11 +78,21 @@ try:
     import calib_read as calib          # noqa: E402
     import calib_store as calib_store   # noqa: E402
     import calib_device as calib_dev    # noqa: E402
+    # Disk-only lookup and the unattended calibration. calib_profile and
+    # calib_resolve cannot reach a device at all -- they import no transport
+    # and take none, which tools/test_calib.py proves by launching a clean
+    # interpreter and asserting neither `usb` nor calib_device was ever
+    # imported -- so adding them here preserves the "no USB traffic"
+    # property of calibration_store_state() rather than relying on care.
+    import calib_profile as cprof       # noqa: E402
+    import calib_resolve as cres        # noqa: E402
+    import calib_wizard as cwiz         # noqa: E402
 except Exception as _e:                 # noqa: BLE001
     print(f"note: calibration tools unavailable ({_e.__class__.__name__}: "
           f"{_e}); the scanner's calibration will not be read or backed up",
           file=sys.stderr)
     calib = calib_store = calib_dev = None
+    cprof = cres = cwiz = None
 
 import urllib.request
 import urllib.error
@@ -311,6 +321,51 @@ class Session:
         #: roll id -> stack of {"label", "at", "frames"} snapshots, oldest
         #: first. See snapshot() for why this is cheap enough to be automatic.
         self.undo: dict[str, list[dict]] = {}
+        #: roll id -> mtime of the roll.json this process last loaded that
+        #: roll from. See get_roll() -- this is what lets an edit made to
+        #: roll.json some other way (by hand, by a repair script) actually
+        #: reach a roll this process already has cached in memory.
+        self._roll_mtime: dict[str, float] = {}
+
+    # ---- roll cache ----
+    #
+    # S.rolls only ever gets a fresh Roll object from a full re-decode (the
+    # "open capture" job, pr.open_capture()). There was no cheap path back
+    # from a roll.json changed some other way to the in-memory copy this
+    # process actually serves renders from -- and reloading the app's own
+    # window does not clear it either, since only the backend process
+    # restarting did. That is a real staleness trap: fix a roll's metadata on
+    # disk and every render still comes from the stale in-memory object until
+    # someone thinks to quit and relaunch the whole app. get_roll() closes it
+    # by comparing roll.json's mtime against the mtime this process last saw,
+    # and reloading via Roll.from_json() (cheap: it does not touch rgb14.npy
+    # or re-decode anything) whenever the file on disk is newer.
+    def get_roll(self, roll_id: str) -> "pr.Roll | None":
+        with self.lock:
+            roll = self.rolls.get(roll_id)
+        if roll is None:
+            return None
+        meta_path = Path(roll.workspace) / "roll.json"
+        try:
+            disk_mtime = meta_path.stat().st_mtime
+        except OSError:
+            return roll
+        if disk_mtime <= self._roll_mtime.get(roll_id, 0.0):
+            return roll
+        try:
+            fresh = pr.Roll.from_json(json.loads(meta_path.read_text()))
+        except Exception:
+            # A bad or half-written roll.json must not take an in-memory roll
+            # that is working down with it -- serve the stale copy and try
+            # the reload again on the next call instead of raising here.
+            return roll
+        with self.lock:
+            self.rolls[roll_id] = fresh
+        self._roll_mtime[roll_id] = disk_mtime
+        return fresh
+
+    def fresh_rolls(self) -> list:
+        return [r for r in (self.get_roll(rid) for rid in list(self.rolls)) if r is not None]
 
     # ---- undo ----
     #
@@ -426,7 +481,7 @@ def unexported_summary() -> dict:
     'delete bulk data' — housekeeping.html states B."""
     rolls = []
     adjusted = exported = 0
-    for r in S.rolls.values():
+    for r in S.fresh_rolls():
         adj = [f.index + 1 for f in r.frames if pr.is_adjusted(f.params)]
         exp = sum(1 for f in r.frames if f.exported)
         adjusted += len(adj)
@@ -520,24 +575,42 @@ def probe_channels(path: Path) -> dict:
     IR is untested on this unit — the hardware supports it (Current_Ir = 4,
     DutyCycle_Ir = 0.887) but no IR capture exists yet, so this reports what
     it finds rather than promising the pipeline can use it.
+
+    Two separate answers, because they stopped being the same question when
+    the decoder learned 8000-word lines (docs/70):
+
+      ``unpackable``  ``pakon_decode`` can sync-segment and unpack this
+                      geometry into planes. True for 6000 and 8000.
+      ``decodable``   the *rendering* path can make a picture out of it. Still
+                      3-channel only: ``rgb14.npy``, the committed
+                      ``dark_2000x3``/``gain_2000x3`` tables and the Go TIFF
+                      hand-off are all RGB, and there is no infrared dark or
+                      gain reference in ``calibration/`` to flat-field a fourth
+                      plane with. A 4-channel capture is therefore recognised
+                      and named rather than mis-segmented — which is what would
+                      have happened before — but still refused at open.
     """
+    unknown = {"words_per_line": None, "channels": None, "has_ir": False,
+               "unpackable": False, "decodable": False}
     try:
         with open(path, "rb") as fh:
             buf = fh.read(8 * 1024 * 1024)
         w = np.frombuffer(buf[: (len(buf) // 2) * 2], dtype="<u2")
         m = np.flatnonzero(w & 1)
         if m.size < 4:
-            return {"words_per_line": None, "channels": None, "has_ir": False}
+            return dict(unknown)
         gaps = np.diff(m)
         modal = int(np.bincount(gaps).argmax())
     except (OSError, ValueError):
-        return {"words_per_line": None, "channels": None, "has_ir": False}
-    ch = {6000: 3, 8000: 4}.get(modal)
+        return dict(unknown)
+    ch = {n: n // dec.PIXELS_PER_LINE for n in dec.LINE_WORD_CANDIDATES
+          }.get(modal)
     return {
         "words_per_line": modal,
         "channels": ch,
-        "has_ir": ch == 4,
-        "decodable": modal == dec.WORDS_PER_LINE,
+        "has_ir": ch == dec.CHANNELS_IR,
+        "unpackable": modal in dec.LINE_WORD_CANDIDATES,
+        "decodable": ch == dec.CHANNELS,
     }
 
 
@@ -718,6 +791,16 @@ def job_open(jid: str, body: dict) -> None:
 
         ch = probe_channels(src)
         if ch.get("words_per_line") and not ch.get("decodable"):
+            if ch.get("has_ir"):
+                # Say the true reason. The blocker is no longer the decoder —
+                # it unpacks this — it is that nothing downstream has an
+                # infrared dark/gain reference or a defect operator. docs/70.
+                raise ValueError(
+                    f"line length {ch['words_per_line']} words (4-channel, "
+                    f"infrared present). The decoder can unpack it, but the "
+                    f"colour path is RGB-only: calibration/ has no "
+                    f"dark_2000x4/gain_2000x4 reference and Digital ICE is "
+                    f"not ported (pakon_decode.ICE_PORTED is False).")
             raise ValueError(
                 f"line length {ch['words_per_line']} words "
                 f"({ch.get('channels') or '?'}-channel). The decode path "
@@ -783,11 +866,12 @@ def job_open(jid: str, body: dict) -> None:
                 f"was guessed, but nothing was re-confirmed either.")
         roll.ir = ch
         restored = apply_sidecar(roll)
-        (Path(roll.workspace) / "roll.json").write_text(
-            json.dumps(roll.to_json(), indent=1))
+        meta_path = Path(roll.workspace) / "roll.json"
+        meta_path.write_text(json.dumps(roll.to_json(), indent=1))
         save_sidecar(roll)
         with S.lock:
             S.rolls[roll.id] = roll
+        S._roll_mtime[roll.id] = meta_path.stat().st_mtime
         S.job_set(jid, status="done", progress=1.0, phase="done",
                   message=f"{len(roll.frames)} frames"
                           + (f", {restored} restored" if restored else ""),
@@ -805,7 +889,7 @@ def export_request(body: dict) -> tuple:
     handed to both. Working them out twice is how a plan comes to describe an
     export that did something else.
     """
-    roll = S.rolls.get(body.get("roll"))
+    roll = S.get_roll(body.get("roll"))
     if roll is None:
         raise ValueError("unknown roll")
     dest = Path(os.path.expanduser(body.get("dest") or "~/Pictures/Film"))
@@ -1195,6 +1279,13 @@ class ScanSupervisor:
         cmd = [sys.executable, str(_TOOLS / "pakon_scan.py"), "run", str(out),
                "--json", "--watch-parent", "--base", str(base),
                "--max-seconds", str(seconds)]
+        # Base 4/8 have no calibration of their own, so pakon_scan.py already
+        # derives their exposure automatically -- this flag is only for
+        # forcing the same derivation on base 16, to cross-check the
+        # committed on-counts against the vendor formula instead of a fresh
+        # scan silently trusting whichever one this call happened to use.
+        if body.get("derive_exposure"):
+            cmd += ["--derive-exposure"]
         if speed:
             cmd += ["--speed", str(int(speed))]
         if body.get("force"):
@@ -1441,6 +1532,76 @@ SCAN = ScanSupervisor()
 _HW_CACHE: dict = {"at": 0.0, "value": None}
 _HW_TTL = 3.0
 
+# Auto-load: when a live probe finds an unloaded scanner on the bus, load
+# firmware onto it without waiting for someone to run tools/pakon_load.py by
+# hand. This calls that exact script as a subprocess rather than reimplementing
+# any of its logic -- its own safety checks (refuse to guess an unrecognised
+# model, cross-check the 0xA9 personality against the USB identity, verify the
+# re-enumerated PID matches the image that was sent) are what make firing it
+# unattended safe, and they must not drift from the one place they're written.
+_FW_LOAD: dict = {"active": False, "at": 0.0, "result": None}
+_FW_LOAD_COOLDOWN = 15.0   # do not hammer a scanner that just failed to load
+
+
+# Film transport jog: the operator moving film from the UI, to respool a roll
+# or reposition it in the gate, without dropping to a terminal.
+#
+# Same reasoning as the firmware auto-load above. tools/spin_motor.py is run as
+# a subprocess rather than reimplemented here, because the one thing that makes
+# driving the motor safe lives in that file: the stop packet (04 03 44 00 A2) is
+# sent from a `finally:` block, so it goes out on a clean finish, on a USB
+# error, on an unhandled exception, and on the SIGTERM this module sends if the
+# child overruns its deadline. The speed clamp is in the same place. A second
+# copy of either here would be a second copy that can rot out of step with the
+# audited one -- and the failure mode of a rotted copy is film still moving.
+#
+# The packets themselves are docs/12-command-protocol.md section 5(b), decoded
+# from FN_bDriveMotorAdvanceFilm = fcn.1000b6d0, addressed to 0x44 (AD_MOTOR,
+# the PICM_PLUS application, which contains no TBLWT and cannot write flash).
+JOG_SPEED_MIN, JOG_SPEED_MAX = 0x03E8, 0x7FFE   # spin_motor.SPEED_MIN/MAX
+JOG_MAX_SECONDS = 5.0                           # spin_motor.MAX_SECONDS
+JOG_MAX_SECONDS_LONG = 60.0                     # spin_motor.MAX_SECONDS_LONG
+JOG_DEFAULT_SECONDS = 1.0
+
+#: One jog at a time, and nothing else may probe USB while one is in flight.
+#: This is the same fact `SCAN.running()` records for a scan -- a process is
+#: holding the interface -- kept here because a jog is ours, not a scan child's.
+_JOG: dict = {"active": False, "at": 0.0, "direction": None, "seconds": 0.0,
+              "proc": None}
+_JOG_LOCK = threading.Lock()
+
+
+def _auto_load_firmware() -> None:
+    cmd = [sys.executable, str(_TOOLS / "pakon_load.py")]
+    try:
+        r = subprocess.run(cmd, cwd=str(_ROOT), capture_output=True,
+                           text=True, timeout=40)
+        _FW_LOAD["result"] = {"ok": r.returncode == 0,
+                              "returncode": r.returncode,
+                              "stdout": r.stdout[-2000:],
+                              "stderr": r.stderr[-2000:]}
+    except Exception as e:                                  # noqa: BLE001
+        _FW_LOAD["result"] = {"ok": False, "error": str(e)}
+    finally:
+        _FW_LOAD["active"] = False
+        _FW_LOAD["at"] = time.time()
+        # The state this thread just changed on the wire is stale the moment
+        # it's written -- force the next hardware_state() to probe for real
+        # rather than hand back the pre-load "needs_firmware" cache entry.
+        _HW_CACHE.update(at=0.0, value=None)
+
+
+def _maybe_auto_load_firmware(p: dict) -> None:
+    """Fire the loader in the background if, and only if, a live probe just
+    found an unloaded scanner. Never called from the cached or scan-in-progress
+    paths in hardware_state() -- those must not touch USB at all."""
+    if p.get("state") != "needs_firmware" or _FW_LOAD["active"]:
+        return
+    if time.time() - _FW_LOAD["at"] < _FW_LOAD_COOLDOWN:
+        return
+    _FW_LOAD.update(active=True, at=time.time())
+    threading.Thread(target=_auto_load_firmware, daemon=True).start()
+
 
 def hardware_state(fresh: bool = False) -> dict:
     """One place the UI can ask what the machine is, without writing to it.
@@ -1468,10 +1629,15 @@ def hardware_state(fresh: bool = False) -> dict:
     # Link.open(), and Link.open() does not survive contact with an interface
     # somebody else is streaming from. The marker is the only thing that knows.
     other = foreign_scan()
+    # A jog is the same hazard in a smaller package: spin_motor.py has claimed
+    # interface 0 for a few seconds, and a probe landing in the middle of it
+    # would fail its claim -- reporting the machine as gone while it is in fact
+    # turning. The 15 s hardware poll would otherwise walk straight into it.
+    jogging = _JOG["active"]
     now = time.time()
     warm = bool(_HW_CACHE["value"]) and now - _HW_CACHE["at"] < _HW_TTL
-    refused = fresh and (running or other)
-    if running or other or (warm and not fresh):
+    refused = fresh and (running or other or jogging)
+    if running or other or jogging or (warm and not fresh):
         p = dict(_HW_CACHE["value"] or {"present": False, "state": "unknown",
                                         "hint": "not probed yet"})
         p["cached"] = True
@@ -1482,11 +1648,23 @@ def hardware_state(fresh: bool = False) -> dict:
             p = {"present": False, "state": "error", "hint": str(e)}
         p["cached"] = False
         _HW_CACHE.update(at=now, value=dict(p))
+        _maybe_auto_load_firmware(p)
     p["probed_at"] = _HW_CACHE["at"] or None
     p["age_s"] = round(now - _HW_CACHE["at"], 2) if _HW_CACHE["at"] else None
+    p["firmware_load"] = {"active": _FW_LOAD["active"],
+                          "result": _FW_LOAD["result"]}
+    if _FW_LOAD["active"] and p.get("state") == "needs_firmware":
+        p["state"] = "loading_firmware"
+        p["hint"] = "Firmware detected missing -- loading it automatically now."
     if refused:
-        p["recheck_refused"] = ("a scan owns the USB interface; the machine "
-                                "cannot be probed until it ends")
+        p["recheck_refused"] = (
+            "the film transport is being jogged; the machine cannot be probed "
+            "until it stops" if jogging and not (running or other) else
+            "a scan owns the USB interface; the machine cannot be probed "
+            "until it ends")
+    if jogging:
+        p["jog"] = {"active": True, "direction": _JOG["direction"],
+                    "seconds": _JOG["seconds"], "started": _JOG["at"]}
     if other:
         # Deliberately NOT rewritten into `state`: the last known state is
         # still the truth about the machine, and `cached` already says it is
@@ -1507,6 +1685,11 @@ def hardware_state(fresh: bool = False) -> dict:
         "speed_min": scan.pc.MOTOR_SPEED_MIN_PLUS,
         "speed_max": scan.pc.MOTOR_SPEED_MAX_PLUS,
         "decodable_bases": list(scan.DECODABLE_BASES),
+        "jog": {"default_seconds": JOG_DEFAULT_SECONDS,
+                "max_seconds": JOG_MAX_SECONDS,
+                "max_seconds_long": JOG_MAX_SECONDS_LONG,
+                "speed_min": JOG_SPEED_MIN,
+                "speed_max": JOG_SPEED_MAX},
     }
     return p
 
@@ -1514,10 +1697,11 @@ def hardware_state(fresh: bool = False) -> dict:
 def emergency_stop_now() -> dict:
     """Stop the machine, from any state, whoever owns it.
 
-    Three moves, in the only order that can work:
+    Four moves, in the only order that can work:
 
     1. Cancel our own scan child, which stops the transport properly — it
-       still holds the interface and can talk to the board.
+       still holds the interface and can talk to the board. A jog child, if
+       one is running, goes the same way and for the same reason.
     2. If the marker names a *live foreign* owner, signal it and wait. This is
        the case ``emergency_stop`` alone cannot handle: it opens the device
        from scratch, so while another process holds the interface it burns all
@@ -1532,6 +1716,12 @@ def emergency_stop_now() -> dict:
     permanently convinced someone else is scanning.
     """
     out: dict = {"cancelled": SCAN.cancel()}
+    # A jog is film moving too, and it is ours — so it is stopped first and by
+    # the same logic as step 2 below: the child holds the interface, so asking
+    # it to stop is both faster and the only thing that reaches the board while
+    # it does. Step 3 could not claim the device until this returns.
+    if _JOG["active"]:
+        out["jog"] = stop_jog()
     other = foreign_scan()
     if other:
         out["foreign"] = stop_foreign_scan()
@@ -1542,6 +1732,190 @@ def emergency_stop_now() -> dict:
             scan.marker_clear()
             out["marker_cleared"] = True
     out["marker"] = scan_marker_state()
+    return out
+
+
+def jog_refusal() -> str | None:
+    """Why the transport may not be jogged right now, in the operator's words.
+
+    The same two questions ``ScanSupervisor.start`` and ``hardware_state`` ask,
+    in the same order, because they have the same answer: something else is
+    holding the USB interface and ``spin_motor.open_scanner`` -- which ends in
+    ``usb.util.claim_interface`` -- does not survive contact with it.
+
+      * ``SCAN.running()`` is this process's own scan child.
+      * ``foreign_scan()`` is a scan owned by a backend that outlived its
+        window. The on-disk marker is the only thing that knows, and this is
+        the case that survives a force-quit.
+
+    Then one of our own: two jogs at once would be two processes fighting for
+    the interface, and the loser's ``finally:`` stop would land on a device it
+    never opened.
+    """
+    if SCAN.running():
+        return ("a scan is running in this window. It owns the USB interface "
+                "and is already driving the transport; jogging now would take "
+                "the film out from under it. Stop the scan first.")
+    other = foreign_scan()
+    if other:
+        return foreign_scan_refusal(other)
+    if _JOG["active"]:
+        d = _JOG["direction"] or "forward"
+        return (f"the transport is already jogging {d}. Wait for it to stop — "
+                f"it stops on its own, and the Stop button reaches it too.")
+    return None
+
+
+def stop_jog(timeout: float = 6.0) -> dict:
+    """Interrupt a jog in flight, by the one route that still sends the stop.
+
+    SIGINT, not SIGTERM. Python's default SIGTERM disposition kills the process
+    outright and no ``finally:`` block runs — which would leave the transport
+    turning on the last command it was given, the exact failure this endpoint
+    exists to make impossible. SIGINT raises KeyboardInterrupt inside the child,
+    and spin_motor.py's stop packet is in a ``finally:`` that unwinds through
+    it; its docstring names KeyboardInterrupt as a case it covers.
+
+    SIGKILL is the last resort and never the first move, for the same reason.
+    """
+    out = {"active": _JOG["active"], "signalled": False, "exited": False}
+    proc = _JOG.get("proc")
+    if proc is None or proc.poll() is not None:
+        return out
+    try:
+        proc.send_signal(signal.SIGINT)
+        out["signalled"] = True
+    except Exception as e:                                  # noqa: BLE001
+        out["error"] = str(e)
+        return out
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            out["exited"] = True
+            break
+        time.sleep(0.1)
+    if not out["exited"]:
+        try:
+            proc.kill()
+            out["killed"] = True
+        except Exception:                                   # noqa: BLE001
+            pass
+    return out
+
+
+def motor_jog(body: dict) -> dict:
+    """Drive the film transport for a few seconds, forward or reverse.
+
+    Runs tools/spin_motor.py as a subprocess; see the note on _JOG above for
+    why that script and not an inline copy of its three packets.
+
+    Everything the client sends is clamped again here. The UI's own limits are
+    a convenience for the person using it, not a guarantee about what arrives
+    on this socket: `seconds` is capped at JOG_MAX_SECONDS unless `long` is
+    explicitly set, exactly as spin_motor.py's --long works, and `speed` is
+    held inside the documented legal range for the Plus motor board.
+    """
+    direction = str(body.get("direction") or "").strip().lower()
+    if direction not in ("forward", "reverse"):
+        return {"ok": False, "error": "direction must be 'forward' or "
+                                      f"'reverse', not {direction!r}"}
+
+    long_run = bool(body.get("long"))
+    cap = JOG_MAX_SECONDS_LONG if long_run else JOG_MAX_SECONDS
+    try:
+        seconds = float(body.get("seconds") or JOG_DEFAULT_SECONDS)
+    except (TypeError, ValueError):
+        seconds = JOG_DEFAULT_SECONDS
+    seconds = max(0.1, min(cap, seconds))
+    try:
+        speed = int(body.get("speed") or JOG_SPEED_MIN)
+    except (TypeError, ValueError):
+        speed = JOG_SPEED_MIN
+    speed = max(JOG_SPEED_MIN, min(JOG_SPEED_MAX, speed))
+
+    # Who holds the interface, before anything else. Asked here as well as
+    # under the lock below because during a scan `hardware_state()` answers
+    # from a cache that may never have been filled — and "no scanner" is the
+    # wrong sentence to hand someone whose scanner is busy scanning.
+    why = jog_refusal()
+    if why:
+        return {"ok": False, "refused": True, "error": why}
+
+    # Then presence, from the cache-or-probe path that already refuses to touch
+    # USB during a scan, so this cannot be the thing that collides.
+    hw = hardware_state()
+    if hw.get("simulated"):
+        return {"ok": False, "refused": True,
+                "error": "this is a simulated scanner replaying a capture "
+                         "file. There is no motor and no film to move."}
+    if not hw.get("present"):
+        return {"ok": False, "refused": True,
+                "error": "no scanner at 0f05:f135 on USB."}
+    if _FW_LOAD["active"] or hw.get("state") == "loading_firmware":
+        return {"ok": False, "refused": True,
+                "error": "firmware is being loaded onto the scanner right now, "
+                         "and that loader owns the USB interface. It takes a "
+                         "few seconds."}
+    if hw.get("state") != "ready":
+        return {"ok": False, "refused": True,
+                "error": hw.get("hint") or f"the scanner is {hw.get('state')}; "
+                                           f"the motor board at 0x44 answers "
+                                           f"only once firmware is loaded."}
+
+    with _JOG_LOCK:
+        why = jog_refusal()
+        if why:
+            return {"ok": False, "refused": True, "error": why}
+        _JOG.update(active=True, at=time.time(), direction=direction,
+                    seconds=seconds)
+
+    cmd = [sys.executable, str(_TOOLS / "spin_motor.py"),
+           "--speed", str(speed), "--seconds", str(seconds)]
+    if direction == "reverse":
+        cmd.append("--reverse")
+    if long_run:
+        cmd.append("--long")
+
+    out: dict = {"direction": direction, "seconds": seconds, "speed": speed,
+                 "long": long_run}
+    proc = None
+    try:
+        proc = subprocess.Popen(cmd, cwd=str(_ROOT), text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        _JOG["proc"] = proc
+        # The child's own sleep is `seconds`; the slack covers opening the
+        # device and the three USB round trips. An overrun past that is handled
+        # by stop_jog(), not by killing it — see that function for why the
+        # signal matters.
+        try:
+            so, se = proc.communicate(timeout=seconds + 20)
+        except subprocess.TimeoutExpired:
+            out["overran"] = stop_jog()
+            so, se = proc.communicate(timeout=10)
+            out["timed_out"] = True
+        rc = proc.returncode
+        out.update(ok=rc == 0 and not out.get("timed_out"), returncode=rc,
+                   stdout=(so or "")[-2000:], stderr=(se or "")[-2000:])
+        if out.get("timed_out"):
+            out["error"] = ("the jog overran its deadline and was interrupted. "
+                            "The stop went out on the way through — look at the "
+                            "transport before jogging again.")
+        elif rc != 0:
+            out["error"] = ((se or so or "").strip().splitlines() or
+                            [f"spin_motor.py exited {rc}"])[-1]
+    except Exception as e:                                  # noqa: BLE001
+        # Nothing here can leave the child running: if it was started at all it
+        # is either reaped above or interrupted here, and its own finally:
+        # sends the stop either way.
+        if proc is not None and proc.poll() is None:
+            stop_jog()
+        out.update(ok=False, error=f"{type(e).__name__}: {e}")
+    finally:
+        _JOG.update(active=False, at=time.time(), direction=None, seconds=0.0,
+                    proc=None)
+        # The device was opened and closed by another process; whatever this
+        # one last cached about it is no longer a live answer.
+        _HW_CACHE.update(at=0.0, value=None)
     return out
 
 
@@ -1715,7 +2089,7 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
             return _json(self, unexported_summary())
 
         if route == "rolls":
-            return _json(self, [roll_json(r) for r in S.rolls.values()])
+            return _json(self, [roll_json(r) for r in S.fresh_rolls()])
 
         if route == "diagnostics":
             return _json(self, diagnostics())
@@ -1727,7 +2101,7 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
 
         parts = route.split("/")
         if parts[0] == "roll" and len(parts) >= 2:
-            roll = S.rolls.get(parts[1])
+            roll = S.get_roll(parts[1])
             if roll is None:
                 return _json(self, {"error": "unknown roll"}, 404)
             if len(parts) == 2:
@@ -1799,6 +2173,30 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
                              daemon=True).start()
             return _json(self, {"id": jid})
 
+        if route == "resume":
+            # "open" always mints a new roll id and re-decodes from the raw
+            # capture -- there was no way back into an already-decoded
+            # workspace (rgb14.npy + roll.json already on disk) without that
+            # full redo, which a backend restart made unavoidable even for a
+            # roll nothing about the capture itself required re-reading. This
+            # loads the cached roll.json straight in, the same cheap path
+            # get_roll() uses for an in-memory roll whose file changed underneath
+            # it -- Roll.from_json() never touches rgb14.npy or the .bin.
+            roll_id = (body.get("roll") or "").strip()
+            if not roll_id:
+                return _json(self, {"error": "no roll id"}, 400)
+            meta_path = WORKSPACE / roll_id / "roll.json"
+            if not meta_path.is_file():
+                return _json(self, {"error": f"no workspace for {roll_id!r}"}, 404)
+            try:
+                roll = pr.Roll.from_json(json.loads(meta_path.read_text()))
+            except Exception as e:                          # noqa: BLE001
+                return _json(self, {"error": f"{type(e).__name__}: {e}"}, 500)
+            with S.lock:
+                S.rolls[roll.id] = roll
+            S._roll_mtime[roll.id] = meta_path.stat().st_mtime
+            return _json(self, roll_json(roll))
+
         if route == "export":
             jid = S.job_new("export")
             threading.Thread(target=job_export, args=(jid, body),
@@ -1832,6 +2230,13 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
         if route == "calibration/select":
             return _json(self, calibration_select(body))
 
+        if route == "calibration/run":
+            jid = S.job_new("calibration")
+            started = calibration_run(jid, body)
+            if "error" in started:
+                return _json(self, started, 409)
+            return _json(self, started)
+
         # ---- scanning ----
         if route == "scan":
             jid = S.job_new("scan")
@@ -1844,6 +2249,14 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
         if route == "scan/cancel":
             return _json(self, SCAN.cancel(body.get("id")))
 
+        if route == "motor":
+            # Synchronous: the answer is what the transport actually did, and
+            # the caller is a person watching the machine. Bounded by the same
+            # cap the child enforces, so it cannot hold the connection open
+            # longer than the jog it asked for.
+            res = motor_jog(body)
+            return _json(self, res, 200 if res.get("ok") else 409)
+
         if route == "scan/stop":
             # The panic button. Always allowed, never queued, and it does not
             # care whether this process thinks a scan is running.
@@ -1851,7 +2264,7 @@ class H(_BASE):                                     # type: ignore[misc,valid-ty
 
         parts = route.split("/")
         if parts[0] == "roll" and len(parts) >= 3:
-            roll = S.rolls.get(parts[1])
+            roll = S.get_roll(parts[1])
             if roll is None:
                 return _json(self, {"error": "unknown roll"}, 404)
 
@@ -2191,18 +2604,142 @@ def calibration_info() -> dict:
 # --------------------------------------------------------------------------
 
 def calibration_store_state() -> dict:
-    """Disk only. Safe to call as often as the UI likes."""
+    """Disk only. Safe to call as often as the UI likes.
+
+    docs/69 s7.1. Everything added here is a pure disk read, so the "must
+    never cause USB traffic" property of this function is preserved -- and it
+    is now enforced structurally rather than by discipline, because
+    calib_resolve, calib_profile and calib_wizard.assess cannot import a
+    transport at all.
+
+    INVARIANT: resolution.device_read_performed and resolution.may_auto_read
+    are False in every response this returns. If either is ever true,
+    something has been wired wrongly.
+    """
     if calib is None:
         return {"available": False,
                 "reason": "calibration tools unavailable"}
     try:
         store = calib_store.CalibrationStore()
         sel = store.selection()
-        return {"available": True, "store": str(store.root),
-                "have_calibration": store.has_calibration(),
-                "selection": sel}
+        out = {"available": True, "store": str(store.root),
+               "have_calibration": store.has_calibration(),
+               "selection": sel}
+        if cres is not None:
+            out["resolution"] = cres.resolve(store)
+            out["units"] = store.unit_index()
+        if cprof is not None:
+            out["profile"] = cprof.profile(store).to_json()
+        if cwiz is not None:
+            # What would happen if the scanner were plugged in right now.
+            # No device is reachable from assess(): it is a function of bytes
+            # already on disk, and it decides nothing -- `automatic` is a
+            # statement about whether a person would be asked anything, not
+            # permission to start.
+            out["setup"] = cwiz.assess(store)
+        return out
     except Exception as e:                                  # noqa: BLE001
         return {"available": False, "reason": str(e)}
+
+
+def calibration_run(jid: str, body: dict) -> dict:
+    """Start the unattended calibration as a background job.
+
+    A job, not a synchronous call: the searches take minutes and a blocking
+    POST would freeze the window. Progress is polled through GET job/<id>,
+    exactly like opening a capture or exporting a roll -- no new mechanism.
+
+    THE GUARDS, IN ORDER, AND WHY EACH ONE IS HERE
+    ----------------------------------------------
+    1. ``SCAN.running()`` -- a calibration needs the USB interface to itself.
+    2. ``foreign_scan()`` -- so does another process's scan.
+    3. one calibration at a time -- two searches driving the same lamp would
+       each measure the other's setting.
+    4. already calibrated -- refuses unless the caller explicitly asks again.
+       The existing set is kept regardless; nothing here deletes.
+
+    What it does NOT guard is "is there film in the gate", because that is not
+    a question this layer can answer and not a question a person should be
+    asked. The wizard measures it -- see calib_wizard's docstring for why the
+    film sensors and the gate classifier are not symmetric signals -- and comes
+    back in the ``film-in-gate`` state, which is one sentence on screen and no
+    control.
+    """
+    if calib is None or cwiz is None:
+        return {"error": "calibration tools unavailable"}
+    if SCAN.running():
+        return {"error": "A scan is running. Calibration needs the USB "
+                         "interface to itself; try again when it ends."}
+    foreign = scan_marker_state()
+    if foreign.get("stale") or foreign.get("running"):
+        return {"error": "Another process is using the scanner."}
+    with S.lock:
+        busy = [j for j in S.jobs.values()
+                if j.get("kind") == "calibration" and j.get("status") == "running"]
+    if busy:
+        return {"error": "A calibration is already running."}
+
+    store = calib_store.CalibrationStore()
+    setup = cwiz.assess(store)
+    if setup["state"] == cwiz.READY and not body.get("force"):
+        return {"error": "This scanner is already calibrated. Nothing was "
+                         "sent to it."}
+    if setup["state"] == cwiz.AMBIGUOUS:
+        return {"error": "More than one scanner has been calibrated here. "
+                         "Choose which one is plugged in first."}
+
+    S.job_set(jid, kind="calibration", status="running", progress=0.0,
+              phase=cwiz.STEP_GATE, message=cwiz.HEADLINES[cwiz.RUNNING],
+              state=cwiz.RUNNING, steps=setup["steps"], cancellable=False)
+    threading.Thread(target=job_calibrate, args=(jid, body), daemon=True).start()
+    return {"id": jid, "state": cwiz.RUNNING}
+
+
+def job_calibrate(jid: str, body: dict) -> None:
+    """The worker. Every state it can end in is one the UI can render."""
+    link = None
+    try:
+        store = calib_store.CalibrationStore()
+
+        def prog(p) -> None:
+            S.job_set(jid, phase=p.step, progress=float(p.fraction),
+                      message=p.text, detail=p.detail, state=p.state,
+                      measurements=list(p.measurements))
+            for w in p.warnings:
+                S.job_append(jid, "warnings", w)
+
+        # The no-motion film-sense pre-check needs a Link of its own. If it
+        # cannot be opened the calibration still proceeds: the probe capture
+        # is a positive measurement of the same question, and refusing to
+        # start because a pre-check was unavailable would be a prompt in front
+        # of the case that is meant to be silent.
+        try:
+            link = scan.Link.open()
+        except Exception as e:                              # noqa: BLE001
+            S.job_append(jid, "warnings",
+                         f"no film-sense pre-check ({e}); the first probe "
+                         f"capture will settle whether the gate is empty")
+
+        w = cwiz.Wizard(store, base=int(body.get("base") or cwiz.DEFAULT_BASE),
+                        progress=prog)
+        rep = w.run(link)
+        S.job_set(jid, state=rep["state"], headline=rep["headline"],
+                  serial=rep.get("serial"), report=rep,
+                  measurements=rep.get("measurements") or [],
+                  status="done" if rep["state"] == cwiz.DONE else "error",
+                  progress=1.0 if rep["state"] == cwiz.DONE else 0.0,
+                  phase="done", message=rep["headline"],
+                  error=None if rep["state"] == cwiz.DONE else rep["headline"],
+                  calibration=calibration_store_state())
+    except Exception as e:                                  # noqa: BLE001
+        S.job_set(jid, status="error", state=cwiz.FAILED if cwiz else "failed",
+                  error=f"{e}", trace=traceback.format_exc()[-2000:])
+    finally:
+        if link is not None:
+            try:
+                link.close()
+            except Exception:                               # noqa: BLE001
+                pass
 
 
 def _calib_parts():
@@ -2219,6 +2756,19 @@ def calibration_state() -> dict:
     if not out.get("available"):
         return out
     out["scan_running"] = SCAN.running()
+    # docs/69 s7.2. `have_calibration` is true when ANY scanner has been read,
+    # so with two units stored the early-out below would return action "none"
+    # and the UI would silently use whichever the selection happened to point
+    # at. Guessing here means rendering someone's film through another
+    # scanner's colour matrix and lamp calibration -- plausible-looking and
+    # wrong. Choosing costs one click; being wrong costs every scan until
+    # somebody notices. Still no USB touched.
+    if (cres is not None and not out["scan_running"]
+            and (out.get("resolution") or {}).get("state") == cres.AMBIGUOUS):
+        out["action"] = "choose-unit"
+        out["headline"] = (out["resolution"].get("headline")
+                           or "Which scanner is plugged in?")
+        return out
     if out.get("have_calibration") or out["scan_running"]:
         # Nothing to decide. Do not touch USB.
         out["action"] = "none" if out.get("have_calibration") else "busy"
@@ -2261,6 +2811,15 @@ def calibration_select(body: dict) -> dict:
     if calib is None:
         return {"error": "calibration tools unavailable"}
     store = calib_store.CalibrationStore()
+    # docs/69 s7.3. A serial names a UNIT; a stamp names a READ. Never create a
+    # unit by naming it -- an unknown serial is an error, not an instruction --
+    # and selecting deletes nothing either way.
+    if "serial" in body:
+        srl = body.get("serial")
+        if srl is not None and not store.has_calibration_for(int(srl)):
+            return {"error": f"no good stored calibration for scanner {srl}"}
+        store.select_unit(None if srl is None else int(srl))
+        return calibration_store_state()
     stamp = body.get("stamp")
     try:
         if stamp:
@@ -2276,7 +2835,7 @@ def diagnostics() -> dict:
     """Capture integrity and pipeline facts. Technical output lives here, not
     among the photographs (design/index.html)."""
     rolls = []
-    for r in S.rolls.values():
+    for r in S.fresh_rolls():
         rolls.append({
             "id": r.id, "name": r.name, "capture": r.capture,
             "lines": r.lines, "frames": len(r.frames), "sync": r.sync,

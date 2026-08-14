@@ -1441,7 +1441,11 @@ def render_name(template: str, roll: Roll, index: int, ext: str) -> str:
 #: ``rpd12_to_icc_u8`` and runs the ICC transform on 8-bit RGB. Its output
 #: therefore *is* 8-bit. Writing it into a 16-bit container by replicating
 #: bytes would advertise depth that does not exist, so 16-bit is offered only
-#: on the Linear/RPD path, which is genuinely 16-bit all the way.
+#: on the Linear/RPD path, which is genuinely 16-bit all the way through this
+#: port's own pipeline. That is not a claim that the real vendor software
+#: ever wrote a 16-bit file of its own — it measurably did not, even on this
+#: same stage (see the "Save As Raw" comment in ``export_frame`` below for the
+#: real vendor file this was checked against).
 def depth_options(colour: str) -> list[int]:
     return [16, 8] if colour == "linear" else [8]
 
@@ -1564,7 +1568,21 @@ def export_frame(roll: Roll, index: int, dest: Path, fmt: str = "tiff",
     replaced = out.is_file()
 
     if colour == "linear":
-        # The vendor's "Save As Raw": stage 2 only, no Ansel, no ICC hop.
+        # The vendor's "Save As Raw" STAGE (stage 2 only, no Ansel, no ICC
+        # hop) — not its file format. The real PSI software's own Save As Raw
+        # output is 8-bit, not 16: a real vendor export pulled down for
+        # comparison, rawAA001.tif, has TIFF tag 258 (BitsPerSample) =
+        # (8, 8, 8) and decodes to dtype uint8. That is not a sensor
+        # limitation — a real EP 0x86 capture read straight off the wire
+        # (pakon_decode.load_u16 + segment_lines + to_rgb14, no dark/gain/poly
+        # correction applied) shows raw14 using its full range: 100% of pixels
+        # exceed 255 on every channel, ~14-16k distinct code values used per
+        # channel, matching RAW14_MAX = 16383. So the vendor's own software
+        # throws 14-bit sensor data away down to 8 bits even on its most-
+        # preserving export; the 16-bit TIFF written below keeps what the
+        # vendor's own "raw" file discards, and is this port's own choice —
+        # not a reproduction of the vendor file's actual depth.
+        #
         # Per-frame steps are NOT baked in — they are a correction to the
         # rendered result, and this file is deliberately the data before that.
         # A "one step" equivalent in the RPD domain would be a made-up

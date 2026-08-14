@@ -2204,7 +2204,8 @@ def run_scan(out_path: str | Path,
              lamp: bool = True,
              lamp_refresh_s: float = LAMP_REFRESH_S,
              lamp_refresh_mode: str = "full",
-             lamp_watchdog: str = LAMP_WATCHDOG_DEFAULT) -> ScanResult:
+             lamp_watchdog: str = LAMP_WATCHDOG_DEFAULT,
+             motor: bool = True) -> ScanResult:
     """One scan, start to finish, with every guard armed.
 
     ``read_dx`` adds the DX poll to the capture loop: pure reads of light-board
@@ -2220,6 +2221,16 @@ def run_scan(out_path: str | Path,
     ``lamp_watchdog`` chooses how the DX board's decoded 10 s auto-off is
     handled — see :data:`LAMP_WATCHDOG_MODES` for what each one sends and why
     the default is the one that does both.
+
+    ``motor=False`` never sends TRANSPORT FORWARD: the CCD is armed and reads
+    lines from whatever is already in the gate, unmoving, until max_bytes/
+    max_seconds stops it. For calibration captures (dark reference, bright
+    reference, duty-search probes) nothing about the measurement needs film to
+    move -- they read a stationary field of view repeatedly, the same way
+    FN_bCalibrateFindLedDutyCycle's own real search does (confirmed by
+    tonight's disassembly: it re-measures the same CCD line, not a moving
+    strip). safe_stop's own MOTOR STOP is unconditional and idempotent either
+    way, so nothing here needs to skip teardown.
     """
     log = log or (lambda *a, **k: None)
     # NOT `cancel or Cancel()`. Cancel defines __bool__ so the loop can write
@@ -2383,18 +2394,23 @@ def run_scan(out_path: str | Path,
 
         if not dry_run:
             fh = out.open("wb")
-        log("phase", phase="transport", message=f"starting transport at {speed}")
-        # BEFORE the acknowledgement, not after. `ack(required=True)` raises
-        # ScanAborted when the reply is lost or refused, but the board acts on
-        # a command when it receives it: a lost acknowledgement is not evidence
-        # that the transport did not start. Setting the flag afterwards meant
-        # that on exactly that failure the abort unwound, safe_stop's own
-        # retries also failed, and the finally then read `not started_motor`
-        # and cleared the marker -- motor possibly running, stop failed, and
-        # nothing left to tell the next process. The flag records that the
-        # command went out, which is the thing the marker is about.
-        started_motor = True
-        link.ack(pc.motor_forward(), f"TRANSPORT FORWARD at {speed}")
+        if motor:
+            log("phase", phase="transport", message=f"starting transport at {speed}")
+            # BEFORE the acknowledgement, not after. `ack(required=True)` raises
+            # ScanAborted when the reply is lost or refused, but the board acts on
+            # a command when it receives it: a lost acknowledgement is not evidence
+            # that the transport did not start. Setting the flag afterwards meant
+            # that on exactly that failure the abort unwound, safe_stop's own
+            # retries also failed, and the finally then read `not started_motor`
+            # and cleared the marker -- motor possibly running, stop failed, and
+            # nothing left to tell the next process. The flag records that the
+            # command went out, which is the thing the marker is about.
+            started_motor = True
+            link.ack(pc.motor_forward(), f"TRANSPORT FORWARD at {speed}")
+        else:
+            log("phase", phase="transport",
+                message="motor=False -- reading the stationary gate, "
+                        "nothing commanded to move")
 
         # ---------------- the capture loop ----------------
         t0 = time.time()
@@ -2843,7 +2859,8 @@ def cmd_run(a) -> int:
                        lamp=not a.no_lamp,
                        lamp_refresh_s=a.lamp_refresh,
                        lamp_refresh_mode=a.lamp_refresh_mode,
-                       lamp_watchdog=a.lamp_watchdog)
+                       lamp_watchdog=a.lamp_watchdog,
+                       motor=not a.no_motor)
     except ScanRefused as e:
         _emit("error", message=str(e))
         print(f"refused: {e}", file=sys.stderr)
@@ -3975,6 +3992,14 @@ def main() -> int:
                         "off, to find out whether the DX board needs it. The "
                         "capture will be black and the DARK stop is "
                         "suppressed, so keep --max-seconds short.")
+    r.add_argument("--no-motor", action="store_true",
+                   help="never send TRANSPORT FORWARD. The CCD reads "
+                        "whatever is already in the gate, stationary, until "
+                        "--max-bytes/--max-seconds stops it. For calibration "
+                        "captures (dark/bright references, duty-search "
+                        "probes) that don't need film to move -- refuses "
+                        "nothing about roll-end/film-sense, those checks "
+                        "just never fire since nothing moves.")
 
     a = ap.parse_args()
     return {"status": cmd_status, "stop": cmd_stop, "run": cmd_run,

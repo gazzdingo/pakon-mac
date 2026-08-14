@@ -131,6 +131,37 @@ ACROSS_PX_PER_MM = CCD_ACROSS_PX / FILM_ACROSS_MM   # 83.333, == pakon_decode
 LO_LIM_FRAC = 0.95
 HI_LIM_FRAC = 1.15
 
+# This port's own approximation, not the vendor's -- there is no VA for it,
+# because the vendor never estimates pitch at all (estimate_pitch's own
+# docstring). estimate_pitch can be fooled by a single real photo whose
+# internal brightness variation fragments its ones-run into pieces that are
+# each still >= min_run: the deltas between fragment starts are then noise,
+# not pitch, and the median can lock onto a spurious sub-pitch value.
+#
+# Measured on 2026-08-14 across every capture available (find_frames_traces'
+# geometry vs. the "measured" pitch's implied lines/mm, i.e. pitch /
+# FRAME_PITCH_MM, against ACROSS_PX_PER_MM-derived geometry):
+#
+#   well-behaved (most frames pass phase 1 as single clean runs):
+#     scan-20260812-082437.bin        0.89 % off geometry
+#     scan-20260812-085241.bin        0.77 % off geometry
+#     gold400.bin                     1.35 % off geometry
+#     vendor-duty-test-20260813-221801.bin   0.83 % off geometry
+#     scan-20260807-181450.bin        0.49 % off geometry
+#   fragmented (few or no frames pass phase 1 as single clean runs):
+#     fresh-calibration-scan-20260814-065421.bin   29.32 % off geometry
+#     scan-20260812-091633.bin        29.37 % off geometry
+#     scan-20260812-094912.bin        28.73 % off geometry
+#     vendor-duty-fixed-offset-20260813-225308.bin 28.54 % off geometry
+#     roll.bin                        40.28 % off geometry (fell all the way
+#                                      to FramingBlindlyPlacePictures)
+#
+# Worst well-behaved case 1.35 %, best fragmented case 28.54 % -- a clean
+# order-of-magnitude gap. 0.15 sits with >10x margin on both sides; it is not
+# reused from LO_LIM_FRAC/HI_LIM_FRAC (those are the vendor's, for a
+# different quantity) even though the number happens to match.
+PITCH_AGREEMENT_FRAC = 0.15
+
 # DetectFilm_G / DetectWhite_G as fractions of the empty-gate level.
 # docs/56 §3.1; absolute hive values 61000 / 54000 against a 64000 target.
 DETECT_WHITE_FRAC = 61000.0 / 64000.0    # 0.9531
@@ -353,9 +384,19 @@ def estimate_pitch(ones: np.ndarray, min_run: int = 200) -> float | None:
     prediction is 1634, and the residual is 1.3 %. See ``pakon_decode``'s
     geometry comment block and ``pakon_decode.py geometry``.
 
-    So the two routes now agree, and framing still prefers the measurement:
-    it needs neither the sidecar nor the anchor, only the fact that 35 mm
-    frames are 38 mm apart. Pass ``--pitch-lines`` to force a value, or
+    So the two routes usually agree, and framing prefers the measurement when
+    they do -- it needs neither the sidecar nor the anchor, only the fact
+    that 35 mm frames are 38 mm apart. But "usually" is not "always": this
+    estimator has no notion of what a frame is supposed to look like, only of
+    runs of ones at least ``min_run`` long. On a real photo whose brightness
+    varies internally (a bright sky, a highlight), the Otsu split (still
+    INFERRED, see the module docstring) can cut a single real frame into two
+    or three ones-runs with small gaps of misclassified "gap" between them.
+    Each fragment can still be >= 200 lines, so each fragment's start looks
+    like a frame start to this function, and the deltas between fragment
+    starts are noise, not pitch. ``frame_cascade`` cross-checks this
+    estimate against geometry for exactly that reason -- see
+    ``PITCH_AGREEMENT_FRAC``. Pass ``--pitch-lines`` to force a value, or
     ``--speed`` to derive one.
 
     Returns the estimated start-to-start pitch in lines, or None if there is
@@ -423,14 +464,35 @@ def frame_cascade(trace: np.ndarray,
 
     ones, thr = ones_array(trace, present, ones_threshold)
 
+    pitch_measured = None
+    pitch_rejected_reason = None
     if pitch_lines is not None:
         pitch, pitch_source = float(pitch_lines), "given"
     else:
-        measured = estimate_pitch(ones)
-        if measured is not None:
-            pitch, pitch_source = measured, "measured"
-        elif lines_per_mm is not None:
-            pitch, pitch_source = FRAME_PITCH_MM * lines_per_mm, "geometry"
+        pitch_measured = estimate_pitch(ones)
+        geometry_pitch = (FRAME_PITCH_MM * lines_per_mm
+                          if lines_per_mm is not None else None)
+        # Cross-check the measurement against geometry when both exist.
+        # estimate_pitch has no notion of a frame's expected size and can
+        # lock onto a fragment-spacing artifact instead of the real pitch --
+        # see PITCH_AGREEMENT_FRAC for the real-capture evidence this
+        # tolerance is based on. Geometry is not vendor-derived here either
+        # (pakon_decode's transport scale, itself once 1.9x off -- docs/56
+        # §8 -- before the MotorSpeedPlus anchor fix), but it is independent
+        # of the same ones-array noise that can fool the measurement, which
+        # is what matters for a cross-check.
+        if (pitch_measured is not None and geometry_pitch is not None and
+                abs(pitch_measured - geometry_pitch) >
+                PITCH_AGREEMENT_FRAC * geometry_pitch):
+            pitch_rejected_reason = (
+                f"measured {pitch_measured:.1f} vs geometry {geometry_pitch:.1f} "
+                f"({abs(pitch_measured - geometry_pitch) / geometry_pitch:.1%} "
+                f"off, over the {PITCH_AGREEMENT_FRAC:.0%} tolerance)")
+            pitch, pitch_source = geometry_pitch, "geometry"
+        elif pitch_measured is not None:
+            pitch, pitch_source = pitch_measured, "measured"
+        elif geometry_pitch is not None:
+            pitch, pitch_source = geometry_pitch, "geometry"
         else:
             raise ValueError("no pitch: pass pitch_lines or lines_per_mm, "
                              "or give a strip with measurable frame structure")
@@ -588,6 +650,9 @@ def frame_cascade(trace: np.ndarray,
         "hi_lim": round(hi_lim, 1),
         "pitch": round(pitch, 1),
         "pitch_source": pitch_source,
+        "pitch_measured": (round(pitch_measured, 1)
+                           if pitch_measured is not None else None),
+        "pitch_rejected_reason": pitch_rejected_reason,
         "lines_per_mm_geometry": (round(lines_per_mm, 4)
                                   if lines_per_mm is not None else None),
         "lines_per_mm_implied": round(pitch / FRAME_PITCH_MM, 4),
@@ -906,6 +971,9 @@ def main(argv: list[str] | None = None) -> int:
     if report["pitch_source"] == "measured" and report["lines_per_mm_geometry"]:
         print(f"  note: geometry predicts {report['lines_per_mm_geometry']} lines/mm, "
               f"data implies {report['lines_per_mm_implied']}")
+    if report.get("pitch_rejected_reason"):
+        print(f"  note: measured pitch rejected in favour of geometry -- "
+              f"{report['pitch_rejected_reason']}")
     for name, count in report["counts"].items():
         if count:
             print(f"  {name} {count}")

@@ -1371,6 +1371,466 @@ stages (§11-12) become the clear priority again. If either fires, that
 confirms real, if not-yet-fully-mapped, CN-reachability — worth
 knowing regardless of which way it resolves.
 
+## 19 — The verification harness's own blind spot: every golden test
+feeds a synthetic, guaranteed-empty scene-context, never one produced
+by real upstream execution.
+
+Audited the harness itself, not another subsystem hypothesis — prompted
+by the pattern every prior section reinforces: nine-plus individually
+"verified bit-exact" subsystems, still a washed-out composite. §11
+already established that the real DLL calls `balanceAreaImage`,
+`analyzeArea`, `analyzeFalloff`, and `analyzeAutoTone` with the
+identical shared `[ebp+0xc]` holder argument. This section asked
+whether any golden test has ever fed `analyzeAutoTone` the holder state
+those earlier stages would really leave behind.
+
+None has. `pakon_dra_golden.py:349-361`'s `build_empty_scene_context`
+hand-builds a fresh, guaranteed-empty red-black tree immediately before
+the call; `pakon_autotone_assembled_golden.py:279-289` reuses that same
+empty context for both `dra` and `contrast`; `pakon_autotone_shell_
+golden.py:34-41` replaces the capability-set lookup itself (the real
+`0x10020a40`→`0x10028f70` `std::map` walk) with a plain Python dict "so
+as not to test MSVCP71"; production's own callsite
+(`pakon_ansel.py:491`) passes `holder=None`. Input realism and
+comparison scope were separately checked and are not the gap — §17
+already re-ran the assembled chain on real 48×48/400×400 pixel crops,
+diffing full arrays (`ToneScaleLut`, `LuminanceHist`, `EdgeHist`,
+`DraLut`, `OutToneLut`) element-for-element, with FPCW pinned to
+`0x027F`. The gap is specifically that every test's starting *state* is
+synthetic, never real.
+
+This raised the obvious next question, closed in §22 below: does that
+synthetic-vs-real gap actually reach `analyzeAutoTone`'s own verified
+arithmetic, or is it a real methodological gap that happens not to
+matter for this specific defect?
+
+## 20 — Three more hypotheses closed: `contrast.acquire()`'s fallback,
+`pakon_autotone.py`'s own internals, and `scene_type`'s default.
+
+**`contrast.acquire()`'s fallback (dead end).** Its bare-constructor
+fallback (`pakon_contrast.py:1136-1159`, `pakon_autotone.py:1245-1248`)
+never fires on the real F-135 CN-Enhanced path: `real_auto_tone()`
+(`pakon_ansel.py:442-443,460`) always loads the shipped
+`contrast-CNEnhanced.dpi` first, inside `_RealAutoTone.__init__`, before
+`contrast_acquire` ever runs — confirmed by grep as the only non-test
+caller of `analyze_auto_tone` in the repo. Diffed default vs. shipped
+params anyway: identical except `bConstrainSlope` (False vs. shipped
+True), a bounded LUT-shape effect near the 1550 pivot, not a global
+additive shift, and moot since production never reaches the default.
+
+**`pakon_autotone.py`'s own internals (dead end).** Full 1631-line
+re-read found only two stale comments, both with zero runtime effect
+because the file imports its `*_PORTED` flags live rather than
+restating them (`DRA_ANALYZE_PORTED`'s narration text is Phase-2b-era;
+the live imported value from `pakon_dra.py:355` is `True`, consistent
+with §17's bit-exact chain run). No uncited constants, no live-path
+fallback, nothing contradicting `docs/66`'s verified passes.
+
+**`scene_type`'s default of 0 (dead end, closed twice).** `docs/66`
+Track 2 (lines ~1974-2033) already showed, by disassembly, that every
+alternative to `0` is independently ruled out by the real DLL's own
+control flow: `scene_type==7` (`0x100699e7`) is intercepted one call
+site *before* `analyzeAutoTone` and routed to a different, unported
+function (`analyzeAsea`, `0x100fb080`) entirely — the real DLL never
+runs the six-subsystem chain for a `7` frame at all; `scene_type==1`
+nulls the tone object at the epilogue (`0x100fcb29`), contradicted by
+every real frame's measured non-identity `dra` compression;
+`scene_type∈{3..6}` collapses back to `0` inside `analyzeAutoTone`
+itself whenever `elmo_occured` is true (`pakon_autotone.py:1521-1522`).
+`scene_type` does gate real contrast math as suspected — confirmed via
+`SLOPE_BAND_BY_SCENE_TYPE` (`pakon_contrast.py:783`) — but by
+elimination `0` is the only value consistent with real DLL control
+flow. Closed a second time empirically: swept `real_auto_tone()`'s
+`scene_type` argument 0-7 on a real captured frame (`gold400.bin`
+frame 1). Shadow point moved at most ~14 sRGB codes across every
+reachable value — roughly 5-7% of the ~206-code defect — and where it
+moved, it moved toward *more* washed out (`scene_type=1,2,3` push the
+median toward outright clipping), never less.
+
+## 21 — `profile_key`'s silent ICC fallback: real architectural smell,
+zero effect (dead end).
+
+Flagged by the pipeline audit as an uncited fallback feeding the final
+ICC transform. Traced fully: under normal conditions it never reaches
+the fallback at all (`profile.map`'s first rule matches the default
+`SceneContext.cap_name` directly, `pakon_ansel_maps.py:485`) — and even
+if it did, `profile_key`/`profile_dpi` is never consumed by the actual
+transform in either engine. `AnselEngine.to_srgb`
+(`pakon_ansel.py:1067-1084`) and the Go engine
+(`tools/ansel/pipeline/engine.go:106-107`) both hardcode the same
+profile pair directly (`Rpd2Pcs_HR200_QS_v5s10.pf` /`Srgb_v2.pf`); the
+whole `profile.map` selection machinery only feeds a diagnostic print
+line. Empirical upper bound in case the hardcoding were ever wrong:
+forcing the genuinely different `color_dir/rpd.pf`+`srgb.pf` pair
+instead moved output by 1-3 sRGB codes max, on a real rendered frame —
+nowhere near the defect. Real cleanup item (dead code computed and
+logged but never wired to what it's named after), not a cause.
+
+## 22 — The holder-state gap from §19, closed: no live channel exists
+for it to reach `analyzeAutoTone`'s output. Also corrects a real error
+in §11.
+
+Attempting §19's proposed next step (Unicorn-execute the real per-scene
+driver chain, capture the real resulting holder state, feed it into
+the already-verified assembled harness) surfaced a **direct correction
+to §11**: fresh disassembly of `balanceAreaImage` (`0x10102b20`, same
+MD5-verified DLL every prior pass cites) shows its `find("area")` call
+target (`0x10020a40`) is actually `CAP_FIND_THUNK` — the
+capability-*set* lookup `analyzeAutoTone` itself uses for `"cna"`/
+`"dra"`/etc — not `AnsSceneContext::find` (a different address,
+`0x10022a40`). §11 conflated the two and additionally had the branch
+polarity backwards: on a successful find (the normal case for `"area"`,
+a real, always-declared capability), execution falls into real work at
+`0x10102c68`; only genuine absence throws. §11 believed the reverse and
+so treated real work as an unreachable dead branch.
+
+Rather than reconstruct the driver's own ~15+-field `this` layout by
+guesswork to run the whole chain — judged too risky given this
+project's own no-guessing standard, and doc-flagged as citras-driver
+scale effort — the question was answered more directly: instrumented
+the existing, **unmodified** `pakon_autotone_assembled_golden.py`
+harness (real DLL code, all six real subsystem Impls, nothing stubbed
+at the subsystem level) with `UC_HOOK_MEM_READ` watches on `holder` and
+`ctx`, running the real DLL's `analyzeAutoTone` end to end. Result:
+`holder` (0x100 bytes) — only the refcount at `+0x4` is ever read.
+`ctx` (0x6600 bytes) — only `+0x44`, `+0x4bc`, `+0x64d0` are ever read,
+exactly the three fields already documented in `pakon_autotone.py`,
+nothing else.
+
+Combined with two already-verified facts already in this project's own
+code: `pakon_autotone.py`'s `CAPABILITIES` tuple (`:503-526`) shows
+`analyzeAutoTone` only ever looks up `"cna"/"dra"/"toneHelper"/
+"contrast"/"ast"/"pfd"/"citras"` by name — never `"area"/"attributes"/
+"falloff"/"fugc"` — so even a fully real capability-set graph couldn't
+surface those four stages' results to the six tone subsystems by name;
+and `pakon_toneHelper.py:92-112` already proves the one scalar that
+*could* carry external state (`ctx+0x4bc`, "EXPOSURE") is structurally
+inert on any real photographic frame, since the decision tree's root
+split depends only on `LUM_STDDEV`, which always exceeds threshold on
+real content, fixing `toneHelperValue=2` regardless of EXPOSURE.
+
+**Verdict: dead end, provably, not just unconfirmed.** There is no live
+channel left by which the four unreplicated stages could reach
+`analyzeAutoTone`'s verified output. One thread remains genuinely open,
+not closed either way: whether `balanceAreaImage` mutates the shared
+*pixel buffer* (`arg2`) directly, in place, before `cna` reads it —
+consistent with the function's own name, and not ruled out by the
+holder/ctx read-watch since a direct buffer mutation wouldn't touch
+either. Partial read of its real-work path found it operating on a
+freshly-allocated 0x3000-byte scratch buffer rather than obviously the
+caller's own pixel buffer (arguing against in-place mutation), but
+three further call targets (`0x100a8730`, `0x100d9340`, `0x100dc390`)
+and a second `find("fugc")` lookup inside the same function were not
+traced far enough to close this either way.
+
+## 23 — The actual answer: the verified port was never wired into the
+engine the app runs. Production still renders through an explicitly
+labeled stand-in.
+
+Every section above — this doc's nineteen-plus and `docs/66`'s eleven —
+verifies `tools/ansel/python-pipeline/`'s Python port of
+`analyzeAutoTone` against the real DLL under Unicorn emulation. That
+Python code is not what the shipped app renders through. The app's
+real render path is `tools/ansel/pipeline/*.go` (`tools/pakon_render.py`'s
+own `colour_engine()` defaults to `"go"`; the Python path is reached
+only behind `PAKON_COLOUR_ENGINE=python` and its own docstring calls it
+`DEPRECATED`). And in the Go engine, `analyzeAutoTone` was never
+wired in at all:
+
+```go
+// main.go:566-569
+shasted := fugcOut
+if model == "f135" {
+    shasted = ShastaToneRpd(fugcOut, sel.ShastaParams())
+}
+```
+
+`ShastaToneRpd` (`shasta.go:193-282`) is a placeholder its own extensive
+header comment names as such: a per-channel two-anchor linear stretch
+(1st-percentile → black, median → mid-grey, straight line between,
+clamped) — "every constant comes from `shasta-rpd.dpi`, but the SHAPE
+is not the vendor's... None of that is reproduced here," referring to
+the real Shasta curve's five measured statistics, per-knot
+aggressiveness factors, exponential slope limits, and white-point
+compression. It stands in for the real negative tone stage
+(`ColorNegativePath::analyzeAutoTone`, `0x100fb730` — the same address
+this whole doc has been verifying), not for `AnsShastaCapabilityImpl`
+itself (Shasta never runs for a colour negative at all — see
+`shasta.go:21-45`'s own citation of the path-selection jump table at
+`0x10002270`). The app logs this plainly on every real F-135 render:
+`"PROVENANCE: F135InvertPorted=%v AutoTonePorted=%v
+ShastaAnalyzePorted=%v — the inversion and the tone scale are
+stand-ins, not vendor call sites"` (`main.go:662-665`), with
+`AutoTonePorted` hardcoded `false` (`shasta.go:155`).
+
+Why it was left unwired, in the code's own words (`shasta.go:81-89`):
+"a half-ported chain would put a worse transform on the render path
+than the stand-in does, so nothing is wired in until the whole chain
+is bit-exact." That is exactly the bar this doc and `docs/66` have
+been working toward, stage by stage, all along — and §22 above is the
+closest anyone has come to declaring it met (the six subsystems
+verified bit-exact; the one remaining thread, `balanceAreaImage`'s
+possible in-place buffer mutation, unclosed but structurally minor
+next to the six-subsystem chain itself).
+
+**This is sufficient on its own to explain "no real blacks," independent
+of every subsystem-level hypothesis this doc and `docs/66` have tested.**
+`ShastaToneRpd`'s crude two-point-per-channel percentile stretch has no
+real highlight/shadow compression; on a typical frame whose darkest 1%
+isn't already near-zero, the black anchor lands well above true black
+and the whole image gets linearly stretched from there — exactly the
+washed-out, no-real-blacks shape this entire investigation has been
+chasing, and it requires no bug in any of the meticulously-verified
+subsystems above, because none of them are in the app's actual render
+path. The commit that produced this doc's own six-subsystem
+verification (`77e2a71`, "Finish the autoTone port") is entirely
+`tools/ansel/python-pipeline/` — `main.go`'s `ShastaToneRpd` call is
+byte-for-byte unchanged by it.
+
+**Next step, concrete and unblocked by any further RE:** port the
+verified `analyzeAutoTone` chain into Go, replacing the `ShastaToneRpd`
+call at `main.go:568`, the same way the ICC transform, AFE gain, and
+falloff stages already made that same Python-verify-then-Go-port
+crossing earlier in this project's history.
+
+## 24 — A genuine full-frame, real-DLL Unicorn harness: bit-exact AND
+pixel-identical at real, full, uncropped-frame scale. `balanceAreaImage`'s
+own real body run for real: no pixel-buffer writes observed, in either
+branch tested. (Corrected same pass, in place, not silently: an earlier
+draft of this section reported a real `cna` divergence at full-frame scale
+that turned out, on direct further testing, to be this new harness's own
+instruction-count-cap bug, not a real DLL/port divergence — see "Finding 2,
+corrected" below for the full account, kept rather than deleted so the
+record shows what was wrong and how it was found, the same practice §11/§16/
+§18 already established elsewhere in this doc.)
+
+New, additive script this pass:
+`tools/ansel/python-pipeline/pakon_full_colour_chain_golden.py`. Does not
+modify any existing golden file — every DLL-side call reuses
+`pakon_autotone_assembled_golden.py`'s own `build_dll`/`RealCapset`/
+`host_run`/`_diff_scalars`/`_diff_array`/`shipped_contrast_params`
+completely unchanged, the same adaptation-not-rewrite §17 already used, now
+extended from a hand-picked crop to a genuine full captured frame. DLL
+re-verified MD5 `eea9dcf78ee21d4f7c515a6c2512242d` (the same copy every
+prior section cites) immediately before use. Real capture, at the owner's
+own direction this pass:
+`~/Library/Caches/PakonScan/captures/fresh-calibration-scan-20260814-065421.bin`
+(today's post-recalibration test scan, already cited by
+`pakon_ansel.py`'s own `real_auto_tone`-neighbourhood comment — not one of
+the earlier `gold400.bin`/`scan-20260812-*` captures §4-§15 used, a
+deliberate switch to current, not pre-recalibration, hardware state), frame
+index 1 of 5 (the one `confidence="good"` frame on this roll), real post-FUGC
+RPD-12 input captured by intercepting `pakon_ansel.real_auto_tone` at its own
+call boundary — the function still runs completely unmodified; only its
+argument is additionally recorded on the way through, the exact real value
+every real render already computes.
+
+**Finding 1 — bit-exact, and now pixel-identical end to end, on real crop
+content from this new capture too.** A real 400×400 crop of this frame (the
+same crop size §17 already validated, on a different capture): `cna`/`dra`/
+`toneHelper`/`contrast`/`citras` all diff at zero fields between the real
+DLL and the pure-Python assembled chain. New beyond §17: applying the real
+DLL's own `contrast_results()['OutToneLut']` through the SAME already-verified
+`citras_driver.apply_citras` vendor-apply step `pakon_ansel.real_auto_tone`
+itself uses, then through the same `AnselEngine.to_srgb`, and diffing against
+the Python port's own `real_auto_tone()`/`.to_srgb()` output on the
+IDENTICAL crop (same analysis scope both sides — an earlier draft of this
+check diffed the DLL crop-render against a crop OF the full-frame Python
+render and found ~6-code differences, which turned out to be an artefact of
+comparing two different analysis populations, not a real divergence; caught
+and corrected within this same pass before drawing any conclusion from it):
+
+```
+abs(python_srgb - dll_ground_truth_srgb) over the whole 400×400×3 crop:
+  mean=0.0  p99=0.0  max=0.0  — 100% of pixels bit-identical
+```
+
+This is the "genuine ground-truth reference render… bit-exact" this doc has
+lacked since §13/§15's own crude carving-based comparisons — at this scale,
+not an estimate.
+
+**Finding 2, corrected — the apparent `cna` divergence on the full frame was
+this harness's own instruction-count-cap bug, not a real DLL/port
+divergence. Confirmed directly; the real chain is bit-exact at full-frame
+scale too.**
+
+An earlier draft of this section, same pass, reported 27 mismatched fields
+on the real 2,965×2,000 (5,930,000-pixel) frame — `cna.threshold`/
+`nEdgePixels`/all four sigmas reading `-1`/`-1.0`, `ToneScaleLut` all-zero,
+cascading to an all-zero `dra` — and, working from `pakon_cna.py`'s own
+"gate never entered" seed values, took that at face value as the real DLL
+genuinely giving up on real, full-scale content where the Python port does
+not. Asked to confirm that reading against the actual instructions before
+touching any port code, direct disassembly of `analyze_image`'s bucketing
+accumulator (the specific loop the first hypothesis pointed at) refuted it
+immediately: `0x1022e310`/`0x1022e31b`, live `pd` this pass —
+
+```
+0x1022e310  add eax, dword [edi + ecx*4]   ; accumulator: full 32-bit EAX
+0x1022e31b  mov dword [ebx + edx*4], eax   ; store: full 32-bit DWORD
+```
+
+— genuinely 32-bit throughout, matching `pakon_cna.py`'s own `i32`
+arithmetic exactly. No 16-bit truncation exists in that loop. Pushed
+further rather than stopping at "not this": instruction-level tracing
+(a `UC_HOOK_CODE` watch over the whole `analyze_image` body, live this
+pass) on the smallest broken case found by a binary search (a real
+1,043×1,043 crop of this same frame; a real 1,042×1,042 crop of the same
+frame renders correctly) showed execution entering `analyze_image`'s
+per-bucket normalisation loop (`0x1022e760`-`0x1022e7eb`) and simply never
+being recorded again — the trace never reaches the smoothing/
+`build_tone_lut`/normalise calls a few hundred bytes later
+(`0x1022e9c9`/`0x1022e9de`/`0x1022e9ea`) — yet the harness still reported
+`status_ok=True`.
+
+That combination (execution silently stops advancing, but the top-level
+call still reports OK) pointed at `pakon_autotone_shell_golden.Emu.call`
+itself: it hard-codes `uc.emu_start(va, RET_MAGIC, timeout=0,
+count=200_000_000)` and never checks, afterward, that EIP actually reached
+`RET_MAGIC` — every existing golden's own scenarios are small enough
+(largest: 400×400) that 200,000,000 emulated instructions was always far
+more than `cna` needs, so this never mattered before. **Directly confirmed,
+not inferred**: replaced `Emu.call` at runtime (a new function,
+`patch_unchecked_instruction_cap`, added to this pass's own script — it
+does not edit `pakon_autotone_shell_golden.py` on disk, the same
+class of runtime-only fix as this file's own `HEAP`/`HEAP_SZ` relocation)
+with a version that raises the cap to 50,000,000,000 and explicitly asserts
+EIP reached `RET_MAGIC` before trusting any result. Re-ran both the
+1,043×1,043 crop and the full frame, foreground, waited for completion:
+
+```
+1,043×1,043 crop  (1,087,849 px): confirmed real completion (EIP==RET_MAGIC), 16.4s
+  field-by-field diff vs Python host: 0 bad fields
+  cna.threshold=29  nEdgePixels=115,833  ToneScaleLut: 5000/5000 nonzero
+
+Full frame        (5,930,000 px): confirmed real completion (EIP==RET_MAGIC), 56.4-56.8s
+  field-by-field diff vs Python host: 0 bad fields
+  cna.threshold=50  nEdgePixels=1,224,975  ToneScaleLut: 5000/5000 nonzero
+```
+
+Both now bit-exact against the Python host, both now producing exactly the
+`threshold=50`/`nEdgePixels=1,224,975` values the ORIGINAL draft had
+already computed on the Python side and mislabelled as something the real
+DLL disagreed with. **The real DLL does not give up on real, full-scale
+content — the harness was giving up on it.** `analyze_image`'s own real
+`cna` body genuinely needs more than 200,000,000 emulated x86 instructions
+for a multi-megapixel image (confirmed: ~16s and ~57s of real Unicorn
+execution respectively, once the cap was no longer the limiting factor),
+and because Unicorn's `emu_start` returns normally (no exception) when its
+own `count` budget runs out, the unmodified `Emu.call` read that as a
+clean return and reported whatever `AnsStatus` value already happened to
+sit at `sret` (zero-filled at allocation, hence reads as OK) — while
+everything the truncated run never got to write (`ToneScaleLut`, and
+everything `dra` derives from it) stayed at its allocation-time zero fill.
+`threshold`/`nEdgePixels`/the four sigmas read as sane in the original,
+broken run precisely because they are written EARLY in `analyze_image`,
+before the truncation point; `ToneScaleLut` reads as zero because it is
+written LATE. The fix (`patch_unchecked_instruction_cap`) is now applied
+in `pakon_full_colour_chain_golden.py`'s own `main()`, alongside the
+already-documented heap relocation, so a re-run of this script produces the
+corrected numbers directly rather than the original, wrong ones.
+
+**What this changes.** Nothing about §1-23. This was a bug in NEW code
+written this pass (the new script's reuse of an existing golden's `call`
+method at a scale that golden was never exercised at), not in any
+previously-verified port file or previously-published finding elsewhere in
+this doc — no other section's numbers depended on `Emu.call`'s instruction
+cap. It does change what §24 itself can claim: not "a new scale-dependent
+`cna` bug, worth fixing before Go-wiring" (wrong, retracted) but the
+opposite — **the six-subsystem chain is now confirmed bit-exact, and its
+final render pixel-identical to the Python port's own output, at the
+largest and most realistic scale this project has ever tested it at**,
+strengthening rather than weakening the case that the chain meets the
+"whole chain bit-exact" bar `shasta.go`'s own comment sets before wiring
+anything into Go (§23) — see the corrected "What this settles" paragraph
+below.
+
+With the fix applied, `pakon_full_colour_chain_golden.py`'s own Stage 3
+(the genuine DLL-derived ground-truth render, diffed against the Python
+port's own `real_auto_tone()`/`.to_srgb()`) now runs to completion on the
+full frame too, where the original broken run could only report it as
+blocked:
+
+```
+Full frame (5,930,000 px), same-scope analysis both sides:
+  sRGB [p1, p50, p99]   R: python=[83,156,254]   dll_ground_truth=[83,156,254]
+                        G: python=[90,208,252]   dll_ground_truth=[90,208,252]
+                        B: python=[74,241,254]   dll_ground_truth=[74,241,254]
+  |python - dll_ground_truth|: mean=0.000  p99=0.00  max=0.0
+```
+
+Pixel-identical, on the real, full, uncropped frame — not just the 400×400
+crop Finding 1 already established. Total wall time for the corrected
+Stage 1 (real DLL, real six-subsystem chain, full frame): 56.6s.
+
+**Finding 3 — `balanceAreaImage` (`0x10102b20`), real body, real Unicorn
+execution: no pixel-buffer writes observed, in either branch tested.**
+Directly targets §22's one remaining open thread. Calling convention
+derived fresh this pass from live, tool-verified disassembly (not
+transcribed from any prior pass, not guessed): r2's own automatic variable
+recovery (`aa; af @ 0x10102b20; afvj`) finds a single real cdecl parameter
+at `var_8h` (`ebp+8`), read 13 times through the function body; the real
+caller (`fcn.10069490`, live `pd` at `0x10069835`-`0x10069859`, re-run this
+pass) pushes `&[ebp+0xc]` — the driver's own local slot, itself holding a
+pointer to a 3-dword record `{*esi (AddRef'd via `0x10006880`, fully
+disassembled this pass — a generic "wrap a raw pointer, AddRef it" helper,
+`ret 4`, the same shape as the AddRef idiom already characterized
+elsewhere in this DLL as `0x100065e0`), zx(byte[esi+0x29]), &esi+0x4ac}`.
+Built this exact structure (with the two fields this pass has no
+independent citation for — `*esi` and `esi+0x29` — filled from the
+already-built `RealCapset.holder`/zero respectively, flagged plainly as
+synthetic scaffolding, not derived vendor values) and called the real
+`0x10102b20` under Unicorn with a `UC_HOOK_MEM_WRITE` watch on the exact
+real pixel-buffer address range, on the real 48×48 crop:
+
+```
+find("area") MISS  (the entry-guard's own throw path, 0x10102c0b):
+  ran to completion, no Unicorn fault, 0 pixel-buffer writes.
+find("area") HIT   (synthetic placeholder Impl, past the entry guard,
+                     into the function's real body):
+  ran to completion, no Unicorn fault, 0 pixel-buffer writes.
+```
+
+Both branches ran the real `0x10102b20` machine code to its own `ret 8`
+without a single invalid-memory fault, and neither wrote a single byte
+into the shared pixel buffer this pass gave it. **This is a real, direct
+answer, not an inference from static reading** — the exact thing §22 said
+would need a live trace to settle either way.
+
+**Honestly caveated, not oversold.** The "hit" branch's Impl is a
+zero-filled placeholder behind a generic one-slot vftable (every virtual
+call resolves to a bare `ret 4`) — the same shape `RealCapset` itself
+already uses for its own permanently-disabled `"pfd"` capability, not a
+real `area` Impl this project has ever characterized. This result
+therefore does not prove the REAL vendor Impl's real field values would
+take the same path through the function's own 295 basic blocks; it proves
+that the specific paths THIS harness's real code actually executed — which
+plausibly diverge from vendor-normal execution the deeper the function's
+own control flow goes — did not touch the pixel buffer. Combined with §22's
+own partial static read ("operating on a freshly-allocated 0x3000-byte
+scratch buffer rather than obviously the caller's own pixel buffer"), this
+is now two independent lines of evidence pointing the same way, neither
+alone conclusive.
+
+**What this settles, and what it doesn't.** Extends §17's real-image-data
+closure to a genuine full frame for the first time, and finds it holds —
+bit-exact field-by-field, and pixel-identical end to end — at both crop
+scale (a second, independent, fresher capture) and full, uncropped-frame
+scale, the largest and most realistic test this project has ever run
+against the real DLL. The scale-dependent gap an earlier draft of this
+section reported was real as a *symptom* but wrong as a *diagnosis* — a
+genuine bug, just in this pass's own new harness code, not in `cna` or the
+port, corrected in place above rather than left standing. Adds real,
+direct (not static-inference) weight to §22's "no evidence of pixel-buffer
+mutation" reading of `balanceAreaImage`, without fully closing it. Neither
+finding changes §23's own conclusion — the production Go engine still
+never calls any of this Python code at all — but where the earlier draft
+of Finding 2 would have been a concrete reason the "whole chain bit-exact
+before wiring anything into Go" bar `shasta.go`'s own comment sets (quoted
+in §23) was not yet met, the corrected finding is the opposite: one more
+real, large-scale data point that the six-subsystem chain DOES meet that
+bar, on every frame and crop this doc has ever tested it against.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is
@@ -1617,3 +2077,52 @@ consistent with, not contradicted by, §11's own independently-derived
 call order for that same function. Full intermediate disassembly dumps
 are preserved at `/tmp/sra_re/` on whichever machine ran the agent, not
 copied into this repo.
+
+§24's own script (`pakon_full_colour_chain_golden.py`) is new and additive;
+it was checked with `python3 -m py_compile` and run end to end multiple
+times (small real crops first, to validate each stage cheaply, then the
+full real frame) before any number above was recorded — every number in
+§24 is this pass's own direct terminal output, not transcribed from a
+draft or predicted in advance. The DLL's MD5 was re-checked by the script
+itself, printed at the top of its own run, before any comparison ran. The
+crop-vs-full-frame-population mismatch this pass's own first draft of the
+400×400 ground-truth comparison produced (~6-code average difference,
+looked like a real divergence at first) was caught by re-deriving the
+Python side from `ansel.real_auto_tone()` run on the SAME crop rather than
+a crop of the already-full-frame-analysed Python render, and the
+corrected, same-scope comparison is what §24 reports (pixel-identical) —
+the miscomparison itself is recorded here rather than silently discarded,
+consistent with this doc's own practice elsewhere (§9's "first pass at
+this used the wrong array" note).
+
+Finding 2's own correction was demanded, not offered voluntarily: asked
+directly to confirm the bucketing-accumulator hypothesis against real
+instructions before touching `pakon_cna.py`, and, once that was refuted,
+to keep digging rather than stop at "not this." The refutation is a direct
+instruction citation (`r2 -e bin.relocs.apply=true -q -c 'aa; af @
+0x1022ddc0; pd 60 @ 0x1022e2e8' PakonIMAu.dll`, re-run this pass, output
+preserved this session). The actual cause was localised by (1) a binary
+search over real crop sizes of the same frame narrowing the break point to
+between 1,042×1,042 (works) and 1,043×1,043 (broken) pixels, (2) a
+`UC_HOOK_CODE` instruction trace over `analyze_image`'s own address range
+showing where recorded execution stopped advancing, and (3) a runtime
+replacement of `Emu.call` (a new function added to this pass's own script,
+`patch_unchecked_instruction_cap`, not an edit to
+`pakon_autotone_shell_golden.py` on disk) that raises the instruction cap
+and explicitly asserts EIP reached the real return address — run in the
+FOREGROUND, waited for to completion, not backgrounded and assumed; the
+first attempt to check this claim was in fact launched in the background
+and, per this session's own transcript, had to be redone in the foreground
+after a direct request to actually wait for it, which is recorded here
+rather than smoothed over. Both the 1,043×1,043 crop and the full frame
+were re-run with the fix and diffed field-by-field against the Python host
+a second time, from a clean process, before Finding 2 was rewritten. The
+fix is applied in `pakon_full_colour_chain_golden.py`'s own `main()`
+(`patch_unchecked_instruction_cap()`, called once, alongside the
+already-documented `HEAP`/`HEAP_SZ` relocation), so re-running the
+committed script reproduces the corrected numbers directly, not the
+original wrong ones. All scratch/diagnostic scripts used to localise and
+confirm this (several `/tmp/_*.py` files, plus ad hoc `r2`/`pd` disassembly
+dumps under `/tmp/pakon_re/` and `/tmp/`) were not committed — only
+`pakon_full_colour_chain_golden.py` itself is new, additive, committed
+code, and no existing golden file was modified on disk by this pass.

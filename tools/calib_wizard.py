@@ -226,8 +226,17 @@ BRIGHT_BYTES = 96_000_000           # ~8,000 lines
 #: How many rounds each search may take before it gives up and says so. The
 #: duty search halves on a clipped probe, so it converges from any overshoot in
 #: log2(overshoot) rounds; six is far more than the two a 4x overshoot needs.
+#: That reasoning covers the bisection (clipped) side only -- since the fix
+#: for the per-channel-clip convergence bug, an under-target channel that is
+#: NOT clipped grows via solve_duty's own linear-model step instead of
+#: waiting on bisection, and that step's own convergence rate depends on how
+#: accurate the measured k = swing/duty_old estimate is, not a clean halving
+#: schedule. Confirmed on hardware: a well-behaved, monotonic run still had
+#: one channel sitting at 3.3% error (just outside DUTY_TOLERANCE) after 6
+#: rounds, closing steadily rather than diverging. Ten is a real margin above
+#: what that run needed, not a re-derivation of the log2 bound above.
 MAX_BLACK_ROUNDS = 4
-MAX_DUTY_ROUNDS = 6
+MAX_DUTY_ROUNDS = 10
 
 #: How close to the target counts as landed.
 BLACK_TOLERANCE = 350.0             # wire counts
@@ -658,7 +667,18 @@ class Wizard:
         out = self.workdir / f"{label}.bin"
         argv = [sys.executable, str(HERE / "pakon_scan.py"), "run", str(out),
                 "--cal-dir", str(d), "--base", str(self.base),
-                "--max-bytes", str(int(max_bytes)), "--json", "--force"]
+                "--max-bytes", str(int(max_bytes)), "--json", "--force",
+                # None of this wizard's captures need film to move: black
+                # level, dark/bright references and duty-search probes all
+                # measure a stationary field of view, the same way the real
+                # FN_bCalibrateFindLedDutyCycle search does (confirmed by
+                # disassembly earlier tonight -- it re-measures the same CCD
+                # line, not a moving strip). Known tradeoff: the film-in-gate
+                # check on this same capture (see this method's own docstring
+                # point 2) was originally framed as running "with the
+                # transport actually moving" -- with the motor off, its DX
+                # polling still runs, just against a stationary gate.
+                "--no-motor"]
         if not lamp:
             argv.append("--no-lamp")
         if self.dry_run:
@@ -901,11 +921,44 @@ class Wizard:
                     raise Unreachable(self._unreachable(s, got, cfg))
                 cfg = dict(cfg, on_counts_R_G_B=list(s["on_new"]))
                 continue
+            # Some channel(s) clipped this round -- not necessarily all of
+            # them. A clipped channel's own measurement carries almost no
+            # scale information, so IT gets the conservative bisection. A
+            # channel that is NOT clipped this round has a real, valid
+            # reading and keeps solving toward target via solve_duty's own
+            # per-channel linear model, exactly as it would in an unclipped
+            # round. Blending per-channel, instead of letting one clipped
+            # channel force bisection onto every channel, is what fixes a
+            # real oscillation found on hardware tonight: an
+            # already-under-target channel (say R, reading well below the
+            # target while G or B were still saturated) got bisected
+            # (shrunk) again and again for rounds in a row, moving it
+            # further from target every time, purely because a DIFFERENT
+            # channel had not converged yet.
+            clip_frac, _ = cap.clip_stats()
+            clipped_mask = clip_frac > bcal.CLIP_FRACTION_MAX
+            if s["clamped"] and any(not clipped_mask[i] for i in s["clamped"]):
+                # A channel that is NOT clipped this round but whose solved
+                # duty still wants more than the N-2 ceiling allows is a
+                # real "cannot get there from here", the same condition the
+                # unclipped branch above raises Unreachable for -- clipped
+                # channels are excluded here because "clipped and wants
+                # more duty" is not a real state this round can observe (a
+                # saturated channel's solve is bisecting toward less duty,
+                # not more).
+                raise Unreachable(self._unreachable(s, got, cfg))
             back = bcal._reprobe_on_counts(s, s.get("dark_at", dark_level))
-            self.warn(f"round {rnd} clipped; a saturated reading carries "
-                      f"almost no scale information, so the search bisects "
-                      f"rather than solving: on-counts -> {back}")
-            cfg = dict(cfg, on_counts_R_G_B=list(back))
+            mixed = [back[i] if clipped_mask[i] else s["on_new"][i]
+                     for i in range(len(back))]
+            names = "RGB"[:len(clipped_mask)]
+            self.warn(
+                f"round {rnd}: channel(s) "
+                f"{''.join(names[i] for i in range(len(clipped_mask)) if clipped_mask[i])} "
+                f"clipped (bisecting -- a saturated reading carries almost "
+                f"no scale information), channel(s) "
+                f"{''.join(names[i] for i in range(len(clipped_mask)) if not clipped_mask[i]) or '(none)'} "
+                f"solved normally -> on-counts {mixed}")
+            cfg = dict(cfg, on_counts_R_G_B=mixed)
         raise WizardRefused(
             f"the lamp did not settle on the {self.target:.0f} target in "
             f"{MAX_DUTY_ROUNDS} rounds. Nothing has been stored.")

@@ -276,59 +276,135 @@ kbd {
   flex-direction: column;
   height: 100%;
 }
-.top {
+
+/* Chrome-style tab strip: one tab per open roll, plus a "+" to scan another.
+   Replaces the old top bar + step bar — there is no wizard to navigate, so
+   there is nothing here but the rolls themselves and the way to add one. */
+.tabstrip {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 42px;
+  padding: 8px 10px 0;
+  background: var(--content2);
+  flex: none;
+  -webkit-app-region: drag;
+}
+.tabstrip * {
+  -webkit-app-region: no-drag;
+}
+.tab {
   display: flex;
   align-items: center;
-  gap: 14px;
-  height: 46px;
-  padding: 0 12px 0 16px;
+  gap: 8px;
+  height: 34px;
+  min-width: 100px;
+  max-width: 210px;
+  padding: 0 10px 0 13px;
+  border-radius: 9px 9px 0 0;
+  background: transparent;
+  color: var(--mute);
+  font-size: 12.5px;
+  font-weight: 500;
+  position: relative;
+  cursor: pointer;
+}
+.tab:hover {
+  background: var(--soft);
+  color: var(--foreground);
+}
+.tab.on {
+  background: var(--content1);
+  color: var(--foreground);
+}
+.tab .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab .x {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: var(--faint);
+  flex: none;
+}
+.tab .x:hover {
+  background: var(--content3);
+  color: var(--foreground);
+}
+.tab .ring {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: none;
+  border: 2px solid var(--content4);
+  border-top-color: var(--primary);
+  animation: pkspin 0.85s linear infinite;
+}
+.tabnew {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: var(--faint);
+  flex: none;
+  margin: 0 0 4px 4px;
+}
+.tabnew:hover {
+  background: var(--soft);
+  color: var(--foreground);
+}
+.tabnew svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Toolbar under the tabs: identity of the active roll, the contact/frame
+   switch, export, theme. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 18px;
   flex: none;
   background: var(--content1);
   border-bottom: 1px solid var(--divider);
-  z-index: 5;
 }
-.brand {
-  font-size: 10.5px;
-  letter-spacing: 0.16em;
-  font-weight: 600;
-  color: var(--faint);
-  white-space: nowrap;
-}
-/* the reference screens — not steps, and deliberately smaller than they were
-   when they shared a switcher with Scan, Roll and Export */
-.modes {
+.seg2 {
   display: flex;
   gap: 2px;
   background: var(--content2);
   padding: 3px;
-  border-radius: var(--r-md);
+  border-radius: 10px;
   flex: none;
 }
-.mode {
-  padding: 4px 11px;
-  border-radius: var(--r-sm);
-  font-size: 12px;
+.seg2 button {
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--mute);
-  white-space: nowrap;
 }
-.mode:hover {
+.seg2 button:hover {
   color: var(--foreground);
 }
-/* Selected is solid blue. That is the rule for everything that navigates —
-   the steps below and these — and it is not the rule for a settings segment
-   (.seg), which states a value rather than a place. */
-.mode.on {
-  background: var(--primary);
-  color: #fff;
-  font-weight: 600;
+.seg2 button.on {
+  background: var(--content1);
+  color: var(--foreground);
   box-shadow: var(--sh-1);
 }
 .themeswap {
   display: grid;
   place-items: center;
-  width: 29px;
-  height: 29px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--r-sm);
   color: var(--faint);
   flex: none;
@@ -351,129 +427,32 @@ kbd {
   display: block;
 }
 
-/* ── the three steps ────────────────────────────────────────────────────────
-   Scan, edit, export — one roll's whole journey, in the order it happens.
-
-   This is the old twin capture/export lane bar with the missing middle put
-   back: capture was step 1's progress and export was step 3's, and they ran
-   concurrently on the vendor's machine, which is what made a lab fast — so a
-   step that is working goes on working while you stand on another one, and
-   this bar is where you see it from. A cell is laid out exactly as a lane was:
-   what / bar / figure / action. */
-.steps {
-  display: flex;
-  align-items: stretch;
-  height: 52px;
-  flex: none;
-  background: var(--content1);
-  border-bottom: 1px solid var(--divider);
-}
-.step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-right: 12px;
-  min-width: 0;
-  flex: 1;
-  position: relative;
-}
-.step + .step {
-  border-left: 1px solid var(--divider);
-}
-.stepgo {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  padding: 0 2px 0 14px;
-}
-.stepgo:not([disabled]):hover {
-  background: var(--soft);
-}
-.stepgo[disabled] {
-  cursor: default;
-}
-.stepno {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  flex: none;
-  font: 600 11px/1 var(--font-mono);
-  color: var(--faint);
-  box-shadow: inset 0 0 0 1px var(--content4);
-}
-/* Selected is solid blue — the badge, and a rule along the floor of the cell
-   so the current step reads from across the room. */
-.step.on .stepno {
-  background: var(--primary);
-  color: #fff;
-  box-shadow: none;
-}
-.step.on::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--primary);
-}
-.step.on .what .lbl {
-  color: var(--primary-ink);
-}
-/* A step that is not reachable yet dims its number and its name — and NOT the
-   line that says what it is waiting for, which is the whole reason it is not
-   simply greyed out. */
-.step.shut .stepno,
-.step.shut .what .lbl {
-  opacity: 0.5;
-}
-.step .what {
+/* Empty tab — nothing scanned or open yet. */
+.empty-card {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  flex: 1 1 auto;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+  max-width: 40ch;
 }
-.step .what b {
-  font-size: 12.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--foreground);
+.empty-glyph {
+  width: 68px;
+  height: 68px;
+  border-radius: 20px;
+  background: var(--content1);
+  box-shadow: var(--sh-2);
+  display: grid;
+  place-items: center;
+  color: var(--primary);
+  padding: 12px;
 }
-.step .what b.ok {
-  color: var(--ok-ink);
+.empty-glyph img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
-.step .what b.warn {
-  color: var(--warn-ink);
-}
-.step .what b.bad {
-  color: var(--danger-ink);
-}
-.step .what b.quiet {
-  color: var(--faint);
-  font-weight: 500;
-}
-.step .bar {
-  flex: 0 1 88px;
-  min-width: 30px;
-}
-.step .pc {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 12.5px;
-  font-weight: 600;
-  min-width: 38px;
-  text-align: right;
-  flex: none;
-  color: var(--mute);
-}
+
 .bar {
   flex: 1;
   height: 6px;
@@ -564,44 +543,6 @@ kbd {
   opacity: 0.38;
   cursor: not-allowed;
 }
-.sw {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 13px;
-}
-.sw .kt {
-  width: 36px;
-  height: 21px;
-  border-radius: 999px;
-  background: var(--content3);
-  position: relative;
-  flex: none;
-  cursor: pointer;
-  transition: background 0.18s var(--ease);
-}
-.sw .kt.on {
-  background: var(--primary);
-}
-.sw .kt::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(17, 24, 28, 0.35);
-  transition: transform 0.18s var(--ease);
-}
-.sw .kt.on::after {
-  transform: translateX(15px);
-}
-.sw .kt.off {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
 .inp {
   height: 32px;
   border-radius: var(--r-sm);
@@ -631,104 +572,6 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 9px;
-}
-
-/* machine state — one row per subsystem, verdict on the right */
-.st {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  font-size: 12.5px;
-  padding: 5px 0;
-}
-.st + .st {
-  border-top: 1px solid var(--soft);
-}
-.st dt {
-  color: var(--mute);
-  white-space: nowrap;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-.st dd {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  text-align: right;
-}
-.st dd.na {
-  color: var(--faint);
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-style: italic;
-}
-.st dd.good {
-  color: var(--ok-ink);
-}
-.st dd.warn {
-  color: var(--warn-ink);
-}
-.st dd.bad {
-  color: var(--danger-ink);
-}
-
-/* ── the info affordance ────────────────────────────────────────────────────
-   The reason a control is disabled, or a figure is qualified, lives behind
-   this and nowhere else. Always-visible prose is what it replaces. */
-.info {
-  display: inline-grid;
-  place-items: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  flex: none;
-  font: 600 9px/1 var(--font-sans);
-  color: var(--faint);
-  box-shadow: inset 0 0 0 1px currentColor;
-  vertical-align: 1px;
-  cursor: help;
-}
-.info:hover,
-.info[aria-expanded='true'] {
-  color: var(--primary-ink);
-}
-.infowrap {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-}
-.infopop {
-  position: absolute;
-  z-index: 40;
-  top: calc(100% + 7px);
-  right: -4px;
-  width: 268px;
-  padding: 10px 12px;
-  border-radius: var(--r-sm);
-  background: var(--content1);
-  color: var(--mute);
-  box-shadow: var(--sh-2), 0 0 0 1px var(--divider);
-  font-size: 12px;
-  line-height: 1.5;
-  text-align: left;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  cursor: auto;
-}
-.infopop b {
-  color: var(--foreground);
-  font-weight: 600;
-}
-.infopop .num {
-  font-size: 12px;
-}
-.infopop.left {
-  right: auto;
-  left: -4px;
 }
 
 /* ── centre stage ───────────────────────────────────────────────────────── */
@@ -799,70 +642,6 @@ kbd {
 .filmwrap {
   width: 100%;
   max-width: 960px;
-}
-.film {
-  height: 236px;
-  border-radius: 3px;
-  position: relative;
-  overflow: hidden;
-  background: #241a12;
-  box-shadow: var(--photo-sh);
-}
-.perf {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 13px;
-  display: flex;
-  gap: 13px;
-  padding-left: 8px;
-}
-.perf.t {
-  top: 6px;
-}
-.perf.b {
-  bottom: 6px;
-}
-.perf i {
-  flex: none;
-  width: 13px;
-  height: 13px;
-  border-radius: 2.5px;
-  background: #0d0906;
-}
-.frames {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 26px;
-  bottom: 26px;
-  display: flex;
-  gap: 4px;
-  padding: 0 6px;
-}
-.frames span {
-  flex: 1;
-  border-radius: 1px;
-  position: relative;
-  overflow: hidden;
-}
-.frames span.pending {
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
-}
-.frames img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.frames b {
-  position: absolute;
-  left: 5px;
-  top: 4px;
-  font: 9px var(--font-mono);
-  color: rgba(255, 255, 255, 0.82);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 .telem {
   display: flex;
@@ -1041,25 +820,6 @@ kbd {
   color: var(--faint);
   margin-top: 6px;
 }
-.keys {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  font-size: 11.5px;
-  color: var(--faint);
-}
-.dead {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 12.5px;
-}
-.dead .nm {
-  color: var(--mute);
-  text-decoration: line-through;
-  text-decoration-color: var(--content4);
-}
-
 /* ── the roll runs along the floor — never a separate room ──────────────── */
 .strip {
   flex: none;
@@ -1201,36 +961,6 @@ kbd {
 }
 .rows button.on {
   background: var(--primary-flat);
-}
-
-/* ── document surfaces (diagnostics, calibration) ───────────────────────── */
-.doc {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 22px 26px 30px;
-}
-.docwrap {
-  max-width: 980px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.card {
-  background: var(--content1);
-  border-radius: var(--r-md);
-  box-shadow: var(--sh-1);
-  padding: 14px 16px 16px;
-}
-.card > .lbl {
-  display: block;
-  margin-bottom: 9px;
-}
-.cols {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 8px 28px;
 }
 
 input[type='checkbox'] {
@@ -1496,111 +1226,63 @@ input[type='checkbox'] {
   color: var(--warning);
   font-weight: 700;
 }
-
-/* Log Console Feed */
-.log-console {
-  flex: 1;
-  padding: 16px;
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: var(--content2);
-}
-.log-entry {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  line-height: 1.5;
-}
-.log-time { color: var(--faint); min-width: 65px; }
-.log-level {
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10.5px;
-  font-weight: 700;
-  min-width: 48px;
-  text-align: center;
-}
-.log-level.info { background: var(--primary-flat); color: var(--primary-ink); }
-.log-level.warn { background: var(--warn-flat); color: var(--warn-ink); }
-.log-level.ok { background: var(--ok-flat); color: var(--ok-ink); }
-
-/* Config Bench */
-.config-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-}
-.metric-box {
-  background: var(--content2);
-  border: 1px solid var(--divider);
-  border-radius: var(--r-md);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.metric-val {
-  font-size: 20px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  color: var(--foreground);
-}
-.metric-lbl {
-  font-size: 11.5px;
-  color: var(--mute);
+.contact-cell.rejected img {
+  filter: grayscale(1) brightness(0.55);
 }
 
-/* Export Table & Queue */
-.export-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12.5px;
-}
-.export-table th {
-  text-align: left;
-  padding: 12px 16px;
+/* Export selection grid — same cell as the contact sheet, plus a checkbox */
+.expcell {
+  aspect-ratio: 3 / 2;
   background: var(--content2);
-  color: var(--faint);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  border-bottom: 1px solid var(--divider);
-}
-.export-table td {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--soft);
-  vertical-align: middle;
-}
-.status-tag {
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.status-tag.done { background: var(--ok-flat); color: var(--ok-ink); }
-.status-tag.exporting { background: var(--primary-flat); color: var(--primary-ink); }
-.status-tag.queued { background: var(--soft); color: var(--mute); }
-.token-chip-container {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 6px;
-}
-.token-chip {
-  background: var(--primary-flat);
-  color: var(--primary-ink);
-  padding: 3px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
   cursor: pointer;
+  box-shadow: 0 0 0 1px var(--soft);
 }
-
+.expcell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.expcell:not(.sel) img {
+  filter: grayscale(0.6) brightness(0.6);
+}
+.expcell .num-badge {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  font: 10px/1 var(--font-mono);
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.expcell .check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: rgba(20, 20, 24, 0.55);
+  display: grid;
+  place-items: center;
+}
+.expcell.sel .check {
+  background: var(--primary);
+}
+.expcell .check svg {
+  width: 11px;
+  height: 11px;
+  color: #fff;
+  opacity: 0;
+}
+.expcell.sel .check svg {
+  opacity: 1;
+}
 
 /* A frame that would not render. Empty space reads as "not decoded yet"; the
    backend's reason has to reach the screen. */

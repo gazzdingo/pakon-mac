@@ -1,72 +1,10 @@
 // The Console — shared furniture.
 //
-// Layout is design/variants/console-scan.html and console-review.html: two
-// bars, three columns, the roll along the floor. Every class used here is
-// defined in theme.css and carried from those files.
-//
-// Copy rule, from the owner: labels are titles, not sentences. A control gets
-// a label, a value and a state. Anything that needs explaining — why Base 4
-// and 8 are disabled, why a stage is unavailable — goes behind <Info>, which
-// is closed until asked.
+// One page, tabs across the top, no wizard. Every class used here is defined
+// in theme.css. A control gets a label, a value and a state — nothing here
+// explains itself; there is no disclosure affordance left to explain into.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { frameUrl } from './api';
-
-/** The product, in the order it happens. One roll of film goes scan → edit →
- *  export, and these were three unrelated screens reached from a mode switcher
- *  that put Diagnostics between Config and Export as though they were peers. */
-export const STEPS = [
-  ['scan', 'Scan'],
-  ['review', 'Edit'],
-  ['export', 'Export'],
-];
-
-/** Not steps. Reference screens about the machine and the pipeline, reachable
- *  at any point and part of no sequence — so they sit in the top bar, away
- *  from the three. Calibration had no way in at all before this. */
-export const TOOLS = [
-  ['config', 'Config'],
-  ['diagnostics', 'Diagnostics'],
-  ['calibration', 'Calibration'],
-];
-
-/* ── the info affordance ────────────────────────────────────────────────── */
-
-/** A closed disclosure. The only place long-form reasoning is allowed. */
-export function Info({ children, side = 'right', label = 'Why' }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const away = (e) => !ref.current?.contains(e.target) && setOpen(false);
-    const esc = (e) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', away);
-    document.addEventListener('keydown', esc);
-    return () => {
-      document.removeEventListener('mousedown', away);
-      document.removeEventListener('keydown', esc);
-    };
-  }, [open]);
-
-  return (
-    <span className="infowrap" ref={ref}>
-      <button
-        type="button"
-        className="info"
-        aria-expanded={open}
-        aria-label={label}
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          setOpen((v) => !v);
-        }}
-      >
-        i
-      </button>
-      {open ? <span className={`infopop${side === 'left' ? ' left' : ''}`}>{children}</span> : null}
-    </span>
-  );
-}
 
 /* ── small parts ────────────────────────────────────────────────────────── */
 
@@ -93,15 +31,7 @@ export function Btn({ variant = '', children, onClick, disabled, ...rest }) {
   );
 }
 
-export function Num({ children, size }) {
-  return (
-    <span className="num" style={size ? { fontSize: size } : undefined}>
-      {children}
-    </span>
-  );
-}
-
-/* ── rails ──────────────────────────────────────────────────────────────── */
+/* ── rails (used by the frame editor's tone bench) ──────────────────────── */
 
 export const Rail = ({ side = 'l', children, ...rest }) => (
   <aside className={`rail ${side}`} {...rest}>
@@ -119,36 +49,12 @@ export const RailHead = ({ title, children }) => (
 
 export const Grp = ({ title, children }) => (
   <div className="grp">
-    {title ? (
-      <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {title}
-      </span>
-    ) : null}
+    {title ? <span className="lbl">{title}</span> : null}
     {children}
   </div>
 );
 
-/** Label, control, value. No subtext. */
-export const Field = ({ label, children, value }) => (
-  <div className="field">
-    {label ? (
-      <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {label}
-        {value ? (
-          <>
-            <span className="sp" />
-            <span className="num" style={{ fontSize: 11, color: 'var(--mute)' }}>
-              {value}
-            </span>
-          </>
-        ) : null}
-      </span>
-    ) : null}
-    {children}
-  </div>
-);
-
-/** Segmented control. An option may be disabled and carry its own reason. */
+/** Segmented control. An option may be disabled. */
 export function Seg({ options, value, onChange, ariaLabel }) {
   return (
     <div className="seg" role="radiogroup" aria-label={ariaLabel}>
@@ -166,41 +72,6 @@ export function Seg({ options, value, onChange, ariaLabel }) {
         </button>
       ))}
     </div>
-  );
-}
-
-export function Toggle({ on, disabled, onChange, children }) {
-  return (
-    <label className="sw">
-      <span
-        role="switch"
-        aria-checked={!!on}
-        aria-disabled={disabled || undefined}
-        tabIndex={disabled ? -1 : 0}
-        className={`kt${on ? ' on' : ''}${disabled ? ' off' : ''}`}
-        onClick={() => !disabled && onChange?.(!on)}
-        onKeyDown={(e) => e.key === ' ' && !disabled && onChange?.(!on)}
-      />
-      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {children}
-      </span>
-    </label>
-  );
-}
-
-/** One row per subsystem: name, verdict. `tone` is good | warn | bad | na. */
-export function State({ rows }) {
-  return (
-    <dl style={{ display: 'flex', flexDirection: 'column' }}>
-      {rows.map(([name, value, tone]) => (
-        <div className="st" key={name}>
-          <dt>
-            {name}
-          </dt>
-          <dd className={tone || ''}>{value}</dd>
-        </div>
-      ))}
-    </dl>
   );
 }
 
@@ -228,170 +99,23 @@ export function useTheme() {
   return [dark, setDark];
 }
 
-/** The roll's identity, and the way out to the reference screens. Both persist
- *  across all three steps: which roll you are working on is the one fact that
- *  is true on Scan, Edit and Export alike, so it does not move. */
-export function TopBar({ mode, setMode, roll, dark, setDark }) {
+export function ThemeSwitch({ dark, setDark }) {
   return (
-    <header className="top">
-      <span
-        className="brand"
-        style={{ WebkitAppRegion: 'drag', paddingLeft: window.pakon?.platform === 'darwin' ? 62 : 0 }}
-      >
-        PAKON&nbsp;F&#8209;135&nbsp;PLUS
-      </span>
-      <span className="sp" />
-      {roll ? (
-        <>
-          <Chip>
-            {roll.stock?.name || roll.film_path}
-            {roll.stock?.iso ? <span className="num" style={{ fontSize: 11 }}>ISO {roll.stock.iso}</span> : null}
-          </Chip>
-          <Chip>
-            Roll <span className="num" style={{ fontSize: 11 }}>{roll.name}</span>
-          </Chip>
-        </>
-      ) : (
-        <Chip>No roll open</Chip>
-      )}
-      <nav className="modes" aria-label="Reference">
-        {TOOLS.map(([id, label]) => (
-          <button key={id} type="button" className={`mode${mode === id ? ' on' : ''}`} onClick={() => setMode(id)}>
-            {label}
-          </button>
-        ))}
-      </nav>
-      <button
-        type="button"
-        className="themeswap"
-        aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-        onClick={() => setDark(!dark)}
-      >
-        {SUN}
-        {MOON}
-      </button>
-    </header>
+    <button
+      type="button"
+      className="themeswap"
+      aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+      onClick={() => setDark(!dark)}
+    >
+      {SUN}
+      {MOON}
+    </button>
   );
 }
 
-/** What came back from the panic stop, in one line. */
-function stopNote(r) {
-  if (!r) return null;
-  if (r.error) return { tone: 'bad', text: String(r.error).slice(0, 90) };
-  if (r.absent) return { tone: '', text: 'No scanner on USB — nothing to stop.' };
-  if (r.motor)
-    return {
-      tone: 'ok',
-      text: `Transport stopped${r.lamp ? ', lamp off' : ''}${
-        r.foreign?.signalled ? ` (pid ${r.foreign.owner_pid})` : ''
-      }.`,
-    };
-  return {
-    tone: 'bad',
-    text: (r.errors && r.errors[0]) || 'The stop was not acknowledged.',
-  };
-}
+/* ── the roll, along the floor of the frame editor ──────────────────────── */
 
-/** The three steps, and where each one is up to.
- *
- *  This replaces the twin capture/export lanes rather than sitting beside
- *  them. Those lanes were already two thirds of this bar — capture is step 1's
- *  progress and export is step 3's — with the one step nobody could see a lane
- *  for (edit) missing between them, and a mode switcher above that listed the
- *  three alongside Config and Diagnostics as though all five were peers. One
- *  bar now says which step you are on, what each step is doing, and — for a
- *  step that cannot be reached yet — what it is waiting for, in place, rather
- *  than greying out and saying nothing.
- *
- *  Rows come from `stepRows` in App.jsx. This draws them and owns nothing but
- *  the stop.
- *
- *  STOP IS NOT PART OF THE NAVIGATION. It lives in step 1's cell and is
- *  therefore on screen from all three steps, always enabled, exactly as it was
- *  in the capture lane. Gating it behind being on the Scan step would put it
- *  back where it was before it was un-gated: unreachable at the moment it
- *  matters most.
- */
-export function Steps({ mode, setMode, rows, onStopScan }) {
-  const [stopping, setStopping] = useState(false);
-  const [stopped, setStopped] = useState(null);
-  const scanning = !!rows.find((r) => r.id === 'scan')?.running;
-  // A new scan replaces the last stop's verdict; it is no longer the truth.
-  useEffect(() => {
-    if (scanning) setStopped(null);
-  }, [scanning]);
-  const note = stopNote(stopped);
-
-  return (
-    <nav className="steps" aria-label="Steps">
-      {rows.map((r, i) => {
-        const current = mode === r.id;
-        /* The step you are standing on is never shut, even if what it needs
-           has gone away underneath you. Being unable to leave the screen you
-           are already on is not a state this bar may create. */
-        const shut = !r.ok && !current;
-        const isScan = r.id === 'scan';
-        const showNote = isScan && !scanning && (stopping || !!note);
-        const text = showNote ? (stopping ? 'Stopping…' : note.text) : r.state;
-        return (
-          <div key={r.id} className={`step${current ? ' on' : ''}${shut ? ' shut' : ''}`}>
-            <button
-              type="button"
-              className="stepgo"
-              disabled={shut || undefined}
-              aria-current={current ? 'step' : undefined}
-              onClick={() => setMode(r.id)}
-            >
-              <span className="stepno">{i + 1}</span>
-              <span className="what">
-                <span className="lbl">{r.label}</span>
-                <b className={showNote ? (note.tone === 'bad' ? 'bad' : '') : r.tone || ''}>
-                  {text}
-                </b>
-              </span>
-              <span className={`bar${r.warn ? ' warnfill' : ''}`}>
-                <i style={{ width: `${r.pct || 0}%` }} />
-              </span>
-              <span className="pc">{r.pc ?? '—'}</span>
-            </button>
-
-            {isScan ? (
-              <>
-                <Btn
-                  variant={scanning ? 'danger' : ''}
-                  onClick={async () => {
-                    setStopping(true);
-                    setStopped(null);
-                    try {
-                      setStopped((await onStopScan?.()) || {});
-                    } finally {
-                      setStopping(false);
-                    }
-                  }}
-                >
-                  {stopping ? 'Stopping…' : 'Stop'}
-                </Btn>
-              </>
-            ) : null}
-
-            {r.id === 'export' ? (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <Btn disabled>Cancel</Btn>
-                <Info side="left">
-                  <b>Coming soon</b>
-                </Info>
-              </span>
-            ) : null}
-          </div>
-        );
-      })}
-    </nav>
-  );
-}
-
-/* ── the roll, along the floor ──────────────────────────────────────────── */
-
-export function Filmstrip({ roll, selected, onSelect, onOpenFraming, onOpenContactSheet, children }) {
+export function FilmBand({ roll, selected, onSelect }) {
   const ref = useRef(null);
   useEffect(() => {
     ref.current?.querySelector(`[data-i="${selected}"]`)?.scrollIntoView({
@@ -402,56 +126,25 @@ export function Filmstrip({ roll, selected, onSelect, onOpenFraming, onOpenConta
   }, [selected]);
 
   if (!roll) return null;
-  const accepted = roll.frames.filter((f) => !f.params?.rejected).length;
-  const rejected = roll.frames.length - accepted;
 
   return (
-    <div className="strip">
-      <div className="striphead">
-        {children}
-        <span className="sp" />
-        <Chip tone="ok">{accepted} accepted</Chip>
-        {rejected ? <Chip>{rejected} rejected</Chip> : null}
-        {onOpenFraming ? (
-          <button
-            type="button"
-            className="action-circle-btn"
-            style={{ width: 28, height: 28 }}
-            onClick={onOpenFraming}
-          >
-            <svg viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/></svg>
-          </button>
-        ) : null}
-        {onOpenContactSheet ? (
-          <button
-            type="button"
-            className="action-circle-btn"
-            style={{ width: 28, height: 28 }}
-            onClick={onOpenContactSheet}
-          >
-            <svg viewBox="0 0 24 24"><path d="M4 4h4v4H4V4zm8 0h4v4h-4V4zm8 0h4v4h-4V4zM4 12h4v4H4v-4zm8 0h4v4h-4v-4zm8 0h4v4h-4v-4zM4 20h4v4H4v-4zm8 0h4v4h-4v-4zm8 0h4v4h-4v-4z" fill="currentColor"/></svg>
-          </button>
-        ) : null}
-      </div>
-      <div className="thumbs" ref={ref} role="listbox" aria-label="Frames in this roll">
-        {roll.frames.map((f) => (
-          <button
-            key={f.index}
-            type="button"
-            data-i={f.index}
-            role="option"
-            aria-selected={selected === f.index}
-            aria-label={`Frame ${f.index + 1}`}
-            className={`th${selected === f.index ? ' on' : ''}${f.params?.rejected ? ' no' : ''}`}
-            onClick={() => onSelect(f.index)}
-          >
-            <img src={frameUrl(roll.id, f.index, 'thumb', f.version)} alt="" loading="lazy" />
-            <b>{f.index + 1}</b>
-            {f.adjusted ? <i className="mark adj" /> : null}
-            {f.confidence === 'low' ? <i className="mark" /> : null}
-          </button>
-        ))}
-      </div>
+    <div className="thumbs" ref={ref} role="listbox" aria-label="Frames in this roll" style={{ padding: '9px 16px 11px', borderTop: '1px solid var(--divider)', background: 'var(--content1)' }}>
+      {roll.frames.map((f) => (
+        <button
+          key={f.index}
+          type="button"
+          data-i={f.index}
+          role="option"
+          aria-selected={selected === f.index}
+          aria-label={`Frame ${f.index + 1}`}
+          className={`th${selected === f.index ? ' on' : ''}${f.params?.rejected ? ' no' : ''}`}
+          onClick={() => onSelect(f.index)}
+        >
+          <img src={frameUrl(roll.id, f.index, 'thumb', f.version)} alt="" loading="lazy" />
+          <b>{f.index + 1}</b>
+          {f.adjusted ? <i className="mark adj" title="adjusted" /> : null}
+        </button>
+      ))}
     </div>
   );
 }
@@ -516,6 +209,10 @@ export function StepTrack({ value, min = -8, max = 8, step = 0.25, onInput, onCo
   );
 }
 
+/** A slider whose zero (or, for a 0-200 gain, its centre at 100) is marked
+ *  with a detent, same as StepTrack — used for the fuller Brightness /
+ *  Contrast / Saturation / Highlights / Shadows / Sharpening bench, which
+ *  StepTrack's fixed −8…+8 range doesn't fit. */
 export function AdjustmentSlider({ label, value, min, max, step = 1, onInput, onCommit, disabled, zeroValue = 0 }) {
   const ref = useRef(null);
 
@@ -527,7 +224,7 @@ export function AdjustmentSlider({ label, value, min, max, step = 1, onInput, on
       const raw = min + ((clientX - r.left) / r.width) * (max - min);
       return clamp(Math.round(raw / step) * step);
     },
-    [min, max, step]
+    [min, max, step],
   );
 
   const down = (e) => {
@@ -550,7 +247,7 @@ export function AdjustmentSlider({ label, value, min, max, step = 1, onInput, on
   const zero = ((zeroValue - min) / (max - min)) * 100;
 
   return (
-    <div className="adj-slider" style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span className="lbl">{label}</span>
         <span className="num" style={{ fontSize: 11, color: 'var(--mute)' }}>
@@ -580,33 +277,13 @@ export function AdjustmentSlider({ label, value, min, max, step = 1, onInput, on
   );
 }
 
-export function Empty({ title, children, action }) {
-  return (
-    <div
-      className="stage"
-      style={{ flexDirection: 'column', gap: 14, textAlign: 'center' }}
-    >
-      <div className="title" style={{ fontSize: 21 }}>
-        {title}
-      </div>
-      <p className="quiet" style={{ maxWidth: '46ch' }}>
-        {children}
-      </p>
-      {action}
-    </div>
-  );
-}
-
 /* ── the last line ──────────────────────────────────────────────────────── */
 
 /** Catch a render throw and show it, instead of unmounting the application.
  *
  *  React unmounts the whole tree when a render throws and there is no boundary
  *  above it. There was none — `createRoot(...).render(<App/>)` and nothing
- *  else — so one bad shape from the backend took the window to blank. The one
- *  that did it: apply-to-roll's `needs_confirm` payload assigned to `roll`,
- *  then `roll.frames.find(...)` on an object that has no `frames`. The error
- *  went to a devtools console nobody had open.
+ *  else — so one bad shape from the backend took the window to blank.
  *
  *  This does not pretend to recover. It says what broke, keeps the stack where
  *  it can be copied, and offers the ways out. The work is in the backend and

@@ -9,4 +9,14 @@ contextBridge.exposeInMainWorld('pakon', {
   chooseFolder: (current) => ipcRenderer.invoke('choose-folder', current),
   reveal: (p) => ipcRenderer.invoke('reveal', p),
   openPath: (p) => ipcRenderer.invoke('open-path', p),
+  onMenuNewScan: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on('menu-new-scan', listener);
+    return () => ipcRenderer.removeListener('menu-new-scan', listener);
+  },
+  onMenuImportBin: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on('menu-import-bin', listener);
+    return () => ipcRenderer.removeListener('menu-import-bin', listener);
+  },
 });

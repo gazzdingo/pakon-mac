@@ -8,7 +8,7 @@
 // The quit path implements design/housekeeping.html state B: unexported
 // creative work and "delete 700 MB of temp data" are different questions and
 // are asked as different questions.
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
@@ -75,7 +75,7 @@ function api(pathname, { method = 'GET', body = null, timeout = 15000 } = {}) {
 
 function startBackend(port) {
   const script = path.join(repoRoot(), 'tools', 'pakon_app.py');
-  const py = process.env.PAKON_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  const py = process.env.PAKON_PYTHON || 'python';
   // --watch-parent: the backend exits when this process does, however this
   // process ends. Belt to the braces below — those handlers cannot run if we
   // are SIGKILLed, and a backend that outlives its window keeps its scan child
@@ -185,6 +185,44 @@ ipcMain.handle('open-path', async (_e, p) => {
 // ---------------------------------------------------------------- window
 
 async function createWindow() {
+  const template = [
+    ...(process.platform === 'darwin' ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'New Scan',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => { if (win) win.webContents.send('menu-new-scan'); }
+        },
+        {
+          label: 'Import .bin...',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => { if (win) win.webContents.send('menu-import-bin'); }
+        },
+        { type: 'separator' },
+        process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+
   win = new BrowserWindow({
     width: 1440,
     height: 920,

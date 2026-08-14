@@ -2309,6 +2309,324 @@ further. Scratch output (`analyzeNoise_pdf.txt`, `analyzeNoise_plain.txt`,
 the extracted DLL copy, and the reachability JSON) lives under
 `/tmp/pakon_noise_re/`, not committed.
 
+## 27 — `analyzeArea`'s own reachable set walked (943 functions); one of
+§12's two unidentified call targets identified as a real, previously-
+uncited channel into FUGC's own LUT-application machinery — gated, not
+yet live-verified, and the sole remaining open item is now sharper, not
+closed
+
+Picked up directly as the last genuinely open member of this doc's own
+priority-list item 1 — `analyzeArea` itself, §26's own closing line: "now
+the sole member of the original four still open." DLL re-verified before
+any of this section's work: `md5(/tmp/pakon_re/PakonIMAu.dll) ==
+eea9dcf78ee21d4f7c515a6c2512242d`, the same copy every prior section of
+this doc (and every `docs/66` pass before it) cites, cross-checked against
+the untouched vendor copy at `/Users/guy/Downloads/Pakon Update
+3/fx35install/program files/Pakon/F-X35 COM SERVER/PakonIMAu.dll` (same
+MD5).
+
+### 27.1 — The full reachable set, walked with this project's own
+committed tool, not a re-derived scratch copy
+
+`python3 tools/re/reachability.py calibrate` reproduces the Shasta
+calibration point (189 fn / 44,378–44,432 B / 386 indirect) exactly first,
+confirming the tool and this DLL copy are in the same state every other
+citation in this doc relies on. `python3 tools/re/reachability.py walk
+0x100e16d0 --label area` (the real `analyzeArea` entry address, cross-
+checked against `pakon_analyse_roll.py`'s own `PATH_ANALYZE_AREA =
+0x100E16D0`) then walks the **entire** direct-call closure, not a sample:
+
+```
+functions reached  : 943
+code bytes (realsz): 342,503
+indirect call sites : 955  (+836 IAT thunk calls, counted separately)
+direct call sites   : 4,758
+```
+
+**This does not match `docs/65`'s own published "732 functions / 299,737
+bytes / 1,405 indirect calls"** for the same capability. Both numbers are
+real — `docs/65`'s own citation predates `tools/re/reachability.py`'s
+existence as a committed, calibrated tool (the file's own header explains
+it was written specifically because every prior pass "rebuilt this same
+tool from scratch in an ephemeral scratch directory" before producing a
+number), so the two figures almost certainly come from different tool
+states or a different seed set (e.g. `acquire`+`analyze`+`export` walked
+together vs. `analyze` alone) rather than one being wrong. This pass did
+**not** chase down which — flagged honestly as an open discrepancy, not
+resolved either way, and the **943/342,503/955** figures above are what
+this pass's own numbers below are scoped against, reproducible from
+`/tmp/pakon_re/reach_area.json` (this session's own output, not
+committed — vendor-DLL-derived per this project's `.gitignore`
+convention).
+
+### 27.2 — The entry function itself, confirmed via `af`+`pdf`, matching
+§12 with precise numbers
+
+`0x100e16d0`–`0x100e1e0f`, **1,856 bytes, 493 instructions, 76 basic
+blocks, cyclomatic complexity 50** (`afij`, not eyeballed) — the same
+function §12 already read as "499-line" (a minor `r2`-version rendering
+difference, not a re-read discrepancy; the byte/instruction counts here
+are the load-bearing numbers). Self-naming confirmed the same way as
+every other stage in this doc: the function pushes `"analyzeArea"`
+(`0x10584be4`) and `"\Atc\ansel\src\libPaths.ansel\areaMethods.cpp"`
+(`0x10584bf0`) at five separate sites inside its own body (`0x100e17ec`,
+`0x100e18be`, `0x100e1c26`, `0x100e1cc6`, `0x100e1d45`).
+
+The function opens with the identical `find("area")` idempotency guard
+§12 already found (`0x10020a40` = `CAP_FIND_THUNK`, keyed to the literal
+string `"area"` at `0x100e1709`), then an `__RTDynamicCast` down to
+`AnsAreaCapability` (confirmed by resolving the real MSVC type-info name
+strings directly out of the loaded binary, not assumed from the address:
+`ps @ 0x10692518+8` → `.?AVAnsCapability@@`, `ps @ 0x10692ce0+8` →
+`.?AVAnsAreaCapability@@` — i.e. `srcType=AnsCapability`,
+`targetType=AnsAreaCapability`, the standard `__RTDynamicCast(inptr, 0,
+srcType, targetType, 0)` argument shape). This confirms and slightly
+sharpens §12's own "idempotency-guarded" read with the exact RTTI
+identity, not just the control-flow shape.
+
+### 27.3 — The real finding: one of §12's two "still-unidentified" call
+targets is FUGC's own `applyLut`, reached via a 3-site shared thunk —
+new to this doc, but not new to the project's own port comments
+
+§12 named two addresses it could not identify: `0x101186c0` and
+`0x101a3500`. Both are now resolved.
+
+**`0x101a3500`** (454 B, 116 instructions, 9 basic blocks, `af`+`pdf`,
+read in full) is a `sprintf`/`std::basic_string`-based debug-log string
+formatter — it builds a `"-"`-separated dimension string (the literal
+`"-"` at `0x10583d1c`, pushed by its caller immediately around this
+call) via `sym.imp.MSVCR71.dll_sprintf` and three `basic_string`
+constructor/destructor pairs, with zero pixel-buffer or density
+arithmetic anywhere in its body. Confirmed non-tonal, matching §12's
+original "geometrically-shaped" read for this address specifically, not
+just by association.
+
+**`0x101186c0`** (35 B, 1 basic block, `af`+`pdf`) is the significant
+one. Its own body:
+
+```
+push ecx
+mov eax, dword [arg_ch]        ; second stack param
+mov ecx, dword [ecx + 0x10]    ; ecx = this->0x10  (a sub-object pointer)
+push esi
+mov esi, dword [arg_ch_2]      ; first stack param
+push eax
+push esi
+mov dword [var_ch], 0
+call fcn.101fa5b0               ; this->0x10 -> fcn.101fa5b0(arg_ch_2, arg_ch, &local)
+mov eax, esi                    ; returns arg_ch_2 unchanged
+pop esi
+pop ecx
+ret 8
+```
+
+A thin forwarding thunk, nothing more — but `fcn.101fa5b0` (2,289 B, 705
+instructions, 90 basic blocks, `af`+`pdf`, read in full through its own
+early control flow) self-identifies, via **its own embedded exception-
+throw strings**, at multiple sites inside its own body, as
+`AnsFugcCapabilityImpl::applyLut` (`\Atc\ansel\src\libFugc.ansel\
+AnsFugcCapabilityImpl.cpp`), operating on real pixel-processing operand
+types cited by name in its own error strings: `"Couldn't allocate
+toneLutPtr."`, `"Couldn't allocate colorLutPtr."`, `"Couldn't allocate
+RectBuffer."`, `"ImaLutOpT has bad status."`, `"ImaAstOpT has bad
+status."`, `"Image layout is not PIXEL or BAND!"`. This is real,
+substantial FUGC tone/colour-LUT-application code — not a geometric
+helper, not a placeholder.
+
+**This is not a new discovery in isolation** — `tools/ansel/python-
+pipeline/pakon_fugc.py`'s own docstring already catalogues this exact
+function (`IMPL_APPLY_LUT = 0x101FA5B0`, wrapper `0x101186c0`, "`applyLut`
+@ `0x101fa5b0` (wrapper `0x101186c0`); full pixel path not ported. Host
+Preference applies `setLutInfo` / mode-2 plane via `apply_1d_lut`" —
+`pakon_fugc.py:107-109`) and `FUGC_APPLY_LUT_GATE_PORTED = True` already
+covers the one narrow leaf this project verified (the image-descriptor
+type gate at `0x101fa5e5`/`0x101fa5f8`, accepting descriptor type `0` or
+`2`). What **is** new, checked directly by grep over every `.py` file
+under `tools/ansel/python-pipeline/` and every existing `docs/*.md`
+before writing this: **no existing file documents that this exact
+wrapper has three real call sites in the whole DLL, not one.**
+`fcn.101186c0`'s own `r2`-reported XREFs list all three, and each was
+independently cross-checked against this project's own already-catalogued
+constants:
+
+```
+CALL XREF from fcn.100fed00 @ 0x100fef46   (analyzeFugc      — PATH_ANALYZE_FUGC)
+CALL XREF from fcn.10102b20 @ 0x1010367f   (balanceAreaImage — PATH_BALANCE_AREA_IMAGE)
+CALL XREF from fcn.100e16d0 @ 0x100e1c78   (analyzeArea      — PATH_ANALYZE_AREA, this section)
+```
+
+The `analyzeFugc` site is FUGC applying its own LUT during its own normal
+analyze cycle — expected, and consistent with `pakon_fugc.py`'s existing
+"Apply / export" note. **The other two are not previously documented
+anywhere in this project** (confirmed by `grep -rn "1010367f\|100e1c78"
+tools/ docs/` returning nothing outside this pass's own new text). Both
+are directly relevant to open threads this doc already carries:
+
+* **`balanceAreaImage`** (`0x10102b20`) calling into real FUGC
+  `applyLut` machinery is new, concrete evidence bearing directly on
+  §22's own still-open thread — "whether `balanceAreaImage` mutates the
+  shared pixel buffer (`arg2`) directly, in place." §22's own live
+  Unicorn test found **zero** pixel-buffer writes, but explicitly
+  caveated that its "hit" branch used a synthetic, zero-filled
+  placeholder Impl "behind a generic one-slot vftable (every virtual call
+  resolves to a bare `ret 4`)" — not a real `AnsFugcCapability`/
+  `AnsAreaCapability` object. Given `fcn.101186c0` dereferences
+  `this->0x10` as a real sub-object pointer before forwarding into
+  `applyLut`, a zero-filled placeholder's `+0x10` field would almost
+  certainly have been null or garbage, meaning §22's own test very
+  plausibly never reached this specific call path at all — not a
+  contradiction of §22's result (its own caveat already flagged exactly
+  this limitation), but a concrete reason the "zero writes" finding may
+  not generalize to a real, correctly-typed capability object. This is
+  not proven either way this pass — no Unicorn execution was attempted
+  here — but it sharpens exactly what a follow-up live test needs to
+  build (a real, non-placeholder `this->0x10` sub-object) to actually
+  close §22's own thread.
+* **`analyzeArea`**'s own call (`0x100e1c78`, this section's actual
+  target) is gated behind, in order: two boolean checks at `[esp+0xec]`
+  and `[esp+0xf0]` (0x100e1be9/0x100e1bf6 in the entry function's own
+  body — this pass could **not** conclusively determine whether these are
+  genuine per-capability enable flags, plausible given the sibling
+  `AnsDustCapability`/`AnsScratchCapability`/`AnsGainOffsetCapability`
+  classes this pass found via a direct `.rdata` string search of the same
+  DLL, or a stack-slot-reuse artefact of the same byte also serving as
+  this function's own SEH-unwind-state tracker elsewhere in its body —
+  flagged honestly as unresolved, not asserted either way); a call to
+  `fcn.100dc060` (28 B, `af`+`pdf`, read in full: `if (byte[this+0x1a1]
+  != 0) return this+0x1a4; else return 0;` — a private field on the Area
+  capability object itself, matching the DLL's own `"AREA analysis image
+  is NULL!"` error string used immediately after this call on a null
+  result); a second `__RTDynamicCast`, this time to `AnsFugcCapability`
+  (`ps @ 0x10697610+8` → `.?AVAnsFugcCapability@@`, same `srcType
+  =AnsCapability` as the first cast) — the failure path throws the DLL's
+  own `"FUGC capability is NULL (wrong type?)"` (`0x10584b9c`); and
+  finally a flag byte at `[fugc_obj + 0xc]` on the cast result. Only if
+  **all four** gates pass does `analyzeArea` call `fcn.101186c0(this=
+  fugc_obj, arg_ch=area_image, arg_ch_2=&status_out)` — i.e. apply
+  FUGC's own tone/colour LUT to `analyzeArea`'s own private "AREA
+  analysis image" buffer, as a real side effect of `analyzeArea`'s own
+  analyze() body, not merely as FUGC's own independent lifecycle step.
+
+### 27.4 — What this pass could **not** establish, stated plainly
+
+Two things stand between this finding and an actual verdict on the
+shadow/black-point question, and neither was resolved this pass:
+
+1. **Whether the object fed into the second (`AnsFugcCapability`)
+   RTDynamicCast at `0x100e1c3a` is genuinely FUGC's own live capability
+   for this scene.** The value is read from `[esp+0xf4]`; a literal-
+   displacement search of the entire function (`grep` over every decoded
+   operand, not eyeballed) finds **no** direct-literal write to that exact
+   offset anywhere earlier in the function's 493 instructions — its real
+   provenance is very plausibly a wider block-copy (`rep movs`/struct
+   blit via a register-computed destination, which a literal-displacement
+   search cannot catch) that this pass did not trace, not evidence of a
+   bug. This is exactly the shape of thing `docs/67`'s own "static
+   reading invents patterns live execution disproves" caution warns
+   about, and it was treated that way here: flagged as unresolved rather
+   than guessed at.
+2. **Whether `analyzeArea`'s own "AREA analysis image" (`this+0x1a4`,
+   §27.3) is the same shared pixel buffer `cna`/`dra` (the already-
+   verified tone chain) subsequently read, or a private/independent copy
+   analyzeArea owns for its own dust/scratch-detection purposes.** This
+   is the single fact that would determine whether the `applyLut`
+   invocation traced above could plausibly touch anything the shadow/
+   black-point defect depends on at all. Not established by this pass —
+   would require tracing `AnsAreaCapabilityImpl`'s own acquire/
+   construction path (not read this pass) or a live Unicorn trace
+   watching the real buffer address, the same technique §24's Finding 3
+   already used for `balanceAreaImage`.
+
+A third, smaller thread, read but not fully traced: `fcn.100dc0b0` (180
+B, `af`+`pdf`, called at `0x100e1957` before either of the above gates)
+either copies 5 dwords from a caller-supplied struct, or — on a null
+input — loads 5 static double/float calibration constants from
+`0x10586340`–`0x10586354` (real DPI-loaded defaults, not synthetic) and
+stores the result at the Area object's own `this+0x1c8`..`this+0x1d8`.
+Plausibly per-channel sensitivity/threshold parameters (`libAREA.ansel`'s
+own `AnsAreaParameters.cpp`, confirmed present in the DLL's string table
+this pass searched: `\Atc\ansel\src\libAREA.ansel\AnsAreaParameters.cpp`
+at `0x105a32c4`) — not traced further, and not established to reach
+pixel data either way.
+
+### 27.5 — Honest scope accounting
+
+Of the 943 functions in `analyzeArea`'s own reachable set (§27.1), this
+pass read six in real detail via explicit `af`+`pdf` function-bounded
+disassembly: the entry function itself (`0x100e16d0`, 1,856 B),
+`fcn.101186c0` (35 B), `fcn.101fa5b0` (2,289 B, read through its own
+early control flow and image-layout gate, not to its own last
+instruction — its further ~15 sub-callees, `fcn.10311600`,
+`fcn.1032d150`, `fcn.1032c0b0`, `fcn.100c1740`, `fcn.1017de10`,
+`fcn.10328a90`, and others visible in its own disassembly, were **not**
+individually read), `fcn.100dc060` (28 B), `fcn.100dc0b0` (180 B), and
+`fcn.101a3500` (454 B). That leaves the overwhelming majority of the
+943-function set — everything downstream of the two unresolved boolean
+gates in §27.3, everything inside `applyLut`'s own real pixel-processing
+body beyond its entry gate, `fcn.100dc650`'s own "commit/register"
+call, and the two AREA-parameter helpers `fcn.100dc070`/`fcn.100dc080`
+briefly seen but not read — genuinely unexamined, consistent with §12's
+own honest sizing of this function as "the same order of effort as the
+citras driver's own multi-pass saga." No Python port was written this
+pass (no `pakon_area.py`): the one piece of logic concrete enough to
+plausibly port — `applyLut`'s own pixel-application math — is already
+tracked as a real, not-yet-ported gap in `pakon_fugc.py`
+(`FUGC_APPLY_LUT_GATE_PORTED` covers only its entry gate), and porting
+it before resolving §27.4's two open questions would risk verifying
+code bit-exact against a mechanism this pass has not yet shown actually
+touches any buffer the tone chain reads — the same discipline §26
+applied to `analyzeNoise` ("porting code with a proven-absent live
+channel... would be effort spent verifying something bit-exact against
+nothing"), except here the live channel is genuinely unresolved rather
+than proven absent, so the honest status is "not yet ruled in or out,"
+not "ruled out." **No Unicorn execution was attempted this pass** —
+purely static `af`+`pdf` disassembly and `.rdata` string search, the
+same limit §11/§12/§25/§26 already used for their own hardest open
+threads.
+
+**What the next pass should pick up from, concretely, not just
+"analyzeArea in general":** (1) resolve `[esp+0xf4]`'s real provenance
+at `analyzeArea`'s own `0x100e1c3a` — either a careful capstone-level
+hand ESP/block-copy trace (the technique already proven on the citras
+driver's own stack-locals problem, `docs/66`'s Phase 3c) or a live
+Unicorn watch; (2) determine whether `this+0x1a4` (the "AREA analysis
+image") aliases the shared scene pixel buffer, by reading
+`AnsAreaCapabilityImpl`'s own acquire/construction path or by a live
+buffer-address watch the way §24's Finding 3 checked `balanceAreaImage`;
+(3) if both resolve favourably (real FUGC object, buffer that matters),
+build a `balanceAreaImage`-shaped live Unicorn harness (real, non-
+placeholder `this->0x10`) and watch `applyLut`'s own writes directly,
+the same method §24 already used and would then finally get to exercise
+against real, not placeholder, capability objects.
+
+**Verification.** DLL MD5 checked (`eea9dcf78ee21d4f7c515a6c2512242d`)
+against both `/tmp/pakon_re/PakonIMAu.dll` and the untouched vendor copy
+under `~/Downloads/Pakon Update 3/...` before any disassembly this pass.
+`tools/re/reachability.py calibrate` was run and passed before trusting
+this pass's own `walk` output. Every function this section cites a size/
+instruction/block count for was read via explicit `r2` `af`+`pdf` (or
+`afij` for the numeric fields), never a raw `pD` byte-range guess, per
+this project's own established convention (`docs/67`). The two RTTI
+type-info name strings (`.?AVAnsCapability@@`, `.?AVAnsAreaCapability@@`,
+`.?AVAnsFugcCapability@@`) were read directly out of the loaded binary at
+the literal addresses the `__RTDynamicCast` call sites push
+(`ps @ <addr>+8`), not assumed from the class names alone. The claim that
+`0x1010367f`/`0x100e1c78` are not previously documented anywhere in this
+project was checked by direct `grep -rn` over every `.py` file under
+`tools/ansel/python-pipeline/` and every `docs/*.md` file in this
+checkout, not asserted from memory. The `[esp+0xf4]` no-local-write claim
+was checked by parsing every decoded operand string in `0x100e16d0`'s own
+493-instruction `pdfj` output for the literal substring `"esp + 0xf4]"`,
+not by eyeballing the disassembly. No golden file was touched, no
+existing port file was modified, and no Python port file was written by
+this pass — `pakon_fugc.py`, `pakon_analyse_roll.py`, and every other
+existing file this section cites were read only, never edited. Scratch
+`r2pipe` scripts and their JSON/text output (`area_explore.py`,
+`entry_pdf.txt`, `entry_pdf_raw.txt`, `helpers_pdf.txt`, `more_pdf.txt`,
+`dc_pdf.txt`, `reach_area.json`) live under `/tmp/pakon_re/`, the same
+shared scratch directory this doc's prior sections already use, not
+committed to the repo.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is

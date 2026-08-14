@@ -27,6 +27,12 @@ Usage:
     ./lamp_replay_vendor.py --commit        # light at calibration drive, 5 s
     ./lamp_replay_vendor.py --commit --full # light at full scan drive, 5 s
     ./lamp_replay_vendor.py --commit --hold 20
+
+Only reg 0x81 and reg 0x82 are per-unit; the rest of the sequence is protocol or
+firmware constants and transfers to any F-135 Plus (docs/59). For a different
+scanner, override those two from that unit's CiConfigLight registry values:
+
+    ./lamp_replay_vendor.py --levels 11,4,5,20 --duty 163,0,646,373
 """
 from __future__ import annotations
 
@@ -164,25 +170,53 @@ def main() -> int:
                     help="use the step-100 scan drive instead of step-82 calibration drive")
     ap.add_argument("--hold", type=float, default=5.0,
                     help="seconds to hold the lamp lit (default 5, as WaitForLamp)")
+    # The only two per-unit writes. Everything else in the sequence is protocol
+    # or a firmware constant and transfers to any F-135 Plus -- docs/59.
+    ap.add_argument("--levels", metavar="B,Ir,R,G",
+                    help="override reg 0x81 for a different unit, e.g. 11,4,5,20 "
+                         "(this unit's registry values). Order is B,Ir,R,G.")
+    ap.add_argument("--duty", metavar="B,Ir,R,G",
+                    help="override reg 0x82 PWM on-counts. Order is B,Ir,R,G.")
+    ap.add_argument("--exposure", type=int, default=4093,
+                    help="exposure for N = trunc(exposure*1e6/(2*2083333.3)). "
+                         "4093 = DpiBase16_35 non-IR, which is what was captured.")
     args = ap.parse_args()
 
-    drive = DRIVE_FULL if args.full else DRIVE_CAL
-    which = "step-100 SCAN" if args.full else "step-82 calibration"
+    def parse4(s, what):
+        try:
+            v = tuple(int(x) for x in s.split(","))
+        except ValueError:
+            sys.exit(f"--{what} must be four integers B,Ir,R,G")
+        if len(v) != 4:
+            sys.exit(f"--{what} must be four integers B,Ir,R,G -- got {len(v)}")
+        return v
 
-    bad = check_safe(LEVELS, drive, N_PERIOD)
+    levels = parse4(args.levels, "levels") if args.levels else LEVELS
+    n_period = int(args.exposure * 1e6 / (2 * 2083333.3))
+    if args.duty:
+        drive, which = parse4(args.duty, "duty"), "override"
+    else:
+        drive = DRIVE_FULL if args.full else DRIVE_CAL
+        which = "step-100 SCAN" if args.full else "step-82 calibration"
+        if n_period != N_PERIOD:
+            sys.exit(f"--exposure {args.exposure} gives N={n_period}, but the "
+                     f"captured drive values are on-counts for N={N_PERIOD}. "
+                     f"Pass --duty as well, or leave --exposure alone.")
+
+    bad = check_safe(levels, drive, n_period)
     if bad:
         print("REFUSING -- values violate the firmware clamps from docs/40:")
         for b in bad:
             print(f"  {b}")
         return 1
 
-    b, ir, r, g = LEVELS
+    b, ir, r, g = levels
     db, dir_, dr, dg = drive
     print(f"vendor lamp replay -- docs/59      drive set: {which}")
     print(f"  levels   B={b} Ir={ir} R={r} G={g}      (ceilings "
           f"{CLAMP_IR_OFF if ir == 0 else CLAMP_IR_ON})")
-    print(f"  drive    B={db} Ir={dir_} R={dr} G={dg}   N={N_PERIOD}   "
-          f"duty {db / N_PERIOD:.3f}/{dr / N_PERIOD:.3f}/{dg / N_PERIOD:.3f}")
+    print(f"  drive    B={db} Ir={dir_} R={dr} G={dg}   N={n_period}   "
+          f"duty {db / n_period:.3f}/{dr / n_period:.3f}/{dg / n_period:.3f}")
     print(f"  clamp check: PASS")
     if not args.commit:
         print("\nDRY RUN -- nothing will be sent. Re-run with --commit.\n")
@@ -202,8 +236,8 @@ def main() -> int:
         # Departure from the capture: drive BEFORE enable, so there is no
         # pulse from whatever the board happened to be holding.
         print("\n-- program drive, then enable (steps 81,82,80 reordered) --")
-        step(dev, "levels 0x81", pkt_write(0x81, enc_levels(LEVELS)), args.commit)
-        step(dev, "drive 0x82", pkt_write(0x82, enc_drive(drive, N_PERIOD)),
+        step(dev, "levels 0x81", pkt_write(0x81, enc_levels(levels)), args.commit)
+        step(dev, "drive 0x82", pkt_write(0x82, enc_drive(drive, n_period)),
              args.commit)
         step(dev, "ENABLE visible 0x80=01", pkt_write(0x80, b"\x01"), args.commit)
 
@@ -227,7 +261,7 @@ def main() -> int:
         step(dev, "DISABLE 0x80=00", pkt_write(0x80, b"\x00"), args.commit)
         if args.commit:
             step(dev, "drive to zero 0x82", pkt_write(0x82, enc_drive((0, 0, 0, 0),
-                                                                     N_PERIOD)),
+                                                                     n_period)),
                  args.commit)
 
     return 0

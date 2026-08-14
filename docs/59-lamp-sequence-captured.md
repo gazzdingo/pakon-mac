@@ -144,6 +144,80 @@ short of not lighting the lamp at all. The script still ramps: it programs drive
 there is no pulse), uses the step-82 calibration level rather than the step-100
 scan level by default, and turns the lamp off on any exception.
 
+## Does this transfer to other F-135s?
+
+Mostly yes. The split is clean, and it is **two register writes** wide.
+
+### Universal — same on any F-135 / F-135 Plus
+
+* Packet framing, the light-board register map, and the `B, Ir, R, –, G`
+  channel order. Protocol, not calibration.
+* The ordering of the sequence itself.
+* `N = trunc(exposure × 1e6 / (2 × 2,083,333.3))` and the F-135 exposure table.
+  Per *model*, not per unit — and note `docs/40` found the legacy `0x20`/`0x24`
+  boards use a different clock (833,333.3), so this does **not** carry to
+  pre-Plus hardware.
+* The clamp ceilings. They live in the board firmware (`fcn.100203c0`), so they
+  are the same for every unit running that firmware.
+* **The four threshold blocks `0x8B/0x8C/0x8D/0x8F` and `0xD0`/`0xD1`.** These
+  look like calibration but are not. `docs/40` showed that with
+  `UseTemperatureSetpoints = 0` the config loader skips every thermal registry
+  read, leaving those fields at **constructor defaults** — and the recovered
+  hive contains no `LampTemp*` values at all, which is only possible if that
+  branch ran. So these are constants, and they transfer.
+
+### Per-unit — the only two writes that do not transfer
+
+`0x81` levels and `0x82` drive. Both come from `CiConfigLight` in the registry
+(`docs/37`), and both differ between units because LED output varies with bin
+and with age.
+
+### A finding about where those values come from
+
+Comparing the capture against the registry values recovered in `docs/37`
+(`Current_*`, `DutyCycle_*`, `DutyCycleOpenGate_*`), with `N_float = 982.32`:
+
+```
+                        registry -> predicted    captured    delta
+OpenGate  R  0.658333            646              654        +8
+          G  0.380378            373              373       *** EXACT ***
+          B  0.166885            163              156        -7
+
+DutyCycle R  0.917161            900              912       +12
+          G  0.955468            938              938       *** EXACT ***
+          B  0.865802            850              804       -46
+```
+
+**G is taken from the registry verbatim in both drive sets. R and B are not.**
+That happens twice, on two independent value sets, which is not coincidence.
+
+The natural reading is that **green is the reference channel and R/B are trimmed
+live against the CCD response** — standard practice for balancing an RGB LED
+illuminant, and consistent with `FN_bCalibrateFindLedDutyCycle` existing at all.
+`[INFERRED]` — the trim deltas are not consistent between the two sets (−7 vs
+−46 on B), so the trim is clearly measurement-driven rather than a fixed offset.
+
+If that reading holds, a port that wants to be correct on *any* unit needs to
+run the search, not just replay stored numbers. Replaying gets you a lit lamp;
+the search gets you a balanced one.
+
+### Which unit is this?
+
+`docs/37` recovered the registry from the image builder's unit,
+`ScannerSerialNumber 16275`, and left "read the serial off the physical
+scanner" as an open action. `docs/55` then found the captured CCD dark offsets
+agree with the stored ones to within one count (R −19/−18, G −26/−26, B −19/−20).
+Combined with G matching the stored duty exactly, twice, the registry is almost
+certainly **this unit's own**. Not proof — read the serial and close it.
+
+### Using the script on a different scanner
+
+`--levels` and `--duty` override the two per-unit writes; everything else stays.
+The captured defaults are *conservative* for an arbitrary unit — levels
+`3/11/7/0` sit below the registry's `5/20/11/4` and well under the ceilings — so
+on another F-135 the likely failure is a dim or colour-shifted lamp, not an
+over-driven one. The clamp check refuses anything out of range either way.
+
 ## Still open
 
 - `LIGHT 0x06 [2]` `00 02` / `00 20` — 7 writes, tracks the scan.

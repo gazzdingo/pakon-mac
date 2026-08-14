@@ -579,7 +579,8 @@ def find_frames_traces(trace: np.ndarray,
                        line_rate: float = REF_LINE_RATE,
                        clear_level: float = DEFAULT_CLEAR_LEVEL,
                        ones_threshold: float | None = None,
-                       pitch_lines: float | None = None) -> tuple[list[Frame], dict]:
+                       pitch_lines: float | None = None,
+                       present: np.ndarray | None = None) -> tuple[list[Frame], dict]:
     """The cascade from two precomputed 1-D traces.
 
     This is the entry point for callers that already hold the strip on disk
@@ -592,6 +593,17 @@ def find_frames_traces(trace: np.ndarray,
 
     ``trace`` and ``green`` must be per-line and the same length, and must be
     on the *calibrated* scale, because ``clear_level`` is an absolute level.
+
+    ``present``, if given, is used as-is and ``clear_level``/``film_present``
+    are skipped entirely. Pass this when ``green`` is not on the scale
+    ``DEFAULT_CLEAR_LEVEL`` was measured on (``pakon_render.open_capture``'s
+    own ``trace_1d``/``green_1d`` are the dark/gain-*calibrated* 14-bit domain,
+    not the raw wire domain the constant is calibrated for -- confirmed
+    2026-08-11: this silently made ``film_present`` never see "gate empty" at
+    all, so every capture "found" zero real frames and blindly tiled the
+    whole thing). ``pakon_gate.Gate``, run on the RAW wire lines, is the
+    correct-domain source for this -- it is the same classifier the live scan
+    itself runs, verified against real reference captures the same day.
     """
     trace = np.asarray(trace, dtype=np.float64).reshape(-1)
     green = np.asarray(green, dtype=np.float64).reshape(-1)
@@ -599,7 +611,13 @@ def find_frames_traces(trace: np.ndarray,
         raise ValueError(f"trace and green differ in length: "
                          f"{trace.size} vs {green.size}")
     lines_per_mm = resolve_lines_per_mm(speed, line_rate)
-    present = film_present(green, clear_level)
+    if present is None:
+        present = film_present(green, clear_level)
+    else:
+        present = np.asarray(present, dtype=bool).reshape(-1)
+        if present.size != trace.size:
+            raise ValueError(f"present and trace differ in length: "
+                             f"{present.size} vs {trace.size}")
     return frame_cascade(trace, lines_per_mm, present,
                          ones_threshold, pitch_lines=pitch_lines)
 
@@ -763,11 +781,31 @@ def _sidecar(capture: Path) -> dict | None:
     return None
 
 
+#: 4-channel (Digital ICE) line length, for the guard in ``_load`` only. This
+#: module does not decode IR captures; it refuses them, which is the point.
+WORDS_PER_LINE_IR = 8000
+
+
 def _load(path: Path, words_per_line: int = WORDS_PER_LINE) -> np.ndarray:
     raw = np.fromfile(path, dtype="<u2")
     n = raw.size // words_per_line
     if n == 0:
         raise SystemExit(f"{path}: too short for {words_per_line}-word lines")
+    # This reader strides blindly — it never looks at a sync marker — so a
+    # capture with a different line length comes out as plausible-looking
+    # nonsense rather than an error. Check the marker spacing once, over a few
+    # lines' worth, before believing the stride. A 4-channel IR capture is
+    # 8000 words with the IR run at the end (docs/70 §2) and would otherwise
+    # shear every frame boundary this module computes.
+    head = raw[: words_per_line * 8]
+    marks = np.flatnonzero(head & 1)
+    if marks.size >= 3:
+        modal = int(np.bincount(np.diff(marks)).argmax())
+        if modal != words_per_line and modal in (WORDS_PER_LINE,
+                                                 WORDS_PER_LINE_IR):
+            raise SystemExit(
+                f"{path}: {modal}-word lines ({modal // 2000}-channel), not "
+                f"{words_per_line}. Framing does not handle this geometry.")
     a = raw[: n * words_per_line].reshape(n, words_per_line // 3, 3)
     return a.astype(np.float64)
 

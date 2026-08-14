@@ -53,6 +53,32 @@ export const diagnostics = () => get('/api/app/diagnostics');
  *  RAM only, no I2C — but the read it reports on does, and the rule is
  *  cheapest to keep at the call site. User-initiated only. */
 export const calibration = () => get('/api/app/calibration');
+
+/** Read this scanner's EEPROM. Once, ever, per scanner.
+ *
+ *  Deliberate and user-initiated. Never call from a poll, a health check, a
+ *  reconnect handler or a bootstrap, and never default `force` true: on this
+ *  hardware the second read of a power cycle returns corrupted bytes while
+ *  still reporting success, so a retry destroys what the first read got. */
+export const calibrationRead = (body) => post('/api/app/calibration/read', body || {});
+
+/** Say which scanner is plugged in (`{serial}`), or which stored read to use
+ *  (`{stamp}`). Selecting never deletes anything, and naming a serial that has
+ *  never been read is an error rather than an instruction. */
+export const calibrationSelect = (body) => post('/api/app/calibration/select', body || {});
+
+/** Calibrate this scanner. Returns `{id}` for pollJob.
+ *
+ *  Safe to call without asking the user first, and meant to be: the whole
+ *  point is that a new scanner sets itself up. The backend refuses if a scan
+ *  is running, if another calibration is running, or if this scanner is
+ *  already calibrated, so a duplicate call is a no-op rather than a hazard.
+ *  It never asks whether film is loaded — it measures. If film is in the gate
+ *  the job comes back in state `film-in-gate`, which is one sentence on
+ *  screen and no control, and it can simply be called again once the person
+ *  has taken the film out. */
+export const calibrationRun = (body) => post('/api/app/calibration/run', body || {});
+
 export const job = (id) => get(`/api/app/job/${id}`);
 export const openCapture = (body) => post('/api/app/open', body);
 export const setParams = (id, i, params) => post(`/api/app/roll/${id}/frame/${i}`, { params });
@@ -104,6 +130,25 @@ export const startScan = (body) => post('/api/app/scan', body);
 export const cancelScan = (id) => post('/api/app/scan/cancel', { id });
 export const stopScanner = () => post('/api/app/scan/stop', {});
 
+/** Jog the film transport, for respooling or repositioning film by hand.
+ *
+ *  The backend runs tools/spin_motor.py as a subprocess — the stop packet goes
+ *  out from that script's `finally:` block, so it is sent on a clean finish, on
+ *  a USB error, and if the backend has to terminate it. Nothing here holds the
+ *  motor on; the run length is the whole contract.
+ *
+ *  This resolves only when the transport has stopped, so the request is open
+ *  for as long as the jog lasts. It rejects (HTTP 409) with the real reason
+ *  when the backend refuses — a scan running here or in another process, no
+ *  scanner, firmware still loading — and those words are the backend's, not a
+ *  guess made in the renderer.
+ *
+ *  `seconds` is capped at 5 unless `long` is set, which raises it to 60. Both
+ *  caps are re-applied server-side; this argument is a convenience, not a
+ *  guarantee. */
+export const jogMotor = ({ direction, seconds, long }) =>
+  post('/api/app/motor', { direction, seconds, long: !!long });
+
 export const fmtClock = (s) => {
   if (s == null) return '—';
   const t = Math.max(0, Math.floor(s));
@@ -112,6 +157,21 @@ export const fmtClock = (s) => {
 
 /** CLEAR / FILM / DARK, and the tone each carries. DARK is not a warning —
  *  it is the state that stops the transport. */
+/** How each calibration-setup state reads on screen. The copy is the
+ *  backend's (`setup.headline` / the job's `headline`); this is only the tone
+ *  and whether anything is expected of the person. Exactly one state expects
+ *  anything, and what it expects is one sentence. */
+export const SETUP = {
+  ready: { label: 'Calibrated', tone: 'ok', asks: false },
+  'needs-calibration': { label: 'Setting up', tone: 'info', asks: false },
+  running: { label: 'Calibrating', tone: 'info', asks: false },
+  'film-in-gate': { label: 'Film in the gate', tone: 'warn', asks: true },
+  ambiguous: { label: 'Which scanner?', tone: 'warn', asks: true },
+  unreachable: { label: 'Lamp cannot reach the target', tone: 'bad', asks: true },
+  failed: { label: 'Stopped', tone: 'bad', asks: true },
+  done: { label: 'Calibrated', tone: 'ok', asks: false },
+};
+
 export const GATE = {
   clear: { label: 'Clear', tone: 'ok', note: 'No film in the path' },
   film: { label: 'Film', tone: 'info', note: 'Film in the path, lit' },

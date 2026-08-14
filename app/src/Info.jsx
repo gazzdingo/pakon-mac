@@ -133,6 +133,116 @@ export function Diagnostics() {
   );
 }
 
+/** This scanner's own setup: what is stored, what is being measured, and the
+ *  one thing that ever needs a person.
+ *
+ *  There is no button to start a calibration and that is deliberate. A scanner
+ *  the software has never seen sets itself up the moment this screen can see
+ *  it, because the only genuinely manual step — "is there film in the gate" —
+ *  is something the hardware already reports. See tools/calib_wizard.py for
+ *  why the film sensors and the gate classifier are not symmetric signals, and
+ *  in particular why "the sensors said nothing" is the *normal* reading for an
+ *  empty gate and must not be turned into a question.
+ *
+ *  The only control here is the one for the case the machine genuinely cannot
+ *  resolve on its own: two scanners calibrated on one computer, nothing on the
+ *  wire to tell them apart. */
+function Setup({ boot }) {
+  const setup = boot?.calibration_store?.setup;
+  const units = boot?.calibration_store?.units?.units;
+  const [job, setJob] = useState(null);
+  const started = React.useRef(false);
+
+  const state = job?.state || setup?.state;
+  const meta = api.SETUP[state] || {};
+  const headline = job?.headline || job?.message || setup?.headline;
+  const warnings = [...(setup?.warnings || []), ...(job?.warnings || [])];
+
+  // Start by itself, once, when there is something to do and nobody has to be
+  // asked. Calling twice is harmless — the backend refuses a second
+  // calibration — but the ref keeps it from happening on every render.
+  useEffect(() => {
+    if (started.current || !setup?.automatic) return;
+    started.current = true;
+    api
+      .calibrationRun({})
+      .then((r) => (r?.id ? api.pollJob(r.id, setJob) : setJob(r)))
+      .catch((e) => setJob({ state: 'failed', headline: String(e.message || e) }));
+  }, [setup?.automatic]);
+
+  if (!setup) return null;
+
+  const rows = [['Status', meta.label || state || '—', meta.tone || 'na']];
+  if (setup.serial != null) rows.push(['Scanner', String(setup.serial), 'good']);
+  if (job?.status === 'running') {
+    rows.push([job.message || 'Working', job.detail || `${Math.round((job.progress || 0) * 100)}%`, 'info']);
+  }
+  (setup.steps || []).forEach((st) =>
+    rows.push([st.text, st.needed ? 'to do' : 'done', st.needed ? 'na' : 'good']),
+  );
+
+  return (
+    <Card
+      title="This scanner's calibration"
+      info={
+        <>
+          Colour matrices and the serial number come off the scanner's own memory, read exactly once
+          because a second read in the same power cycle returns corrupted bytes while still reporting
+          success. Everything else — the black level, the lamp duty cycles and the per-pixel dark and
+          gain tables — is <em>measured</em>, because none of it is on that memory at any offset. It
+          exists only in the Windows registry of a machine that ran the vendor software, so for any
+          scanner without one, searching against the scanner's own response is the only way it can
+          exist at all. docs/72.
+        </>
+      }
+    >
+      {headline ? <p className="muted" style={{ marginBottom: 8 }}>{headline}</p> : null}
+      <State rows={rows} />
+
+      {state === 'film-in-gate' ? (
+        <p style={{ marginTop: 8 }}>
+          <button
+            className="btn"
+            onClick={() => {
+              started.current = false;
+              setJob(null);
+            }}
+          >
+            I have taken the film out
+          </button>
+        </p>
+      ) : null}
+
+      {state === 'ambiguous' && units ? (
+        <div style={{ marginTop: 8 }}>
+          {Object.keys(units).map((srl) => (
+            <button
+              key={srl}
+              className="btn"
+              style={{ marginRight: 6 }}
+              onClick={() => api.calibrationSelect({ serial: Number(srl) }).then(() => window.location.reload())}
+            >
+              Scanner {srl}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {state === 'unreachable' && job?.report?.unreachable ? (
+        <pre className="muted" style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>
+          {job.report.unreachable.reason}
+        </pre>
+      ) : null}
+
+      {warnings.map((w) => (
+        <p key={w} className="muted" style={{ marginTop: 8 }}>
+          {w}
+        </p>
+      ))}
+    </Card>
+  );
+}
+
 export function Calibration({ boot }) {
   const [b, setB] = useState(boot || null);
   useEffect(() => {
@@ -176,7 +286,7 @@ export function Calibration({ boot }) {
               </Card>
               <Card
                 title="Flat field / gain"
-                info={cal.readme?.bright_source?.note}
+                
               >
                 <State
                   rows={[
@@ -241,19 +351,7 @@ export function Calibration({ boot }) {
           />
         </Card>
 
-        <Card
-          title="New calibration"
-          info={
-            <>
-              Not in this build. Capturing new dark and bright references needs the scanner, and the
-              tables committed here were made with it. The vendor regenerates once per session and
-              invalidates after 60 minutes or on any change of DPI base, film colour, format or IR
-              (docs/46 §7).
-            </>
-          }
-        >
-          <State rows={[['Run calibration', 'not implemented', 'na']]} />
-        </Card>
+        <Setup boot={b} />
       </div>
     </div>
   );

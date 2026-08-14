@@ -98,6 +98,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import sys
 import threading
@@ -115,7 +116,28 @@ import dx_decode as dxd              # noqa: E402
 import dx_read as dxr                # noqa: E402
 
 VID, PID = 0x0F05, 0xF135
+# Widening this to admit F-235 (0x0F05:0x35F2) or F-335 (0x0F05:0xF335) is a
+# DELIBERATE, SEPARATE decision, not a matter of just adding tuples here.
+# This gate is exactly what makes today's F-135-only board-address constants
+# (pakon_commands.AD_LIGHT etc.) harmless despite them being wrong for other
+# models: an F-235/F-335 simply cannot be opened through this path today, so
+# those constants never reach the wrong physical board. Before widening it,
+# fill in the missing per-model evidence in pakon_commands.BOARD_ADDRESSES
+# (today only F-135 is fully verified, and F-335's AD_LIGHT alone) and make
+# every call site that sends a command go through Link.board_address()
+# below instead of the bare pc.AD_* constants -- see that method's
+# docstring, and pakon_commands.py's BOARD_ADDRESSES comment, for exactly
+# what is and is not confirmed.
 EP_CMD_OUT, EP_CMD_IN, EP_IMAGE = 0x01, 0x81, 0x86
+
+# idProduct -> the model key pakon_commands.BOARD_ADDRESSES is keyed by.
+# Same identity space as pakon_load.py's LOADED table; see that module for
+# the vendor-driver evidence behind each pairing.
+_PID_TO_MODEL = {
+    0xF135: "F135",
+    0x35F2: "F235",
+    0xF335: "F335",
+}
 
 LOCK_FILE = _TOOLS / "WRITES_LOCKED"
 MARKER = Path.home() / ".pakon-scan-in-flight.json"
@@ -143,9 +165,18 @@ DEFAULT_OUT_DIR = _ROOT / "captures"
 MOTOR_SPEED = {4: 25802, 8: 11467, 16: 5917}
 MOTOR_SPEED_IR = {4: 19335, 8: 7580, 16: 4850}
 
-#: Only base 16 decodes: ``pakon_decode.WORDS_PER_LINE`` is 6000, and the
-#: committed calibration was taken at ``DpiBase16_35``.
-DECODABLE_BASES = (16,)
+#: All three decode: DPI base sets transport speed and exposure, not the
+#: CCD's own pixel count, so ``pakon_decode.WORDS_PER_LINE`` (2000 px x 3
+#: channels) is the same capture format regardless of base. Verified directly
+#: for base 8 (``captures/gold400.bin`` decodes with the unmodified pipeline);
+#: reasoned, not independently captured-and-checked, for base 4.
+DECODABLE_BASES = (4, 8, 16)
+
+#: FN_bBeforeScan's own per-base non-IR integration time (fcn.10011a60,
+#: docs/40 s3, [VERIFIED-FROM-BINARY]). The committed calibration is base 16's
+#: row; 4 and 8 have no dark/gain table of their own, only this one real
+#: number each.
+EXPOSURE_INTEGRATION = {4: 1875, 8: 2813, 16: 4093}
 
 # --------------------------------------------------------------------------
 # limits — all of them backstops, none of them adjustable to "off"
@@ -517,25 +548,61 @@ class ScanConfig:
                          dpi_base: int = 16,
                          speed: int | None = None,
                          film_path: str | None = None,
-                         dx: str | None = None) -> "ScanConfig":
+                         dx: str | None = None,
+                         derive: bool = False,
+                         config: dict | None = None,
+                         source: str | None = None) -> "ScanConfig":
         """Read the exposure triad from the record of what the tables mean.
+
+        ``config`` / ``source``: use an exposure block that is already in hand
+        instead of reading ``<cal_dir>/README.json``. Everything after the file
+        read is unchanged, so this is the same interpretation applied to a
+        different origin -- a per-unit overlay out of the calibration store
+        (:meth:`from_store`), or a candidate the calibration wizard is trying
+        out before anything is installed. With neither argument the behaviour
+        is byte-for-byte what it always was.
 
         ``calibration/README.json`` is the only statement anywhere of the
         configuration the committed dark and gain tables are valid for. Using
         anything else would silently invalidate them.
+
+        ``derive``: recompute the exposure triad from ``EXPOSURE_INTEGRATION``
+        and the vendor formula instead of reading the committed on-counts
+        directly. This is what a base with no calibration of its own (4, 8)
+        falls back to automatically. Passing it explicitly for base 16 too
+        recomputes on-counts from the SAME formula and the committed on-counts'
+        own duty ratios, which is a way to check the committed numbers against
+        the formula rather than trust them blind -- if this disagrees with the
+        committed on_counts_R_G_B by more than rounding, something about the
+        committed values or this formula is wrong, and that is worth knowing
+        before it is the thing driving real LEDs.
+
+        Levels are never derived -- there is no formula for them anywhere in
+        this project, only the committed calibration's own search result --
+        so a derived triad reuses the committed levels unchanged and only
+        recomputes N and on-counts, which the formula does cover.
         """
-        root = Path(cal_dir) if cal_dir else _ROOT / "calibration"
-        p = root / "README.json"
-        if not p.is_file():
-            raise ScanRefused(
-                f"no calibration record at {p}. A scan without one would be "
-                f"exposed at values nothing on this machine can decode.")
-        meta = json.loads(p.read_text())
-        c = meta.get("config") or {}
+        if config is None:
+            root = Path(cal_dir) if cal_dir else _ROOT / "calibration"
+            p = root / "README.json"
+            if not p.is_file():
+                raise ScanRefused(
+                    f"no calibration record at {p}. A scan without one would "
+                    f"be exposed at values nothing on this machine can "
+                    f"decode.")
+            meta = json.loads(p.read_text())
+            c = meta.get("config") or {}
+            source = str(p)
+        else:
+            c = dict(config)
+            source = source or "supplied config"
         warn: list[str] = []
 
         base_name = str(c.get("dpi_base", ""))
-        if base_name and f"DpiBase{dpi_base}_" not in base_name:
+        base_mismatch = bool(base_name) and f"DpiBase{dpi_base}_" not in base_name
+        m = re.search(r"DpiBase(\d+)_", base_name)
+        committed_base = int(m.group(1)) if m else None
+        if base_mismatch:
             warn.append(
                 f"calibration was captured at {base_name}; scanning at base "
                 f"{dpi_base} makes the committed dark and gain tables invalid")
@@ -545,9 +612,51 @@ class ScanConfig:
                 f"{gate.WORDS_PER_LINE}-word lines only")
 
         levels = tuple(c.get("levels_R_G_B_Ir") or (4, 20, 11, 0))
-        on = tuple(c.get("on_counts_R_G_B") or (492, 239, 104))
-        n = int(c.get("lamp_pwm_N") or 982)
-        integ = int(c.get("integration_0x82_idx6") or 4093)
+        committed_on = tuple(c.get("on_counts_R_G_B") or (492, 239, 104))
+        committed_n = int(c.get("lamp_pwm_N") or 982)
+        committed_integ = int(c.get("integration_0x82_idx6") or 4093)
+
+        if derive or (base_mismatch and dpi_base in EXPOSURE_INTEGRATION):
+            integ = EXPOSURE_INTEGRATION.get(dpi_base, committed_integ)
+            n = int(integ * 0.24)
+            # Duty ratios, not absolute on-counts, are what the vendor formula
+            # actually predicts (on_ch = trunc(N * duty_ch)) -- carrying the
+            # committed calibration's own R/G/B *balance* across to the new N
+            # is the one part of this that is not a guess, since it is the
+            # same ratio the committed on-counts already encode.
+            # HOLD THE ON-COUNTS, NOT THE DUTY RATIOS.
+            #
+            # This used to carry the duty *fractions* across, which is wrong
+            # and was measured wrong: N scales with integration (N = trunc(
+            # exposure*0.24)), so holding duty constant scales the lamp's
+            # on-TIME with integration too, and a base-8 calibration replayed
+            # at base 16 came out ~1.45x over-exposed (4093/2813).
+            #
+            # The PWM on-count IS the lamp's on-time per line in ticks, and the
+            # signal is lamp-driven, so photons per line = on-count. Holding it
+            # constant holds exposure constant across bases, which is the whole
+            # point of a derivation. Falls out of the vendor's own formula:
+            #   on = N*d = (integ*0.24) * (d_cal * integ_cal/integ)
+            #            = 0.24*integ_cal*d_cal = N_cal*d_cal = on_cal
+            # so the correct derived on-count is simply the committed one,
+            # re-clamped against the new N-2 ceiling.
+            on = tuple(min(n - 2, v) for v in committed_on)
+            clamped = [a != b for a, b in zip(on, committed_on)]
+            warn.append(
+                f"exposure DERIVED, not calibrated: base {dpi_base} has no "
+                f"dark/gain table of its own. integration {integ} is the real "
+                f"FN_bBeforeScan value (docs/40 s3) and N=trunc(exposure*0.24)"
+                f" follows from it. On-counts are the committed base "
+                f"{committed_base or '?'} values held CONSTANT, which is what "
+                f"holds exposure constant when N changes -- the lamp's on-time "
+                f"per line, not its duty fraction, is what sets the signal. "
+                f"Levels are the committed search result, reused unchanged -- "
+                f"there is no formula for them."
+                + (f" NOTE: {sum(clamped)} channel(s) hit the N-2={n-2} "
+                   f"ceiling and are therefore UNDER-exposed at this base."
+                   if any(clamped) else ""))
+        else:
+            integ, n, on = committed_integ, committed_n, committed_on
 
         # The triad has to be self-consistent or the lamp pulses on one period
         # while the CCD integrates on another, which is what made exposure
@@ -574,11 +683,37 @@ class ScanConfig:
             fpga_ctrl=int(str(c.get("fpga_ctrl") or "0x0061"), 0),
             speed=int(speed if speed is not None
                       else MOTOR_SPEED.get(dpi_base, MOTOR_SPEED[16])),
-            source=str(p),
+            source=str(source),
             warnings=warn,
             film_path=(str(film_path).strip() or None) if film_path else None,
             dx=(str(dx).strip() or None) if dx else None,
         )
+
+    @classmethod
+    def from_store(cls, serial_hint: int | None = None, **kw) -> "ScanConfig":
+        """This scanner's own exposure if the store has it; the repo reference
+        otherwise, clearly labelled.
+
+        docs/69 s7.5. ``calibration/README.json`` describes ONE machine, and
+        applying it to a different serial is borrowing, not calibration --
+        legitimate as a way to get a first picture out of a new unit, and never
+        to be called calibrated. Whatever ``calib_profile`` says about that
+        arrives in ``warnings`` and goes straight into the capture sidecar.
+        """
+        try:
+            import calib_profile as cprof
+        except Exception:                                   # noqa: BLE001
+            return cls.from_calibration(**kw)
+        try:
+            prof = cprof.profile(serial_hint=serial_hint)
+        except Exception:                                   # noqa: BLE001
+            return cls.from_calibration(**kw)
+        if prof.config_source == cprof.FROM_NOTHING or not prof.config:
+            return cls.from_calibration(**kw)
+        cfg = cls.from_calibration(config=prof.config,
+                                   source=prof.config_origin, **kw)
+        cfg.warnings.extend(prof.warnings)
+        return cfg
 
     def to_json(self) -> dict:
         d = {k: (list(v) if isinstance(v, tuple) else v)
@@ -626,13 +761,19 @@ class Link:
     """Command and image endpoints. Every write goes through :meth:`ack`."""
 
     def __init__(self, dev, dry_run: bool = False, log=None,
-                 simulated: bool = False) -> None:
+                 simulated: bool = False, model: str = "F135") -> None:
         self.dev = dev
         self.dry_run = dry_run
         self.simulated = simulated
         self.log = log or (lambda *a, **k: None)
         self.sent: list[str] = []
         self.ctrl_shadow = 0
+        #: Model key into pakon_commands.BOARD_ADDRESSES for whichever
+        #: device this Link actually opened. Dry-run and simulated links
+        #: have no real idProduct to read, so they default to "F135" --
+        #: this project's only real unit, and the only model the VID/PID
+        #: gate in open() admits today anyway. See board_address().
+        self.model = model
         #: Set once command 0x98 has turned the DX board's illuminators on.
         #: That command also disarms their 10 s auto-off, so nothing will turn
         #: them off again on its own and ``safe_stop`` has to. See
@@ -667,7 +808,13 @@ class Link:
                 dev.clear_halt(ep)
             except usb.core.USBError:
                 pass
-        return cls(dev, log=log)
+        # The gate above only ever admits idProduct == PID (0xF135) today,
+        # so this always resolves to "F135". Reading it from the opened
+        # device rather than hardcoding it is what makes board_address()
+        # correct automatically if that gate is ever widened -- see the
+        # warning next to VID/PID above.
+        model = _PID_TO_MODEL.get(int(dev.idProduct), "F135")
+        return cls(dev, log=log, model=model)
 
     def close(self) -> None:
         if self.dev is None:
@@ -683,6 +830,20 @@ class Link:
         except Exception:                                   # noqa: BLE001
             pass
         self.dev = None
+
+    def board_address(self, board: str) -> int:
+        """Resolve a board address (e.g. ``"AD_LIGHT"``) for whichever
+        model this Link actually opened, via
+        ``pakon_commands.board_address()`` -- correct-or-refuse, never a
+        guess. For the only model the VID/PID gate in :meth:`open` admits
+        today (F-135), this returns exactly the existing ``pc.AD_*``
+        constant, unchanged. It exists so that if that gate is ever
+        widened to admit F-235/F-335, callers that use this method instead
+        of the bare ``pc.AD_*`` constants get the correct address -- or a
+        clear :class:`pc.UnknownBoardAddress` -- automatically, rather than
+        silently sending an F-135 address to a different physical board.
+        """
+        return pc.board_address(self.model, board)
 
     def read_image(self, size: int = CHUNK) -> bytes:
         """One bulk read of EP 0x86. Returns b'' on timeout rather than raising,
@@ -799,8 +960,28 @@ def lamp_on(link: Link, cfg: ScanConfig) -> None:
                 f"lamp level {name}={v} exceeds the non-IR hardware clamp "
                 f"{cap} (docs/40 s4). Refusing to overdrive the illuminant.")
     if ir_lvl:
-        raise ScanRefused("IR is not scanned: a four-channel line is 8000 "
-                          "words and the decoder takes 6000.")
+        # The decoder blocker is GONE as of docs/70: pakon_decode and
+        # pakon_gate both segment and unpack 8000-word 4-channel lines now.
+        # What is still missing is everything on the *hardware and colour*
+        # side, and none of it is a line-length problem:
+        #   * the IR exposure triad is not wired (docs/40 s3: DpiBase16_35 IR
+        #     integration 2498, N = trunc(2498 * 0.24) = 599, against the
+        #     non-IR 4093 the committed calibration was taken at);
+        #   * MOTOR_SPEED_IR is tabled above but nothing selects it;
+        #   * there is no infrared dark or gain reference. calibration/ holds
+        #     dark_2000x3 / gain_2000x3 only, taken with IR off, and turning
+        #     IR on changes the visible channels too — each is lit for a
+        #     shorter fraction of the cycle, which is why the hardware clamp
+        #     RAISES to R<=8 / G<=24 / B<=24 (fcn.100203c0);
+        #   * nothing removes defects with the IR plane
+        #     (pakon_decode.ICE_PORTED is False).
+        # Enabling IR is a deliberate, reviewed change — docs/70 s5 has the
+        # exact sequence. It is not unblocked by the decoder growing up.
+        raise ScanRefused(
+            "IR is not scanned. The decoder handles 8000-word four-channel "
+            "lines now, but there is no IR exposure triad, no IR transport "
+            "speed selection, no infrared dark/gain reference in "
+            "calibration/, and no defect operator. See docs/70 s5.")
     if max(on_r, on_g, on_b) > cfg.lamp_n - 2:
         raise ScanRefused(
             f"PWM on-count {max(on_r, on_g, on_b)} exceeds N-2 "
@@ -1379,10 +1560,23 @@ def ccd_configure(link: Link, cfg: ScanConfig) -> None:
         if not 0 <= g <= pc.ADC_GAIN_MAX:
             raise ScanRefused(f"A/D gain {g} outside 0..{pc.ADC_GAIN_MAX}")
         link.ack(pc.adc_write(idx, g), f"A/D gain idx{idx} := {g}")
-    for idx, o in zip((pc.ADC_IDX_EXPOSURE_R, pc.ADC_IDX_EXPOSURE_G,
-                       pc.ADC_IDX_EXPOSURE_B), cfg.afe_offsets):
-        link.ack(pc.adc_write(idx, int(o) & 0xFFFF),
-                 f"A/D offset idx{idx} := {o}")
+    # AD9826 offsets are NINE-BIT SIGN-MAGNITUDE with the sign in bit 8, not
+    # two's complement. This line used to send `int(o) & 0xFFFF`, so the
+    # vendor's Offset_R = -19 went out as 0xFFED, whose low nine bits read as
+    # sign-set magnitude 237: the part was asked for -237. That drove the black
+    # level under the ADC's bottom code and a 33,226-line base-8 dark reference
+    # came back with every single sample exactly 0 -- see docs/72 and
+    # `git show 402729c:docs/42-ccd-analog-front-end.md`. pc.afe_offset_word
+    # is the vendor's own encoder, refusals included.
+    for idx, o in zip((pc.ADC_IDX_OFFSET_R, pc.ADC_IDX_OFFSET_G,
+                       pc.ADC_IDX_OFFSET_B), cfg.afe_offsets):
+        try:
+            word = pc.afe_offset_word(o)
+        except ValueError as e:
+            raise ScanRefused(str(e)) from None
+        link.ack(pc.adc_write(idx, word),
+                 f"A/D offset idx{idx} := {o} (wire 0x{word:03x}, "
+                 f"9-bit sign-magnitude)")
 
     # The committed fpga_ctrl is 0x061 = MODE(0x060) | ACQUIRE(0x001): the
     # calibration references were captured with acquire already in the word.
@@ -1689,6 +1883,14 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
             "on_counts_R_G_B": list(cfg.on_counts),
             "afe_gains": list(cfg.afe_gains),
             "afe_offsets": list(cfg.afe_offsets),
+            # The words actually put on the wire. The AD9826 offset register is
+            # 9-bit sign-magnitude, and this port sent two's complement until
+            # 2026-08-12 -- a capture cannot be compared with one taken before
+            # that fix by its `afe_offsets` field alone, because the same field
+            # meant a different thing to the hardware. docs/72.
+            "afe_offset_words": [f"0x{pc.afe_offset_word(o):03x}"
+                                 for o in cfg.afe_offsets],
+            "afe_offset_encoding": "AD9826 9-bit sign-magnitude, sign in bit 8",
             "pixel_offset": cfg.pixel_offset,
             "pixel_height": cfg.pixel_height,
             "fpga_ctrl": f"0x{cfg.fpga_ctrl:04x}",
@@ -2390,6 +2592,27 @@ def run_scan(out_path: str | Path,
 # probing, without writing anything
 # --------------------------------------------------------------------------
 
+def calibration_dpi_base(cal_dir: str | Path | None = None) -> int:
+    """The DPI base the committed calibration was captured at.
+
+    Parsed from ``config.dpi_base`` ("DpiBase8_35" -> 8) rather than assumed,
+    because every caller that assumed 16 got a *derived* config back the moment
+    a calibration for another base was committed -- silently, since deriving is
+    a legitimate thing to do and produces plausible numbers. Falls back to 16
+    only when there is nothing to read.
+    """
+    try:
+        root = Path(cal_dir) if cal_dir else _ROOT / "calibration"
+        meta = json.loads((root / "README.json").read_text())
+        name = str((meta.get("config") or {}).get("dpi_base", ""))
+        for b in DECODABLE_BASES:
+            if f"DpiBase{b}_" in name:
+                return b
+    except Exception:                                       # noqa: BLE001
+        pass
+    return 16
+
+
 def probe() -> dict:
     """What can be said about the machine without sending it a write."""
     out: dict = {
@@ -2406,7 +2629,16 @@ def probe() -> dict:
         "decodable_bases": list(DECODABLE_BASES),
     }
     try:
-        out["calibration"] = ScanConfig.from_calibration().to_json()
+        # Report the calibration for the base it was actually captured at, not
+        # a hardcoded 16. This used to call from_calibration() bare, which
+        # defaults to dpi_base=16 -- so with a base-8 calibration committed it
+        # reported a *derived* base-16 config instead of the real one. Not just
+        # a wrong display: the Scan screen defaults its transport-speed field
+        # from `calibration.speed`, so a base-8 scan was offered base 16's
+        # MotorSpeedPlus (5917 instead of 11467) and would have stretched the
+        # geometry by ~2x.
+        out["calibration"] = ScanConfig.from_calibration(
+            dpi_base=calibration_dpi_base()).to_json()
     except Exception as e:                                  # noqa: BLE001
         out["calibration"] = None
         out["calibration_error"] = str(e)
@@ -2515,7 +2747,8 @@ def cmd_run(a) -> int:
     try:
         cfg = ScanConfig.from_calibration(cal_dir=a.cal_dir, dpi_base=a.base,
                                           speed=a.speed,
-                                          film_path=a.film_path, dx=a.dx)
+                                          film_path=a.film_path, dx=a.dx,
+                                          derive=a.derive_exposure)
     except Exception as e:                                  # noqa: BLE001
         _emit("error", message=str(e))
         print(f"refused: {e}", file=sys.stderr)
@@ -3604,6 +3837,23 @@ def main() -> int:
     r = sub.add_parser("run", help="run a scan")
     r.add_argument("output", nargs="?", default=None)
     r.add_argument("--base", type=int, default=16, choices=(4, 8, 16))
+    r.add_argument("--derive-exposure", action="store_true",
+                   help="recompute the exposure triad from the vendor "
+                        "formula (docs/40 s3) instead of reading it from the "
+                        "committed calibration. Automatic for base 4/8, "
+                        "which have no calibration of their own; pass this "
+                        "for base 16 too to cross-check the committed "
+                        "on-counts against the formula instead of trusting "
+                        "them blind.")
+    r.add_argument("--cal-dir", default=None, metavar="DIR",
+                   help="read the exposure from DIR/README.json instead of "
+                        "calibration/README.json. This is how the calibration "
+                        "wizard drives the scanner at a CANDIDATE exposure "
+                        "while it searches, without writing into "
+                        "calibration/ -- which is never modified by any "
+                        "automated step. The capture sidecar records which "
+                        "file was used, so a capture can always be traced "
+                        "back to the numbers it was taken at.")
     r.add_argument("--speed", type=int, default=None,
                    help="transport speed register 0xA5; defaults to the "
                         "calibrated MotorSpeedPlus for the base")
@@ -3629,11 +3879,6 @@ def main() -> int:
                         "78-13. Recorded alongside whatever the DX board "
                         "reads; the typed value is the one used (see "
                         "DX_PRECEDENCE).")
-    r.add_argument("--cal-dir", default=None, metavar="DIR",
-                   help="alternate calibration directory (must contain its "
-                        "own README.json in the same shape as calibration/). "
-                        "Defaults to calibration/. For testing an exposure "
-                        "hypothesis without touching the working calibration.")
     r.add_argument("--dry-run", action="store_true",
                    help="build and print the sequence; send nothing")
     r.add_argument("--json", action="store_true", help="NDJSON progress on stdout")

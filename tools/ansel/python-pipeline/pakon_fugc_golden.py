@@ -82,6 +82,11 @@ def _uc() -> Uc:
     uc = Uc(UC_ARCH_X86, UC_MODE_32)
     uc.mem_map(STACK_ADDR, STACK_SIZE)
     uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    # Flat FS base -> fs:[0] SEH head, needed by setLutInfo's real prologue
+    # (0x101f82c0 establishes an SEH frame; the other leaves in this file
+    # are entered past their own prologues and never touch fs:[0]).
+    uc.mem_map(0, 0x1000)
+    uc.mem_write(0, struct.pack("<I", 0xFFFFFFFF))
     return uc
 
 
@@ -234,6 +239,138 @@ def run_hist_leaf(
     return counts, total
 
 
+SET_LUT_INFO_ENTRY = 0x101F82C0
+SET_LUT_INFO_STOP = 0x101F840D  # after fs:[0] restore, before pop/ret
+
+
+def run_set_lut_info(
+    uc: Uc,
+    *,
+    seed_rgb: np.ndarray,
+    offsets: tuple[int, int, int],
+    n: int = fugc.FUGC_N,
+    cap: int = HEAP_ADDR + 0x80000,
+    out_addr: int = HEAP_ADDR + 0xF0000,
+    scratch_addr: int = HEAP_ADDR + 0x100000,
+    ret_stub: int = HEAP_ADDR + 0x110000,
+) -> np.ndarray:
+    """Unicorn ``0x101f82c0`` (``setLutInfo``) -- Cap ``+0xe6`` seed,
+    ``+0x60ec/+0x60f2/+0x60f8`` aim words -> ``+0x6140``-shaped apply LUT.
+
+    Docs/66 Phase 6.2 "Track 1": this entry point had ZERO Unicorn golden
+    coverage before this pass (only the mode==2 metrics leaves above did),
+    despite ``pakon_fugc.py``'s own module docstring calling its maths
+    "VERIFIED". Added here rather than assumed. ``ecx`` = Cap object
+    (thiscall); two ``ret 8``-cleaned stack args, ``(scratch_out_param,
+    apply_lut_out_ptr)`` -- the second one is where the per-channel 4096
+    int16 LUT actually gets written (confirmed live: watched the write
+    addresses land at exactly ``out_addr + channel*2*n``, not
+    ``scratch_addr``); the first is a compiler-inserted SEH-adjacent
+    out-param the real per-pixel maths never touches.
+    """
+    blob = bytearray(0x61000)
+    for c in range(3):
+        for i in range(n):
+            struct.pack_into(
+                "<h", blob, 0xE6 + c * 2 * n + i * 2, int(np.int16(seed_rgb[i, c]))
+            )
+    uc.mem_write(cap, bytes(blob))
+    off_blob = bytearray(24)
+    for c in range(3):
+        # 60ec - 60f8 + 60f2 == offsets[c]; pick 60f8=60f2=0, 60ec=offset,
+        # matching aim_offset's own int16 arithmetic exactly.
+        struct.pack_into("<h", off_blob, c * 2, int(np.int16(offsets[c])))
+    uc.mem_write(cap + fugc.CAP_AIM_60EC, bytes(off_blob[0:6]))
+    uc.mem_write(cap + fugc.CAP_AIM_60F2, b"\x00" * 6)
+    uc.mem_write(cap + fugc.CAP_AIM_60F8, b"\x00" * 6)
+    uc.mem_write(out_addr, b"\x00" * (3 * n * 2))
+    esp = STACK_ADDR + STACK_SIZE - 0x100
+    uc.mem_write(esp, struct.pack("<III", ret_stub, scratch_addr, out_addr))
+    uc.mem_write(ret_stub, b"\xcc")
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    uc.reg_write(UC_X86_REG_ECX, cap)
+    stop = {"hit": False}
+
+    def _hook(uc_: Uc, address: int, size: int, _user: object) -> None:
+        if address == SET_LUT_INFO_STOP:
+            stop["hit"] = True
+            uc_.emu_stop()
+
+    hh = uc.hook_add(
+        UC_HOOK_CODE, _hook, begin=SET_LUT_INFO_STOP, end=SET_LUT_INFO_STOP + 1
+    )
+    try:
+        uc.emu_start(
+            SET_LUT_INFO_ENTRY, SET_LUT_INFO_STOP + 1, timeout=5_000_000, count=2_000_000
+        )
+    except UcError as e:
+        raise RuntimeError(f"unicorn setLutInfo: {e}") from e
+    finally:
+        uc.hook_del(hh)
+    if not stop["hit"]:
+        raise RuntimeError(
+            f"setLutInfo did not reach stop eip={uc.reg_read(UC_X86_REG_EIP):#x}"
+        )
+    raw = uc.mem_read(out_addr, 3 * n * 2)
+    out = np.zeros((n, 3), dtype=np.int32)
+    for c in range(3):
+        for i in range(n):
+            out[i, c] = struct.unpack_from("<h", raw, c * 2 * n + i * 2)[0]
+    return out
+
+
+def check_set_lut_info(uc: Uc) -> int:
+    """``setLutInfo`` (``0x101f82c0``) vs ``fugc.set_lut_info`` -- covers the
+    previously-untested full offset domain, incl. the negative-offset case
+    the port used to raise on (docs/66 Phase 6.2 "Track 1"; see
+    ``pakon_fugc.set_lut_info_channel``'s own docstring for the fix) and a
+    boundary set including this render path's actually-observed near-zero
+    aim offsets plus the real DLL's own analyzeAutoTone effective output
+    band (dra ``effMin``/``effMax`` ~1690-2614 on the reference frame,
+    docs/66 Phase 6.2) as an input-domain data point, even though the
+    LANDED stage order feeds ``setLutInfo``'s apply LUT the PRE-autoTone
+    balanced range (~1129-3809), not the post-autoTone one -- both are
+    exercised here since the LUT itself is built over the full 0..4095
+    domain regardless of which sub-range a given frame's own pixels land
+    in, so there is no "range this function is safe for" distinction the
+    way there could be for a function whose own maths change behaviour
+    outside some window.
+    """
+    rng = np.random.default_rng(20260811)
+    seed = np.zeros((fugc.FUGC_N, 3), dtype=np.int32)
+    seed[:, 0] = (np.arange(fugc.FUGC_N) * 3 + 7) % fugc.FUGC_N
+    seed[:, 1] = fugc.FUGC_N - 1 - np.arange(fugc.FUGC_N)
+    seed[:, 2] = rng.integers(0, fugc.FUGC_N, size=fugc.FUGC_N)
+
+    cases = [
+        ("zero", (0, 0, 0)),
+        ("identity_shipped_frame", (0, -1, 1)),  # this frame's near-no-op offsets
+        ("small_pos", (5, 5, 5)),
+        ("small_neg", (-5, -5, -5)),
+        ("large_neg", (-500, -500, -500)),
+        ("narrow_band_like", (-1200, -900, -1482)),  # exercises the narrow-domain lead
+        ("boundary_n_minus_1", (4095, 4095, 4095)),
+        ("boundary_n", (4096, 4096, 4096)),
+        ("over_range_identity", (5000, 5000, 5000)),
+        ("at_minus_n_all_identity", (-4096, -4096, -4096)),
+        ("beyond_minus_n", (-4097, -10000, -32768)),
+        ("mixed_signs", (-200, 0, 300)),
+    ]
+    failed = 0
+    for name, offs in cases:
+        dll_out = run_set_lut_info(uc, seed_rgb=seed, offsets=offs)
+        host_out = fugc.set_lut_info(seed, offs)
+        ok = np.array_equal(host_out, dll_out)
+        mark = "OK" if ok else "FAIL"
+        if not ok:
+            failed += 1
+            diff = np.argwhere(host_out != dll_out)
+            print(f"  {mark} setLutInfo {name} offsets={offs} mismatches at {diff[:3].tolist()}")
+        else:
+            print(f"  {mark} setLutInfo {name} offsets={offs}")
+    return failed
+
+
 def main() -> None:
     dll_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_DLL
     pe = dll_path.read_bytes()
@@ -297,6 +434,8 @@ def main() -> None:
         if host != ref:
             failed += 1
         print(f"  {mark} pct {band}/{total} → {host}")
+
+    failed += check_set_lut_info(uc)
 
     # COM/ROI control leaves (cite 0x101f8bc0 / 0x10278140 / applyLut gate)
     assert fugc.FUGC_HIST_COM_ROI_PORTED

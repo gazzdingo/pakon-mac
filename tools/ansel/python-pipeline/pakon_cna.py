@@ -250,7 +250,10 @@ CNA_PEAK_SEARCH_PORTED = True
 
 #: ``0x1022ca80``.  First and second moments of an int histogram, sigma, a
 #: gaussian smooth of the normalised copy, then a resample into an int array.
-#: Verified bit-exact.
+#: Verified bit-exact, including the resample loop's int32 store truncation
+#: (``0x1022ce98``) that a real scanned roll's NaN-sigma case exposed --
+#: live-DLL-confirmed against that exact real histogram, see the resample
+#: loop's own comment.
 CNA_HIST_RESAMPLE_PORTED = True
 
 #: ``0x1022c520`` / ``0x1022c630`` — the descending and ascending halves of the
@@ -308,6 +311,36 @@ def _unported(flag: str, va: int, what: str):
 def f32(x: float) -> float:
     """One ``fst``/``fstp dword`` — round a register value to float32."""
     return struct.unpack("<f", struct.pack("<f", x))[0]
+
+
+#: x87's "real indefinite" QNaN, sign bit set (``0xffc00000`` as float32) --
+#: what a masked-exception 0.0/0.0 produces under FPCW 0x027f.  Same constant
+#: ``pakon_ast.X87_INDEFINITE`` / ``pakon_toneHelper.X87_INDEFINITE``
+#: document; duplicated here rather than cross-imported so this file stays
+#: self-contained, matching this file's own ``f32`` (also duplicated per
+#: subsystem rather than shared).
+X87_INDEFINITE = -math.nan
+
+
+def _x87_div(num: float, den: float) -> float:
+    """``fdiv``/``fdivr`` under FPCW ``0x027f``'s masked exceptions.
+
+    Found by Phase 6.1's assembled run (``docs/66``): ``analyze_image``'s
+    ``_half`` normalises ``bucket[i]/sum(bucket)`` and ``r.out[i]/sum(r.out)``
+    unconditionally, and a real (pseudo-random, not hand-crafted) test image
+    can legitimately leave one of those sums at 0 -- e.g. every edge-histogram
+    bucket landing empty.  No leaf-level ``pakon_cna_golden.py`` case happened
+    to construct that degenerate a bucket array.  The real DLL does not trap:
+    it masks the zero-divide exception and produces a correctly-signed
+    infinity (0.0/0.0 instead yields the "real indefinite" QNaN above).
+    Python's ``/`` raises ``ZeroDivisionError`` on both -- the same class of
+    bug already fixed once in this project, in ``pakon_ast._x87_div``.
+    """
+    if den == 0.0:
+        if num == 0.0:
+            return X87_INDEFINITE
+        return math.copysign(math.inf, num) * math.copysign(1.0, den)
+    return num / den
 
 
 def i16(x: int) -> int:
@@ -826,15 +859,31 @@ def hist_resample(params: CnaParams, hist: Sequence[int], n: int, pivot: int,
             "out of [esp+0x2c] as the index here")
 
     # -- 6. resample (0x1022cdef) -----------------------------------------
+    # 0x1022cdf5..0x1022ce07 is a raw `fdivrp`/`fsqrt` with no zero-guard
+    # anywhere in the disassembly, and 0x1022ce33..0x1022ce3d (the `step`
+    # divide two lines down) is likewise a raw `fdiv st(1)` -- both confirmed
+    # by direct disassembly, not inferred. `sig32` (== `res.in_sigma`) is
+    # exactly the same class of "can legitimately be 0.0, or already NaN from
+    # a negative-variance histogram" value the module docstring's `_x87_div`
+    # was written for; unlike the `src[i]`/`den[i]` normalisation that
+    # originally motivated it, neither divide here was wrapped, so a
+    # `sig32 == 0.0` histogram (a real, reachable degenerate shape -- e.g. a
+    # bucket histogram whose float32-rounded second moment lands exactly on
+    # `mean**2`) raised Python's `ZeroDivisionError` instead of the real
+    # DLL's masked-exception infinity/NaN. `math.sqrt` is safe here without
+    # extra guarding: `ratio` is a sum of squares over a sum of squares, so it
+    # is never negative -- only 0, positive, +inf or NaN -- and
+    # `math.sqrt(nan)`/`math.sqrt(inf)` both return the input unchanged.
     sig32 = res.in_sigma                       # fld dword [ecx] -- reloaded
-    ratio = ((out_sigma * out_sigma) + (sig32 * sig32)) / (sig32 * sig32)
+    ratio = _x87_div((out_sigma * out_sigma) + (sig32 * sig32),
+                     sig32 * sig32)
     root = math.sqrt(ratio)
     if sig32 < f32(scale) / f32(max_contrast_gain):
         out_val = sig32 * f32(max_contrast_gain)     # register precision
     else:
         out_val = f32(scale)
     res.out_sigma = f32(out_val)
-    step = f32((sig32 / out_val) * root)       # fstp dword [esp+0x30]
+    step = f32(_x87_div(sig32, out_val) * root)       # fstp dword [esp+0x30]
     cur = float(cross) - float(pivot + 1) * step
     for _ in range(n):
         cur = cur + step
@@ -843,7 +892,39 @@ def hist_resample(params: CnaParams, hist: Sequence[int], n: int, pivot: int,
             k = 0
         elif k >= npad:
             k = npad - 1
-        res.out.append(round_half_up(step * padded[k]))
+        # 0x1022ce98: `mov dword [edx+esi*4], eax` -- only the LOW 32 bits of
+        # _ftol2's 64-bit edx:eax result are ever stored here; edx is loaded
+        # (as the output pointer) but never combined with the truncation's own
+        # edx half, which is silently discarded. Every call site in this
+        # function that consumes an _ftol2 result (this store, and the `k`
+        # clamp two lines up) reads EAX alone -- confirmed by direct
+        # disassembly of 0x1022ce60..0x1022ce9e, not inferred. For ordinary
+        # in-range values this narrowing is a no-op (`i32(v) == v`), which is
+        # why it went unnoticed against every prior golden/assembled case: it
+        # only diverges when the *value being truncated* itself doesn't fit in
+        # 32 bits.
+        #
+        # That happens for real: a real scanned roll's dark-half histogram
+        # legitimately drove `sigma`'s variance negative (`m2 - mean*mean` <
+        # 0, a genuine x87 rounding outcome, not a port bug), producing
+        # `in_sigma = NaN` -- live-Unicorn-confirmed against the real DLL with
+        # the exact real histogram (`sqrt` of a masked-invalid negative
+        # operand is the x87 "real indefinite" QNaN under FPCW 0x027f, same
+        # class as `_x87_div`'s zero-divide case above). NaN then propagates
+        # through `step`, so every `_ftol2` call in this loop hits the masked-
+        # invalid-operation path and returns the 64-bit "integer indefinite"
+        # pattern 0x8000000000000000 -- LOW 32 bits zero. Storing the full
+        # (unbounded) Python int here instead of its low 32 bits turned that
+        # into -2**63 per entry, which is what made every downstream
+        # cumulative-sum crossing search in `analyze_image._half` diverge
+        # without bound instead of landing on 0 immediately, the real DLL's
+        # own behaviour (live-verified: real `out` comes back all zeros for
+        # this exact real histogram, and the i32-truncated port matches it
+        # exactly, 0/500 mismatches). See `pakon_cna_golden.py`'s
+        # `resample_cases` list (section 6, "near-spike n=500 (NaN sigma)")
+        # for the synthetic regression case built from this real histogram's
+        # shape (values, not the frame itself).
+        res.out.append(i32(round_half_up(step * padded[k])))
     return res
 
 
@@ -1451,9 +1532,40 @@ def analyze_image(img: CnaImage, p: CnaParams) -> CnaAnalysis:
         cross = None
         for i in range(n_bins):
             if i >= n_buckets:
-                # 0x1022e480 walks nBins entries of a buffer only nBuckets of
-                # which were written.  It cannot be modelled past that point,
-                # and for a non-degenerate histogram it never gets there.
+                # 0x1022e473 loads this loop's real bound from [esp+0x14],
+                # which 0x1022de0c proves (live-disassembly-confirmed, not
+                # inferred) is `params.histSize` itself (n_bins), reused from
+                # the same register the function's very first idiv used to
+                # derive n_buckets -- so the vendor genuinely does walk past
+                # bucket n_buckets into memory this port has no buffer for
+                # (whatever real allocation sits after `bucket_hist_i32` in
+                # the Impl's layout). That part of the original comment here
+                # was correct.
+                #
+                # What was NOT correct: the belief that this "cannot happen
+                # for a non-degenerate histogram". A real scanned roll's
+                # dark-half histogram reliably drives `hist_resample`'s
+                # `in_sigma` to NaN (a genuine x87 negative-variance rounding
+                # outcome, live-DLL-confirmed against the real histogram, see
+                # `hist_resample`'s own comment on its resample-store fix),
+                # and NaN is very much a "degenerate" histogram in exactly the
+                # sense this comment meant -- yet on real photographic data it
+                # is the COMMON case, not a rare one (100% of frames on one
+                # real test roll hit it before the store-width fix below).
+                # The actual reason the walk now converges well inside
+                # n_buckets even for that degenerate case is `hist_resample`'s
+                # own fix: once `r.out` is correctly narrowed to what the real
+                # `mov dword [edx+esi*4], eax` store keeps (int32, not the
+                # raw unbounded `_ftol2` result), a NaN-cascaded `r.out` comes
+                # back all zeros -- live-DLL-confirmed -- and `want` (itself
+                # `round_half_up(tot*pct)` with `tot == 0`) is already 0, so
+                # the walk finds `want <= 0` at `i == 0` and never gets close
+                # to `n_buckets`, let alone `n_bins`. This guard therefore
+                # stays as a loud failure for whatever combination would still
+                # defeat that convergence, rather than a value this port can
+                # honestly invent -- but it is not expected to fire on real
+                # data anymore, and the fix that stopped it firing was in
+                # `hist_resample`, not here.
                 raise RuntimeError(
                     f"{CNA_ANALYZE_IMAGE:#x}: the crossing walk ran past "
                     f"bucket {n_buckets} into the uninitialised tail of the "
@@ -1470,8 +1582,8 @@ def analyze_image(img: CnaImage, p: CnaParams) -> CnaAnalysis:
             sum_bucket = i32(sum_bucket + v)
         fsb = float(sum_bucket)
         for i in range(n_buckets):
-            src[i] = f32(float(bucket[i]) / fsb)
-            den[i] = f32(float(r.out[i]) / ftot)
+            src[i] = f32(_x87_div(float(bucket[i]), fsb))
+            den[i] = f32(_x87_div(float(r.out[i]), ftot))
         return r, cross
 
     # -- 3/4. dark half ---------------------------------------------------

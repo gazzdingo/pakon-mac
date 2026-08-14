@@ -57,17 +57,37 @@ whole point of per-unit calibration. So the general checks are structural:
 The owner's exact values are checked too, but only ever REPORTED, never
 required -- a scanner that fails them is a different scanner, not a bad read.
 
-CRC -- honestly, not yet
-------------------------
-docs/35 records that FN_bReadEEPromToRegistry reads two CRC32-checked sections
-of 398 and 36 bytes. A validating CRC would be the best structural check there
-is. It is not implemented because it cannot be, yet: 398 bytes do not fit in a
-256-byte page, so the section spans devices we have never read. A search over
-7 CRC-32 variants (zlib/ISO-HDLC, BZIP2, MPEG-2, POSIX, JAMCRC, CRC-32C,
-XFER), every start offset 0..63, every length up to 140, with the stored word
-allowed anywhere in the page as LE or BE, found ZERO validating pairs in the
-256 bytes we have. crc_status() reports that state rather than inventing a
-verdict. Once a multi-page read exists, revisit it -- see docs/60.
+CRC -- identified, not yet checkable
+------------------------------------
+docs/35 recorded that two CRC32-checked sections of 398 and 36 bytes exist, and
+guessed that 398 bytes must span "devices we have never read". docs/69 s5.2
+settles it from the disassembly and the guess was wrong: there is ONE device,
+at 0x52, addressed with a flat 16-bit byte offset, and the sections live at
+EEPROM offsets 0x000 (398 B, backup at 0x400) and 0x800 (36 B, backup at 0xA00).
+The CRC itself is now fully identified -- see crc_status().
+
+It still cannot be evaluated here, for two reasons that are now exact rather
+than vague: this image holds 255 of section A's 390 payload bytes, and it is
+off by one against the EEPROM's own addressing (docs/69 s5.5). That is why the
+earlier 7-variant search -- zlib/ISO-HDLC, BZIP2, MPEG-2, POSIX, JAMCRC,
+CRC-32C, XFER, every start offset 0..63, every length to 140, the stored word
+allowed anywhere as LE or BE -- found ZERO validating pairs. It was looking for
+a checksum over data that was neither complete nor aligned.
+
+crc_status() reports that state rather than inventing a verdict. The read in
+docs/69 s5.6 would make it checkable, and a validating CRC is worth more than
+every structural check in this file put together.
+
+A WARNING ABOUT THE OFFSETS BELOW
+---------------------------------
+SERIAL_OFF, NEG_MATRIX_OFF and POS_MATRIX_OFF are offsets into the IMAGE this
+project's firmware produces, and that image starts at EEPROM byte 1: the dump
+routine's priming read consumes byte 0 (docs/69 s5.5, proven against the
+registry hive on nine independent values). They are correct as written and
+every one of them becomes wrong by one if that firmware is ever fixed. Do not
+"correct" them on paper -- they must change only together with the firmware and
+a version marker on the stored image, or the only good read that exists stops
+decoding.
 """
 from __future__ import annotations
 
@@ -180,14 +200,35 @@ def read_matrix(data: bytes, base: int) -> list[list[float | None]]:
 
 
 def crc_status(_data: bytes) -> dict:
-    """Deliberately not a verdict. See the module docstring."""
+    """Deliberately not a verdict -- but no longer a mystery. See docs/69 s5.3.
+
+    The CRC is now fully identified: standard reflected zlib/PKZIP CRC-32
+    (init 0xFFFFFFFF, final NOT), built at runtime in TLB.dll's fcn.10015d30
+    from the forward polynomial 0x04C11DB7. Each section is
+    {u32 length; u32 crc32; payload}, and the CRC covers the PAYLOAD ONLY --
+    bytes [offset+8 .. offset+length-1], header excluded.
+
+    Section A is 398 bytes at EEPROM offset 0x000 (backup at 0x400), so its CRC
+    covers 0x008..0x18D. It still cannot be checked here, for two reasons that
+    are now precise rather than vague:
+
+      1. this image holds 255 of those 390 payload bytes; and
+      2. this image is OFF BY ONE -- eeprom_52.bin[k] == EEPROM[k+1] -- so even
+         the bytes we have are misaligned against the CRC's own addressing.
+
+    That is why the earlier 7-variant, all-offsets search found nothing: it was
+    searching for a CRC over data that is neither complete nor aligned.
+
+    Once the read described in docs/69 s5.6 exists this becomes checkable, and
+    it is worth far more than the six structural checks -- a validating CRC is
+    the vendor's own verdict on its own data, and it costs no extra read.
+    """
     return {
         "checked": False,
-        "reason": "FN_bReadEEPromToRegistry's sections are 398 and 36 bytes; "
-                  "398 does not fit in a 256-byte page, so the CRC covers "
-                  "bytes this device does not hold. A 7-variant search found "
-                  "no validating CRC within the page. Revisit once a "
-                  "multi-page read exists.",
+        "reason": "zlib CRC-32 over EEPROM 0x008..0x18D (section A payload), "
+                  "stored at 0x004. This image holds 255 of those 390 bytes "
+                  "and is offset by one (file[k] = EEPROM[k+1]), so the CRC "
+                  "cannot be evaluated. See docs/69 s5.3 and s5.5.",
     }
 
 
@@ -378,14 +419,28 @@ def cross_page_checks(devices: dict[int, bytes]) -> list[dict]:
     Requested by the colour task in docs/59: the colour-reversal matrix starts
     at 0x9D of the calibration page and needs 120 bytes, so elements 24..29
     fall off the end of the 256-byte page and are currently zero-filled on an
-    assumption. If the pages are a flat address space those six values are the
-    first 24 bytes of the NEXT device.
+    assumption.
 
-    The test is self-proving. PosMatrix is 0.25 on the diagonal and zero
-    everywhere else, and the last diagonal entry is already present at 0xF5 --
-    so all six continuation values must read 0.0. Six zeros confirms the
-    zero-fill AND that the pages are contiguous. Anything else means the pages
-    are not a flat address space and the layout needs its own look.
+    THE PREMISE OF THIS CHECK HAS BEEN REFUTED -- see docs/69 s5.2
+    ---------------------------------------------------------------
+    It was written on the belief that 0x52 is one page of a multi-page device
+    and that a 24C04/24C08 would expose the continuation as 0x53. It does not.
+    TLB.dll addresses the calibration part with a FLAT 16-BIT BYTE OFFSET in
+    wValue (fcn.100160a0 at 0x100161a7), bounded at 0x2000, and reaches offset
+    0xA24 -- above the 2048 bytes any device-select scheme can cover. There is
+    exactly one device, at 0x52, with a 2-byte word address, and the vendor
+    never addresses any other index (all four call sites push 2).
+
+    So the missing six values are at EEPROM 0x0FE..0x115, immediately past this
+    256-byte window and BEHIND THE SAME ADDRESS. A device at 0x53 answering at
+    all would mean something unexpected about that unit's hardware, not the
+    continuation of this matrix.
+
+    The check is kept because it is free, because it is still a true statement
+    about any device that does answer at 0x53, and because on another owner's
+    scanner a populated 0x53 is worth surfacing. But a null result here is
+    EXPECTED and is not evidence that anything is missing -- the honest remedy
+    is the full-length read described in docs/69 s5.6.
 
     Costs nothing: it reads two buffers that are already in hand.
     """
@@ -406,11 +461,13 @@ def cross_page_checks(devices: dict[int, bytes]) -> list[dict]:
     vals = [struct.unpack_from("<f", nxt, i * 4)[0] for i in range(6)]
     all_zero = all(v == 0.0 for v in vals)
     _check(checks, "reversal matrix continuation", all_zero,
-           ("six zeros on 0x%02x -- confirms the zero-fill AND that the pages "
-            "are contiguous" % (cal_addr + 1)) if all_zero else
-           ("expected six zeros, got " + " ".join(f"{v:g}" for v in vals) +
-            " -- the pages are NOT a flat address space; the layout needs its "
-            "own look before these values are trusted"))
+           ("six zeros on 0x%02x -- consistent with the zero-fill, though "
+            "docs/69 s5.2 shows the real continuation is at EEPROM 0x0FE "
+            "behind 0x52, not here" % (cal_addr + 1)) if all_zero else
+           ("got " + " ".join(f"{v:g}" for v in vals) + " on 0x%02x -- this "
+            "device holds something of its own. The reversal continuation is "
+            "NOT here (docs/69 s5.2); whatever this is, keep it and look at "
+            "it by hand." % (cal_addr + 1)))
     return checks
 
 

@@ -88,7 +88,9 @@ __all__ = [
     "FPGA_CTRL_IR_MODE", "FPGA_CTRL_WIDTH_MASK",
     "ADC_IDX_GAIN_R", "ADC_IDX_GAIN_G", "ADC_IDX_GAIN_B",
     "ADC_IDX_EXPOSURE_R", "ADC_IDX_EXPOSURE_G", "ADC_IDX_EXPOSURE_B",
-    "ADC_GAIN_MAX",
+    "ADC_IDX_OFFSET_R", "ADC_IDX_OFFSET_G", "ADC_IDX_OFFSET_B",
+    "ADC_GAIN_MAX", "ADC_OFFSET_MAX", "ADC_OFFSET_SIGN",
+    "afe_offset_word", "afe_offset_value",
     "fpga_write", "adc_write", "fpga_set_control", "ccd_acquire_start",
     "set_status_leds",
     # host
@@ -101,6 +103,8 @@ __all__ = [
     "devinfo_select", "devinfo_read", "devinfo_sequence", "read_info_string",
     # curated list
     "SAFE_FIRST_PACKETS",
+    # per-model board-address dispatch (correct-or-refuse; see class docstring)
+    "BOARD_ADDRESSES", "UnknownBoardAddress", "board_address",
 ]
 
 # --------------------------------------------------------------------------
@@ -128,6 +132,135 @@ AD_PICM = 0x24     # legacy motor board (no-acks on a Plus unit)
 AD_PICF = 0x28     # focus / lens steppers
 AD_LIGHT = 0x40    # PICL_PLUS: lamps, LEDs, DX
 AD_MOTOR = 0x44    # PICM_PLUS: film drive *and* CCD/FPGA registers
+
+# --------------------------------------------------------------------------
+# Per-model board addresses -- F-135 / F-235 / F-335
+# --------------------------------------------------------------------------
+#
+# Nothing above this point changes because of this table. AD_HOST/AD_PICL/
+# AD_PICM/AD_PICF/AD_LIGHT/AD_MOTOR remain exactly what every existing call
+# site in this codebase gets -- this project's one real unit is an F-135
+# Plus, and its behaviour is not touched here, byte for byte.
+#
+# The vendor's F-135, F-235 and F-335 share firmware images byte-for-byte
+# (see tools/pakon_load.py's FIRMWARE_BY_PERSONALITY, cross-checked by md5
+# against the vendor's F135/F235/F335 package directories) but that does NOT
+# mean they share board addresses. Exactly one cross-model board address is
+# confirmed by disassembly anywhere in this checkout, and it confirms the
+# addresses are NOT all the same:
+#
+#   docs/12-command-protocol.md (lines ~394-396) [VERIFIED-FROM-BINARY]:
+#   "TLC.dll (F-335) FN_bDrvLampOff at 0x10010180 writes the SAME register
+#   0x80 as the F-135 path -- only the board address differs (0x38 on that
+#   model). Same register, three product generations."
+#   (TLB.dll is the F-135 client library, TLA.dll is F-235's, TLC.dll is
+#   F-335's -- docs/30-pakon-reference.md.)
+#
+# That is the ONLY board address for F-235 or F-335 with equivalent cited
+# evidence to what backs the F-135 table (docs/12-command-protocol.md
+# section "2. Board addresses", drv+0x130/drv+0x131 in TLB.dll's
+# fcn.1000af60). AD_HOST/AD_PICL/AD_PICM/AD_PICF/AD_MOTOR for F-335, and
+# every address for F-235, have NOT been found anywhere in this checkout
+# (public docs or the private research tree) with disassembly/.inf/
+# vendor-doc evidence tying them to those models specifically. They are
+# deliberately left out of BOARD_ADDRESSES below rather than assumed equal
+# to the F-135 values -- see UnknownBoardAddress / board_address(), which
+# mirror pakon_load.py's refuse-to-guess-firmware discipline for exactly
+# this reason.
+#
+# CAVEAT even for the one confirmed value: the loaded USB PID 0xF335 is
+# shared between the F-235 and F-335 chassis -- one driver (FX35usb2.sys)
+# serves both (docs/30-pakon-reference.md: "0F05:F335 ... F-235 / F-335").
+# A device enumerating as 0xF335 is not provably an F-335 rather than an
+# F-235. The entry below is recorded under "F335" because that is the
+# model TLC.dll was shown to serve; if the attached chassis actually turns
+# out to be a physical F-235, this address is unconfirmed for it too.
+# Nothing in this checkout distinguishes F-235 from F-335 chassis once
+# loaded.
+#
+# What would fill in the rest: disassembly of TLA.dll (F-235) and further
+# disassembly of TLC.dll (F-335) locating each library's per-board-address
+# constructor, the same way the F-135 table (drv+0x130/drv+0x131) and the
+# single F-335 light-board address were recovered. Do not add an entry here
+# without that kind of evidence, even if it looks like a safe guess.
+
+#: Keyed by the same model identity as ``pakon_load.py``'s ``LOADED``
+#: table ("F135"/"F235"/"F335"). Each inner dict maps an address *name*
+#: (matching the ``AD_*`` constant names above) to its verified value for
+#: that model. A model/board combination with no cited evidence is simply
+#: absent -- look it up with :func:`board_address`, which raises rather
+#: than defaulting to some other model's value.
+BOARD_ADDRESSES: dict[str, dict[str, int]] = {
+    "F135": {
+        # References to the module constants above, not copied literals --
+        # this can never silently drift from the F-135's real behaviour.
+        "AD_HOST": AD_HOST,
+        "AD_PICL": AD_PICL,
+        "AD_PICM": AD_PICM,
+        "AD_PICF": AD_PICF,
+        "AD_LIGHT": AD_LIGHT,
+        "AD_MOTOR": AD_MOTOR,
+    },
+    "F335": {
+        # [VERIFIED-FROM-BINARY] docs/12-command-protocol.md lines ~394-396,
+        # TLC.dll FN_bDrvLampOff -- see the comment block above. Every other
+        # F-335 address is deliberately absent; see the CAVEAT above too.
+        "AD_LIGHT": 0x38,
+    },
+    # "F235" is deliberately ABSENT, not an empty dict: no board address on
+    # this model -- not even the light board -- has been found anywhere in
+    # this checkout with real, cited evidence. board_address() below raises
+    # UnknownBoardAddress for every F235 lookup as a result. Do not add a
+    # "F235" entry without disassembly/.inf/vendor-doc evidence equivalent
+    # to what backs F135 and F335's AD_LIGHT above.
+}
+
+
+class UnknownBoardAddress(LookupError):
+    """No verified board address exists for a (model, board) pair.
+
+    Mirrors ``pakon_load.py``'s refuse-to-guess-firmware discipline
+    ("Deliberately do NOT fall back to PknInit.hex ... refusing to guess"):
+    it is better to fail loudly here than to send a command built from one
+    model's board address to a different, real physical board.
+    """
+
+
+def board_address(model: str, board: str) -> int:
+    """Look up a verified board address for ``model`` (e.g. ``"F135"``,
+    ``"F235"``, ``"F335"`` -- the same keys as ``pakon_load.py``'s
+    ``LOADED`` identity) and ``board`` (one of the ``AD_*`` constant names,
+    e.g. ``"AD_LIGHT"``).
+
+    Raises :class:`UnknownBoardAddress` -- never guesses, never falls back
+    to another model's value -- if this checkout has no cited evidence for
+    that combination. See the ``BOARD_ADDRESSES`` comment above for exactly
+    what is and is not confirmed today, and what evidence would be needed
+    to fill in a gap.
+
+    Callers that already know for certain they are talking to the F-135
+    (which today is every real call site in this project -- see the VID/PID
+    gates in ``pakon_scan.py``/``pakon_session.py``/``pakon_cmd.py``) can
+    keep using the bare ``AD_*`` module constants directly; nothing about
+    this function changes their behaviour. This function exists for the one
+    place that needs to be correct for *whichever* model is actually
+    attached, once/if that is ever more than one model.
+    """
+    table = BOARD_ADDRESSES.get(model)
+    if table is None or board not in table:
+        known = ", ".join(
+            f"{m} ({', '.join(sorted(t))})" for m, t in BOARD_ADDRESSES.items()
+        ) or "(none)"
+        raise UnknownBoardAddress(
+            f"no verified {board} address for model {model!r}. Refusing to "
+            f"guess -- sending a command built from the wrong model's board "
+            f"address to a real board can damage it. Verified today: "
+            f"{known}. See the BOARD_ADDRESSES comment in "
+            f"tools/pakon_commands.py for what evidence would be needed "
+            f"before {model!r}'s {board} could be filled in."
+        )
+    return table[board]
+
 
 # --------------------------------------------------------------------------
 # Response status decoding
@@ -961,16 +1094,77 @@ FPGA_CTRL_BIT1 = 0x002            # INFERRED: unknown, set by PutCcdFpgaSettings
 FPGA_CTRL_MASK_60 = 0x060         # INFERRED: unknown, set by PutCcdFpgaSettings
 FPGA_CTRL_IR_MODE = 0x100         # bDrvPutCcdIrMode
 
-ADC_IDX_78 = 0x00                 # := 0x78 at InitCcd
-ADC_IDX_80 = 0x01                 # := 0x80 at InitCcd
-ADC_IDX_GAIN_R = 0x02             # INFERRED channel order
+ADC_IDX_78 = 0x00                 # := 0x78 at InitCcd. AD9826 Configuration.
+ADC_IDX_80 = 0x01                 # := 0x80 at InitCcd. AD9826 MUX Config;
+                                  # D7=1 selects channel order R, G, B.
+# Channel order R, G, B is ESTABLISHED, not inferred: it follows from the
+# AD9826 MUX Configuration byte written at ADC_IDX_80 above. The AFE is an
+# Analog Devices AD9826, identified from TLB.dll alone by four independent
+# alignments -- gains at idx 2/3/4 clamped to 0x3F, offsets at idx 5/6/7 in
+# 9-bit sign-magnitude, the registry's Gain_R/G/B and Offset_R/G/B binding to
+# exactly those indices, and idx 0/1 being the only other registers ever
+# written. See `git show 402729c:docs/42-ccd-analog-front-end.md`
+# [VERIFIED-FROM-BINARY] and docs/72.
+ADC_IDX_GAIN_R = 0x02
 ADC_IDX_GAIN_G = 0x03
 ADC_IDX_GAIN_B = 0x04
-ADC_IDX_EXPOSURE_R = 0x05         # INFERRED channel order
-ADC_IDX_EXPOSURE_G = 0x06
-ADC_IDX_EXPOSURE_B = 0x07
+#: The AD9826 per-channel OFFSET DACs. The historical names say "EXPOSURE",
+#: which is a misnomer -- the vendor calls these Offset_R/G/B, writes them from
+#: ``FN_bDrvPutCcdAtoDOffsets`` (0x100299c0), and they set the black level.
+#: The old names are kept as aliases because other modules import them.
+ADC_IDX_OFFSET_R = 0x05
+ADC_IDX_OFFSET_G = 0x06
+ADC_IDX_OFFSET_B = 0x07
+ADC_IDX_EXPOSURE_R = ADC_IDX_OFFSET_R
+ADC_IDX_EXPOSURE_G = ADC_IDX_OFFSET_G
+ADC_IDX_EXPOSURE_B = ADC_IDX_OFFSET_B
 
 ADC_GAIN_MAX = 0x3F               # driver clamps gains to 63
+
+#: AD9826 offset encoding. NINE BITS, SIGN-MAGNITUDE, SIGN IN BIT 8 --
+#: **not** two's complement.
+ADC_OFFSET_MAX = 255              # the vendor clamps >= 255 and refuses <= -255
+ADC_OFFSET_SIGN = 0x100
+
+
+def afe_offset_word(value: int) -> int:
+    """Encode a signed AFE offset the way the AD9826 actually reads it.
+
+    THIS IS THE BUG THAT MADE A DARK REFERENCE READ ALL ZEROS. Until 2026-08-12
+    ``pakon_scan.ccd_configure`` sent ``int(offset) & 0xFFFF``, i.e. two's
+    complement. The part decodes the low nine bits as magnitude-plus-sign, so
+    the vendor's ``Offset_R = -19`` went out as ``0xFFED``, whose low nine bits
+    are ``0x1ED`` -- sign set, magnitude **237**. The AFE was asked for -237
+    when it should have been asked for -19, which drives the black level far
+    under the ADC's bottom code. Every sample of a 33,226-line base-8 dark
+    reference came back exactly 0. See docs/72.
+
+    The encoder mirrors ``FN_bDrvPutCcdAtoDOffsets`` (0x100299dc..0x100299fc)
+    exactly, including its asymmetry: values at or below -255 are an error and
+    are not written at all, while values at or above +255 are clamped::
+
+        if (v <= -255) -> error path, no write
+        if (v >=  255) v = 255
+        mag = abs(v);  if (v < 0) mag |= 0x100
+
+    ``git show 402729c:docs/42-ccd-analog-front-end.md`` [VERIFIED-FROM-BINARY].
+    """
+    v = int(value)
+    if v <= -ADC_OFFSET_MAX:
+        raise ValueError(
+            f"AFE offset {v} is at or below -{ADC_OFFSET_MAX}. The vendor's "
+            f"own encoder takes its error path here and writes nothing rather "
+            f"than wrapping, so this is refused instead of clamped.")
+    if v >= ADC_OFFSET_MAX:
+        v = ADC_OFFSET_MAX
+    return abs(v) | (ADC_OFFSET_SIGN if v < 0 else 0)
+
+
+def afe_offset_value(word: int) -> int:
+    """Decode :func:`afe_offset_word`. The inverse, for reading a shadow back."""
+    w = int(word) & 0x1FF
+    mag = w & 0xFF
+    return -mag if w & ADC_OFFSET_SIGN else mag
 
 
 def fpga_write(index: int, value: int, address: int = AD_MOTOR) -> bytes:

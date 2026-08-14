@@ -30,8 +30,16 @@ Per channel ``ch`` (seed/out advance by ``2*N`` bytes):
   ``offset = int16(w[0x60ec+2*ch] - w[0x60f8+2*ch] + w[0x60f2+2*ch])``
 
   If ``offset > N-1``: ``out[i] = i`` (identity).
-  Else: ``out[0:offset] = offset``; for ``i in [offset,N)``:
-  ``out[i] = clamp(seed[i-offset] + offset, 0, N-1)``.
+  Else: ``out[0:offset] = offset`` (only when ``offset > 0``); for
+  ``i in [max(offset,0), max(offset,0), min(offset+N,N))``:
+  ``out[i] = clamp(seed[i-offset] + offset, 0, N-1)``; any tail
+  ``i in [that upper bound, N)`` gets ``out[i] = i`` (identity) too --
+  this is what a negative ``offset`` (or one ``<= -N``) hits, and it is a
+  real, no-special-casing-needed path through the SAME clamp loop, not an
+  unhandled one. Docstring above described only the ``offset >= 0`` shape
+  until docs/66 Phase 6.2's "Track 1" pass live-Unicorn-verified the
+  negative-offset case too (previously the port raised there, believing it
+  "not covered" -- see ``set_lut_info_channel``'s own docstring).
 
 Aim fields for ``setLutInfo`` — NOT from histogram (VERIFIED @ analyze)
 ----------------------------------------------------------------------
@@ -269,18 +277,44 @@ def set_lut_info_channel(
     offset: int,
     n: int = FUGC_N,
 ) -> np.ndarray:
-    """One channel of ``setLutInfo`` @ ``0x101f82c0``."""
+    """One channel of ``setLutInfo`` @ ``0x101f82c0``.
+
+    ``offset < 0`` was previously believed "not covered by the verified
+    fragment" and raised. A parallel investigation (docs/66 Phase 6.2,
+    "Track 1 -- FUGC/ColorAdjust golden coverage") found the real DLL
+    fragment already handles negative offsets with no special-case branch of
+    its own -- it is the SAME clamp-loop the positive-offset path uses, just
+    with the prefix-fill (``out[:offset] = offset``) skipped because its own
+    loop-trip check (``esi <= 0``) is naturally false, and the loop's end
+    bound (``offset + n``, never clamped up to 0 by the DLL) falling below
+    the start when ``offset <= -n`` -- which the DLL's own ``eax >= ecx``
+    signed-compare loop guard turns into "zero real iterations, tail-fill
+    the whole channel identity" for free, with no separate code path. Live
+    Unicorn-verified bit-exact against ``PakonIMAu.dll`` 0x101f82c0 across
+    offsets from -32768 (int16 min) to +5000, including the ``offset <= -n``
+    all-identity edge -- see ``pakon_fugc_golden.py``'s
+    ``check_set_lut_info``. Not yet confirmed to be
+    reachable on any real frame this project has measured (this render
+    path's own aim deltas have looked small/near-zero so far -- see
+    docs/66's "FUGC is very close to a no-op for this specific file" note),
+    but the port must not raise on a value the vendor DLL itself computes
+    and handles without complaint.
+    """
     out = np.empty(n, dtype=np.int32)
     if offset > n - 1:
         out[:] = np.arange(n, dtype=np.int32)
         return out
-    if offset < 0:
-        raise ValueError(f"offset {offset} < 0 not covered by verified fragment")
     if offset > 0:
         out[:offset] = offset
-    idx = np.arange(offset, n, dtype=np.int32)
+        lo = offset
+    else:
+        lo = 0
+    hi = max(lo, min(offset + n, n))
+    idx = np.arange(lo, hi, dtype=np.int32)
     vals = seed[idx - offset].astype(np.int32) + offset
-    out[offset:] = np.clip(vals, 0, n - 1)
+    out[lo:hi] = np.clip(vals, 0, n - 1)
+    if hi < n:
+        out[hi:n] = np.arange(hi, n, dtype=np.int32)
     return out
 
 

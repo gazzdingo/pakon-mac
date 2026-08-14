@@ -34,6 +34,16 @@ import * as api from './api';
 
 const PERFS = Array.from({ length: 48 }, (_, i) => i);
 
+/* Kodak's own three resolution tiers (RESOLUTION_BASE_4/8/16, docs/04), shown
+ * in this fixed order regardless of which the backend currently reports as
+ * decodable -- so a disabled option still states what it is, not just that
+ * it is missing. Real MotorSpeedPlus values per tools/pakon_scan.py's own
+ * comment (DpiBase4_35=25802, DpiBase8_35=11467, DpiBase16_35=5917); used
+ * only as a display fallback when the backend's own `speeds` map does not
+ * have an entry, e.g. for a base this unit has not decoded yet. */
+const RESOLUTION_BASES = [4, 8, 16];
+const VENDOR_BASE_SPEEDS = { 4: 25802, 8: 11467, 16: 5917 };
+
 /* ── why Scan strip cannot run, in the order the user would hit them ──────
  *
  * Each entry carries a `fix`: what the user can do about it from here. Where
@@ -61,8 +71,17 @@ export function blockedReason(hw, scanJob) {
     return { title: 'Backend silent', why: hw.hint || 'The hardware probe stopped answering.', fix: 'recheck' };
   if (!hw.present)
     return { title: 'No scanner', why: 'Nothing at 0f05:f135 on USB.', fix: 'recheck' };
+  if (hw.state === 'loading_firmware')
+    return { title: 'Loading firmware', why: hw.hint || 'Scanner detected without firmware — loading it automatically.', fix: null };
   if (hw.state === 'needs_firmware')
-    return { title: 'No firmware', why: 'Load it with tools/pakon_load.py, then recheck.', fix: 'recheck' };
+    return {
+      title: 'No firmware',
+      why:
+        hw.firmware_load?.result && !hw.firmware_load.result.ok
+          ? `Auto-load just failed (${hw.firmware_load.result.error || 'see backend log'}). Recheck to retry.`
+          : 'Firmware not loaded yet — it loads automatically when the scanner is seen on USB. Recheck to check again now.',
+      fix: 'recheck',
+    };
   if (hw.writes_locked)
     return {
       title: 'Writes locked',
@@ -347,30 +366,41 @@ function Live({ job, onCancel, busy, open, onOpenAnyway, onDismiss }) {
 
 /* ── the confirm sheet: the last moment before film moves ───────────────── */
 
-function StartSheet({ open, hw, next, onClose, onStart }) {
+function StartSheet({ open, hw, next, base: selectedBase, onClose, onStart }) {
   const cal = hw?.calibration;
   const speeds = hw?.limits?.speeds || {};
-  const [base] = React.useState(16);
-  const [speed, setSpeed] = React.useState(String(cal?.speed ?? speeds[16] ?? 5917));
+  const base = selectedBase || 16;
+  const [speed, setSpeed] = React.useState(String(speeds[base] ?? cal?.speed ?? 5917));
   const [secs, setSecs] = React.useState(String(hw?.limits?.default_seconds ?? 360));
   const [refresh, setRefresh] = React.useState(true);
   const [name, setName] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
+  /* Base 4/8 have no calibration of their own, so pakon_scan.py derives
+     their exposure from the vendor formula automatically -- this toggle is
+     only meaningful on base 16, to cross-check the committed on-counts
+     against the same formula instead of a scan silently trusting them. */
+  const [deriveExposure, setDeriveExposure] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
-      setSpeed(String(cal?.speed ?? speeds[16] ?? 5917));
+      setSpeed(String(speeds[base] ?? cal?.speed ?? 5917));
       setSecs(String(hw?.limits?.default_seconds ?? 360));
       setRefresh(true);
       setErr(null);
       setBusy(false);
+      setDeriveExposure(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, base]);
 
   if (!open) return null;
-  const calSpeed = cal?.speed ?? speeds[base];
+  /* MotorSpeedPlus for the base actually SELECTED, not the base the committed
+     calibration happens to be for. `cal.speed` is whatever ScanConfig resolved
+     for the committed base -- offering it for a different base would run the
+     film past the sensor at the wrong rate and stretch the geometry (base 4 is
+     4.4x base 16). speeds[] is the hive's own per-base table. */
+  const calSpeed = speeds[base] ?? cal?.speed;
   const lo = hw?.limits?.speed_min ?? 1000;
   const hi = hw?.limits?.speed_max ?? 32766;
   const sN = Number(speed);
@@ -490,11 +520,58 @@ function StartSheet({ open, hw, next, onClose, onStart }) {
 
         <div className="rows" style={{ marginBottom: 12, padding: '9px 11px', fontSize: 12 }}>
           <span className="quiet">
-            Base {base} · integration <span className="num">{cal?.integration}</span> · lamp N{' '}
-            <span className="num">{cal?.lamp_n}</span> · levels{' '}
-            <span className="num">{(cal?.levels || []).slice(0, 3).join('/')}</span>
+            Base {base}
+            {base === 16 ? (
+              <>
+                {' '}
+                · integration <span className="num">{cal?.integration}</span> · lamp N{' '}
+                <span className="num">{cal?.lamp_n}</span> · levels{' '}
+                <span className="num">{(cal?.levels || []).slice(0, 3).join('/')}</span>
+              </>
+            ) : (
+              <> · exposure derived from the vendor formula for this base — the calibrated levels
+                 carry over, but N and on-counts are recomputed, not measured (see the job's
+                 warnings once started for the exact numbers)</>
+            )}
           </span>
         </div>
+
+        {base === 16 ? (
+          <div style={{ marginBottom: 12 }}>
+            <Toggle
+              on={deriveExposure}
+              onChange={setDeriveExposure}
+              info={
+                <>
+                  Recomputes N and on-counts from{' '}
+                  <span className="num">N=trunc(integration*0.24)</span> and base 16's own duty
+                  ratios instead of reading the committed on-counts directly. Cross-checks the
+                  committed calibration against the formula rather than trusting it blind — the
+                  formula reproduces N=982 exactly and on-counts within 1 count, so this should
+                  match the calibrated numbers almost exactly. Levels are never derived either way.
+                </>
+              }
+            >
+              Derive exposure (cross-check formula vs. calibration)
+            </Toggle>
+          </div>
+        ) : (
+          <div
+            style={{
+              background: 'var(--warn-flat)',
+              color: 'var(--warn-ink)',
+              borderRadius: 'var(--r-sm)',
+              padding: '9px 11px',
+              marginBottom: 12,
+              fontSize: 12,
+            }}
+          >
+            Base {base} has no dark/gain calibration of its own — colour and black point will not
+            be accurate. The lamp exposure is derived from the real vendor integration time for
+            this base plus base 16's calibrated duty ratios, not measured for this base, so it is a
+            reasonable starting point rather than a guess — but it is not calibrated.
+          </div>
+        )}
 
         {/* Restated, not re-asked. These come from the settings rail and are
             what the capture will be decoded as the moment the transport
@@ -587,6 +664,15 @@ function StartSheet({ open, hw, next, onClose, onStart }) {
               try {
                 await onStart({
                   base,
+                  derive_exposure: deriveExposure,
+                  /* pakon_scan.py refuses to start at all if ScanConfig has
+                     ANY warnings, unless --force. Base != 16 and/or
+                     deriveExposure always produce the "not calibrated"
+                     warning this screen already shows and explains above --
+                     that is not a second confirmation to ask for, it is the
+                     same one already given, so force follows it here rather
+                     than making every non-16 scan dead on arrival. */
+                  force: base !== 16 || deriveExposure,
                   speed: sN,
                   max_seconds: tN,
                   name: name.trim(),
@@ -663,6 +749,7 @@ export default function Scan({
     dx: roll?.dx || '',
   }));
   const [stock, setStock] = React.useState(null);
+  const [base, setBase] = React.useState(16);
 
   React.useEffect(() => {
     const dx = next.dx.trim();
@@ -790,29 +877,34 @@ export default function Scan({
               value="2000 × 3000"
               info={
                 <>
-                  <b>Base 16 only.</b> The decoder accepts <span className="num">6000</span>-word
-                  lines, and the committed calibration was captured at{' '}
-                  <span className="num">{cfg?.dpi_base || 'DpiBase16_35'}</span>. Base 4 and 8 need
-                  their own dark and gain references and a decoder that handles their line length,
-                  so they are not offered rather than offered and refused.
+                  Kodak's own three tiers (<span className="num">RESOLUTION_BASE_4/8/16</span>,
+                  docs/04), each with its own real <span className="num">MotorSpeedPlus</span>{' '}
+                  transport speed — lower base number moves the film faster, at lower resolution.
+                  The decoder itself accepts all three — a base 8 capture (
+                  <span className="num">captures/gold400.bin</span>) decodes with the unmodified
+                  pipeline, no special handling.
+                  <br />
+                  <br />
+                  <b>Base 16 is the only one with real calibration.</b> The committed dark and gain
+                  tables were captured at{' '}
+                  <span className="num">{cfg?.dpi_base || 'DpiBase16_35'}</span>. Base 4 and 8 have
+                  no calibration of their own, so their lamp exposure is derived from the real
+                  vendor integration time for that base plus base 16's calibrated duty ratios —
+                  a reasonable starting point, not a measured one. Colour and black point will not
+                  be accurate until each base has its own dark/gain reference.
                 </>
               }
             >
-              {bases.length > 1 ? (
-                <Seg
-                  ariaLabel="Resolution"
-                  value="16"
-                  options={bases.map((b) => [String(b), `Base ${b}`])}
-                />
-              ) : (
-                <div className="inp">
-                  Base {bases[0]}
-                  <span className="sp" />
-                  <span className="num" style={{ fontSize: 11, color: 'var(--mute)' }}>
-                    {speeds[bases[0]] ?? hw?.calibration?.speed ?? '—'}
-                  </span>
-                </div>
-              )}
+              <Seg
+                ariaLabel="Resolution"
+                value={String(base)}
+                options={RESOLUTION_BASES.map((b) => [
+                  String(b),
+                  `Base ${b} · ${speeds[b] ?? VENDOR_BASE_SPEEDS[b]}`,
+                  !bases.includes(b),
+                ])}
+                onChange={(v) => bases.includes(Number(v)) && setBase(Number(v))}
+              />
             </Field>
 
             <Field
@@ -1028,6 +1120,7 @@ export default function Scan({
         open={sheet}
         hw={hw}
         next={{ ...next, stock }}
+        base={base}
         onClose={() => setSheet(false)}
         onStart={onStartScan}
       />

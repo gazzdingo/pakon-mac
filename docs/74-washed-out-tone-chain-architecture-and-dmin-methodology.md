@@ -2627,6 +2627,371 @@ existing file this section cites were read only, never edited. Scratch
 shared scratch directory this doc's prior sections already use, not
 committed to the repo.
 
+## 28 — `applyLut` (`fcn.101fa5b0`) read in full, then run for real under
+Unicorn: it constructs and validates an operand graph and never touches
+the pixel buffer, in either the DLL's own static machine code or a real,
+bounded dynamic run. Both real callers use it purely as a status gate.
+Dead end, closing §27's sharpened thread.
+
+Picked up directly where §27 left off: "the actual per-pixel apply, if it
+happens at all in the real vendor pipeline, must happen via a
+[so-far-unidentified] call" through `fcn.101fa5b0`
+(`AnsFugcCapabilityImpl::applyLut`), reached from both real call sites
+§27.3 found (`analyzeArea`'s `0x100e1c78`, `balanceAreaImage`'s
+`0x1010367f`). DLL re-verified before any work this pass:
+`md5(/tmp/pakon_re/PakonIMAu.dll) == eea9dcf78ee21d4f7c515a6c2512242d`, the
+same copy every prior section cites.
+
+### 28.1 — Starting point: what `pakon_fugc.py` already had on record
+
+`pakon_fugc.py`'s own docstring (`:107-109`) already flagged this exact
+gap before this pass touched anything: `` `applyLut` @ `0x101fa5b0`
+(wrapper `0x101186c0`); full pixel path not ported. Host Preference
+applies `setLutInfo` / mode-2 plane via `apply_1d_lut`. `` and
+`FUGC_APPLY_LUT_GATE_PORTED = True` covers only the entry image-descriptor
+type gate (`fugc_apply_lut_type_accepted`, `:583-589`) — the one leaf this
+project had already verified. Nothing else in that file characterizes
+`applyLut`'s own body. This section reads it.
+
+### 28.2 — Full `af`+`pdf` read of `fcn.101fa5b0` (2,289 B, 705
+instructions, 90 basic blocks — matching §27.2's `afij` numbers exactly):
+no loop bounded by image dimensions, no indexed pixel write, and the
+image-data pointer is read exactly twice and never forwarded
+
+Read in full this pass (`r2 -q -c 'aa; af @ 0x101fa5b0; pdf @
+0x101fa5b0'`, plain-text/no-ANSI-colour output, not a truncated byte
+range). Confirmed self-identity the same way as every other function in
+this doc: six embedded exception-throw strings citing
+`AnsFugcCapabilityImpl::applyLut`/`\Atc\ansel\src\libFugc.ansel\
+AnsFugcCapabilityImpl.cpp` at six separate sites in its own body, plus the
+named operand-error strings §27.3 already catalogued (`"Couldn't allocate
+in2DImagePtr."`, `"...toneLutPtr."`, `"...colorLutPtr."`, `"...
+RectBuffer."`, `"ImaLutOpT has bad status."`, `"ImaAstOpT has bad
+status."`, `"Image layout is not PIXEL or BAND!"`).
+
+**Calling convention, derived fresh by hand ESP/EBP arithmetic against the
+wrapper's own literal encoded displacements** (`fcn.101186c0`, `pdf`+`afvj`
+both re-run this pass): the wrapper is pure-`esp`-relative (no `push ebp`),
+so its two named stack args resolve, entry-relative, to `arg_ch` = caller's
+farther-pushed value (`ESP0+8`) and `arg_ch_2` = caller's nearer-pushed
+value (`ESP0+4`, i.e. the caller's own logical first parameter, since
+cdecl/thiscall push right-to-left). The wrapper forwards both, in the SAME
+relative order, into `fcn.101fa5b0`'s own two stack args — confirmed by
+computing `fcn.101fa5b0`'s **fixed** `ebp` (set once, `mov ebp,esp`, at
+`0x101fa5b1`, stable across every later `push`/`sub esp`): the literal
+`mov esi, dword [ebp + 0xc]` at `0x101fa5df` is the caller's SECOND
+logical argument, and a grep over every decoded operand in the function's
+own `pdfj` output for the literal substring `"ebp + 8]"` (not eyeballed)
+finds 10 separate reads, always following the pattern `mov esi,[ebp+8];
+mov dword [esi], eax` — i.e. arg1 (`ebp+8`) is a **status/exception
+out-parameter**, written with either the canonical "OK" sentinel
+(`0x106b5bd4`, the same global used throughout the function's own success
+paths) or a freshly-built exception object (on every error path), never a
+pixel address. Arg2 (`ebp+0xc`) is the AREA image descriptor: read once at
+entry (`mov eax,[esi+4]` — the type gate `pakon_fugc.
+FUGC_APPLY_LUT_TYPE_OK` already covers) and its width/height/stride/data
+fields (`+0xc`/`+0x10`/`+0x14`/`+0x20`, matching `pakon_fugc.
+FUGC_IMG_DESC_WIDTH_OFF`/`HEIGHT_OFF` exactly) read a handful more times,
+always as **inputs to construction calls**, never as a write target.
+
+Three mechanical, script-verified (not eyeballed) checks over the
+function's own 705-instruction `pdfj` output, the same "parse every
+decoded operand" discipline §27's own verification paragraph used:
+
+1. **Every memory-write `mov` instruction in the function** (104 total,
+   found by regexing `disasm` for `mov [byte|word|dword] [<expr>], <src>`)
+   — **zero** have an indexed `[base + index]`-shaped destination (the
+   mechanical signature of a per-pixel or per-array-element store; a
+   struct-field write like `mov [esi+0x40], cl` doesn't count, an
+   `mov [ecx+edi*4], eax` inside a loop would). All 104 writes are either
+   `[reg]` (simple pointer stores, mostly the status-object writes above)
+   or `[reg+constant]` (fixed struct-field writes on freshly-constructed
+   local/heap objects).
+2. **The function's own control-flow graph has exactly 10 backward
+   branches, and every one of them targets one of two addresses**
+   (`0x101fa952`, `0x101fac22`) — both confirmed, by reading their own
+   bodies, to be **shared cleanup/teardown labels** ("goto common
+   epilogue" from many different error branches), not loop bodies: neither
+   re-enters any per-element work, both just tear down whatever operand
+   objects were constructed so far (`Release`-shaped `call [vtbl+0](1)`
+   idioms) and return. There is no loop anywhere in `fcn.101fa5b0`'s own
+   705 instructions that could iterate over image-sized data.
+3. **`[esi + 0x20]`** (the AREA image's own pixel-data pointer field,
+   confirmed by `pakon_fugc.FUGC_IMG_DESC_DATA_OFF`-equivalent convention)
+   **appears exactly twice in the whole function, both `mov eax,[esi +
+   0x20]` reads** (`0x101fa617`, `0x101fa677`) — each one immediately
+   fed as a scalar argument into a small operand-constructor call
+   (`0x10311600`), never dereferenced further and never written to.
+
+**What the function's real work actually is**, read alongside these
+checks: a type gate; two 84-byte heap allocations (via `fcn.104ffd53`,
+confirmed by its own body to be `operator new` — MSVC's real
+alloc/new-handler-retry idiom, 114 XREFs across the DLL) wrapping small
+operator-descriptor objects, sized from the descriptor's width/height/
+stride/type but never touching pixel data itself; then a branch on the
+FUGC Impl's own `+0x60e8` mode field (the exact field `pakon_fugc.
+CAP_MODE_SELECT` already documents — confirmed live in this function too,
+not just in `analyze()`; `cmp dword [esi+0x60e8],2; jne 0x101fab1b` — mode
+`== 2` falls straight through, mode `!= 2` jumps away) into one of TWO
+near-identical construction paths, each read in full this pass, and each
+receiving the SAME three values from `applyLut`'s own call site — the
+Impl's own **`+0x6140` apply-LUT array pointer** (the real,
+`setLutInfo`-built, per-channel table `pakon_fugc.py` already documents —
+confirmed non-identity by this pass's own dynamic run below), `N`=4096,
+and a small integer constant — **never** the AREA image descriptor or its
+`+0x20` pixel pointer (finding 3 above already showed that pointer is
+read exactly twice and forwarded only to `fcn.10311600`, a different,
+unread-this-pass call, not to either mode branch):
+
+* **mode `== 2`** (`0x101fa78a` onward): `fcn.100c1740` (278 B/82
+  instructions) builds a small `"ast"`-named operand object (self-named
+  via its own embedded string literal) — installs a vtable, stores scalar
+  fields, forwards the LUT pointer onward to a base constructor
+  (`fcn.1017db10`, not read this pass) — then `fcn.1017de10`
+  (`AnsAstOperand::getLuts`, self-named the same way, 524 B/140
+  instructions, read in full) does the one real loop found anywhere in
+  this call graph: `0..this->0x30` (a **lutSize** field, populated from
+  `N`=4096 by the construction chain above, not from the image's
+  width×height), converting the operand's own internal float LUT
+  representation to fixed-point int32, entirely on a LOCAL stack object
+  (`fcn.1017de10`'s five call args are all `lea reg,[local_var]`
+  addresses of small stack cells — the AREA image pointer is never among
+  them).
+* **mode `!= 2`** (`0x101fab1b` onward, the branch a real F-135
+  colour-negative scan actually takes — `pakon_fugc.py`'s own
+  "Sole `setLutInfo` caller remains analyze `0x101fc6cd` (mode ≠ 2)"
+  already establishes `setLutInfo`, the real non-identity per-channel LUT
+  builder, only runs for this mode): `fcn.10099a40` (201 B/66
+  instructions, read in full) — its own `this` is a freshly `operator
+  new`'d 32-byte object; its own body DOES contain a genuine per-element
+  `int16` copy loop (`mov di,word[edx]; mov word[eax],di; add eax,2;
+  add edx,2; cmp eax,ecx; jb`), copying from a source this pass's own
+  static read could not fully pin down (a third implicit stack argument,
+  `var_1ch`, whose exact caller-side provenance this pass did not
+  hand-trace past `applyLut`'s own three-argument call — LUT pointer,
+  `N`, constant `1` — none of which is the image pointer). This is the
+  one place this pass's STATIC read alone leaves a small residual gap —
+  closed by the dynamic run in §28.4 below, which exercises exactly this
+  branch.
+
+Both branches then validate their constructed operand's status via
+`fcn.10328a90` ("has bad status" check, self-named by its own error
+strings, 644 B/162 instructions, read in full) and — only on full success
+— call one further tiny helper (`fcn.1003bf80`, 36 B/14 instructions, read
+in full: the SAME generic "wrap a raw pointer, AddRef it" idiom already
+characterized elsewhere in this DLL, e.g. `0x100065e0`/`0x10006880` per
+§22/§24's own citations — not pixel math). Every constructed object is
+then torn down (the shared-epilogue `Release` calls from check 2 above)
+before the function returns.
+
+**Conclusion from static reading alone, before any dynamic run: `applyLut`
+itself cannot write to a pixel buffer, and neither can the mode `== 2`
+branch's own callees — the mode `!= 2` branch (the real-scan case) has one
+small, honestly-flagged residual gap.** `applyLut`'s own 705 instructions
+have no pixel-shaped write and no image-bounded loop (checks 1-3 above);
+`fcn.1017de10` (mode `== 2`) is fully accounted for, operating only on
+local stack data never connected to the image pointer. `fcn.10099a40`
+(mode `!= 2`, the branch a real F-135 negative scan actually takes) is the
+one exception: it has its own genuine copy loop whose source this pass's
+static read did not fully pin down — though `applyLut`'s own call site
+into it (established above) passes only the LUT pointer/`N`/a constant,
+never the image descriptor, so the image pixel pointer has no STATIC path
+into this loop either; the gap is "unconfirmed source," not "a plausible
+pixel-write mechanism." This is already a stronger, more mechanical
+version of §22/§24's own "no pixel-buffer writes observed" finding for
+`balanceAreaImage` — there, the claim rested on a specific traced
+execution path; here it rests on an exhaustive, script-checked inventory
+of every write and every loop in `applyLut`'s own body, with only one
+callee's internal copy-loop source left open. §28.4 closes that gap
+dynamically, on exactly this branch.
+
+### 28.3 — Real callers: both `analyzeArea` and `balanceAreaImage` use
+`applyLut`'s result purely as a pass/fail status check, never as a source
+of pixel data
+
+Read fresh (`pd` at both real call sites, re-disassembled this pass, not
+transcribed from §27):
+
+* **`analyzeArea`** (`0x100e1c6b`-`0x100e1caf`): pushes `edi` (the AREA
+  analysis image, `this+0x1a4`, per §27.3's own reading of
+  `fcn.100dc060`) and `&var_18h_3` (a local, the status out-param), casts
+  `ecx` to the FUGC object, calls `fcn.101186c0`. The **only** use of the
+  return value: `push eax; ...; call 0x10001580` then compares
+  `dword[eax]` (i.e. `*status_out`) against the global OK sentinel
+  `[0x106b5bd4]`, sets a bool, and either throws
+  `"AREA analysis image is NULL!"`-neighbourhood asserts or falls through
+  to continue `analyzeArea`'s own body at `0x100e1cde`. No pixel value
+  from the AREA image is read or written anywhere near this call.
+* **`balanceAreaImage`** (`0x1010367a`-`0x10103697`): the exact same
+  shape — `mov ecx,[var_2ch]` (FUGC obj), `push edi; push eax; call
+  0x101186c0`, then `mov ecx,[eax]` (`*status_out`) compared against a
+  prior status value (`[var_14h]`), branching on equality. Also purely a
+  status check.
+
+Both real callers treat `applyLut` as a construct-and-validate gate — "can
+FUGC build a working LUT operand against this image's own type/dimensions"
+— not as a pixel-transform step. Neither retains or dereferences any
+constructed operand object past the call (nothing could: §28.2 already
+showed the operand graph is torn down inside `applyLut` itself before it
+returns).
+
+### 28.4 — Dynamic verification: a real, bounded Unicorn run, calling
+`applyLut` directly with a real non-identity LUT and a real pixel buffer.
+Zero pixel writes observed across every instruction actually executed;
+the run blocks inside CRT exception-message construction, independently
+already characterized by this project's own prior (unrelated) citras-
+driver investigation as non-pixel debug plumbing
+
+Built new, additive: `tools/ansel/python-pipeline/pakon_fugc_apply_lut_
+golden.py`. Reuses `pakon_autotone_shell_golden.Emu` completely unmodified
+for its PE loader / bump heap / SEH page / `operator new` hook / fault
+collector — the same base class `pakon_autotone_assembled_golden.
+AssembledEmu` (and therefore `pakon_full_colour_chain_golden.py`'s own
+`BalanceAreaImageCall`) already builds on. Calls `fcn.101fa5b0` **directly**
+(bypassing the thin wrapper, whose only job — confirmed §28.2 — is the
+`this->0x10` indirection), with:
+
+* `ecx` (this) = a real FUGC Impl: `+0x6140` filled with a genuinely
+  non-identity apply LUT built by this project's own already-verified
+  `pakon_fugc.set_lut_info(seed, offsets=(200, -150, 75))` — confirmed
+  non-identity directly (`lut[0] = [200, 0, 75]`, not `[0, 0, 0]`, from
+  the real prefix-fill branch `pakon_fugc.set_lut_info_channel` implements
+  for `offset > 0`); `+0x60e8` (mode) = 0 — deliberately the mode `!= 2`
+  branch (`fcn.10099a40`, §28.2's own "real-scan case"), the one place
+  §28.2's static read alone left a residual gap (the copy loop's own
+  source), not the mode `== 2` branch already fully closed statically.
+* `arg1` = `&status_out`, `arg2` = a real, non-degenerate image
+  descriptor (type=0/PIXEL, 8×8, stride=8, data pointer → a real 8×8
+  int16 pixel buffer filled with a real, non-zero, distinctive
+  pseudorandom pattern via `numpy.random.default_rng`, not zeros).
+
+A `UC_HOOK_MEM_WRITE` watch covers the exact pixel-buffer address range
+for the whole call, the same direct technique §22/§24 already used for
+`balanceAreaImage`. Three real, live-found unbound raw-RVA CRT thunks
+needed stubbing before the run got past the allocation/construction
+region — the same class of fix this project's OWN prior, unrelated
+investigation (`docs/74`'s own citation of the citras-driver scratch
+passes, `trace_v47`-`v50`, `/tmp/pakon_re/`, not committed) already
+catalogued for this exact DLL:
+`InitializeCriticalSection`/`EnterCriticalSection`/`LeaveCriticalSection`/
+`DeleteCriticalSection` (four addresses, `0x687de2`/`0x687e22`/`0x687e0a`/
+`0x687dca`, confirmed real no-op Win32 APIs the same way every prior pass
+confirmed them: reading the raw `{hint,name}` import-table bytes directly
+out of the PE file at each "unbound" address) and `memmove`
+(`0x68bd3a`, confirmed the same way: raw PE bytes at that offset read
+`b"f\x00\xe6\x02memmove\x00..."`), the latter implemented for real (not
+stubbed to a no-op) since a genuine `memmove` on real construction data
+should not be silently discarded.
+
+Result, real completion up to the point it stopped:
+
+```
+real apply LUT: lut[0]=[200, 0, 75] (identity would be [0, 0, 0])
+calling real applyLut (0x101fa5b0) directly, pixel buffer=0xd0152b0..0xd015330
+
+    [memmove dest=0xd015bf0 src=0x0 n=0x0 called-from=0x1032acfa]
+    [memmove dest=0xd015bf4 src=0x0 n=0x0 called-from=0x1032ad21]
+    [memmove dest=0xc6dfe24 src=0xc6dfe2c n=0xc6dfde0 called-from=0x102bb783]
+BLOCKED -- did not run to completion: eip=0x68bd3a, Invalid memory read (UC_ERR_READ_UNMAPPED)
+pixel-buffer writes observed before the fault: 0
+```
+
+The first two `memmove` calls are genuine, harmless zero-length no-ops
+inside small (106 B/67 B) operand-resize helpers (`fcn.1032acfa`/
+`fcn.1032ad21`) — real execution, real addresses, nothing pixel-related.
+The blocking third call's own `called-from` address (`0x102bb783`) was
+checked directly, not assumed: it falls exactly at the byte immediately
+after `call [MSVCR71.dll___0exception__QAE_XZ]` (`0x102bb77d`, a 6-byte
+instruction) inside `fcn.102bb760` (160 B, `af`+`pdf` re-read this pass,
+independently — not by citation alone) — i.e. the fault is **inside the
+real CRT `std::exception::exception()` constructor's own internal string
+copy**, called from `fcn.102bb760`, which this pass's own read confirms
+builds a real `std::exception`-derived object (`call
+[...__0exception__QAE_XZ]`) plus three `std::basic_string` sub-objects
+(three separate `call [MSVCP71.dll...basic_string...]` sites) and a real
+`call [MSVCR71.dll_time]` — the exact same function this project's own
+**prior, unrelated** citras-driver investigation
+(`trace_v50.py`'s own comment, `/tmp/pakon_re/`, cited in this doc's
+prose only, never committed) already independently characterized: "It
+builds a std::exception-derived debug/assert-info object... purely for
+human-readable assert messages; none of it is pixel/operand data." Two
+independent passes, on two unrelated call paths through this same DLL,
+reached the identical conclusion about the identical function.
+
+**Honestly scoped, not oversold.** This harness did not run `applyLut` to
+completion — it built a real, direct, non-placeholder LUT and a real
+pixel buffer, and observed **zero pixel-buffer writes across every
+instruction the real DLL code actually executed** before hitting a wall
+inside debug/assert message plumbing (very plausibly because this pass's
+synthetic Impl/descriptor triggered one of `applyLut`'s own error paths —
+several of which build exactly this kind of exception object, per
+§28.2's own catalogue of `"Couldn't allocate..."`/`"...has bad status."`
+strings — rather than because the harness reached deep into the success
+path's own pixel-adjacent code). Getting further would mean tracing
+exactly which of `applyLut`'s many internal gates this pass's synthetic
+inputs fail and correcting them, or fully modelling `std::exception::
+exception()`'s own real argument contract — bounded, "citras-driver-saga"
+scale effort per §12/§27.5's own honest sizing of this same function,
+not attempted further this pass. This dynamic result does not, on its
+own, prove the SUCCESS path never writes a pixel; §28.2's exhaustive
+static inventory (which covers every instruction in the function,
+success and failure paths alike) is what actually closes that question —
+this run is corroborating, not load-bearing, evidence.
+
+### 28.5 — Verdict: dead end, with real (mostly static, partially
+dynamic) evidence — not the mechanism for the shadow/black-point residual
+
+Closing §27's own sharpened, still-open thread ("whether a real Impl WOULD
+reach `applyLut`, and `applyLut` writes into the shared pixel buffer with
+a real, non-identity LUT"): **it reaches `applyLut` (both real call sites
+confirmed live), and `applyLut` does write a real, non-identity LUT into a
+real operand object — but never into any pixel buffer.** The function
+constructs and validates a small operand graph referencing the FUGC
+Impl's own real apply-LUT array, then tears the whole thing down and
+returns a status code; neither real caller (`analyzeArea`,
+`balanceAreaImage`) does anything with that status beyond a pass/fail
+branch. §27's own open question #2 ("whether `analyzeArea`'s own 'AREA
+analysis image' … is the same shared pixel buffer `cna`/`dra` … read")
+turns out not to matter either way: even if it does alias the real scene
+buffer, `applyLut` — the one concrete mechanism §27 surfaced for
+`analyzeArea`/`balanceAreaImage` to touch it — structurally cannot write
+to it, on the evidence above.
+
+This closes the FUGC-`applyLut` thread the same honest way §21/§25/§26
+closed their own leads: real function, real call sites, real work — just
+not a channel to the pixel buffer the shadow/black-point defect depends
+on. Combined with §23's own standing, larger finding (the production Go
+engine does not run any of this Python-verified DLL-reading work at all;
+`ShastaToneRpd`'s crude two-point stretch is the actual mechanism), this
+section does not change the doc's own bottom line — it closes one more
+item on the "sole remaining open item" list §27 left, honestly, without
+finding a second real bug to fix.
+
+**Verification.** DLL MD5 checked
+(`eea9dcf78ee21d4f7c515a6c2512242d`) against `/tmp/pakon_re/PakonIMAu.dll`
+before any work this pass. `fcn.101fa5b0`'s own `afij` (2,289 B / 705
+instructions / 90 basic blocks) matches §27.3's independently-derived
+numbers exactly, confirming both passes read the same function at the
+same DLL state. The "zero indexed writes" and "10 backward branches, two
+shared targets" claims were checked mechanically over the function's own
+`pdfj` JSON (regexing every decoded `disasm` string), not eyeballed — the
+scripts (`check_loop_writes.py`, `applylut.pdfj.json`,
+`applylut_full_pdf_plain.txt`) live under `/tmp/pakon_re/`, this doc's
+established shared scratch directory, not committed. `fcn.100c1740`
+(278 B), `fcn.1017de10` (524 B), `fcn.10328a90` (644 B), `fcn.1003bf80`
+(36 B), `fcn.10099a40` (201 B) were each read in full via `af`+`pdf`, not
+sampled — the mode `!= 2` branch's own `fcn.10099a40` is the one this
+pass's dynamic run (§28.4) specifically exercised, closing the one gap
+the static read alone left open.
+`fcn.102bb760` (the harness's own stopping point) was independently
+re-read this pass, not accepted on `trace_v50.py`'s citation alone. The
+new script, `tools/ansel/python-pipeline/pakon_fugc_apply_lut_golden.py`,
+does not modify any existing golden file — it imports `pakon_fugc` and
+`pakon_autotone_shell_golden` read-only and adds its own new call/hook
+logic only. No Python port file was written (no `pakon_area.py` or
+pixel-application port) — per §28.2/§28.5's own conclusion, there is
+nothing live to port.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is

@@ -1,0 +1,146 @@
+{
+  "AA001.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "b89c16e1a5606d652d523288f41fded34bb0eed40deaf8e4114c5174cc217d7d",
+    "png": "AA001.png",
+    "png_bytes": 9289906,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "49ea36d1b509034805b7a25ea58860892f44bff91c67132da3248a8904d873ee"
+  },
+  "AA002.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "b12bea33f4ac2cec7fc570c79dd174c9556bffdcf767bbeff1816debe1a2d90d",
+    "png": "AA002.png",
+    "png_bytes": 9248962,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "ee13bccc0c9cbeb5907d51dab14771f59a958be01a7d4e5259ab69285ef13be1"
+  },
+  "AA003.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "e4349c583772aecef6452a3f4cddb8293ca51a7a5402772381df8e981db88564",
+    "png": "AA003.png",
+    "png_bytes": 9288210,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "e8eda509185964ab2d553cafe980b57ec84cb3aa917e624b6b85f7cc13cf456f"
+  },
+  "AA004.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "daf591b14b13cac2fb1cf2b98ae00554f2f39cf25240eedda552e9666c02c340",
+    "png": "AA004.png",
+    "png_bytes": 9268257,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "683baf9f58c2954c9ee2e2032d3875552729b0f1e04ed93a97b9df4fd6eeecfd"
+  },
+  "AA005.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "292441621f11cf9b28fbd03478e278142c601983219adf973c840dd50ab64540",
+    "png": "AA005.png",
+    "png_bytes": 9036194,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "0935812f5c46533266b7351db0b46e8bf7fdc84b15216549363e6e5df81eec98"
+  },
+  "AA006.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "5314d37e1765111908649e1b2b41524ecad53e4cfaa1dd422ed0ca1b63dd5aab",
+    "png": "AA006.png",
+    "png_bytes": 9036053,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "f354292e6a203bd347f2c96ed3058023ecba1322eddcf85027709804e8192c31"
+  },
+  "rawAA001.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "86edb43a605be16d45b4dd3e0c3d2281a8b51e0b6ece1d9c6e0d7430a3a04163",
+    "png": "rawAA001.png",
+    "png_bytes": 7505015,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "032b07bcb4e21a7752dd2a3559073c3e12a23c691ea482562902f4b6879a9c45"
+  },
+  "rawAA002.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "c6ff1144682916ca05833be416efd9be0b1c69b16d539eeeb13ecdb88cfe9b2e",
+    "png": "rawAA002.png",
+    "png_bytes": 7523140,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "eaf76d8e75a1194243c3facb67250b135c51c0b049d6ac6376873326b27df088"
+  },
+  "rawAA003.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "7507a93fba6b96b632883c96fd8fc82af2fb9991ba1872af2e19de22f536aec7",
+    "png": "rawAA003.png",
+    "png_bytes": 8227365,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "0ba8990107aa89e43d28ad56a69d7ab2a7c892744734094f5b8b2389d87b4c00"
+  },
+  "rawAA004.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "152dec905a744a2b04761c23732b20f3f53f52065e6cb6d34553e30b2f75da4c",
+    "png": "rawAA004.png",
+    "png_bytes": 8443157,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "bdbb902783cfdc4177b244b03fba479329754e0f1b6b3faea0ccc18c83d291c0"
+  },
+  "rawAA005.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "c53ce564e0238e4ad43436fc29524eac7916771c57e2be8560860230c2654daf",
+    "png": "rawAA005.png",
+    "png_bytes": 8098355,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "e1b9fc6133af19cceac5b48f4c301b428ec4718fe4168244e4d0f49216f67056"
+  },
+  "rawAA006.tif": {
+    "mode": "RGB",
+    "pixel_sha256": "a076547db6855d84569b4f934813cccf4e773743a1fce03d358ef8a04461c110",
+    "png": "rawAA006.png",
+    "png_bytes": 8001333,
+    "size": [
+      2941,
+      1960
+    ],
+    "tif_bytes": 17293326,
+    "tif_sha256": "78b0e4479557bace536405c7fa308e0c1567fc08c3b4c8e50f9460841d9e7221"
+  }
+}

@@ -119,6 +119,24 @@ export const GATE = {
   unknown: { label: '—', tone: '', note: '' },
 };
 
+/** Why the scanner cannot run right now, in the order a user would hit them.
+ *  `fix: 'recheck'` means pressing Recheck can change the answer; `fix: null`
+ *  means nothing this window offers will. One line, no further explanation —
+ *  the reason itself is the whole message. */
+export function blockedReason(hw, scanJob) {
+  if (!hw) return { title: 'Checking…', fix: 'recheck' };
+  if (scanJob?.status === 'running') return { title: 'Scanning', fix: null };
+  if (hw.foreign_scan) return { title: 'Scanning elsewhere', fix: null };
+  if (hw.state === 'unreachable') return { title: 'Backend not answering', fix: 'recheck' };
+  if (!hw.present) return { title: 'No scanner found', fix: 'recheck' };
+  if (hw.state === 'loading_firmware') return { title: 'Loading firmware…', fix: null };
+  if (hw.state === 'needs_firmware') return { title: 'No firmware loaded', fix: 'recheck' };
+  if (hw.writes_locked) return { title: 'Writes locked', fix: 'recheck' };
+  if (!hw.calibration) return { title: 'No calibration', fix: null };
+  if (hw.state !== 'ready') return { title: 'Not answering', fix: 'recheck' };
+  return null;
+}
+
 /** URL for one frame. `version` is the parameter hash, so changing a
  *  parameter changes the URL and the browser cache cannot serve a stale one. */
 export function frameUrl(rollId, index, scale, version, maxEdge) {

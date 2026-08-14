@@ -2090,6 +2090,225 @@ scratch directory this project's own prior passes already use — files
 added this pass: `attributes_plain.txt`, `orderorient_full.txt`,
 `orient_leaf.txt`, `attr_pdg.r2`), not committed to the repo.
 
+## 26 — `analyzeNoise` (`0x10112f30`): real function, real math, delegates to
+an already-ported subsystem — but two independent checks confirm zero live
+channel into the six-subsystem tone chain, closing it the same way `falloff`
+and (§25, parallel) `analyzeAttributes` are closed
+
+Picked up directly from this doc's own priority list (item 1: the four
+unreplicated `analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff`
+stages), specifically `analyzeNoise` — the one member §11's own call-order
+table listed as `[0x10112f30 — not yet identified]`, even though `docs/66`'s
+own eleventh-pass call-order table (line 2063 of that file, from an
+independent live disassembly of the same driver, `fcn.10069490`) had already
+named this exact address `analyzeNoise` in passing, without characterizing
+what it does. Both citations point at the same address; this section
+resolves what it actually is.
+
+### 26.1 — Confirmed the address, then the whole function, by direct
+disassembly of the MD5-verified DLL
+
+Same DLL every prior section of this doc cites: re-extracted this pass from
+`research/sdk/PAKONF135.iso` (via the already-mounted volume,
+`fx35install/program files/Pakon/F-X35 COM SERVER/PakonIMAu.dll`) and
+confirmed `md5 == eea9dcf78ee21d4f7c515a6c2512242d` before any disassembly.
+Full function-boundary disassembly (`r2 aa; af @ 0x10112f30; pdf @
+0x10112f30` — explicit `af`+`pdf`, not a raw `pD` byte-range read, per this
+project's own established convention): 1,449 bytes, `0x10112f30`-`0x101134d9`,
+64 basic blocks, cyclomatic complexity 42, one real stack argument (r2's own
+`arg_5ch`).
+
+**Self-naming, not assumed from the address alone.** The function pushes the
+literal string `"analyzeNoise"` (`0x10587a10`) together with
+`"\Atc\ansel\src\libPaths.ansel\noiseMethods.cpp"` (`0x10587994`) at **seven**
+distinct sites inside its own body (`0x1011303c`, `0x10113115`, `0x1011325c`,
+`0x101132a6`, `0x1011332c`, `0x101133ba`, `0x1011343f`) — the same
+self-naming-string method this doc's own §11/§12/§18/§25 already use to
+confirm function identity, not proximity or reasoning from a citation. Two of
+those seven sites additionally push a specific error message before calling
+the exception-constructor thunk (`0x1001ed90`, already catalogued in
+`pakon_autotone.py` as `THROW_NOT_FOUND`): `"Pnr capability not found."`
+(`0x10586ef7`) and `"Nra capability not found."` (`0x1057ae87`). The other
+five call a different, non-message-carrying helper (`0x1001f770`) after a
+successful capability lookup — the same "validate a found-and-cast pointer"
+shape this doc's §12 already flagged as "seen throughout this project's own
+disassembly work," now with two concrete call sites of its own.
+
+### 26.2 — What it actually does: an idempotency-guarded producer of two
+named capabilities, "pnr" and "nra" — real RTTI classes, not placeholders
+
+The function's own control flow (read directly, not inferred): it takes
+**exactly one argument**, the shared holder pointer (matching r2's own
+`arg_5ch` naming) — never a `ctx` pointer, never a pixel-buffer/`Ima2DImage`
+argument, the same single-pointer calling convention this doc's §11 already
+established for `balanceAreaImage`/`analyzeArea`/`analyzeFalloff`/
+`analyzeAutoTone`'s own shared `&[ebp+0xc]` argument. It calls the real
+capability-set find thunk (`0x10020a40`, `pakon_autotone.CAP_FIND_THUNK` —
+the exact same thunk `dra`'s `find("lighting")` and `balanceAreaImage`'s
+`find("area")` already use) for the literal string `"pnr"`
+(`0x1057a034`) first, then, gated on that result, for `"nra"`
+(`0x105740cc`) — both real, non-placeholder classes, confirmed by an
+exhaustive `.rdata` string search (`izz`) on the same DLL: `AnsPnrCapability`
+/ `AnsPnrCapabilityImpl` / `AnsPnrCapability::analyze` /
+`AnsPnrCapability::acquire` (`noiseMethods.cpp`'s sibling file
+`AnsPnrCapability.cpp`, `\Atc\ansel\src\libPnr.ansel\`) and the identically-
+shaped `AnsNraCapability` family (`\Atc\ansel\src\libNra.ansel\`). Each
+result is passed through the real `__RTDynamicCast` IAT thunk
+(`0x104ffdd6`, `pakon_autotone.RT_DYNAMIC_CAST`) to the specific Pnr/Nra
+type before its own `+0xc` enable-style byte is checked — the identical
+"declare-time capability, `+0xc` gates real use" idiom `declareAutoTone`
+already uses for the six/seven tone capabilities. On a lookup miss (or a
+cast that resolves to the wrong type) it throws the corresponding
+"`<Name>` capability not found." exception via `0x1001ed90`; on a
+successful, already-`+0xc`-enabled find it validates and returns without
+recomputation (a self-guard, not a data-consumption path — the same
+idempotency shape §12 already found at `analyzeArea`'s own entry and §22
+corrected the polarity of for `balanceAreaImage`'s `find("area")`). When
+neither guard short-circuits it, it calls exactly one substantive leaf:
+`0x10112980`, once, at VA `0x101132f1`, with a single small local record
+built from the holder pointer.
+
+**`0x10112980` is not a new address — it is `NoiseMethods::getNoiseTable`,
+a function this project already ported.** `pakon_ane_order.py`'s own header
+docstring (predating this pass) already fully documents it by that name,
+citing its self-naming string (`0x105879f4`) and its real behaviour: it
+looks up an `"aneOrder"` capability's results (the already-ported
+`ANE_ORDER_PORTED = True` density-curve machinery, `AnsAneOrderCapability`,
+originally built for Shasta's positive-path aim calculation), then, per
+channel, clamps a `dmin[i]` value into `[0, n)` and computes
+`dens_i = ftol2(table[idx] * blackNoiseSigmaMult)` — a black-point/shadow
+density-noise adjustment, architecturally exactly the "denoising near
+black" shape this task flagged as plausible.
+
+**One real correction to that existing docstring, found by this pass's own
+disassembly, not by re-reading the docstring more carefully.**
+`pakon_ane_order.py` currently states `0x10112980`'s "**Sole** CnPremium
+mid-aim caller @ `0x10056863`" (emphasis in the original). It is not sole:
+`analyzeNoise`'s own call at `0x101132f1`, confirmed above by direct
+disassembly this pass, is a second, real, direct caller — from a completely
+different `Path` class (`AnsCnEnhancedPath`, colour negative) than the
+`CnPremium` mid-aim site the existing docstring names. `getNoiseTable`
+itself is shared, general-purpose machinery; `analyzeNoise` is simply a
+second, previously-uncatalogued consumer of it, for a different purpose
+(publishing a `"pnr"`/`"nra"` capability result) than CnPremium's own use
+(feeding a positive-path aim target). This is a real, citable addition to
+that file's own accurate-but-incomplete accounting — not a contradiction of
+anything it already verified, and `pakon_ane_order.py` itself is not
+touched by this pass, per this task's own file-scope instructions.
+
+### 26.3 — Decisive: does any of this reach the six already-verified tone
+subsystems? Two independent checks, both negative
+
+**Check 1 — the capability names `analyzeAutoTone` itself ever looks up, by
+name, are already fixed and already Unicorn-verified.** `pakon_autotone.py`'s
+own `CAPABILITIES` tuple (`LOOKUP_ORDER`, the exact real-DLL find-call
+sequence `analyzeAutoTone`'s own body issues, confirmed bit-exact against
+the real DLL across the whole `docs/66` port) contains exactly seven names:
+`cna`, `dra`, `toneHelper`, `contrast`, `ast`, `pfd`, `citras`. A direct
+`grep -in "pnr\|nra\b\|noise" pakon_autotone.py` over the whole file (1,631
+lines) returns **zero matches** — not a new finding, a confirmation that the
+already-existing, already-verified port simply never mentions any of these
+names anywhere, consistent with (and now cross-checked against) §22's own
+live `UC_HOOK_MEM_READ` watch over the real DLL's `analyzeAutoTone`
+execution, which found holder/`ctx` touched at only the 3-4 fields already
+documented — none of them a noise-table slot.
+
+**Check 2 — a fresh, real, static direct-call reachability walk from
+`analyzeAutoTone`'s own entry point confirms neither `analyzeNoise` nor
+`getNoiseTable` is even in its call graph.** Ran this project's own
+committed tool, not a re-derived scratch copy: `python3 tools/re/
+reachability.py walk 0x100fb730 --dll <the same MD5-verified copy>` — 166
+functions reached, 68,323 code bytes, 345 indirect call sites, 1,211 direct
+call sites (consistent with the 166-function / 67,896-byte figure
+`pakon_shasta.py`'s own comment already cites for this same seed, small
+byte-count variance being an `r2` analysis-run artifact, not a different
+result). Checked the resulting function-address set directly, not
+eyeballed: `0x10112f30` (`analyzeNoise`) and `0x10112980`
+(`getNoiseTable`) are **both absent** from the 166 reached functions, while
+the shared machinery both `analyzeNoise` and `analyzeAutoTone` separately
+call by name — `0x10020a40` (`CAP_FIND_THUNK`) and `0x104ffdd6`
+(`__RTDynamicCast`) — **are** present, confirming the walk is exercising
+real, resolved call edges and not silently failing to explore the region of
+the binary these addresses live in. This is a second, independent method
+from Check 1 (static call-graph closure vs. a live memory-read watch) and
+from §22's own approach, reaching the same conclusion by a different route.
+
+**Why the one place `getNoiseTable`'s math genuinely matters doesn't apply
+to this project's own target either.** Per `pakon_ane_order.py`'s own
+(now-corrected) citation, the other real caller of `getNoiseTable` is
+`CnPremium`'s own mid-aim calculation — part of the Shasta/positive-film
+aim-point machinery already ported for that path. §18 of this doc already
+independently established, by full disassembly of all four real
+Color-Negative path variants (`AnsCnPremiumPath`, `AnsCnOpticalPath`,
+`AnsCnLockbeamPath`, `AnsCnEnhancedPath`), that Shasta/SRA's own call tree
+is architecturally disjoint from every colour-negative `analyzeScene`,
+including this project's own `AnsCnEnhancedPath` target. So even the one
+context where this exact arithmetic is genuinely load-bearing in the real
+DLL is a rendering path this project's F-135 colour-negative port does not
+take — a second, independent reason (beyond Checks 1-2) that `analyzeNoise`'s
+real computation cannot be part of the washed-out defect on this project's
+own target path.
+
+### 26.4 — Verdict: ruled out, with real evidence, not ported
+
+`analyzeNoise` is real, non-trivial (1,449 bytes, 42 cyclomatic complexity),
+and does genuine, architecturally shadow-adjacent work — it is not a
+placeholder and not "clearly unrelated by name" the way, say, a pure
+geometry helper would be. But by two independent methods (the already-
+verified `CAPABILITIES` tuple / live memory-watch from §22, and a fresh
+static reachability walk this pass ran directly), `analyzeAutoTone`'s own
+six already-Unicorn-verified tone subsystems never look up, read, or
+otherwise reach anything `analyzeNoise` produces or touches. This is the
+same "real function, real work, no live channel to the verified chain"
+verdict §22 already reached for `analyzeArea`/`analyzeAttributes`/
+`balanceAreaImage`'s `find`-guard, and §25 (parallel, this session) just
+reached independently for `analyzeAttributes` specifically — now extended
+to `analyzeNoise` by name, with its own two-method evidence rather than
+inherited by association. No Python port was written (no `pakon_noise.py`
+— porting code with a proven-absent live channel into the defect under
+investigation would be effort spent verifying something bit-exact against
+nothing, not the same bar `citras`/`cna`/`dra` met before landing), and no
+existing file (`pakon_ane_order.py` included) was modified — this section is
+the only change, plus the scratch DLL copy and `r2`/`reachability.py`
+output under `/tmp/pakon_noise_re/` (not committed, consistent with this
+doc's own established practice of leaving RE scratch work out of the repo).
+
+**What this changes about the four-stage priority item.** Of the original
+four (`analyzeArea`/`analyzeAttributes`/`analyzeNoise`/`analyzeFalloff`):
+`analyzeFalloff` was independently confirmed structurally dead before this
+session (its calibration data is absent from the shipped vendor install);
+`analyzeAttributes` is closed this session by a parallel pass (§25, real
+gate for `orderOrientation`'s rotation classifier, not tonal);
+`analyzeNoise` is closed by this section. `analyzeArea`'s own 732-function
+body (§12's own honest scoping: "the same order of effort as the citras
+driver's own multi-pass saga") is now the sole member of the original four
+still open.
+
+**Verification.** `md5(PakonIMAu.dll) == eea9dcf78ee21d4f7c515a6c2512242d`,
+checked immediately after extraction, before any disassembly in this
+section. `af`+`pdf` (explicit function-boundary disassembly) was used for
+`0x10112f30`, not a raw `pD` byte-range read. Every address/string cited in
+§26.1-26.2 (the self-naming strings, the `"pnr"`/`"nra"` capability class
+strings, `0x1001ed90`/`0x1001f770`/`0x10020a40`/`0x104ffdd6`/`0x10112980`)
+was read directly out of the loaded binary via `r2`'s `izz` (full `.rdata`
+string scan) and `pdf` (function disassembly), not transcribed from a prior
+doc or assumed from an address alone. Check 1's `grep` over
+`pakon_autotone.py` was run directly, this pass, over the file as it exists
+in this checkout. Check 2's reachability walk was run with this project's
+own committed `tools/re/reachability.py` (not a re-derived scratch copy)
+against the same MD5-verified DLL copy, and its output JSON was parsed
+directly (`0x10112f30 in reached_addrs`, `0x10112980 in reached_addrs`,
+both `False`; `0x10020a40`/`0x104ffdd6` both `True`) rather than eyeballed
+from the printed summary. No golden file was touched, no port file was
+written or changed, and no Unicorn execution was attempted for this
+section — the two-method static/already-verified-dynamic evidence in
+§26.3 was judged sufficient to answer the relevance question without it,
+consistent with this task's own "be honest about scope" guidance given the
+result came back negative rather than requiring a port to characterize
+further. Scratch output (`analyzeNoise_pdf.txt`, `analyzeNoise_plain.txt`,
+the extracted DLL copy, and the reachability JSON) lives under
+`/tmp/pakon_noise_re/`, not committed.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is

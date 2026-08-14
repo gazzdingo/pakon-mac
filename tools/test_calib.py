@@ -1131,7 +1131,7 @@ def test_wizard_never_writes_repo_calibration() -> None:
           "candidate exposures go to pakon_scan.py run --cal-dir instead")
 
     ps = (REPO / "tools/pakon_scan.py").read_text()
-    check('cal_dir=getattr(a, "cal_dir", None)' in ps,
+    check("cal_dir=a.cal_dir" in ps,
           "and pakon_scan.py run honours --cal-dir")
 
 

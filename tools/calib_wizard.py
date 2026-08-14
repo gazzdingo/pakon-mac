@@ -912,11 +912,44 @@ class Wizard:
                     raise Unreachable(self._unreachable(s, got, cfg))
                 cfg = dict(cfg, on_counts_R_G_B=list(s["on_new"]))
                 continue
+            # Some channel(s) clipped this round -- not necessarily all of
+            # them. A clipped channel's own measurement carries almost no
+            # scale information, so IT gets the conservative bisection. A
+            # channel that is NOT clipped this round has a real, valid
+            # reading and keeps solving toward target via solve_duty's own
+            # per-channel linear model, exactly as it would in an unclipped
+            # round. Blending per-channel, instead of letting one clipped
+            # channel force bisection onto every channel, is what fixes a
+            # real oscillation found on hardware tonight: an
+            # already-under-target channel (say R, reading well below the
+            # target while G or B were still saturated) got bisected
+            # (shrunk) again and again for rounds in a row, moving it
+            # further from target every time, purely because a DIFFERENT
+            # channel had not converged yet.
+            clip_frac, _ = cap.clip_stats()
+            clipped_mask = clip_frac > bcal.CLIP_FRACTION_MAX
+            if s["clamped"] and any(not clipped_mask[i] for i in s["clamped"]):
+                # A channel that is NOT clipped this round but whose solved
+                # duty still wants more than the N-2 ceiling allows is a
+                # real "cannot get there from here", the same condition the
+                # unclipped branch above raises Unreachable for -- clipped
+                # channels are excluded here because "clipped and wants
+                # more duty" is not a real state this round can observe (a
+                # saturated channel's solve is bisecting toward less duty,
+                # not more).
+                raise Unreachable(self._unreachable(s, got, cfg))
             back = bcal._reprobe_on_counts(s, s.get("dark_at", dark_level))
-            self.warn(f"round {rnd} clipped; a saturated reading carries "
-                      f"almost no scale information, so the search bisects "
-                      f"rather than solving: on-counts -> {back}")
-            cfg = dict(cfg, on_counts_R_G_B=list(back))
+            mixed = [back[i] if clipped_mask[i] else s["on_new"][i]
+                     for i in range(len(back))]
+            names = "RGB"[:len(clipped_mask)]
+            self.warn(
+                f"round {rnd}: channel(s) "
+                f"{''.join(names[i] for i in range(len(clipped_mask)) if clipped_mask[i])} "
+                f"clipped (bisecting -- a saturated reading carries almost "
+                f"no scale information), channel(s) "
+                f"{''.join(names[i] for i in range(len(clipped_mask)) if not clipped_mask[i]) or '(none)'} "
+                f"solved normally -> on-counts {mixed}")
+            cfg = dict(cfg, on_counts_R_G_B=mixed)
         raise WizardRefused(
             f"the lamp did not settle on the {self.target:.0f} target in "
             f"{MAX_DUTY_ROUNDS} rounds. Nothing has been stored.")

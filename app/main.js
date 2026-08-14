@@ -83,7 +83,18 @@ function startBackend(port) {
   backend = spawn(py, ['-u', script, '--port', String(port), '--watch-parent'], {
     cwd: repoRoot(),
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PYTHONUNBUFFERED: '1' },
+    // PAKON_COLOUR_ENGINE: temporarily default to the Python tone chain, not
+    // Go's ShastaToneRpd stand-in -- docs/74 sec23. Go never got the real,
+    // Unicorn-verified analyzeAutoTone chain wired in, so it still renders
+    // through an admitted placeholder with no real blacks. The Python chain
+    // is bit-exact against the real vendor DLL (docs/66, docs/74 sec1-24) at
+    // every scale tested so far except one still-open scale-dependent cna
+    // question (sec24). Still overridable (PAKON_COLOUR_ENGINE=go in the
+    // environment before launching) -- this is a deliberate, explicit,
+    // attributable choice per colour_engine()'s own stated design, not a
+    // silent default, and it should come back out once Go's own chain is
+    // actually wired and verified.
+    env: { ...process.env, PYTHONUNBUFFERED: '1', PAKON_COLOUR_ENGINE: process.env.PAKON_COLOUR_ENGINE || 'python' },
   });
   spawnedBackend = true;
   backend.stdout.on('data', (d) => process.stdout.write(`[backend] ${d}`));

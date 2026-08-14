@@ -1,0 +1,99 @@
+{
+  "unit": "Kodak Pakon F-135 Plus, serial 16275",
+  "captured": "2026-08-14",
+  "generated_by": "tools/calib_wizard.py",
+  "generated_at": "2026-08-14T06:50:06",
+  "note": "SCAN-READY OVERRIDE, 2026-08-14. dark_2000x3.npy/gain_2000x3.npy/afe_offsets/afe_gains are this unit's own fresh self-calibration, searched today against the real hardware -- unmodified. on_counts_R_G_B here is NOT the wizard's own output -- the wizard measured against an empty gate (dark/bright references), so its own on_counts_R_G_B ([643,580,508], preserved below as flat_field_on_counts_R_G_B) is this unit's real, fresh OPEN-GATE duty. For actual film scanning, on_counts_R_G_B is overridden to docs/59-lamp-sequence-captured.md's real vendor with-film capture ([912,938,804]) -- a directly captured value off this exact unit's own wire during an actual PSI scan, not derived. pakon_scan.lamp_switch_to_scan_duty starts at the open-gate duty for the leader and switches to this with-film duty the instant film sensors report film present.",
+  "config": {
+    "integration_0x82_idx6": 4093,
+    "lamp_pwm_N": 982,
+    "line_rate_0x91": 60,
+    "levels_R_G_B_Ir": [
+      3,
+      11,
+      7,
+      0
+    ],
+    "on_counts_R_G_B": [
+      912,
+      938,
+      804
+    ],
+    "flat_field_on_counts_R_G_B": [
+      643,
+      580,
+      508
+    ],
+    "afe_gains": [
+      13,
+      13,
+      13
+    ],
+    "afe_offsets": [
+      0,
+      -6,
+      2
+    ],
+    "fpga_ctrl": "0x0061",
+    "pixel_offset": 32,
+    "pixel_height": 2000,
+    "dpi_base": "DpiBase16_35"
+  },
+  "config_source": "read from the captures' own sidecars (ref_dark.bin.scan.json and ref_bright.bin.scan.json), which agreed on every key in ['integration_0x82_idx6', 'lamp_pwm_N', 'line_rate_0x91', 'levels_R_G_B_Ir', 'on_counts_R_G_B', 'afe_gains', 'afe_offsets', 'fpga_ctrl', 'pixel_offset', 'pixel_height', 'dpi_base']. NOT copied from a previous calibration/README.json \u2014 these tables are valid for the setup the captures were actually taken under and nothing else.",
+  "dark_source": {
+    "file": "ref_dark.bin",
+    "lines": 15007,
+    "losses": 0,
+    "means": [
+      1259.1,
+      1325.8,
+      1396.9
+    ],
+    "floor_fraction": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "note": "black level, empty gate, lamp off. Target band 400..4000 wire counts; a reference sitting on ADC code 0 is refused, because a clipped pedestal loses everything below it and cannot be corrected afterwards (docs/72). The AFE offsets that produce it are recorded in config.afe_offsets and are a per-DPI-base calibration output, not a constant."
+  },
+  "bright_source": {
+    "file": "ref_bright.bin",
+    "lines": 8017,
+    "losses": 0,
+    "means": [
+      57925.4,
+      58296.9,
+      57655.9
+    ],
+    "level": 58639.7,
+    "peak_wire": [
+      62914,
+      65102,
+      64420
+    ],
+    "peak_over_level": 1.1102,
+    "target_level": 64000.0,
+    "target_metric": "max",
+    "metric_measured": [
+      62268.6,
+      64452.2,
+      63734.2
+    ],
+    "note": "empty gate, lamp on, unclipped: peak 65102 of 65535 wire full scale. Target was 64000 on the 'max' statistic (the vendor's FN_bCalibrateFindLedCurrent target is 64000, and docs/15 records that its check compares the MAXIMUM pixel of an averaged CCD line, not the mean); measured level 58640. This unit's brightest sample sits 1.1102x its level, so the highest clip-free level here is about 58129."
+  },
+  "flat_field_k_per_channel": [
+    56666.3127,
+    56971.145,
+    56258.9771
+  ],
+  "usage": "Tables are EP 0x86 wire u16. Decode: dark14=dark/4; (raw14-dark14)*gain \u2192 clamp 14-bit. Gate uses wire as-is.",
+  "domain": "wire_u16",
+  "formula": "dark = mean down the strip; gain[:,c] = (bright-dark)[:,c].mean() / (bright-dark)[:,c] \u2014 normalised PER CHANNEL, not globally",
+  "unit_serial": 16275,
+  "wizard_stamp": "2026-08-14T13-48-47Z",
+  "searched": [
+    "afe_offsets",
+    "on_counts_R_G_B"
+  ],
+  "search_note": "The AFE offsets and the lamp on-counts in config were SEARCHED against this scanner's own response, not copied. Neither is recoverable from the EEPROM at any offset (docs/69 s5.4), so for any unit without a surviving Windows registry this is the only way they can exist."
+}

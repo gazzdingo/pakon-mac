@@ -11,8 +11,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/image/tiff"
 )
@@ -568,38 +570,87 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 	tw.Write("shasta", shasted)
 	tw.Write("ansel", shasted) // the toned RPD-12 handed to the ICC hop
 
-	var sum [3]float64
+	// This loop is the ICC hop, run twice per pixel (device->PCS, PCS->sRGB),
+	// each a trilinear CLUT interpolation plus two 1-D table lookups —
+	// profiled at ~39% of a render's CPU time, the single largest stage in
+	// processImage (PAKON_GO_CPUPROFILE, docs/68 handover). Every pixel is
+	// independent — reads shasted[y][x], writes its own row of outImg/
+	// bypassImg/iccU8 — so it is split across goroutines by row range rather
+	// than run on one core. img.Set boxes its color.Color argument on every
+	// call (escape analysis: main.go color.RGBA{} literals here used to
+	// escape to heap); writing straight into Pix avoids that on top of the
+	// parallelism.
 	iccU8 := make([][][3]uint8, height)
 	for y := 0; y < height; y++ {
 		iccU8[y] = make([][3]uint8, width)
-		for x := 0; x < width; x++ {
-			p := shasted[y][x]
+	}
 
-			finalR := int(p[0])
-			finalG := int(p[1])
-			finalB := int(p[2])
-
-			// bypass: direct linear scale 0-4095 → 0-255 (for debug)
-			dr := uint8(finalR * 255 / 4095)
-			dg := uint8(finalG * 255 / 4095)
-			db := uint8(finalB * 255 / 4095)
-			bypassImg.Set(x, y, color.RGBA{dr, dg, db, 255})
-
-			// req.IccInput, not the depth-less entry point. -icc-input
-			// existed as a flag and as a RenderRequest field but nothing
-			// read it, so the two answers it selects between — u12 reaching
-			// every one of the mft2 input table's 4096 knots, or u8 reaching
-			// 256 of them because that is all PIL can hand lcms — rendered
-			// identically and the parity harness measured the difference as
-			// 0.00%. docs/62 §2.9.
-			srgbColor := IccRpd12ToSrgb8Depth(rpd2pcs, srgb,
-				[]int{finalR, finalG, finalB}, req.IccInput)
-			outImg.Set(x, y, color.RGBA{srgbColor[0], srgbColor[1], srgbColor[2], 255})
-			iccU8[y][x] = [3]uint8{srgbColor[0], srgbColor[1], srgbColor[2]}
-			sum[0] += float64(srgbColor[0])
-			sum[1] += float64(srgbColor[1])
-			sum[2] += float64(srgbColor[2])
+	workers := runtime.NumCPU()
+	if workers > height {
+		workers = height
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	rowsPerWorker := (height + workers - 1) / workers
+	partialSums := make([][3]float64, workers)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		y0 := w * rowsPerWorker
+		y1 := y0 + rowsPerWorker
+		if y1 > height {
+			y1 = height
 		}
+		if y0 >= y1 {
+			continue
+		}
+		wg.Add(1)
+		go func(y0, y1, w int) {
+			defer wg.Done()
+			var sum [3]float64
+			for y := y0; y < y1; y++ {
+				outRow := outImg.Pix[y*outImg.Stride : y*outImg.Stride+width*4]
+				bypassRow := bypassImg.Pix[y*bypassImg.Stride : y*bypassImg.Stride+width*4]
+				for x := 0; x < width; x++ {
+					p := shasted[y][x]
+
+					finalR := int(p[0])
+					finalG := int(p[1])
+					finalB := int(p[2])
+
+					// bypass: direct linear scale 0-4095 → 0-255 (for debug)
+					dr := uint8(finalR * 255 / 4095)
+					dg := uint8(finalG * 255 / 4095)
+					db := uint8(finalB * 255 / 4095)
+					o := x * 4
+					bypassRow[o], bypassRow[o+1], bypassRow[o+2], bypassRow[o+3] = dr, dg, db, 255
+
+					// req.IccInput, not the depth-less entry point. -icc-input
+					// existed as a flag and as a RenderRequest field but nothing
+					// read it, so the two answers it selects between — u12 reaching
+					// every one of the mft2 input table's 4096 knots, or u8 reaching
+					// 256 of them because that is all PIL can hand lcms — rendered
+					// identically and the parity harness measured the difference as
+					// 0.00%. docs/62 §2.9.
+					srgbColor := IccRpd12ToSrgb8Depth(rpd2pcs, srgb,
+						[3]int{finalR, finalG, finalB}, req.IccInput)
+					outRow[o], outRow[o+1], outRow[o+2], outRow[o+3] =
+						srgbColor[0], srgbColor[1], srgbColor[2], 255
+					iccU8[y][x] = srgbColor
+					sum[0] += float64(srgbColor[0])
+					sum[1] += float64(srgbColor[1])
+					sum[2] += float64(srgbColor[2])
+				}
+			}
+			partialSums[w] = sum
+		}(y0, y1, w)
+	}
+	wg.Wait()
+	var sum [3]float64
+	for _, s := range partialSums {
+		sum[0] += s[0]
+		sum[1] += s[1]
+		sum[2] += s[2]
 	}
 	tw.WriteU8("icc", iccU8)
 	tw.Set("film_base", frameDmin)

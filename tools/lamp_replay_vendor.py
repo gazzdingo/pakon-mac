@@ -17,8 +17,10 @@ Two deliberate departures from the capture, both toward safety:
   * The vendor asserts enable (step 16) and THEN zeroes drive (step 17). If the
     board holds stale duty, that is a flash at an unknown level. We program
     drive first, then enable. Same end state, no pulse.
-  * Default level is the capture's step-82 calibration drive (duty .16/.67/.38),
-    not step-100's scan drive (.82/.93/.96). --full opts into the latter.
+  * Default is the OPEN-GATE duty set (.16/.67/.38), which is the correct one
+    for a bare gate. --full selects the WITH-FILM set (.82/.93/.96), which is
+    the same values scaled by 10^D for the orange mask and will saturate blue
+    if there is no film loaded.
 
 Dry run by default. --commit is required to put anything on the wire.
 
@@ -55,8 +57,18 @@ HOST = 0x10
 # docs/59. Channel order B, Ir, R, -, G.
 LEVELS = (7, 0, 3, 11)              # B, Ir, R, G          <- reg 0x81
 N_PERIOD = 982                      # exposure 4093, DpiBase16_35 non-IR
-DRIVE_CAL = (156, 0, 654, 374)      # B, Ir, R, G   step 82
-DRIVE_FULL = (804, 0, 912, 938)     # B, Ir, R, G   step 100
+# The two sets are NOT "dim then bright" -- they are the vendor's two duty
+# sets, and FN_bBeforeScan (0x1002e137 -> 0x1002d7f0) picks between them:
+#   DutyCycleOpenGate_*  no film in the gate
+#   DutyCycle_*          film in the gate
+# They differ by exactly 10^D, the colour-negative base density, so the
+# with-film set adds back what the orange mask absorbs. Verified on the
+# captured pair: cal x (1.393157, 2.511891, 5.188016) reproduces the scan set
+# to within 1 on-count on R/G and 5 on B.
+DRIVE_OPEN_GATE = (156, 0, 654, 374)   # B, Ir, R, G   step 82  -- BARE GATE
+DRIVE_WITH_FILM = (804, 0, 912, 938)   # B, Ir, R, G   step 100 -- FILM LOADED
+MASK_RATIO = (5.188016, 1.0, 1.393157, 2.511891)   # B, Ir, R, G  = 10^D
+DRIVE_CAL, DRIVE_FULL = DRIVE_OPEN_GATE, DRIVE_WITH_FILM
 
 # reg -> 4-byte payload, exactly as captured (steps 9-12). Monitor thresholds,
 # not TEC commands; docs/40 proved only 0x8E is gated, and 0x8E is never sent.
@@ -166,8 +178,11 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--commit", action="store_true",
                     help="actually send. Without this nothing touches the bus.")
-    ap.add_argument("--full", action="store_true",
-                    help="use the step-100 scan drive instead of step-82 calibration drive")
+    ap.add_argument("--full", "--with-film", action="store_true", dest="full",
+                    help="use the WITH-FILM duty set. Only correct with film in "
+                         "the gate -- on a bare gate it saturates blue, because "
+                         "it is the open-gate set scaled by 10^D to compensate "
+                         "for an orange mask that is not there.")
     ap.add_argument("--hold", type=float, default=5.0,
                     help="seconds to hold the lamp lit (default 5, as WaitForLamp)")
     # The only two per-unit writes. Everything else in the sequence is protocol
@@ -197,7 +212,7 @@ def main() -> int:
         drive, which = parse4(args.duty, "duty"), "override"
     else:
         drive = DRIVE_FULL if args.full else DRIVE_CAL
-        which = "step-100 SCAN" if args.full else "step-82 calibration"
+        which = "WITH-FILM (needs film loaded)" if args.full else "OPEN-GATE (bare gate)"
         if n_period != N_PERIOD:
             sys.exit(f"--exposure {args.exposure} gives N={n_period}, but the "
                      f"captured drive values are on-counts for N={N_PERIOD}. "

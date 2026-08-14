@@ -1,5 +1,34 @@
 # 59 — The vendor's complete lamp/LED sequence, captured
 
+> **ONE INFERENCE WITHDRAWN, ONE READING CORRECTED.** The "green-reference
+> white balance" reading below is withdrawn — I built it on two coincidences.
+> The real relationship, from the `calibration-and-tone-port` work: the vendor
+> keeps **two duty sets**, and `FN_bBeforeScan` (`0x1002e137` → `0x1002d7f0`)
+> selects `DutyCycle_*` with film in the gate and `DutyCycleOpenGate_*` without.
+> They differ by exactly **10^D**, the colour-negative base density — the
+> with-film set adds back what the orange mask absorbs.
+>
+> Verified against the registry, exact to six figures:
+>
+> ```
+> ch   with-film   open-gate      ratio     10^D      D
+> R     0.917161    0.658333   1.393157   EXACT   0.1440
+> G     0.955468    0.380378   2.511891   EXACT   0.4000
+> B     0.865802    0.166885   5.188016   EXACT   0.7150
+> ```
+>
+> And against **the captured pair**, which is the stronger test: step 82's
+> on-counts × 10^D reproduce step 100's to within 1 count on R and G, 5 on B.
+>
+> **So steps 82 and 100 are not "dim then bright".** They are the open-gate set
+> and the with-film set. What reads as a ramp is the vendor switching sets when
+> film enters the gate. That supersedes the "drive ramp" explanation for the
+> flash below.
+>
+> Safety consequence, now fixed in `tools/lamp_replay_vendor.py`: `--full` is
+> the **with-film** set and saturates blue on a bare gate. The default is the
+> open-gate set, which is correct for a bare gate.
+
 **Date: 2026-08-13.** Ground truth for the light board, from the same API
 Monitor capture as `docs/55`. This is the answer to "the LEDs flash under PSI
 but not under ours".

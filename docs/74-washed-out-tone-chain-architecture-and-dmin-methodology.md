@@ -1092,6 +1092,85 @@ code for this film is a real question worth fixing in the app's own
 detection, but it has had zero effect on anything measured in this
 document.
 
+## 15 — Clean, hash-verified vendor ground truth replaces the carved
+JPEGs; the gap holds on every frame of the matching roll, with no
+carving caveats left
+
+`finding/f235-and-vendor-shadows` landed clean data superseding §13's
+carved JPEGs: `research/vendor-scans/` on the private remote, six real
+frames as `rawAA00N.png`/`AA00N.png` pairs (PSI's own "RAW" export and
+finished render of the same frame), losslessly converted from the
+original uncompressed TIFFs PSI produced directly — no disk-image
+carving, no NTFS-fragmentation risk, no scrambled-frame filtering
+needed. Also landed: `docs/60-HANDOVER.md`, a full project handover
+(worth reading directly for anyone picking this up cold — hardware
+state, capture methodology, traps that cost real time).
+
+**Independently verified, not taken on the write-up's word.** Downloaded
+`AA005.png`/`rawAA005.png` and `manifest.json` directly, recomputed both
+files' pixel SHA-256 myself and confirmed they match the manifest
+exactly, then recomputed the percentile table myself:
+
+```
+frame        ch     p1    p5   p50   p95   p99   min   max
+rawAA005     R      14    19    76   164   180     7   202
+             G      10    14    42   112   122     4   131
+             B       6     8    35   107   114     2   125
+vendorAA005  R       0     0    35   228   241     0   255
+             G       6     8    87   226   245     5   255
+             B       5     8    94   236   253     0   255
+```
+
+Matches the write-up's own numbers to the digit — real, hash-verified,
+lossless vendor ground truth, not an estimate.
+
+**Then rendered every frame of `scan-20260812-091633` — confirmed by the
+owner to be the same physical scan session as these vendor frames —
+through the unmodified production path.** All 10 frames (the vendor set
+has 6; frame-boundary detection differs between PSI and this project's
+own framing, so exact 1:1 index correspondence isn't established):
+
+```
+frame  R p1   G p1   B p1        frame  R p1   G p1   B p1
+  0     88     86     88           5    113    109    109
+  1     79     84     86           6     98     96     94
+  2     63     90     88           7     73     81     78
+  3    110    106    108           8     83     79     74
+  4    119    114    113           9     87     84     78
+```
+
+**Every single one of the ten sits at p1 = 63-119. None comes anywhere
+near the vendor's 0/6/5 on the matching frame, or the 6-33 range §13's
+carved (but now superseded) data already showed across a different
+roll.** Three independent rolls, now including a directly-hash-verified,
+carving-free one confirmed to be the exact same physical film as the
+vendor's own reference, all converge on the same gap. §13's conclusion
+stands, now on stronger evidence: this is a real, fixable port defect.
+
+**On `docs/58`'s specific SRA claim, raised again in this session and
+worth being precise about a second time**: independently checked (see
+this doc's own inline discussion above) that `pakon_ansel.py`'s
+`self.sra_lut` is applied only in `render_scene`'s legacy fallback
+branch, never in the `shasta_stand_in=True` path every real F-135/
+CN-Enhanced render (including every render in this section) actually
+takes — so "forward applied, backward missing" is not quite right; the
+port applies **neither** in the path that matters. The broader,
+trace-grounded insight behind it — the vendor's SRA stage is a genuine
+matched forward/backward pair defining a working space, real analysis
+plausibly happens inside that space, and this project's own bit-exact
+verification of `analyzeAutoTone` has only ever been run against tiny
+synthetic pixel patterns (6×6 to 48×48), never a real scanned frame —
+is independently well-founded and not addressed by this correction.
+`docs/60`'s own "single highest-value next action" (apply the shipped
+backward LUT, re-render `rawAA005`, target `p1 = 0/6/5`) remains the
+right next empirical test; this session has not yet attempted it,
+because `rawAA005` is itself PSI's own already-positive-processed
+8-bit output, not the raw 12-bit negative this port's own pipeline
+starts from, so it cannot simply be substituted into this port's
+existing stages without first resolving how PSI's "RAW" stage maps onto
+this project's own `inv16`/post-balance/post-FUGC domains — an open
+question, not yet a blocker, but not a five-minute substitution either.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is
@@ -1295,3 +1374,15 @@ This section only summarizes and cross-references; it does not
 re-derive or re-verify that work independently. No port file changed by
 this session as a result of §13 — it's a finding to act on, not yet
 acted on.
+
+§15's numbers were independently reproduced, not copied from `docs/54`,
+`docs/58`, or `docs/60`: `AA005.png`/`rawAA005.png`/`manifest.json` were
+pulled directly from `research/vendor-scans/` on
+`finding/f235-and-vendor-shadows`, both images' pixel SHA-256 recomputed
+and checked against the manifest, and the percentile table recomputed
+from the raw pixel arrays with `numpy`, not transcribed. The port-side
+comparison rendered all 10 real frames of `scan-20260812-091633.bin`
+(the same unmodified `open_capture`/`scene_rpd12`/`render_scene`/
+`to_srgb` path every other section of this doc uses), not a subset.
+`self.sra_lut`'s actual call site was found by direct `grep` against
+`pakon_ansel.py`, not inferred. No port file changed.

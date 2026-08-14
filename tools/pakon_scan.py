@@ -525,6 +525,16 @@ class ScanConfig:
     line_rate_0x91: int = 60
     levels: tuple = (4, 20, 11, 0)          # R, G, B, Ir
     on_counts: tuple = (492, 239, 104)      # R, G, B  (PWM on-counts, not duties)
+    #: The vendor's OTHER duty set (FN_bBeforeScan's DutyCycleOpenGate_*, see
+    #: docs/59) -- what the lamp runs at before film is in the gate. None
+    #: means the calibration has no separate open-gate figure, and the scan
+    #: runs at `on_counts` (the with-film duty) throughout, the way every
+    #: scan before this field existed did. When present, `run_scan` starts
+    #: the lamp here and switches to `on_counts` the instant film sensors
+    #: first report film present -- docs/59's own captured trace shows the
+    #: real vendor doing exactly that switch (step 82 -> step 100), not
+    #: driving one fixed duty for the whole roll.
+    open_gate_on_counts: tuple | None = None
     afe_gains: tuple = (13, 13, 13)
     afe_offsets: tuple = (-18, -26, -20)
     pixel_offset: int = 32
@@ -687,6 +697,9 @@ class ScanConfig:
             warnings=warn,
             film_path=(str(film_path).strip() or None) if film_path else None,
             dx=(str(dx).strip() or None) if dx else None,
+            open_gate_on_counts=(tuple(c["flat_field_on_counts_R_G_B"])
+                                  if c.get("flat_field_on_counts_R_G_B")
+                                  else None),
         )
 
     @classmethod
@@ -950,7 +963,12 @@ def lamp_on(link: Link, cfg: ScanConfig) -> None:
     Slot order in both registers is [B, Ir, R, -, G] with byte 3 a hard zero.
     """
     r_lvl, g_lvl, b_lvl, ir_lvl = (list(cfg.levels) + [0, 0, 0, 0])[:4]
-    on_r, on_g, on_b = cfg.on_counts
+    # Open-gate duty if the calibration has one (docs/59): the leader has no
+    # film in it yet, so starting at the with-film duty overexposes it (and
+    # is what made this project's own flat-field bright references clip).
+    # run_scan switches to cfg.on_counts the instant film sensors report
+    # film present -- see the film.armed check in its main loop.
+    on_r, on_g, on_b = cfg.open_gate_on_counts or cfg.on_counts
 
     caps = pc.led_level_max(ir_on=False)
     for name, v in (("R", r_lvl), ("G", g_lvl), ("B", b_lvl)):
@@ -998,6 +1016,36 @@ def lamp_on(link: Link, cfg: ScanConfig) -> None:
         bytes((b_lvl, 0, r_lvl, 0, g_lvl))),
         f"0x81 levels R{r_lvl} G{g_lvl} B{b_lvl}")
     link.ack(pc.lamp_set_mask(pc.LAMP_VISIBLE), "0x80 lamp ENABLE (visible)")
+
+
+def lamp_switch_to_scan_duty(link: Link, cfg: ScanConfig) -> bool:
+    """Move from the open-gate duty to the with-film duty. docs/59.
+
+    Real PSI does not run one fixed lamp duty for a whole roll: the captured
+    trace shows the light board written at the dimmer open-gate duty while
+    the leader is going through (0x82 step 82), then switched to a brighter
+    with-film duty (0x82 step 100) at the instant the film sensors report
+    film present -- exactly compensating for what the orange mask absorbs,
+    which the leader does not have. Only 0x82 (PWM on-counts) changes; 0x81
+    (levels) is written once at bring-up and never touched again in the real
+    trace, so this does not re-send it. A no-op, not a fault, if the
+    calibration has no separate open-gate duty (``cfg.open_gate_on_counts``
+    is None) -- the scan is already running at ``cfg.on_counts`` in that
+    case, same as before this existed.
+    """
+    if cfg.open_gate_on_counts is None:
+        return True
+    on_r, on_g, on_b = cfg.on_counts
+    try:
+        r = link.ack(pc.write_register(
+            pc.AD_LIGHT, pc.REG_LIGHT_LED_DUTY,
+            b"".join(v.to_bytes(2, "little")
+                     for v in (on_b, 0, on_r, 0, on_g, cfg.lamp_n))),
+            f"0x82 PWM switch to with-film duty "
+            f"B{on_b} R{on_r} G{on_g} N{cfg.lamp_n}", required=False)
+        return acknowledged(r)
+    except Exception:                                       # noqa: BLE001
+        return False
 
 
 #: How many times ``lamp_off`` re-sends ``0x80 := 0`` before giving up. The
@@ -2427,6 +2475,7 @@ def run_scan(out_path: str | Path,
             # machine's own answer to "is there film in the transport", which
             # is the signal the optical detector has twice got wrong.
             if dx is not None:
+                was_armed = film.armed
                 try:
                     ended = film.feed(dx.poll_if_due(), now)
                 except Exception as e:                      # noqa: BLE001
@@ -2436,6 +2485,14 @@ def run_scan(out_path: str | Path,
                     ended = None
                 for level, text in film.drain():
                     log(level, message=text)
+                # Film just arrived: match FN_bBeforeScan (docs/59) and switch
+                # the lamp from the open-gate duty to the with-film duty right
+                # now, not at scan start. No-op if the calibration has no
+                # separate open-gate duty.
+                if lamp and film.armed and not was_armed:
+                    ok = lamp_switch_to_scan_duty(link, cfg)
+                    log("lamp_duty_switch", to="with-film",
+                        on_counts=list(cfg.on_counts), ok=ok)
                 if ended:
                     stop_reason, stop_detail = "roll_end", ended
                     break

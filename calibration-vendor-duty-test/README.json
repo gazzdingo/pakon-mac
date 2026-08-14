@@ -1,7 +1,7 @@
 {
   "unit": "Kodak Pakon F-135 Plus, owner's unit (U34 repaired 2026-08-06)",
   "captured": "2026-08-07",
-  "note": "TEST OVERRIDE, 2026-08-13. Same CCD dark/gain calibration as calibration/README.json (afe_gains, afe_offsets, dark_source, bright_source unchanged) -- only levels_R_G_B_Ir and on_counts_R_G_B are replaced, with docs/59-lamp-sequence-captured.md's real vendor with-film capture (step 100, the DutyCycle set) off this same unit's own wire. Testing whether the washed-out-shadows symptom (docs/74) is caused by scanning at a fraction of real vendor lamp duty rather than a software tone-chain bug. Not for production use -- validate, then either promote or discard.",
+  "note": "TEST OVERRIDE, 2026-08-13/14. levels_R_G_B_Ir and on_counts_R_G_B are docs/59-lamp-sequence-captured.md's real vendor with-film capture (step 100, the DutyCycle set) off this same unit's own wire -- this is the SCANNING duty, applied once film sensors report film present. flat_field_on_counts_R_G_B is the OPEN-GATE duty the lamp now runs at before that (pakon_scan.lamp_switch_to_scan_duty, docs/59's step-82-to-100 switch), taken from calibration/README.json's own 'vendor faithful' recalibration (build_calibration.py, 2026-08-12) -- measured zero-clipped on this exact unit, fresher than docs/59's own registry-derived open-gate figure since this unit's LEDs have aged since the vendor's stored numbers were current. afe_offsets are freshly re-measured by calib_wizard.py's black-level search on this tree (settled black level [1256,1373,1438] at these offsets, at the same base16/integration4093), superseding the stale -18/-26/-20 that predate the AD9826 sign-magnitude fix (pakon_commands.afe_offset_word, commit a193f35). dark_source/bright_source below are the OLD calibration's scalars, not yet replaced -- the real per-pixel dark_2000x3/gain_2000x3 tables for this exposure are being built fresh via build_calibration.py, not by editing these summary numbers. Not for production use -- validate, then either promote or discard.",
   "config": {
     "dpi_base": "DpiBase16_35",
     "integration_0x82_idx6": 4093,
@@ -18,15 +18,20 @@
       938,
       804
     ],
+    "flat_field_on_counts_R_G_B": [
+      462,
+      231,
+      98
+    ],
     "afe_gains": [
       13,
       13,
       13
     ],
     "afe_offsets": [
-      -18,
-      -26,
-      -20
+      0,
+      -5,
+      3
     ],
     "fpga_ctrl": "0x0061",
     "pixel_offset": 32,

@@ -1371,6 +1371,228 @@ stages (§11-12) become the clear priority again. If either fires, that
 confirms real, if not-yet-fully-mapped, CN-reachability — worth
 knowing regardless of which way it resolves.
 
+## 19 — The verification harness's own blind spot: every golden test
+feeds a synthetic, guaranteed-empty scene-context, never one produced
+by real upstream execution.
+
+Audited the harness itself, not another subsystem hypothesis — prompted
+by the pattern every prior section reinforces: nine-plus individually
+"verified bit-exact" subsystems, still a washed-out composite. §11
+already established that the real DLL calls `balanceAreaImage`,
+`analyzeArea`, `analyzeFalloff`, and `analyzeAutoTone` with the
+identical shared `[ebp+0xc]` holder argument. This section asked
+whether any golden test has ever fed `analyzeAutoTone` the holder state
+those earlier stages would really leave behind.
+
+None has. `pakon_dra_golden.py:349-361`'s `build_empty_scene_context`
+hand-builds a fresh, guaranteed-empty red-black tree immediately before
+the call; `pakon_autotone_assembled_golden.py:279-289` reuses that same
+empty context for both `dra` and `contrast`; `pakon_autotone_shell_
+golden.py:34-41` replaces the capability-set lookup itself (the real
+`0x10020a40`→`0x10028f70` `std::map` walk) with a plain Python dict "so
+as not to test MSVCP71"; production's own callsite
+(`pakon_ansel.py:491`) passes `holder=None`. Input realism and
+comparison scope were separately checked and are not the gap — §17
+already re-ran the assembled chain on real 48×48/400×400 pixel crops,
+diffing full arrays (`ToneScaleLut`, `LuminanceHist`, `EdgeHist`,
+`DraLut`, `OutToneLut`) element-for-element, with FPCW pinned to
+`0x027F`. The gap is specifically that every test's starting *state* is
+synthetic, never real.
+
+This raised the obvious next question, closed in §22 below: does that
+synthetic-vs-real gap actually reach `analyzeAutoTone`'s own verified
+arithmetic, or is it a real methodological gap that happens not to
+matter for this specific defect?
+
+## 20 — Three more hypotheses closed: `contrast.acquire()`'s fallback,
+`pakon_autotone.py`'s own internals, and `scene_type`'s default.
+
+**`contrast.acquire()`'s fallback (dead end).** Its bare-constructor
+fallback (`pakon_contrast.py:1136-1159`, `pakon_autotone.py:1245-1248`)
+never fires on the real F-135 CN-Enhanced path: `real_auto_tone()`
+(`pakon_ansel.py:442-443,460`) always loads the shipped
+`contrast-CNEnhanced.dpi` first, inside `_RealAutoTone.__init__`, before
+`contrast_acquire` ever runs — confirmed by grep as the only non-test
+caller of `analyze_auto_tone` in the repo. Diffed default vs. shipped
+params anyway: identical except `bConstrainSlope` (False vs. shipped
+True), a bounded LUT-shape effect near the 1550 pivot, not a global
+additive shift, and moot since production never reaches the default.
+
+**`pakon_autotone.py`'s own internals (dead end).** Full 1631-line
+re-read found only two stale comments, both with zero runtime effect
+because the file imports its `*_PORTED` flags live rather than
+restating them (`DRA_ANALYZE_PORTED`'s narration text is Phase-2b-era;
+the live imported value from `pakon_dra.py:355` is `True`, consistent
+with §17's bit-exact chain run). No uncited constants, no live-path
+fallback, nothing contradicting `docs/66`'s verified passes.
+
+**`scene_type`'s default of 0 (dead end, closed twice).** `docs/66`
+Track 2 (lines ~1974-2033) already showed, by disassembly, that every
+alternative to `0` is independently ruled out by the real DLL's own
+control flow: `scene_type==7` (`0x100699e7`) is intercepted one call
+site *before* `analyzeAutoTone` and routed to a different, unported
+function (`analyzeAsea`, `0x100fb080`) entirely — the real DLL never
+runs the six-subsystem chain for a `7` frame at all; `scene_type==1`
+nulls the tone object at the epilogue (`0x100fcb29`), contradicted by
+every real frame's measured non-identity `dra` compression;
+`scene_type∈{3..6}` collapses back to `0` inside `analyzeAutoTone`
+itself whenever `elmo_occured` is true (`pakon_autotone.py:1521-1522`).
+`scene_type` does gate real contrast math as suspected — confirmed via
+`SLOPE_BAND_BY_SCENE_TYPE` (`pakon_contrast.py:783`) — but by
+elimination `0` is the only value consistent with real DLL control
+flow. Closed a second time empirically: swept `real_auto_tone()`'s
+`scene_type` argument 0-7 on a real captured frame (`gold400.bin`
+frame 1). Shadow point moved at most ~14 sRGB codes across every
+reachable value — roughly 5-7% of the ~206-code defect — and where it
+moved, it moved toward *more* washed out (`scene_type=1,2,3` push the
+median toward outright clipping), never less.
+
+## 21 — `profile_key`'s silent ICC fallback: real architectural smell,
+zero effect (dead end).
+
+Flagged by the pipeline audit as an uncited fallback feeding the final
+ICC transform. Traced fully: under normal conditions it never reaches
+the fallback at all (`profile.map`'s first rule matches the default
+`SceneContext.cap_name` directly, `pakon_ansel_maps.py:485`) — and even
+if it did, `profile_key`/`profile_dpi` is never consumed by the actual
+transform in either engine. `AnselEngine.to_srgb`
+(`pakon_ansel.py:1067-1084`) and the Go engine
+(`tools/ansel/pipeline/engine.go:106-107`) both hardcode the same
+profile pair directly (`Rpd2Pcs_HR200_QS_v5s10.pf` /`Srgb_v2.pf`); the
+whole `profile.map` selection machinery only feeds a diagnostic print
+line. Empirical upper bound in case the hardcoding were ever wrong:
+forcing the genuinely different `color_dir/rpd.pf`+`srgb.pf` pair
+instead moved output by 1-3 sRGB codes max, on a real rendered frame —
+nowhere near the defect. Real cleanup item (dead code computed and
+logged but never wired to what it's named after), not a cause.
+
+## 22 — The holder-state gap from §19, closed: no live channel exists
+for it to reach `analyzeAutoTone`'s output. Also corrects a real error
+in §11.
+
+Attempting §19's proposed next step (Unicorn-execute the real per-scene
+driver chain, capture the real resulting holder state, feed it into
+the already-verified assembled harness) surfaced a **direct correction
+to §11**: fresh disassembly of `balanceAreaImage` (`0x10102b20`, same
+MD5-verified DLL every prior pass cites) shows its `find("area")` call
+target (`0x10020a40`) is actually `CAP_FIND_THUNK` — the
+capability-*set* lookup `analyzeAutoTone` itself uses for `"cna"`/
+`"dra"`/etc — not `AnsSceneContext::find` (a different address,
+`0x10022a40`). §11 conflated the two and additionally had the branch
+polarity backwards: on a successful find (the normal case for `"area"`,
+a real, always-declared capability), execution falls into real work at
+`0x10102c68`; only genuine absence throws. §11 believed the reverse and
+so treated real work as an unreachable dead branch.
+
+Rather than reconstruct the driver's own ~15+-field `this` layout by
+guesswork to run the whole chain — judged too risky given this
+project's own no-guessing standard, and doc-flagged as citras-driver
+scale effort — the question was answered more directly: instrumented
+the existing, **unmodified** `pakon_autotone_assembled_golden.py`
+harness (real DLL code, all six real subsystem Impls, nothing stubbed
+at the subsystem level) with `UC_HOOK_MEM_READ` watches on `holder` and
+`ctx`, running the real DLL's `analyzeAutoTone` end to end. Result:
+`holder` (0x100 bytes) — only the refcount at `+0x4` is ever read.
+`ctx` (0x6600 bytes) — only `+0x44`, `+0x4bc`, `+0x64d0` are ever read,
+exactly the three fields already documented in `pakon_autotone.py`,
+nothing else.
+
+Combined with two already-verified facts already in this project's own
+code: `pakon_autotone.py`'s `CAPABILITIES` tuple (`:503-526`) shows
+`analyzeAutoTone` only ever looks up `"cna"/"dra"/"toneHelper"/
+"contrast"/"ast"/"pfd"/"citras"` by name — never `"area"/"attributes"/
+"falloff"/"fugc"` — so even a fully real capability-set graph couldn't
+surface those four stages' results to the six tone subsystems by name;
+and `pakon_toneHelper.py:92-112` already proves the one scalar that
+*could* carry external state (`ctx+0x4bc`, "EXPOSURE") is structurally
+inert on any real photographic frame, since the decision tree's root
+split depends only on `LUM_STDDEV`, which always exceeds threshold on
+real content, fixing `toneHelperValue=2` regardless of EXPOSURE.
+
+**Verdict: dead end, provably, not just unconfirmed.** There is no live
+channel left by which the four unreplicated stages could reach
+`analyzeAutoTone`'s verified output. One thread remains genuinely open,
+not closed either way: whether `balanceAreaImage` mutates the shared
+*pixel buffer* (`arg2`) directly, in place, before `cna` reads it —
+consistent with the function's own name, and not ruled out by the
+holder/ctx read-watch since a direct buffer mutation wouldn't touch
+either. Partial read of its real-work path found it operating on a
+freshly-allocated 0x3000-byte scratch buffer rather than obviously the
+caller's own pixel buffer (arguing against in-place mutation), but
+three further call targets (`0x100a8730`, `0x100d9340`, `0x100dc390`)
+and a second `find("fugc")` lookup inside the same function were not
+traced far enough to close this either way.
+
+## 23 — The actual answer: the verified port was never wired into the
+engine the app runs. Production still renders through an explicitly
+labeled stand-in.
+
+Every section above — this doc's nineteen-plus and `docs/66`'s eleven —
+verifies `tools/ansel/python-pipeline/`'s Python port of
+`analyzeAutoTone` against the real DLL under Unicorn emulation. That
+Python code is not what the shipped app renders through. The app's
+real render path is `tools/ansel/pipeline/*.go` (`tools/pakon_render.py`'s
+own `colour_engine()` defaults to `"go"`; the Python path is reached
+only behind `PAKON_COLOUR_ENGINE=python` and its own docstring calls it
+`DEPRECATED`). And in the Go engine, `analyzeAutoTone` was never
+wired in at all:
+
+```go
+// main.go:566-569
+shasted := fugcOut
+if model == "f135" {
+    shasted = ShastaToneRpd(fugcOut, sel.ShastaParams())
+}
+```
+
+`ShastaToneRpd` (`shasta.go:193-282`) is a placeholder its own extensive
+header comment names as such: a per-channel two-anchor linear stretch
+(1st-percentile → black, median → mid-grey, straight line between,
+clamped) — "every constant comes from `shasta-rpd.dpi`, but the SHAPE
+is not the vendor's... None of that is reproduced here," referring to
+the real Shasta curve's five measured statistics, per-knot
+aggressiveness factors, exponential slope limits, and white-point
+compression. It stands in for the real negative tone stage
+(`ColorNegativePath::analyzeAutoTone`, `0x100fb730` — the same address
+this whole doc has been verifying), not for `AnsShastaCapabilityImpl`
+itself (Shasta never runs for a colour negative at all — see
+`shasta.go:21-45`'s own citation of the path-selection jump table at
+`0x10002270`). The app logs this plainly on every real F-135 render:
+`"PROVENANCE: F135InvertPorted=%v AutoTonePorted=%v
+ShastaAnalyzePorted=%v — the inversion and the tone scale are
+stand-ins, not vendor call sites"` (`main.go:662-665`), with
+`AutoTonePorted` hardcoded `false` (`shasta.go:155`).
+
+Why it was left unwired, in the code's own words (`shasta.go:81-89`):
+"a half-ported chain would put a worse transform on the render path
+than the stand-in does, so nothing is wired in until the whole chain
+is bit-exact." That is exactly the bar this doc and `docs/66` have
+been working toward, stage by stage, all along — and §22 above is the
+closest anyone has come to declaring it met (the six subsystems
+verified bit-exact; the one remaining thread, `balanceAreaImage`'s
+possible in-place buffer mutation, unclosed but structurally minor
+next to the six-subsystem chain itself).
+
+**This is sufficient on its own to explain "no real blacks," independent
+of every subsystem-level hypothesis this doc and `docs/66` have tested.**
+`ShastaToneRpd`'s crude two-point-per-channel percentile stretch has no
+real highlight/shadow compression; on a typical frame whose darkest 1%
+isn't already near-zero, the black anchor lands well above true black
+and the whole image gets linearly stretched from there — exactly the
+washed-out, no-real-blacks shape this entire investigation has been
+chasing, and it requires no bug in any of the meticulously-verified
+subsystems above, because none of them are in the app's actual render
+path. The commit that produced this doc's own six-subsystem
+verification (`77e2a71`, "Finish the autoTone port") is entirely
+`tools/ansel/python-pipeline/` — `main.go`'s `ShastaToneRpd` call is
+byte-for-byte unchanged by it.
+
+**Next step, concrete and unblocked by any further RE:** port the
+verified `analyzeAutoTone` chain into Go, replacing the `ShastaToneRpd`
+call at `main.go:568`, the same way the ICC transform, AFE gain, and
+falloff stages already made that same Python-verify-then-Go-port
+crossing earlier in this project's history.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is

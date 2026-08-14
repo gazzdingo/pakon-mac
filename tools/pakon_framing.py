@@ -456,7 +456,20 @@ def frame_cascade(trace: np.ndarray,
     # "Look..." rather than "Place...": they are searches near a predicted
     # position, not blind extrapolation. Blind extrapolation is phase 5, and
     # the vendor gives it a different name and a worse warning for a reason.
-    all_runs = [(a, b) for a, b in _runs(ones) if b - a >= 0.4 * target]
+    #
+    # The cutoff only needs to separate real (if short) frame content from
+    # binarisation noise -- it is not the phase-1 acceptance test, so it must
+    # not require anything close to a full frame. It used to (0.4 * target,
+    # i.e. needing 40% of a frame before a run was even considered). On a real
+    # short-strip capture (vendor-duty-fixed-offset-20260813-225308.bin) that
+    # excluded a genuine 801-line frame (37.7% of a 2123-line target) sitting
+    # right next to nothing but sensor-noise blips topping out at 225 lines
+    # (10.6%) -- both figures measured on that capture. Phase 2 then had no
+    # real candidate to snap to and filled the gap by blind interpolation
+    # instead, which does not know the real run is there and guessed a
+    # position 366 lines off it. 0.15 keeps a wide margin over the observed
+    # noise ceiling while staying well under any plausible partial frame.
+    all_runs = [(a, b) for a, b in _runs(ones) if b - a >= 0.15 * target]
     run_starts = np.array([a for a, _ in all_runs], dtype=np.float64)
 
     def _overlap(a: Frame, others: list[Frame]) -> int:
@@ -477,8 +490,22 @@ def frame_cascade(trace: np.ndarray,
                 s, e = all_runs[i]
                 if not (lo_lim <= e - s <= hi_lim):
                     e = s + width
+                # Padding a too-short run out to nominal width extends past
+                # what was actually detected, and can run into a frame placed
+                # earlier in this same cascade pass -- observed on the capture
+                # above, where a genuine 801-line run padded out to 2123 lines
+                # reached 593 lines into the next NICE frame. Clip to that
+                # neighbour instead of discarding the whole candidate: the
+                # *start* s is still real, detected evidence, and is worth
+                # keeping even when the padded end is not. This is the same
+                # rule the final overlap trim below applies roll-wide; doing
+                # it here too means a real start does not lose to a blind
+                # guess just because its pad collided with a neighbour.
+                for o in placed:
+                    if s < o.start < e:
+                        e = o.start
                 cand = Frame(int(s), int(e), phase)
-                if _overlap(cand, placed) <= 0.1 * width:
+                if cand.lines > 0 and _overlap(cand, placed) <= 0.1 * width:
                     return cand
         return raw
 
@@ -855,8 +882,20 @@ def main(argv: list[str] | None = None) -> int:
                                  pitch_lines=args.pitch_lines)
 
     if args.json:
+        def _json_default(o):
+            if isinstance(o, np.integer):
+                return int(o)
+            if isinstance(o, np.floating):
+                return float(o)
+            if isinstance(o, np.bool_):
+                return bool(o)
+            if isinstance(o, np.ndarray):
+                return o.tolist()
+            raise TypeError(f"Object of type {o.__class__.__name__} "
+                            f"is not JSON serializable")
         print(json.dumps({"report": report,
-                          "frames": [f.as_dict() for f in frames]}, indent=2))
+                          "frames": [f.as_dict() for f in frames]},
+                         indent=2, default=_json_default))
         return 0
 
     print(f"{args.capture}: {strip.shape[0]} lines, "

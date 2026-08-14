@@ -658,7 +658,18 @@ class Wizard:
         out = self.workdir / f"{label}.bin"
         argv = [sys.executable, str(HERE / "pakon_scan.py"), "run", str(out),
                 "--cal-dir", str(d), "--base", str(self.base),
-                "--max-bytes", str(int(max_bytes)), "--json", "--force"]
+                "--max-bytes", str(int(max_bytes)), "--json", "--force",
+                # None of this wizard's captures need film to move: black
+                # level, dark/bright references and duty-search probes all
+                # measure a stationary field of view, the same way the real
+                # FN_bCalibrateFindLedDutyCycle search does (confirmed by
+                # disassembly earlier tonight -- it re-measures the same CCD
+                # line, not a moving strip). Known tradeoff: the film-in-gate
+                # check on this same capture (see this method's own docstring
+                # point 2) was originally framed as running "with the
+                # transport actually moving" -- with the motor off, its DX
+                # polling still runs, just against a stationary gate.
+                "--no-motor"]
         if not lamp:
             argv.append("--no-lamp")
         if self.dry_run:

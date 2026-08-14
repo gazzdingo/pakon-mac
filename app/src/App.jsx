@@ -243,11 +243,13 @@ export function machineRows(boot, roll, hw, scanJob, calState) {
               ? 'simulated'
               : present
                 ? `0f05:f135${age}`
-                : hw?.state === 'needs_firmware'
-                  ? 'no firmware'
-                  : hw?.state === 'error'
-                    ? 'not answering'
-                    : 'absent',
+                : hw?.state === 'loading_firmware'
+                  ? 'loading firmware…'
+                  : hw?.state === 'needs_firmware'
+                    ? 'no firmware'
+                    : hw?.state === 'error'
+                      ? 'not answering'
+                      : 'absent',
         scanning ? 'good' : lost ? 'warn' : sim ? 'warn' : present ? 'good' : hw?.present ? 'warn' : 'na',
         <>
           A scan runs in its own process and owns the handle for its duration, so
@@ -562,12 +564,6 @@ function OpenDialog({ open, onClose, onOpened, captures }) {
       <div className="sheet">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
           <span className="title">Open capture</span>
-          <span className="sp" />
-          <Info side="left">
-            The capture stays where it is. A render cache is built in a temporary workspace and
-            deleted on quit; your adjustments live outside it and re-apply when the same capture is
-            reopened.
-          </Info>
         </div>
 
         <div className="field" style={{ marginBottom: 12 }}>
@@ -596,86 +592,72 @@ function OpenDialog({ open, onClose, onOpened, captures }) {
         </div>
 
         {captures?.length ? (
-          <div className="rows" style={{ marginBottom: 12, maxHeight: 150, overflowY: 'auto' }}>
+          <div className="rows" style={{ marginBottom: 16, maxHeight: 180, overflowY: 'auto' }}>
             {captures.map((c) => (
               <button
                 key={c.path}
                 type="button"
                 className={path === c.path ? 'on' : ''}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px' }}
                 onClick={() => {
                   setPath(c.path);
                   if (!name) setName(c.saved_name || c.name.replace(/\.bin$/, ''));
-                  /* Seed from what the scan wrote down. This is the payoff of
-                     recording the film selection in the capture's sidecar:
-                     nobody has to remember, and nothing has to be guessed. */
                   if (c.recorded_dx) setDx(c.recorded_dx);
                   if (c.recorded_film_path) setFilmPath(c.recorded_film_path);
                 }}
               >
-                <span className="num" style={{ flex: 1, fontSize: 12 }}>
+                <span className="num" style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 8 }}>
                   {c.name}
                 </span>
-                {/* What this capture already says it is, and who said so.
-                    `dx_read` has been computed by list_captures all along
-                    with no consumer, so a DX the board measured looked exactly
-                    like one somebody typed — which is to say, like nothing. */}
-                {c.recorded_dx || c.recorded_film_path ? (
-                  <Chip tone={c.dx_source === 'board' ? 'ok' : 'info'}>
-                    {c.recorded_dx || c.recorded_film_path}
-                    {c.dx_source === 'board'
-                      ? ' · read'
-                      : c.dx_source === 'typed'
-                        ? ' · typed'
-                        : ''}
-                  </Chip>
-                ) : c.dx_read ? (
-                  <Chip tone="ok">{c.dx_read} · read</Chip>
-                ) : null}
-                {c.has_sidecar ? <Chip tone="info">{c.adjusted} saved</Chip> : null}
-                <span className="num" style={{ fontSize: 11, color: 'var(--faint)' }}>
-                  {api.fmtBytes(c.bytes)}
-                </span>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  {c.recorded_dx || c.recorded_film_path ? (
+                    <Chip tone={c.dx_source === 'board' ? 'ok' : 'info'}>
+                      {c.recorded_dx || c.recorded_film_path}
+                      {c.dx_source === 'board' ? ' · read' : c.dx_source === 'typed' ? ' · typed' : ''}
+                    </Chip>
+                  ) : c.dx_read ? (
+                    <Chip tone="ok">{c.dx_read} · read</Chip>
+                  ) : null}
+                  {c.has_sidecar ? <Chip tone="info">{c.adjusted} saved</Chip> : null}
+                  <span className="num" style={{ fontSize: 12, color: 'var(--faint)', marginLeft: 8, width: 64, textAlign: 'right' }}>
+                    {api.fmtBytes(c.bytes)}
+                  </span>
+                </div>
               </button>
             ))}
           </div>
         ) : null}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-          <div className="field">
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+          <div className="field" style={{ flex: 1 }}>
             <span className="lbl">Roll name</span>
             <input className="inp" value={name} onChange={(e) => setName(e.target.value)} placeholder="2026-08-07 A" />
           </div>
-          <div className="field">
-            <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              DX
-              <Info side="left">
-                Optional. Captures carry no DX packets and{' '}
-                <span className="num">tools/dx_decode.py</span> has never been validated against a
-                real roll, so this is a typed lookup, not a reading.
-              </Info>
-            </span>
+          <div className="field" style={{ flex: 1 }}>
+            <span className="lbl">DX</span>
             <input className="inp" value={dx} onChange={(e) => setDx(e.target.value)} placeholder="78-13" spellCheck={false} />
           </div>
         </div>
 
         {dx.trim() ? (
-          <div className="rows" style={{ marginBottom: 12, padding: '8px 11px', fontSize: 12 }}>
-            {film ? (
-              <>
-                <b>{film.name}</b>
-                <span style={{ color: 'var(--faint)' }}>
-                  {' '}
-                  · {film.manufacturer} · {film.path}
-                  {film.iso ? ` · ISO ${film.iso}` : ''}
+          <div className="rows" style={{ marginBottom: 16 }}>
+            <div style={{ padding: '10px 12px', fontSize: 13, background: film ? 'var(--bg)' : 'var(--danger-flat)', borderRadius: 'var(--r-sm)' }}>
+              {film ? (
+                <>
+                  <b>{film.name}</b>
+                  <span style={{ color: 'var(--faint)' }}>
+                    {' '}
+                    · {film.manufacturer} · {film.path}
+                    {film.iso ? ` · ISO ${film.iso}` : ''}
+                  </span>
+                </>
+              ) : (
+                <span style={{ color: 'var(--danger-ink)' }}>
+                  No matching film stock found.
                 </span>
-              </>
-            ) : (
-              <span style={{ color: 'var(--danger-ink)' }}>
-                No stock matches that DX — Open is refused until it resolves or is
-                cleared. It used to be swallowed, taking the film path with it and
-                landing on a colour-negative default nobody chose.
-              </span>
-            )}
+              )}
+            </div>
           </div>
         ) : (
           <div className="field" style={{ marginBottom: 12 }}>
@@ -717,21 +699,17 @@ function OpenDialog({ open, onClose, onOpened, captures }) {
         ) : null}
 
         {busy ? (
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 5 }}>
               <Spinner>{job.phase}</Spinner>
               <span className="sp" />
-              <span className="num" style={{ fontSize: 11, color: 'var(--faint)' }}>
+              <span className="num" style={{ fontSize: 12, color: 'var(--faint)' }}>
                 {job.message}
               </span>
             </div>
-            <div className="bar warnfill">
+            <div className="bar fill">
               <i style={{ width: `${(job.progress || 0) * 100}%` }} />
             </div>
-            <p className="quiet" style={{ marginTop: 6 }}>
-              A 694 MB capture takes about 26 s: decoding is 6 s and the per-frame scene balance is
-              the rest.
-            </p>
           </div>
         ) : null}
 

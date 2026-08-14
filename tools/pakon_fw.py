@@ -1,5 +1,42 @@
 #!/usr/bin/env python3
-"""Download EZ-USB firmware into a Pakon scanner's USB bridge, on macOS.
+"""SUPERSEDED -- do not use. See tools/pakon_load.py instead.
+
+This is an older firmware loader, not called by anything in the active
+toolchain (verified: no import of this module and no reference to
+"pakon_fw.py" anywhere else in tools/, app/, or the app's own source --
+only a stale copy under app/release/.../Resources/tools/, a packaged build
+artifact, and a docstring mention in pakon_hex.py). It is left in the repo
+for reference only and is UNSAFE to run as-is:
+
+Its --auto dispatch (the ``UNLOADED`` table above) sends whatever file named
+``PknInit.hex`` it finds under ``--fw-dir`` to ANY bare unloaded device
+(Cypress FX2 0x04B4:0x8613, Anchor EZ-USB 0x0547:0x1002, or the dev board
+0x4705:0x0211) unconditionally, by filename only, with no per-model
+discrimination for those identities and no rev check. That is dangerous
+because ``PknInit.hex`` is NOT one file across the vendor's package tree:
+the vendor's ``F235`` package directory ships a ``PknInit.hex`` carrying the
+F-235 descriptor (md5 ``0814cd54dfb20d8303d4188ca979a4a9``), while the
+``F135``/``F335`` package directories ship a *different* ``PknInit.hex``
+(md5 ``e33ce232db902bffb77e2c1d73f97f3c``) -- verified this session by
+hashing ``vendor/FX35/FX35Package/{F135,F235,F335}/PknInit.hex``. Whichever
+one this script happens to find first under ``--fw-dir`` gets sent to
+whatever bare device is attached, regardless of which one that device
+actually needs. Loading the wrong-model image onto a bare device is exactly
+the failure ``tools/pakon_load.py`` documents as a real past incident in
+its own module docstring: "loaded *F-235* firmware onto an F-135. The
+scanner lit a fault LED." ``pakon_load.py`` replaced this script
+specifically to refuse-to-guess in that situation (it dispatches off the
+verified USB identity / personality query, not a bare filename) instead of
+guessing.
+
+Do not resurrect this script's --auto path without first reconciling the
+UNLOADED table's PknInit.hex entries against pakon_load.py's verified
+FIRMWARE_BY_PERSONALITY table and the model-specific PknInit.hex/Pakon*.hex
+files.
+
+---- original docstring below ----
+
+Download EZ-USB firmware into a Pakon scanner's USB bridge, on macOS.
 
 Replaces the Windows F235Ldr.sys ("ezusb") kernel driver with userspace libusb.
 

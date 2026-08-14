@@ -16,6 +16,7 @@ stand-in.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -622,6 +623,518 @@ def test_simulate_never_touches_the_real_store() -> None:
         shutil.rmtree(real, ignore_errors=True)
 
 
+def _page_with_serial(serial: int) -> bytes:
+    """The owner's real page with a different serial written into 0x0F.
+
+    A synthetic second unit, used only inside temporary stores. The matrices
+    stay valid so the page still passes the structural checks -- what is being
+    tested is the index and the resolution, not the decode.
+    """
+    b = bytearray(GOOD52)
+    b[cv.SERIAL_OFF:cv.SERIAL_OFF + 4] = int(serial).to_bytes(4, "little")
+    return bytes(b)
+
+
+def test_serial_index() -> None:
+    section("reads are grouped by the scanner they came from")
+    import calib_resolve as crs
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        st = cs.CalibrationStore(tmp)
+
+        # Nothing stored: a prompt, never an automatic read.
+        r = crs.resolve(st)
+        check(r["state"] == crs.NO_CALIBRATION and r["action"] == crs.ACTION_READ,
+              "an empty store asks to read rather than reading", r["state"])
+        check(r["may_auto_read"] is False and r["device_read_performed"] is False,
+              "and says in the report that it did not and may not read")
+
+        # A read that does not parse must not invent a scanner.
+        st.save_read({0x52: b"\xff" * 256}, source="bad cycle",
+                     stamp="2026-08-08T09-00-00Z")
+        r = crs.resolve(st)
+        check(r["state"] == crs.UNUSABLE and r["action"] == crs.ACTION_ATTENTION,
+              "a store of only-degraded reads reports it and does not re-read",
+              r["state"])
+        check(st.unit_index()["serials"] == [],
+              "a degraded page's serial field is never believed")
+        check(len(r["unattributed"]) == 1,
+              "but the unusable read is still listed, not hidden")
+
+        # One unit: resolves with no choice to make.
+        st.save_read({0x51: ERASED51, 0x52: GOOD52}, source="cycle A",
+                     stamp="2026-08-08T10-00-00Z")
+        r = crs.resolve(st)
+        check(r["state"] == crs.READY and r["serial"] == cv.OWNER_SERIAL,
+              "one stored unit resolves straight to that unit", str(r["serial"]))
+        check(r["stamp"] == "2026-08-08T10-00-00Z" and r["action"] == crs.ACTION_NONE,
+              "and needs no action at all")
+
+        # A later degraded read of the SAME unit must not displace the good one.
+        st.save_read({0x52: b"\xff" * 256}, source="cycle A second read",
+                     stamp="2026-08-08T10-30-00Z")
+        r = crs.resolve(st)
+        check(r["stamp"] == "2026-08-08T10-00-00Z",
+              "a later degraded read does not displace the good one")
+        check(any("degraded" in w or "do not pass" in w or "structural" in w
+                  for w in r["warnings"]),
+              "and the degraded read is mentioned rather than silently ignored",
+              str(r["warnings"]))
+
+        # Two units: the one case where guessing is the wrong answer.
+        st.save_read({0x52: _page_with_serial(20001)}, source="cycle B",
+                     stamp="2026-08-08T11-00-00Z")
+        r = crs.resolve(st)
+        check(r["state"] == crs.AMBIGUOUS and r["action"] == crs.ACTION_CHOOSE,
+              "two stored scanners produce a question, not a guess", r["state"])
+        check(r["serial"] is None and r["stamp"] is None,
+              "and nothing is applied while the question is open")
+        check(sorted(r["serials"]) == sorted([cv.OWNER_SERIAL, 20001]),
+              "both scanners are offered", str(r["serials"]))
+
+        # Answering it sticks, and stays honest about what it is.
+        st.select_unit(20001)
+        r = crs.resolve(st)
+        check(r["state"] == crs.READY and r["serial"] == 20001,
+              "the chosen scanner is used")
+        check(any("chosen, not because it was detected" in w
+                  for w in r["warnings"]),
+              "and the report says the identity was chosen, not detected",
+              str(r["warnings"]))
+        st.select_unit(None)
+        check(crs.resolve(st)["state"] == crs.AMBIGUOUS,
+              "clearing the choice returns to asking")
+
+        # A serial we have never read is an explicit prompt, not a fallback.
+        r = crs.resolve(st, serial_hint=99999)
+        check(r["state"] == crs.UNKNOWN_UNIT and r["action"] == crs.ACTION_READ,
+              "an unknown scanner prompts to read", r["state"])
+        check(r["stamp"] is None,
+              "CRUCIALLY: an unknown scanner is not given another unit's read")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_profile_sources() -> None:
+    section("a profile never passes off one unit's numbers as another's")
+    import calib_profile as cp
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        st = cs.CalibrationStore(tmp)
+        st.save_read({0x52: GOOD52}, source="cycle A",
+                     stamp="2026-08-08T10-00-00Z")
+
+        p = cp.profile(st)
+        check(p.serial == cv.OWNER_SERIAL and p.matrix_source == cp.FROM_DEVICE,
+              "the colour matrix comes from this scanner's own page")
+        d = [p.neg_matrix[0], p.neg_matrix[11], p.neg_matrix[22]]
+        check(all(0.05 < v < 1.0 for v in d),
+              "and decodes to the negative scale triple",
+              "  ".join(f"{v:.6f}" for v in d))
+        check(all(abs(a - b) < 1e-3
+                  for a, b in zip(p.pedestals, cv.OWNER_PEDESTALS)),
+              "pedestals match the values verified against the owner's page",
+              str(p.pedestals))
+        check(p.pos_truncated_from == 24,
+              "the reversal matrix is reported truncated at 24/30, not padded "
+              "silently", str(p.pos_truncated_from))
+        check(p.config_source == cp.FROM_REFERENCE,
+              "the owner's own unit takes the repo reference as its own",
+              p.config_source)
+
+        # A DIFFERENT scanner must never be handed the reference as its own.
+        st2 = cs.CalibrationStore(Path(tempfile.mkdtemp()))
+        try:
+            st2.save_read({0x52: _page_with_serial(20001)}, source="cycle B",
+                          stamp="2026-08-08T10-00-00Z")
+            q = cp.profile(st2)
+            check(q.serial == 20001 and q.matrix_source == cp.FROM_DEVICE,
+                  "a second scanner gets ITS OWN colour matrix")
+            check(q.config_source == cp.FROM_BORROWED,
+                  "and its exposure is labelled BORROWED, not calibrated",
+                  q.config_source)
+            check(q.is_this_units_own_exposure is False,
+                  "is_this_units_own_exposure is false for borrowed values")
+            check(any("BORROWED" in w for w in q.warnings),
+                  "with a warning a UI can put in front of a person")
+
+            # Attaching that unit's own values makes it its own again.
+            cp.adopt_reference(st2, 20001)
+            q2 = cp.profile(st2)
+            check(q2.config_source == cp.FROM_UNIT_OVERLAY,
+                  "an adopted overlay becomes the unit's own source",
+                  q2.config_source)
+            check(q2.config == q.config,
+                  "and carries the same values it was given")
+            check(len(st2.overlays(20001)) == 1, "one overlay is recorded")
+            cp.adopt_reference(st2, 20001)
+            check(len(st2.overlays(20001)) == 2,
+                  "a second overlay is appended, never replacing the first")
+        finally:
+            shutil.rmtree(st2.root, ignore_errors=True)
+
+        # No reference file at all: refuse to invent one.
+        r = cp.profile(st, reference=tmp / "does-not-exist.json")
+        check(r.config_source == cp.FROM_NOTHING and not r.config,
+              "with no reference available the config is empty, not guessed",
+              r.config_source)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_lookup_cannot_reach_a_device() -> None:
+    section("the lookup path cannot reach a scanner, structurally")
+    import ast
+    import json
+    import subprocess
+
+    # Read the import statements themselves rather than grepping the text --
+    # these files DISCUSS calib_device at length in their docstrings, and a
+    # test that cannot tell an explanation from an import would either fail
+    # here or, worse, be silenced by deleting the explanation.
+    forbidden = {"usb", "calib_device", "pakon_load", "pakon_scan"}
+    for name in ("calib_resolve.py", "calib_profile.py"):
+        tree = ast.parse((HERE / name).read_text(), filename=name)
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        check(not (imported & forbidden),
+              f"{name} imports nothing that can open a device",
+              f"offending: {sorted(imported & forbidden)}")
+        check("Transport" not in {a.arg for fn in ast.walk(tree)
+                                  if isinstance(fn, ast.FunctionDef)
+                                  for a in fn.args.args},
+              f"{name} takes no transport argument anywhere")
+
+    # The strong form: import the lookup path in a clean interpreter, use it,
+    # and prove neither usb nor the device module was ever pulled in. A file
+    # that cannot name a transport cannot issue one.
+    prog = (
+        "import sys, json, tempfile, os;"
+        "sys.path.insert(0, %r);"
+        "import calib_profile as cp;"
+        "d = tempfile.mkdtemp();"
+        "p = cp.profile(d);"
+        "print(json.dumps({'usb': 'usb' in sys.modules,"
+        " 'dev': 'calib_device' in sys.modules,"
+        " 'state': p.state}))" % str(HERE))
+    proc = subprocess.run([sys.executable, "-c", prog], capture_output=True,
+                          text=True)
+    try:
+        got = json.loads(proc.stdout.strip().splitlines()[-1])
+    except Exception:                                       # noqa: BLE001
+        got = {"usb": True, "dev": True, "state": proc.stderr[:200]}
+    check(got["usb"] is False,
+          "resolving a profile never imports pyusb", str(got))
+    check(got["dev"] is False,
+          "resolving a profile never imports calib_device", str(got))
+    check(got["state"] == "no-calibration",
+          "and an empty store resolves to 'ask', with no device in reach",
+          str(got))
+
+
+def test_afe_offset_encoding() -> None:
+    """The bug that made a dark reference read all zeros. docs/72.
+
+    AD9826 offsets are 9-bit SIGN-MAGNITUDE with the sign in bit 8. This port
+    sent two's complement until 2026-08-12, so the vendor's Offset_R = -19 went
+    out as 0xFFED and the part read it as magnitude 237, sign set: it was asked
+    for -237. That drove the black level under the ADC's bottom code and a
+    33,226-line dark reference came back with every sample exactly 0.
+    """
+    import pakon_commands as pc
+
+    section("the AD9826 offset encoding (docs/72)")
+
+    # The exact table in docs/42-ccd-analog-front-end.md, derived from the
+    # binary; it is the ground truth this encoder has to match.
+    for value, want in ((-18, 0x112), (-26, 0x11A), (-20, 0x114)):
+        check(pc.afe_offset_word(value) == want,
+              f"offset {value} encodes to 0x{want:03X}",
+              f"got 0x{pc.afe_offset_word(value):03X}")
+
+    check(all(pc.afe_offset_value(pc.afe_offset_word(v)) == v
+              for v in range(-254, 256)),
+          "every representable offset round-trips")
+
+    # The failure itself, stated as a test so it cannot come back.
+    two_c = -19 & 0xFFFF
+    check(pc.afe_offset_value(two_c) == -237,
+          "two's complement -19 would have been read as -237",
+          f"got {pc.afe_offset_value(two_c)}")
+    check(pc.afe_offset_word(-19) != (two_c & 0x1FF),
+          "and the encoder does not produce that")
+
+    # The vendor's own asymmetry: clamp at the top, refuse at the bottom.
+    check(pc.afe_offset_word(300) == pc.afe_offset_word(255),
+          "values at or above +255 clamp, as the vendor's encoder does")
+    try:
+        pc.afe_offset_word(-255)
+        check(False, "-255 is refused rather than wrapped")
+    except ValueError:
+        check(True, "-255 is refused rather than wrapped")
+
+    src = (REPO / "tools/pakon_scan.py").read_text()
+    check("afe_offset_word" in src,
+          "pakon_scan.ccd_configure uses the encoder")
+    check("pc.adc_write(idx, int(o) & 0xFFFF)" not in src,
+          "and no longer sends two's complement to the offset registers")
+
+
+def test_dark_floor_refusal() -> None:
+    """A dark reference sitting on ADC code 0 must be refused, not built on."""
+    import numpy as np
+
+    import build_calibration as bcal
+
+    section("a black level clipped at zero is refused")
+
+    zeros = np.zeros((64, 2000, 3), dtype=np.uint16)
+    zeros[:, 0, 0] = 1              # the line-sync flag, and nothing else
+
+    class _Cap:
+        path = Path("synthetic-dark.bin")
+        planes = zeros
+        floor_stats = bcal.Capture.floor_stats
+        is_floored = bcal.Capture.is_floored
+
+        def channel_means(self):
+            return self.planes.astype(float).mean(axis=(0, 1))
+
+    c = _Cap()
+    check(c.is_floored(), "an all-zero dark reference is detected as floored")
+    try:
+        bcal.check_dark_floor(c)
+        check(False, "and check_dark_floor refuses it")
+    except bcal.Refused as e:
+        check("CLIPPED AT ZERO" in str(e), "and check_dark_floor refuses it")
+        check("solve-offset" in str(e),
+              "naming the tool that fixes it, not just the symptom")
+
+    good = np.full((64, 2000, 3), 1200, dtype=np.uint16)
+    good[:, 0, 0] |= 1
+    _Cap.planes = good
+    check(not _Cap().is_floored(),
+          "a healthy pedestal is not mistaken for a floored one")
+    check(bcal.check_dark_floor(_Cap()) == [], "and produces no warning")
+
+
+def test_vendor_target_is_a_maximum() -> None:
+    """docs/15: the vendor compares the MAXIMUM pixel of an averaged line."""
+    import numpy as np
+
+    import build_calibration as bcal
+
+    section("the 64000 target is a maximum, not a mean")
+
+    check(bcal.DEFAULT_METRIC == bcal.METRIC_MAX,
+          "the default metric is the vendor's max, not the mean")
+
+    prof = np.ones((2000, 3)) * 50000.0
+    prof[900:1100] = 55000.0        # a hot band, as PRNU produces
+
+    class _Cap:
+        path = Path("synthetic-bright.bin")
+        planes = prof[None, :, :].astype(np.uint16)
+        illuminated = bcal.Capture.illuminated
+        channel_levels = bcal.Capture.channel_levels
+        channel_maxima = bcal.Capture.channel_maxima
+        channel_metric = bcal.Capture.channel_metric
+
+        def pixel_mean(self):
+            return prof
+
+    c = _Cap()
+    lvl = float(c.channel_metric(bcal.METRIC_LEVEL)[0])
+    mx = float(c.channel_metric(bcal.METRIC_MAX)[0])
+    check(mx > lvl, "the max metric is above the level metric",
+          f"max {mx} level {lvl}")
+    check(abs(mx - 55000.0) < 1.0,
+          "and it is the maximum of the averaged line", f"{mx}")
+    check(64000.0 * (mx / lvl) > bcal.WIRE_MAX,
+          "aiming the MEAN at 64000 would push the brightest pixels past the "
+          "rail", f"{64000.0 * (mx / lvl):.0f} against {bcal.WIRE_MAX}")
+
+
+def test_flatfield_store_is_append_only() -> None:
+    """Per-serial measured tables, stored the way every other artefact is."""
+    section("per-unit flat fields")
+
+    root = Path(tempfile.mkdtemp())
+    try:
+        store = cs.CalibrationStore(root / "store")
+        src = root / "built"
+        src.mkdir()
+        for n in cs.CalibrationStore.FLATFIELD_FILES:
+            (src / n).write_text("{}" if n.endswith(".json") else "x")
+
+        check(not store.has_flatfield_for(16275),
+              "a scanner with no measured tables reports none")
+
+        a = store.save_flatfield(16275, src, meta={"config": {"k": 1}},
+                                 source="test", stamp="2026-01-01T00-00-00Z")
+        check(store.has_flatfield_for(16275), "storing one makes it findable")
+        check(store.flatfield(16275)["dir"] == a["dir"],
+              "and it is the one that comes back")
+        check(json.loads(Path(a["dir"], "README.json").read_text())
+              ["unit_serial"] == 16275,
+              "the stored record names the serial it belongs to")
+
+        b = store.save_flatfield(16275, src, meta={"config": {"k": 2}},
+                                 source="test", stamp="2026-02-02T00-00-00Z")
+        check(Path(a["dir"]).is_dir(),
+              "a second set does not replace the first")
+        check(store.flatfield(16275)["dir"] == b["dir"],
+              "and the newest is the one in force")
+        check(len(store.flatfields(16275)) == 2, "both are still listed")
+        check(not store.has_flatfield_for(20001),
+              "CRUCIALLY: another scanner is not given these tables")
+
+        partial = root / "partial"
+        partial.mkdir()
+        (partial / "dark_2000x3.npy").write_text("x")
+        try:
+            store.save_flatfield(16275, partial)
+            check(False, "an incomplete table set is refused")
+        except FileNotFoundError:
+            check(True, "an incomplete table set is refused")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_wizard_states() -> None:
+    """The states an operator can be in, and the one that needs a person."""
+    import calib_wizard as cw
+
+    section("the calibration wizard's state machine")
+
+    root = Path(tempfile.mkdtemp())
+    try:
+        store = cs.CalibrationStore(root / "store")
+        a = cw.assess(store)
+        check(a["state"] == cw.NEEDS_CALIBRATION,
+              "an unknown scanner needs calibrating")
+        check(a["automatic"] is True,
+              "and it happens automatically -- no button, no prompt")
+        check(a["may_auto_read"] is False
+              and a["device_read_performed"] is False,
+              "assessing never reads a device")
+        check(all(s["needed"] for s in a["steps"]),
+              "every step is outstanding")
+
+        store.save_read({0x52: GOOD52}, source="test")
+        a = cw.assess(store)
+        check(a["serial"] == 16275, "the stored read names the scanner")
+        check(a["state"] == cw.NEEDS_CALIBRATION,
+              "a read alone is not a calibration -- the tables are measured, "
+              "and they are not on the EEPROM")
+        steps = {s["step"]: s for s in a["steps"]}
+        check(not steps[cw.STEP_EEPROM]["needed"],
+              "and the read step is not repeated")
+        check(steps[cw.STEP_BLACK]["needed"] and steps[cw.STEP_DUTY]["needed"],
+              "while the searches still are")
+
+        src = root / "built"
+        src.mkdir()
+        for n in cs.CalibrationStore.FLATFIELD_FILES:
+            (src / n).write_text("{}" if n.endswith(".json") else "x")
+        store.save_flatfield(16275, src, meta={"config": {}}, source="test")
+        a = cw.assess(store)
+        check(a["state"] == cw.READY,
+              "with both halves stored the scanner is ready")
+        check(a["automatic"] is False,
+              "and nothing further is attempted -- zero device traffic")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_film_in_gate_is_the_only_prompt() -> None:
+    """Film loaded is the one outcome that must never be calibrated through."""
+    import calib_wizard as cw
+
+    section("film in the gate")
+
+    # The measured asymmetry, from the owner's own 2026-08-12 pair: an empty
+    # gate produces NO sensor opinion at all, so "unavailable" cannot mean
+    # "ask" -- that would put a prompt in front of the silent case.
+    empty = cw.verdict_from_run({
+        "film_sense": {"available": False, "present": None,
+                       "status_reports": 0},
+        "run_detector": {"state": "clear", "clear_run": 19712,
+                         "film_lines": 0}})
+    check(empty.present is False,
+          "an empty gate is determined by the classifier when the sensors "
+          "say nothing")
+    check(empty.source == "gate-classifier",
+          "and the verdict records which signal decided")
+
+    loaded = cw.verdict_from_run({
+        "film_sense": {"available": True, "present": True, "at_entry": True,
+                       "at_exit": True, "status_reports": 244},
+        "run_detector": {"state": "film", "clear_run": 0,
+                         "film_lines": 9984}})
+    check(loaded.present is True,
+          "film is detected when the sensors report it")
+    check(loaded.source == "film-sensors",
+          "and the sensors are preferred over the classifier")
+
+    conflict = cw.verdict_from_run({
+        "film_sense": {"available": True, "present": True,
+                       "status_reports": 12},
+        "run_detector": {"state": "clear", "clear_run": 5000,
+                         "film_lines": 0}})
+    check(conflict.present is True and conflict.source == "film-sensors",
+          "a direct sensor reading beats the classifier when they disagree")
+
+    blind = cw.verdict_from_run({"film_sense": {"available": False},
+                                 "run_detector": {}})
+    check(blind.present is None,
+          "and with neither signal the answer is 'undetermined', not 'clear'")
+
+    check(cw.HEADLINES[cw.FILM_IN_GATE] == "Remove the film to finish setup.",
+          "the one sentence a person ever sees is one sentence")
+
+
+def test_wizard_never_writes_repo_calibration() -> None:
+    """calibration/ is never modified by an automated step."""
+    section("the wizard never writes into calibration/")
+
+    import calib_wizard as cw
+
+    # Behavioural, not a grep: build a wizard and look at where it would
+    # actually put things. A text search would be satisfied by renaming a
+    # variable, and would trip over the module merely discussing calibration/.
+    root = Path(tempfile.mkdtemp())
+    try:
+        w = cw.Wizard(cs.CalibrationStore(root / "store"))
+        repo_cal = (REPO / "calibration").resolve()
+        targets = [Path(w.workdir).resolve(),
+                   Path(w.candidate_dir("probe")).resolve()]
+        check(all(repo_cal not in (t, *t.parents) for t in targets),
+              "every directory the wizard writes to is outside calibration/",
+              str(targets))
+        check(all(Path(w.store.root).resolve() in t.parents for t in targets),
+              "and inside the calibration store, which is append-only")
+        before = sorted(p.name for p in repo_cal.iterdir())
+        w.write_candidate("probe", {"integration_0x82_idx6": 4093})
+        after = sorted(p.name for p in repo_cal.iterdir())
+        check(before == after,
+              "writing a candidate exposure changes nothing in calibration/")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    src = (REPO / "tools/calib_wizard.py").read_text()
+    check("--cal-dir" in src,
+          "candidate exposures go to pakon_scan.py run --cal-dir instead")
+
+    ps = (REPO / "tools/pakon_scan.py").read_text()
+    check('cal_dir=getattr(a, "cal_dir", None)' in ps,
+          "and pakon_scan.py run honours --cal-dir")
+
+
 def main() -> int:
     print("calibration read/backup self-tests -- no scanner required")
     test_verify()
@@ -638,6 +1151,16 @@ def main() -> int:
     test_concurrent_read_locked()
     test_force_still_requires_a_proven_power_cycle()
     test_simulate_never_touches_the_real_store()
+    test_serial_index()
+    test_profile_sources()
+    test_lookup_cannot_reach_a_device()
+    test_afe_offset_encoding()
+    test_dark_floor_refusal()
+    test_vendor_target_is_a_maximum()
+    test_flatfield_store_is_append_only()
+    test_wizard_states()
+    test_film_in_gate_is_the_only_prompt()
+    test_wizard_never_writes_repo_calibration()
     print(f"\n{_count - len(_fails)}/{_count} checks passed")
     if _fails:
         print("FAILED:")

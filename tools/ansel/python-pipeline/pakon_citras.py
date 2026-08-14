@@ -18,12 +18,20 @@ of them is here:
   ``short[lutSize]``, and ``memcpy``s the shell's tone LUT into it.  There is no
   arithmetic in it at all — not one add, multiply or table lookup on pixel or
   LUT data.  It is a validated store.
-* **apply** — ``CITRAS_APPLY_PORTED`` below, still ``False`` and untouched by
-  this task.  That is the per-pixel operator (``ImaCitrasOperationBase`` ->
+* **apply** — an entirely separate file, ``pakon_citras_apply.py``, not this
+  one.  That is the per-pixel operator (``ImaCitrasOperationBase`` ->
   ``ImaCitrasOperationT<short int>`` -> ``ImaCitrasOpBase`` -> ``ImaI16CitrasOp``
-  plus ``AnsImaCitrasAggregate`` and ``AnsCitrasOperand``), 218 functions /
-  86,062 bytes, dispatched from a different call graph than ``analyzeAutoTone``'s
-  and containing the genuine unnamed math.  Phase 3.
+  plus ``AnsImaCitrasAggregate`` and ``AnsCitrasOperand``), dispatched from a
+  different call graph than ``analyzeAutoTone``'s and containing the genuine
+  unnamed math.  Phase 3.  ``CITRAS_APPLY_PORTED`` below is imported straight
+  from ``pakon_citras_apply``'s own umbrella flag (the same pattern
+  ``pakon_autotone.py`` uses for ``pakon_dra.DRA_ANALYZE_PORTED``) — this file
+  does not restate or duplicate it.  As of this writing five of that file's
+  six real pieces are ported and Unicorn-verified (object layout, setToneLut,
+  tone-compose, avoidance-blend, luminance); ``validate()`` is the one
+  still-``False`` piece blocking the umbrella — see
+  ``pakon_citras_apply.CITRAS_APPLY_VALIDATE_PORTED``'s own comment for
+  exactly why.
 
 An earlier pass cited ``analyze`` as ``0x10223860``.  That address decodes
 mid-instruction inside the neighbouring ``allocateMemory`` (``0x10223810``) and
@@ -166,13 +174,15 @@ CITRAS_PARAMS_VALIDATE_PORTED = True
 # when the allocator returns null.
 CITRAS_ALLOCATE_MEMORY_PORTED = True
 
-# ---- NOT THIS TASK --------------------------------------------------------
-# The per-pixel APPLICATION of the tone LUT this file stores.  Entirely separate
-# code, reached from a different call graph than analyzeAutoTone's:
-# ImaCitrasOperationBase -> ImaCitrasOperationT<short int> -> ImaCitrasOpBase ->
-# ImaI16CitrasOp, plus AnsImaCitrasAggregate and AnsCitrasOperand.
-# 218 functions / 86,062 bytes.  Phase 3, and much larger than this file.
-CITRAS_APPLY_PORTED = False
+# CITRAS_APPLY_PORTED used to be a hardcoded `False` here, restating (and,
+# once pakon_citras_apply.py's own umbrella started moving, silently at risk
+# of disagreeing with) that file's own flag of the same name -- the same
+# "duplicated instead of imported" bug pakon_autotone.py once had for
+# pakon_dra.DRA_ANALYZE_PORTED, fixed there by importing rather than
+# restating.  Fixed the same way here, defined just below CitrasStatus
+# rather than up here or at the top of the file -- see that definition's own
+# comment for exactly why the placement (and a companion fix on the
+# pakon_citras_apply.py side) matters and isn't just cosmetic.
 
 # ---------------------------------------------------------------------------
 # addresses
@@ -321,6 +331,25 @@ class CitrasStatus:
 
     def __str__(self) -> str:
         return f"{self.message} [{self.func}, {self.file}:{self.line}] ({self.code})"
+
+
+# CITRAS_APPLY_PORTED -- the real, single source of truth is
+# pakon_citras_apply.CITRAS_APPLY_PORTED; imported here (not restated) per
+# the pakon_autotone.py / pakon_dra.DRA_ANALYZE_PORTED precedent. A plain
+# top-of-file `from pakon_citras_apply import CITRAS_APPLY_PORTED` used to
+# deadlock in one import order (pakon_citras_apply.py itself did `from
+# pakon_citras import CitrasStatus` at ITS OWN module level -- a genuine
+# circular import, confirmed by actually triggering it: `import
+# pakon_citras_apply` alone, in a fresh interpreter, raised ImportError
+# before this was fixed). Fixed on the OTHER side instead of by reordering
+# this import: pakon_citras_apply.apply_set_tone_lut now imports
+# CitrasStatus lazily (at call time, not module load time), so this module
+# no longer needs to import pakon_citras_apply at all before that; kept
+# below CitrasStatus rather than moved to the top purely to keep this
+# explanatory comment next to the class it's about. Both import orders
+# verified directly (`import pakon_citras` first, and `import
+# pakon_citras_apply` first, each in a fresh interpreter).
+from pakon_citras_apply import CITRAS_APPLY_PORTED  # noqa: E402
 
 
 CITRAS_OK: None = None
@@ -564,7 +593,7 @@ def main() -> None:
           f"VALIDATE={CITRAS_PARAMS_VALIDATE_PORTED} "
           f"ALLOC={CITRAS_ALLOCATE_MEMORY_PORTED}")
     print(f"  CITRAS_APPLY_PORTED={CITRAS_APPLY_PORTED}  "
-          f"<- Phase 3, 218 fns / 86,062 B, not this file")
+          f"<- Phase 3, imported from pakon_citras_apply.py, not this file")
     print()
 
     st = CitrasState()

@@ -117,25 +117,23 @@ export const RailHead = ({ title, children }) => (
   </div>
 );
 
-export const Grp = ({ title, info, children }) => (
+export const Grp = ({ title, children }) => (
   <div className="grp">
     {title ? (
       <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {title}
-        {info ? <Info>{info}</Info> : null}
       </span>
     ) : null}
     {children}
   </div>
 );
 
-/** Label, control, value. No subtext — that is what `info` is for. */
-export const Field = ({ label, info, children, value }) => (
+/** Label, control, value. No subtext. */
+export const Field = ({ label, children, value }) => (
   <div className="field">
     {label ? (
       <span className="lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {label}
-        {info ? <Info>{info}</Info> : null}
         {value ? (
           <>
             <span className="sp" />
@@ -171,7 +169,7 @@ export function Seg({ options, value, onChange, ariaLabel }) {
   );
 }
 
-export function Toggle({ on, disabled, onChange, children, info }) {
+export function Toggle({ on, disabled, onChange, children }) {
   return (
     <label className="sw">
       <span
@@ -185,7 +183,6 @@ export function Toggle({ on, disabled, onChange, children, info }) {
       />
       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {children}
-        {info ? <Info>{info}</Info> : null}
       </span>
     </label>
   );
@@ -195,11 +192,10 @@ export function Toggle({ on, disabled, onChange, children, info }) {
 export function State({ rows }) {
   return (
     <dl style={{ display: 'flex', flexDirection: 'column' }}>
-      {rows.map(([name, value, tone, info]) => (
+      {rows.map(([name, value, tone]) => (
         <div className="st" key={name}>
           <dt>
             {name}
-            {info ? <Info>{info}</Info> : null}
           </dt>
           <dd className={tone || ''}>{value}</dd>
         </div>
@@ -372,25 +368,9 @@ export function Steps({ mode, setMode, rows, onStopScan }) {
                       setStopping(false);
                     }
                   }}
-                  title="Stop the transport now. Always available, from any step, whatever this window thinks the machine is doing."
                 >
                   {stopping ? 'Stopping…' : 'Stop'}
                 </Btn>
-                <Info side="left">
-                  The transport is driven by a separate process that owns the USB
-                  handle, so <b>Stop reaches the motor even if this window stops
-                  responding</b>.
-                  <br />
-                  <br />
-                  It is never disabled and it does not care which step you are
-                  on. It used to grey out unless this window believed a scan was
-                  running — which is exactly backwards: the moment the backend
-                  stops answering, this window marks the job{' '}
-                  <span className="num">error</span> and stops believing, and
-                  that is precisely when you want to press it. The server route
-                  is unconditional, so the button is too. Pressed with nothing
-                  running it says so and stops nothing.
-                </Info>
               </>
             ) : null}
 
@@ -398,10 +378,7 @@ export function Steps({ mode, setMode, rows, onStopScan }) {
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                 <Btn disabled>Cancel</Btn>
                 <Info side="left">
-                  <b>Not implemented.</b> The export loop has no interrupt check to
-                  cancel into, and there is no cancel endpoint. Left disabled rather
-                  than enabled and inert — see <span className="num">docs/54</span>{' '}
-                  §4.3.
+                  <b>Coming soon</b>
                 </Info>
               </span>
             ) : null}
@@ -441,7 +418,6 @@ export function Filmstrip({ roll, selected, onSelect, onOpenFraming, onOpenConta
             className="action-circle-btn"
             style={{ width: 28, height: 28 }}
             onClick={onOpenFraming}
-            title="Fine Framing Alignment"
           >
             <svg viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/></svg>
           </button>
@@ -452,7 +428,6 @@ export function Filmstrip({ roll, selected, onSelect, onOpenFraming, onOpenConta
             className="action-circle-btn"
             style={{ width: 28, height: 28 }}
             onClick={onOpenContactSheet}
-            title="Contact Sheet Grid"
           >
             <svg viewBox="0 0 24 24"><path d="M4 4h4v4H4V4zm8 0h4v4h-4V4zm8 0h4v4h-4V4zM4 12h4v4H4v-4zm8 0h4v4h-4v-4zm8 0h4v4h-4v-4zM4 20h4v4H4v-4zm8 0h4v4h-4v-4zm8 0h4v4h-4v-4z" fill="currentColor"/></svg>
           </button>
@@ -467,14 +442,13 @@ export function Filmstrip({ roll, selected, onSelect, onOpenFraming, onOpenConta
             role="option"
             aria-selected={selected === f.index}
             aria-label={`Frame ${f.index + 1}`}
-            title={`Frame ${f.index + 1} — ${f.summary}`}
             className={`th${selected === f.index ? ' on' : ''}${f.params?.rejected ? ' no' : ''}`}
             onClick={() => onSelect(f.index)}
           >
             <img src={frameUrl(roll.id, f.index, 'thumb', f.version)} alt="" loading="lazy" />
             <b>{f.index + 1}</b>
-            {f.adjusted ? <i className="mark adj" title="adjusted" /> : null}
-            {f.confidence === 'low' ? <i className="mark" title="low boundary confidence" /> : null}
+            {f.adjusted ? <i className="mark adj" /> : null}
+            {f.confidence === 'low' ? <i className="mark" /> : null}
           </button>
         ))}
       </div>
@@ -538,6 +512,70 @@ export function StepTrack({ value, min = -8, max = 8, step = 0.25, onInput, onCo
         style={{ left: `${Math.min(zero, at)}%`, width: `${Math.abs(at - zero)}%` }}
       />
       <span className="knob" style={{ left: `${at}%` }} />
+    </div>
+  );
+}
+
+export function AdjustmentSlider({ label, value, min, max, step = 1, onInput, onCommit, disabled, zeroValue = 0 }) {
+  const ref = useRef(null);
+
+  const clamp = (v) => Math.max(min, Math.min(max, v));
+
+  const from = useCallback(
+    (clientX) => {
+      const r = ref.current.getBoundingClientRect();
+      const raw = min + ((clientX - r.left) / r.width) * (max - min);
+      return clamp(Math.round(raw / step) * step);
+    },
+    [min, max, step]
+  );
+
+  const down = (e) => {
+    if (disabled) return;
+    e.preventDefault();
+    ref.current.setPointerCapture(e.pointerId);
+    onInput?.(from(e.clientX));
+    const move = (ev) => onInput?.(from(ev.clientX));
+    const up = (ev) => {
+      ref.current?.releasePointerCapture?.(ev.pointerId);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      onCommit?.(from(ev.clientX));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const at = ((value - min) / (max - min)) * 100;
+  const zero = ((zeroValue - min) / (max - min)) * 100;
+
+  return (
+    <div className="adj-slider" style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span className="lbl">{label}</span>
+        <span className="num" style={{ fontSize: 11, color: 'var(--mute)' }}>
+          {typeof value === 'number' ? value.toFixed(step < 1 ? 2 : 0) : value}
+        </span>
+      </div>
+      <div
+        ref={ref}
+        className="track"
+        onPointerDown={down}
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-disabled={disabled || undefined}
+        style={disabled ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+      >
+        <span className="detent" style={{ left: `${zero}%` }} />
+        <span
+          className="fill"
+          style={{ left: `${Math.min(zero, at)}%`, width: `${Math.abs(at - zero)}%` }}
+        />
+        <span className="knob" style={{ left: `${at}%` }} />
+      </div>
     </div>
   );
 }

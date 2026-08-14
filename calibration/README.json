@@ -1,8 +1,9 @@
 {
   "unit": "Kodak Pakon F-135 Plus, owner's unit (U34 repaired 2026-08-06)",
-  "captured": "2026-08-07",
+  "captured": "2026-08-12",
+  "generated_by": "tools/build_calibration.py",
+  "generated_at": "2026-08-12T08:21:09",
   "config": {
-    "dpi_base": "DpiBase16_35",
     "integration_0x82_idx6": 4093,
     "lamp_pwm_N": 982,
     "line_rate_0x91": 60,
@@ -13,9 +14,9 @@
       0
     ],
     "on_counts_R_G_B": [
-      492,
-      239,
-      104
+      643,
+      580,
+      508
     ],
     "afe_gains": [
       13,
@@ -29,27 +30,63 @@
     ],
     "fpga_ctrl": "0x0061",
     "pixel_offset": 32,
-    "pixel_height": 2000
+    "pixel_height": 2000,
+    "dpi_base": "DpiBase16_35",
+    "flat_field_on_counts_R_G_B": [
+      462,
+      231,
+      98
+    ],
+    "duty_note": "Flat field captured at open-gate duty [462,231,98], searched so the MAXIMUM lands on the vendor 64000 target (measured 61666/62715/62310, zero clipped). Scanning uses with-film = open-gate x 10^D (R 1.393157 / G 2.511891 / B 5.188016), the colour-negative base density, exactly as FN_bBeforeScan selects DutyCycle_* over DutyCycleOpenGate_*. The vendor stored duties for this unit ([702,371,158] open-gate) clipped 97 percent of an empty gate on this hardware -- its LEDs read well below their 2022 values -- so the vendor METHOD was applied rather than its stored numbers."
   },
+  "config_source": "read from the captures' own sidecars (flat_dark_01.bin.scan.json and flat_bright_01.bin.scan.json), which agreed on every key in ['integration_0x82_idx6', 'lamp_pwm_N', 'line_rate_0x91', 'levels_R_G_B_Ir', 'on_counts_R_G_B', 'afe_gains', 'afe_offsets', 'fpga_ctrl', 'pixel_offset', 'pixel_height', 'dpi_base']. NOT copied from a previous calibration/README.json \u2014 these tables are valid for the setup the captures were actually taken under and nothing else.",
   "dark_source": {
-    "lines": 14482,
+    "file": "flat_dark_01.bin",
+    "lines": 22872,
     "losses": 0,
     "means": [
-      1120.5,
-      1443.0,
-      1160.9
-    ]
+      990.1,
+      670.6,
+      610.6
+    ],
+    "floor_fraction": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "note": "black level, empty gate, lamp off. Target band 400..4000 wire counts; a reference sitting on ADC code 0 is refused, because a clipped pedestal loses everything below it and cannot be corrected afterwards (docs/72). The AFE offsets that produce it are recorded in config.afe_offsets and are a per-DPI-base calibration output, not a constant."
   },
   "bright_source": {
-    "lines": 7626,
+    "file": "flat_bright_01.bin",
+    "lines": 22872,
     "losses": 0,
     "means": [
-      50204.6,
-      49962.2,
-      49916.2
+      57312.0,
+      56639.1,
+      56276.0
     ],
-    "note": "deliberately ~50000 not the vendor's 64000 target so no channel clips"
+    "level": 57401.3,
+    "peak_wire": [
+      62596,
+      63554,
+      63068
+    ],
+    "peak_over_level": 1.1072,
+    "target_level": 64000.0,
+    "target_metric": "max",
+    "metric_measured": [
+      61666.4,
+      62715.0,
+      62310.3
+    ],
+    "note": "empty gate, lamp on, unclipped: peak 63554 of 65535 wire full scale. Target was 64000 on the 'max' statistic (the vendor's FN_bCalibrateFindLedCurrent target is 64000, and docs/15 records that its check compares the MAXIMUM pixel of an averaged CCD line, not the mean); measured level 57401. This unit's brightest sample sits 1.1072x its level, so the highest clip-free level here is about 58287."
   },
-  "usage": "Tables are EP 0x86 wire u16. Decode: dark14=dark/4; (raw14-dark14)*gain → clamp 14-bit. Gate uses wire as-is.",
-  "domain": "wire_u16"
+  "flat_field_k_per_channel": [
+    56321.8944,
+    55968.5948,
+    55665.478
+  ],
+  "usage": "Tables are EP 0x86 wire u16. Decode: dark14=dark/4; (raw14-dark14)*gain \u2192 clamp 14-bit. Gate uses wire as-is.",
+  "domain": "wire_u16",
+  "formula": "dark = mean down the strip; gain[:,c] = (bright-dark)[:,c].mean() / (bright-dark)[:,c] \u2014 normalised PER CHANNEL, not globally"
 }

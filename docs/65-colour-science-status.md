@@ -53,12 +53,18 @@ project, currently being scoped (§3).
 scoped. The orchestration shell and **all six** tone subsystems (`cna`,
 `dra`, `toneHelper`, `contrast`, `ast`, `citras`-analyze) are fully ported
 and Unicorn-verified bit-exact against the real DLL — Phase 2 is closed.
-What's left is `citras`-apply (Phase 3, 218 fn / 86,062 B) and the mandatory
-assembled verification + render-path swap (Phase 6) — see `docs/66` for
-exact status. None of this is wired into the render path yet by design (see
-§2's first row); that happens only at the final assembled-verification
-phase, deliberately last, matching how Shasta's port found its real bugs
-only once everything ran together rather than leaf-by-leaf.
+`citras`-apply (Phase 3) is partially landed: its object layout/vtable
+(reached via `ImaI16CitrasOp`, a different call graph than every other
+subsystem — it's driven from outside `analyzeAutoTone` entirely) and one
+mechanical bridge function are Unicorn-verified; the two genuinely-unnamed
+math routines that do the actual per-pixel work are recon'd and sized but
+not yet ported (Phase 3b/3c). What's left overall: 3b/3c, then the
+mandatory assembled verification + render-path swap (Phase 6) — see
+`docs/66` for exact status. None of this is wired into the render path yet
+by design (see §2's first row); that happens only at the final
+assembled-verification phase, deliberately last, matching how Shasta's
+port found its real bugs only once everything ran together rather than
+leaf-by-leaf.
 
 Separately, a scoping pass to find that fix's true size surfaced **14 more
 capabilities** that are real, mostly-executing features of the scanner —
@@ -84,9 +90,10 @@ findings playbook waiting for whoever starts it (`docs/67`).
 | FUGC | 12/13 flags ported. Two Go-side bugs (wrong map file, wrong bias formula) were already fixed; the third (a hardcoded branch that always took the unported mode-2 path) was found and fixed this session, verified bit-exact against the Python reference over 25 input combinations | `docs/62` §12.2, this session |
 | ICC evaluation | Verified faithful: Go's hand-written evaluator and Python's littleCMS agree to within 0.3/255 on identical input, both rendering intents give identical results — the crush is proven **not** an ICC defect | this session |
 | Stage order | `balance → FUGC → Shasta` is the vendor's real order, established from `AnsImaBuilder::getImaTransformGroup` / `AnsCnPremiumPath::exportParameterPack` — Go had it right, Python's `balance → Shasta → FUGC` was wrong and cost 90.7% of samples, mean 59–82 RPD codes, up to 792 | `docs/62` §12 |
+| F-235 stage 2 (TLA 3×4 + dens LUT) | `pakon_color.render_pixel_f235` confirmed bit-exact against the real MMX kernel by Unicorn (`PIColorCorrectColNegPlanarScan` `0x100064d0` → `0x1001c470`). The AddScene 1px dmin remap in `pakon_scene_context` had re-derived it as sum-then-divide-once and ran one code high; fixed 2026-08-12, and the golden case upgraded from host-vs-host to a real DLL run — this was the golden fleet's one standing "known" failure, and the fleet is now 28/28 | `docs/66` §"6.2 — golden fleet, `colneg_1px remap TLA`", `docs/58` §14.4 |
 | Ane / FOS / ColorAdjust / SceneContext infrastructure | ~79 individual `*_PORTED` flags across this machinery, Unicorn- or closed-form-verified | `docs/63` §4 |
 | Shasta's own analyze **inner stage** | Fully Unicorn-verified end to end (not just leaf-by-leaf) — moot for rendering since Shasta is proven not on the colour-negative path at all, but the port itself is real and correct | `docs/63`, `pakon_shasta.py` |
-| App renders through Go | The Electron app's real render path (`render_frame → _render_colour_go`) goes through a c-shared dylib via ctypes, not Python. Verified end-to-end on a real capture, not just the CLI. Python kept as an explicit, deprecated fallback (`PAKON_COLOUR_ENGINE=python`) | `docs/62` §12, `tools/pakon_colour_go.py` |
+| App renders through Go | The Electron app's real render path (`render_frame → _render_colour_go`) goes through a c-shared dylib via ctypes, not Python — Go is what runs for the user, compiled for the performance the app needs. Verified end-to-end on a real capture, not just the CLI. Python is not a deprecated fallback — it's the active reverse-engineering/verification path every new piece of colour science lands in first (Unicorn, the DLL-verification tool, is a Python library), before being transcribed to Go. `PAKON_COLOUR_ENGINE=python` exists to run that same Python conversion path directly. Because of this staged order, **Go currently lags Python** on the colour science that's mid-port (the whole `analyzeAutoTone` tone stage, `docs/66`) — that's expected, temporary, and closes at each port's Phase 6, not a sign Go is behind by neglect | `docs/62` §12, `tools/pakon_colour_go.py`, `docs/66`, `docs/67` §9 |
 
 ## 2. Not done — what it unlocks, and where the research is
 

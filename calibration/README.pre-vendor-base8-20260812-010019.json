@@ -1,0 +1,56 @@
+{
+  "unit": "Kodak Pakon F-135 Plus, owner's unit (U34 repaired 2026-08-06)",
+  "captured": "2026-08-07",
+  "config": {
+    "dpi_base": "DpiBase16_35",
+    "integration_0x82_idx6": 4093,
+    "lamp_pwm_N": 982,
+    "line_rate_0x91": 60,
+    "levels_R_G_B_Ir": [
+      4,
+      20,
+      11,
+      0
+    ],
+    "on_counts_R_G_B": [
+      685,
+      600,
+      539
+    ],
+    "on_counts_note": "CHANGED 2026-08-12 from the empirical open-gate point [492,239,104]. The vendor passes DutyCycle_* for a with-film scan (FN_bBeforeScan 0x1002e137 -> 0x1002d7f0, unconditional on the success path); DutyCycleOpenGate_* is the no-film path only (film-type 2, the no-film mode). The two registry sets differ by exactly 10^D, the colour-negative base density -- R 1.393157 / G 2.511891 / B 5.188016, matching fcn.10020230's selector-1 constants to six figures -- i.e. the with-film duties add back exactly what the orange mask absorbs. These values are this project's committed open-gate point scaled by that same factor, which applies the vendor's physics while staying inside the domain the dark/gain tables were measured in (~50000, not the vendor's 64000 target). Levels are unchanged, so peak LED current is unchanged; only time-averaged duty rises. All <= N-2 = 980. The previous file is kept verbatim as README.pre-dutyfix-20260812-002813.json.",
+    "afe_gains": [
+      13,
+      13,
+      13
+    ],
+    "afe_offsets": [
+      -18,
+      -26,
+      -20
+    ],
+    "fpga_ctrl": "0x0061",
+    "pixel_offset": 32,
+    "pixel_height": 2000
+  },
+  "dark_source": {
+    "lines": 14482,
+    "losses": 0,
+    "means": [
+      1120.5,
+      1443.0,
+      1160.9
+    ]
+  },
+  "bright_source": {
+    "lines": 7626,
+    "losses": 0,
+    "means": [
+      50204.6,
+      49962.2,
+      49916.2
+    ],
+    "note": "deliberately ~50000 not the vendor's 64000 target so no channel clips"
+  },
+  "usage": "Tables are EP 0x86 wire u16. Decode: dark14=dark/4; (raw14-dark14)*gain → clamp 14-bit. Gate uses wire as-is.",
+  "domain": "wire_u16"
+}

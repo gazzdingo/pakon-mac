@@ -20,8 +20,12 @@
 * Ane sample/residual accum ``0x102a84d0…`` (stubbed image dims /
   plane rows / hist-map lookup; native dens-hist ``inc``)
 * Host ``ane_build_noise_table_e9d0`` (``0x1027e9d0`` ``useAvg=0``)
-* TLA FindDmin high-side hist walk ``0x100093f0…`` (frame ``+0x6cac``);
-  host ColNeg 1px remap contract (stage-2 closed form)
+* TLA FindDmin high-side hist walk ``0x100093f0…`` (frame ``+0x6cac``)
+* ColNeg 1px remap: Unicorn ``PIColorCorrectColNegPlanarScan``
+  (``0x100064d0`` → MMX kernel ``0x1001c470``) on TLA's own planar
+  ``width=4``/``height=1`` buffer shape — was a host-vs-host contract
+  check, and that is exactly why its off-by-one went unexplained for six
+  passes; see the case's own comment in ``main()``
 
 ShastaParams ctor defaults for ``metricGray``/``black``/``white`` /
 ``blackNoiseSigmaMult`` are sanity-checked against cited immediates —
@@ -87,6 +91,10 @@ VA_TLA_DESC_PACK = sc.TLA_DESC_PACK
 VA_TLA_DESC_PACK_END = sc.TLA_DESC_PACK_END
 VA_TLA_FIND_DMIN_WALK = sc.TLA_FIND_DMIN_HIST_WALK
 VA_TLA_FIND_DMIN_WALK_END = sc.TLA_FIND_DMIN_HIST_WALK_END
+VA_COLNEG_SCAN = sc.COLNEG_PLANAR_SCAN_EXPORT
+COLNEG_PLANAR_WIDTH = sc.COLNEG_PLANAR_WIDTH
+COLNEG_IMAGE_SIZE = 0x756000  # PakonIMAu SizeOfImage
+COLNEG_BSS_START = 0x6B2000  # .data raw ends; BSS tail must read as zero
 TRIPLE_ADDR = STACK_ADDR + 0x80000
 DEFAULT_IMAU = (
     "/Users/guy/Downloads/Pakon Update 3/fx35install/"
@@ -246,6 +254,11 @@ def run_get_results_fill(
 def _sx32(v: int) -> int:
     v &= 0xFFFFFFFF
     return v - 0x100000000 if v >= 0x80000000 else v
+
+
+def _sx16(v: int) -> int:
+    v = int(v) & 0xFFFF
+    return v - 0x10000 if v >= 0x8000 else v
 
 
 def run_baddscene_pack(
@@ -912,6 +925,79 @@ def run_tla_find_dmin_walk(
     return int(struct.unpack("<I", uc.mem_read(out, 4))[0])
 
 
+def run_colneg_planar_1px(
+    dll: bytes,
+    rgb: tuple[int, int, int],
+    lut: list[float] | list[int],
+    coeff: list[list[int]],
+    offset: list[int],
+) -> tuple[int, int, int]:
+    """Unicorn ``PIColorCorrectColNegPlanarScan`` (``0x100064d0``) on the
+    exact buffer shape TLA's AddScene ColNeg leaf builds.
+
+    This case used to compare two *host* functions against each other
+    (``pakon_scene_context`` vs ``pakon_color``), which is why its
+    off-by-one sat unexplained for six passes — neither side was ground
+    truth, so "which one is right?" was unanswerable from the harness. It
+    now runs the real kernel.
+
+    Call shape is copied from TLA ``0x1003f848…0x1003f85e``: cdecl
+    ``(buf, width=4, height=1, ctx, lut)`` with the three planes in-place
+    at ``buf+0/+8/+16``, only pixel0 seeded. The export's SEH prologue is
+    nopped (Unicorn has no FS). ``ctx`` is ``buildContext``'s output layout
+    (TLA ``0x10012eb0``): 18 broadcast quadwords — coeff ``[k][c]`` at
+    ``0x18*k + 8*c``, offsets at ``0x60 + 8*k``, and ``+0x48/+0x50/+0x58``
+    left for the kernel's own prologue to fill with ``0x8000``/``0x7003``/
+    ``0xf003``.
+    """
+    img = bytearray(dll)
+    if len(img) < COLNEG_IMAGE_SIZE:
+        img += b"\x00" * (COLNEG_IMAGE_SIZE - len(img))
+    # Flat file→VA mapping is exact for .text/.rdata/.data raw (all three
+    # have PointerToRawData == VirtualAddress in this build), but .data's
+    # BSS tail RVA 0x6b2000…0x6c8428 has .rsrc/.reloc bytes underneath it in
+    # the file. The kernel's scratch globals (0x106b5b30…0x106b5b6c) live
+    # there, so zero it rather than feeding it relocation data.
+    img[COLNEG_BSS_START:COLNEG_IMAGE_SIZE] = b"\x00" * (
+        COLNEG_IMAGE_SIZE - COLNEG_BSS_START
+    )
+    _patch_fs_seh(img, VA_COLNEG_SCAN, VA_COLNEG_SCAN + 0x90)
+    uc = Uc(UC_ARCH_X86, UC_MODE_32)
+    uc.mem_map(IMAGE_BASE, (len(img) + 0xFFF) & ~0xFFF)
+    uc.mem_write(IMAGE_BASE, bytes(img))
+    uc.mem_map(STACK_ADDR, STACK_SIZE)
+    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
+    lut_addr = HEAP_ADDR + 0x1000  # 16384 dwords (mov eax,[esi+idx*4])
+    uc.mem_write(lut_addr, b"".join(struct.pack("<i", int(v)) for v in lut))
+    ctx = HEAP_ADDR + 0x40000
+    blob = bytearray(0x90)
+    for k in range(3):
+        for c in range(3):
+            struct.pack_into("<4h", blob, 0x18 * k + 8 * c, *([int(coeff[k][c])] * 4))
+        struct.pack_into("<4h", blob, 0x60 + 8 * k, *([int(offset[k])] * 4))
+    uc.mem_write(ctx, bytes(blob))
+    buf = HEAP_ADDR + 0x50000
+    uc.mem_write(buf, b"\x00" * (2 * COLNEG_PLANAR_WIDTH * 3))
+    for p in range(3):
+        uc.mem_write(buf + 8 * p, struct.pack("<h", _sx16(rgb[p])))
+    ret_addr = STACK_ADDR + 0x100
+    uc.mem_write(ret_addr, b"\xcc")
+    esp = STACK_ADDR + 0x8000
+    uc.mem_write(
+        esp,
+        struct.pack(
+            "<IIiiII", ret_addr, buf, COLNEG_PLANAR_WIDTH, 1, ctx, lut_addr
+        ),
+    )
+    uc.reg_write(UC_X86_REG_ESP, esp)
+    try:
+        uc.emu_start(VA_COLNEG_SCAN, ret_addr, timeout=10_000_000, count=500_000)
+    except UcError:
+        pass
+    out = uc.mem_read(buf, 2 * COLNEG_PLANAR_WIDTH * 3)
+    return tuple(struct.unpack_from("<H", out, 8 * p)[0] for p in range(3))
+
+
 def run_tla_desc_pack(
     tla: bytes, case: int, r: int, g: int, b: int
 ) -> tuple[int, int, int, int]:
@@ -1483,12 +1569,54 @@ def main() -> int:
 
         lut = [float(int(v)) for v in pc.load_vendor_lut(str(lut_path))]
         coeff, offset = pc.quantise_matrix(pc.load_vendor_matrix(str(mat_path)))
+        # colneg_1px remap TLA — Unicorn-golden as of 2026-08-12.
+        #
+        # This case was the golden fleet's one standing failure for six
+        # passes ("27 of 28"). It only ever compared two HOST functions to
+        # each other, so it could report a disagreement but never say which
+        # side was wrong, and it got filed as unexplained folklore.
+        #
+        # It was a real port bug, and the expectation was the correct side.
+        # `sc.addscene_colneg_remap_dmin_rgb` re-derived stage 2 as
+        # `int(Σ_c coeff*dens / 8192 / 8 + offset)` — one division for the
+        # whole sum. The kernel is three independent `pmulhw`
+        # (0x1001c684/87/8a), so each product is floored to its signed high
+        # word BEFORE the `paddsw`s. Σ floor ≤ floor Σ, so the old form ran
+        # exactly one code high whenever the three discarded fractions
+        # carried — (8000,9000,10000) → 57 where the DLL says 56. Fixed by
+        # delegating to `pakon_color.render_pixel_f235`, whose docstring had
+        # already flagged sum-then-divide as a different function.
+        #
+        # The x87 scalar tail at 0x1001c785 was the other candidate (it
+        # rounds differently and is documented as ±1 LSB) and is ruled out,
+        # not assumed: TLA pushes width=4 (0x1003f840/0x1003f85d) and
+        # 0x1001c763 `and edx,0x80000003` + `je` skips the tail entirely
+        # when width%4==0. Ground truth below is the real export.
         remapped = sc.addscene_colneg_remap_dmin_rgb(*seeded, lut, coeff, offset)
         expect = pc.render_pixel_f235(seeded, lut, coeff, offset)
-        ok = remapped == expect
+        colneg_probes = [
+            seeded,
+            (0, 0, 0),
+            (100, 200, 300),
+            (4000, 4000, 4000),
+            (1, 2, 3),
+            (12345, 6789, 1024),
+            (16383, 16383, 16383),
+        ]
+        for probe in colneg_probes:
+            host = sc.addscene_colneg_remap_dmin_rgb(*probe, lut, coeff, offset)
+            ref = run_colneg_planar_1px(dll, probe, lut, coeff, offset)
+            ok = tuple(host) == ref
+            print(
+                f"  colneg_1px remap TLA {probe}: host={tuple(host)} dll={ref} "
+                f"{'OK' if ok else 'FAIL'}"
+            )
+            if not ok:
+                fail += 1
+        ok = tuple(remapped) == tuple(expect)
         print(
-            f"  colneg_1px remap TLA {seeded} → {remapped} (pakon_color={expect}) "
-            f"{'OK' if ok else 'FAIL'}"
+            f"  colneg_1px remap TLA == pakon_color {seeded} → {remapped} "
+            f"(pakon_color={expect}) {'OK' if ok else 'FAIL'}"
         )
         if not ok:
             fail += 1

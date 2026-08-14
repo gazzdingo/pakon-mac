@@ -848,8 +848,9 @@ class AnselEngine:
                 x.astype(np.int32), self.setshifts_out
             ).astype(np.float64)
             balanced = x
-            # FUGC: ebp14 = setShifts OUT @ +0x4b6; ebp18 = FindDmin on
-            # post-balance RPD (bag dmin stand-in). Mode≠2 → setLutInfo;
+            # FUGC: ebp14 = setShifts OUT @ +0x4b6; ebp18 = SceneContext
+            # "dmin" bag (path+0x3c, getCnContext find("dmin") —
+            # PATH_FUGC_AIM_EBP18 in pakon_fugc.py). Mode≠2 → setLutInfo;
             # mode==2 → bias @ 0x101f79b0 + plane LUT + work metrics.
             #
             # Computed here, right after balance and BEFORE the tone stage,
@@ -893,10 +894,50 @@ class AnselEngine:
                 )
             ):
                 bal16 = np.clip(balanced, 0, SHASTA_MAX).astype(np.int16)
-                ebp18 = scene_ctx.frame_dmin_rgb_from_planes(
-                    bal16[:, :, 0].ravel(),
-                    bal16[:, :, 1].ravel(),
-                    bal16[:, :, 2].ravel(),
+                # ebp18 was a `frame_dmin_rgb_from_planes` FindDmin walk run
+                # directly on `bal16` (already balanced/inverted) -- a stand-
+                # in for the bag, not the bag itself. The real writer is
+                # bAddScene (TLA.dll 0x1003f7db…): FindDmin on the RAW
+                # pre-balance frame words (+0x6cac -- this function's own
+                # `rpd12` argument, before `apply_balance_shifts` above),
+                # then the F-135 ColNeg polynomial remap (`TLB.dll
+                # fcn.1000d880` @ `0x10034b9b`, docs/58 §7) before the result
+                # is stored as "dmin" and read back via getCnContext. See
+                # `pakon_scene_context.addscene_colneg_remap_dmin_rgb_f135`
+                # (`ADDSCENE_COLNEG_REMAP_F135_PORTED = True`).
+                #
+                # Measured, not theoretical: on `bal16` this walk produced
+                # values like (2723, 2657, 2662) on a real frame (captures
+                # fresh-calibration-scan-20260814-065421.bin and
+                # vendor-duty-fixed-offset-20260813-225308.bin) -- outside
+                # `fugc_ebp18_policy_pass`'s accept band for the shipped
+                # aFilmAimDmin (500,1000,1000) on EVERY channel, on EVERY
+                # frame tested (6 real frames across those 2 captures).
+                # `fill_setlutinfo_aim_words` silently discards a failing arg
+                # and substitutes the generic per-film-stock default -- so
+                # this stand-in's own output was never once actually used;
+                # FUGC always ran on the generic default, not the real
+                # per-scene black point. The raw-frame + F-135-poly value
+                # passes the same policy check on the same frames (measured
+                # aim offsets ~650-1000, nowhere near the
+                # `set_lut_info_channel` identity-fallback threshold either
+                # way). Rendering both ways on those frames shows this only
+                # moves the shadow region (sRGB 0.1st-5th percentile, up to
+                # ~18 code values on B, less on R/G) -- median and highlight
+                # percentiles are unchanged (<=2 code values) -- so this is a
+                # real, confirmed wiring bug worth fixing on its own, but it
+                # is NOT the cause of the separately-tracked ~206-code-value
+                # uniform washed-out defect (that shift is all-channel,
+                # roughly-uniform across the tonal range, and two orders of
+                # magnitude larger than what this fix moves).
+                raw16 = np.clip(rpd12, 0, SHASTA_MAX).astype(np.int16)
+                raw_dmin = scene_ctx.frame_dmin_rgb_from_planes(
+                    raw16[:, :, 0].ravel(),
+                    raw16[:, :, 1].ravel(),
+                    raw16[:, :, 2].ravel(),
+                )
+                ebp18 = scene_ctx.addscene_colneg_remap_dmin_rgb_f135(
+                    *raw_dmin
                 )
                 if self.fugc_mode == 2:
                     apply_lut, _bias, _aims = fugc_mod.build_mode2_apply_lut(

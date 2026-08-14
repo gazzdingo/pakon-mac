@@ -226,8 +226,17 @@ BRIGHT_BYTES = 96_000_000           # ~8,000 lines
 #: How many rounds each search may take before it gives up and says so. The
 #: duty search halves on a clipped probe, so it converges from any overshoot in
 #: log2(overshoot) rounds; six is far more than the two a 4x overshoot needs.
+#: That reasoning covers the bisection (clipped) side only -- since the fix
+#: for the per-channel-clip convergence bug, an under-target channel that is
+#: NOT clipped grows via solve_duty's own linear-model step instead of
+#: waiting on bisection, and that step's own convergence rate depends on how
+#: accurate the measured k = swing/duty_old estimate is, not a clean halving
+#: schedule. Confirmed on hardware: a well-behaved, monotonic run still had
+#: one channel sitting at 3.3% error (just outside DUTY_TOLERANCE) after 6
+#: rounds, closing steadily rather than diverging. Ten is a real margin above
+#: what that run needed, not a re-derivation of the log2 bound above.
 MAX_BLACK_ROUNDS = 4
-MAX_DUTY_ROUNDS = 6
+MAX_DUTY_ROUNDS = 10
 
 #: How close to the target counts as landed.
 BLACK_TOLERANCE = 350.0             # wire counts

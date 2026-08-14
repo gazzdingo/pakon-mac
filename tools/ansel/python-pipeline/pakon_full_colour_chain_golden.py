@@ -71,6 +71,7 @@ Usage
 from __future__ import annotations
 
 import hashlib
+import struct
 import sys
 import time
 import warnings
@@ -96,7 +97,13 @@ import pakon_dra as dra                            # noqa: E402
 import pakon_toneHelper as th                      # noqa: E402
 import pakon_ansel as ansel                        # noqa: E402
 
-from unicorn import UC_HOOK_MEM_WRITE              # noqa: E402
+from unicorn import UC_HOOK_MEM_WRITE, UcError     # noqa: E402
+from unicorn.x86_const import (                    # noqa: E402
+    UC_X86_REG_EAX,
+    UC_X86_REG_ECX,
+    UC_X86_REG_EIP,
+    UC_X86_REG_ESP,
+)
 
 import pakon_render as pr                          # noqa: E402
 
@@ -118,6 +125,80 @@ FRAME_INDEX = 1   # the one "good"-confidence frame on this roll (of 5)
 
 BALANCE_AREA_IMAGE = 0x10102B20   # pakon_analyse_roll.PATH_BALANCE_AREA_IMAGE
 DRIVER_ADDREF_WRAP = 0x10006880   # see BalanceAreaImageCall docstring
+
+
+def patch_unchecked_instruction_cap(count: int = 50_000_000_000) -> None:
+    """Fix a real harness bug found THIS pass, not in any existing golden
+    file's own contents: ``pakon_autotone_shell_golden.Emu.call`` hard-codes
+    ``uc.emu_start(va, RET_MAGIC, timeout=0, count=200_000_000)`` and never
+    checks that EIP actually reached ``RET_MAGIC`` afterward.  Every existing
+    golden's own scenarios are small enough (largest: 400x400 = 160,000
+    pixels) that 200,000,000 emulated x86 instructions is always far more
+    than ``cna``'s own real analysis needs, so this never mattered before.
+
+    A genuine full real frame does need more: confirmed directly this pass
+    -- a 1043x1043 real crop (1,087,849 px) needs ~16s of real Unicorn
+    execution even once the cap is no longer the limit, and the full real
+    frame (5,930,000 px) needs ~57s.  Both are comfortably above what
+    200,000,000 instructions buys at this DLL's real per-pixel cost, so the
+    OLD cap was silently truncating ``cna``'s own analysis mid-function on
+    real full-scale frames.  Because Unicorn's ``emu_start`` returns
+    normally (no exception) when its own ``count`` budget is exhausted,
+    ``Emu.call`` (which never checks final EIP) reported success with
+    whatever ``AnsStatus`` value happened to already be sitting at ``sret``
+    -- which reads as OK because that memory starts zero-filled -- while
+    every result the truncated code path never got to write (``cna``'s own
+    ``ToneScaleLut``, and everything ``dra`` derives from it) stayed at
+    its allocation-time zero fill.  This produced exactly the shape of
+    "real divergence" an earlier draft of this file's own Stage 2 first
+    reported: sane ``threshold``/``nEdgePixels`` (written early, before the
+    budget ran out) alongside an all-zero ``ToneScaleLut``/``dra`` (written
+    late, after it did) -- see docs/74 §24's own corrected account.
+
+    Does NOT modify ``pakon_autotone_shell_golden.py`` on disk -- replaces
+    the bound method on the (already-imported) class object at runtime, in
+    this process only, the same class of fix as this file's own
+    ``HEAP``/``HEAP_SZ`` relocation immediately below.  A genuinely fixed
+    ``Emu.call`` belongs in that file eventually; this is a diagnostic-grade
+    patch scoped to this new script, not a claim that the fix has landed
+    upstream.
+    """
+    RET_MAGIC = shellg.RET_MAGIC
+    STACK = shellg.STACK
+    STACK_SZ = shellg.STACK_SZ
+
+    def call_checked(self, va: int, args=(), ecx: int | None = None) -> int:
+        uc = self.uc
+        esp = STACK + STACK_SZ - 0x20000
+        blob = b"".join(struct.pack("<I", a & 0xFFFFFFFF) for a in args)
+        esp -= len(blob)
+        if blob:
+            uc.mem_write(esp, blob)
+        esp -= 4
+        uc.mem_write(esp, struct.pack("<I", RET_MAGIC))
+        uc.reg_write(UC_X86_REG_ESP, esp)
+        if ecx is not None:
+            uc.reg_write(UC_X86_REG_ECX, ecx)
+        self.faults = []
+        try:
+            uc.emu_start(va, RET_MAGIC, timeout=0, count=count)
+        except UcError as ex:
+            raise RuntimeError(
+                f"emu {va:#x} eip={uc.reg_read(UC_X86_REG_EIP):#x}: {ex}"
+                + ("; " + "; ".join(self.faults[:2]) if self.faults else "")
+            ) from ex
+        eip = uc.reg_read(UC_X86_REG_EIP)
+        if eip != RET_MAGIC:
+            raise RuntimeError(
+                f"emu {va:#x} did not reach RET_MAGIC (stopped at "
+                f"eip={eip:#x}) -- hit the {count:,}-instruction cap "
+                f"mid-execution; raise `count` further rather than trust "
+                f"this result")
+        if self.faults:
+            raise RuntimeError(f"emu {va:#x} faults: {self.faults[:2]}")
+        return uc.reg_read(UC_X86_REG_EAX)
+
+    shellg.Emu.call = call_checked
 
 
 # ---------------------------------------------------------------------------
@@ -590,6 +671,12 @@ def main(argv: list[str]) -> int:
     # be a scoped context manager around just that one call.
     shellg.HEAP = 0x20000000
     shellg.HEAP_SZ = 0x08000000   # 128 MiB -- clear of IMAGE_BASE/STACK
+    # Fix the real harness bug found this pass: Emu.call's own hard-coded
+    # 200,000,000-instruction cap silently truncates real full-frame `cna`
+    # analysis and misreports it as a clean OK -- see
+    # patch_unchecked_instruction_cap's own docstring for the full account,
+    # including the confirmed real timings this was checked against.
+    patch_unchecked_instruction_cap()
     d, dll, clipped, dt = run_assembled_chain_on_real_frame(pe, x)
     print(f"  wall time: {dt:.1f}s  status_ok={dll['status_ok']}  "
          f"thrown={dll['thrown']}")

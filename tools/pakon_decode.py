@@ -75,6 +75,11 @@ import pakon_scene_context as scene_ctx  # noqa: E402
 WORDS_PER_LINE = 6000          # 2000 px × 3 channels — DpiBase16
 PIXELS_PER_LINE = 2000
 CHANNELS = 3
+CHANNELS_IR = 4                # R, G, B, Ir — the 8000-word line format
+#: Every ``words_per_line`` value the decoder can unpack, keyed by pakon_app's
+#: sniff_capture (words_per_line -> channels): 3-channel visible-only and
+#: 4-channel with IR both segment into PIXELS_PER_LINE columns.
+LINE_WORD_CANDIDATES = (WORDS_PER_LINE, PIXELS_PER_LINE * CHANNELS_IR)
 RAW14_MAX = 16383
 _REPO_ROOT = _TOOLS.parent
 DEFAULT_CALIBRATION_DIR = _REPO_ROOT / "calibration"
@@ -90,6 +95,18 @@ DEFAULT_ANSEL_ROOT = f"{_FX35}/anselinstalldir/dataPathItems"
 # --------------------------------------------------------------------------
 # wire → 14-bit lines
 # --------------------------------------------------------------------------
+
+def channels_for_words(words_per_line: int) -> int | None:
+    """Channel count for a modal sync-gap width, or None if not recognised.
+
+    words_per_line // PIXELS_PER_LINE for each of LINE_WORD_CANDIDATES --
+    3-channel visible-only (6000) or 4-channel with IR (8000). Anything else
+    is not a words-per-line this decoder knows how to segment.
+    """
+    if words_per_line not in LINE_WORD_CANDIDATES:
+        return None
+    return words_per_line // PIXELS_PER_LINE
+
 
 def load_u16(path: str | Path) -> np.ndarray:
     data = Path(path).read_bytes()

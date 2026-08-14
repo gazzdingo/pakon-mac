@@ -3073,6 +3073,212 @@ independent confirmation of that same struct/argument mapping elsewhere
 in this doc (§5, §9, §14), but noted plainly as inherited rather than
 re-derived this pass.
 
+## 30 — A real, new, reproducible bug found and fixed: `pakon_cna.py`'s
+tone-curve NaN handling, not `pakon_dra.py`, explains a genuine real-photo
+divergence §24's own captures never triggered — bit-exact and
+pixel-identical after the fix
+
+Tonight's washed-out fix (§23, temporary `app/main.js` default to the Python
+engine) prompted the project owner to scan a fresh real photo specifically
+to test it (`~/Library/Caches/PakonScan/captures/test123.bin`, frame 1 —
+not the calibration-scan capture §24 used). Running §24's own, unmodified
+`pakon_full_colour_chain_golden.py` against this frame (via a throwaway
+wrapper that only monkeypatches its module-level `CAPTURE`/`FRAME_INDEX`,
+per this pass's own instructions — the golden file itself, and its own
+§24 citation, are untouched) reproduced a real divergence: `dra.lumMax`/
+`edgeMax`/`effMax` all read **1544** from the real DLL but **1916/1896/1906**
+from the Python port, `cna`/`dra`/`contrast`/`citras` LUTs off by ~1 at
+matching indices, and the final sRGB ground-truth comparison showed the R
+channel's shadow point 6 codes higher in the port (`p1=26`) than the real
+DLL's own (`p1=20`) — this pass's own job was to find the real mechanism,
+not just re-confirm the symptom.
+
+**Reproduced first, cleanly.** `status_ok=True`, no exception, 35.4s wall
+time — not §24's own instruction-cap harness bug (already fixed in this
+script and re-verified still in effect this pass).
+
+**`pakon_dra.py` itself is not the bug — confirmed by fresh, full
+disassembly of `cum_bounds` (`0x10228bc0`), not assumed innocent.** Read
+`af`+`pdf` in full (257 bytes, 19 basic blocks) and compared every
+instruction against `pakon_dra.cum_bounds`'s own Python line-for-line: the
+four threshold computations (`a`/`b`/`c`/`d` from `startingMinCumPoint`/
+`cumPctBelowMin`/`startingMaxCumPoint`/`cumPctAboveMax`), the min-side
+descend-then-trim-back loop, and the max-side descend-then-trim-forward
+loop (the exact "mirror" the port's own docstring already claims) all match
+register-for-register, branch-for-branch, including the three-bin
+lookback/lookahead trim condition on both sides. **This rules out
+`cum_bounds`'s own arithmetic as the cause** — the same conclusion the task
+brief anticipated ("the actual root cause is very likely further upstream
+than `effMax`'s own blend formula").
+
+**Traced upstream via the DLL's own retained struct fields, not
+speculation.** `dra`'s own `nSmallBins`/`nLargeBins`/`nLumPixels`/
+`nEdgePixels`/`lumMin`/`edgeMin`/`effMin` all matched exactly between the
+real DLL and the host — only `lumMax`/`edgeMax`/`effMax` diverged, and all
+three collapsed to the identical value (1544) in the DLL. Since `dra`'s
+"tone_lut" input (variant B's `analyze_hist`, the CN-Enhanced path) is
+`cna`'s own `ToneScaleLut` — consumed by `generate_lut`'s `remap_hist`
+(`scratch[toneLut[i]] += hist[i]`) before rebin/cum_bounds ever run — the
+next check was whether `cna.ToneScaleLut` itself matches. It does not, far
+beyond the small ~1-code noise the original report described: **3,280 of
+5,000 entries differ, indices 1720–4999 forming one unbroken run in which
+the real DLL's value is a flat, constant 1550 while the Python port's own
+value climbs smoothly to 3150.** `cna.LuminanceHist`/`EdgeHist` (the raw
+inputs) matched with zero mismatches, so the divergence originates inside
+`analyze_image`'s dark/light curve-construction pipeline, not in histogram
+collection.
+
+**Localised further with three independent, live Unicorn checks, not one
+speculative reading:**
+
+1. **A completely separate, isolated `cna`-only harness**
+   (`pakon_cna_golden.dll_analyze_image`, not the six-subsystem assembled
+   one) reproduced the identical plateau on the identical frame — the same
+   heap-relocation and instruction-cap fixes §24 already established had to
+   be applied here too (this harness had never been run at real full-frame
+   scale before; it hit both bugs fresh, diagnosed and fixed the same way,
+   not re-derived from scratch). This rules out an assembled-harness-only
+   artifact: `bucket_hist` (the post-smoothing edge-histogram bucket sums,
+   `impl+0xC8`) matched with **zero** mismatches, and `threshold`/`n_edge`/
+   all four sigmas matched exactly (`darkInSigma`/`lightInSigma` both
+   genuinely `nan` on **both** sides — an already-documented "NaN cascade"
+   this file's own `_half()` comment already describes at length, now
+   confirmed live-DLL-real on this frame specifically, not just
+   host-inferred).
+2. **`hist_resample` (`0x1022ca80`) called directly and in isolation**
+   (`pakon_cna_golden.dll_resample`) for both the dark and light halves,
+   fed this frame's own real (already-matched) `bucket_hist`: `r.out`
+   matched with **zero** mismatches for **both** halves, both entirely
+   zero (`sum(r.out)=0`), confirming `cross_dark=cross_light=0` in the real
+   DLL, not just in the host's own re-derivation.
+3. **Fresh disassembly of both `contrast_map` bodies**
+   (`0x1022c630` ascending / `0x1022c520` descending) at their shared
+   per-step ratio-clamp idiom (`0x1022c687`/`0x1022c575`:
+   `fcom [lo]; fnstsw ax; test ah,5; jp`) found the real, exact mechanism.
+   For an ORDERED compare this idiom's `jp`-taken (skip-the-clamp) case
+   fires exactly when `ratio >= lo` — algebraically identical to the port's
+   `if not (ratio >= lo): ratio = lo`, which is why every prior synthetic
+   and real-crop golden run (docs/74 §17/§24, none of which combined a
+   NaN-cascaded half with a `cross` far from `pivot` on the same frame)
+   never caught this. They stop agreeing for exactly one input: an
+   UNORDERED compare. x87 `FCOM` sets C3=C2=C0=1 on unordered, so
+   `ah & 5 == 0x05` — **even** parity, PF=1, the **same** parity the
+   genuine `ratio >= lo` case produces — so the real DLL's `jp` ALSO fires
+   for NaN and leaves `ratio` as NaN, while Python's `not (NaN >= lo)` is
+   `True` (IEEE754: any NaN compare is `False`, so `not False` is `True`),
+   taking the **opposite** branch and silently laundering NaN into the
+   finite `lo=0.5`.
+
+**Once `ratio` is genuinely NaN and stays NaN** (confirmed identical idiom
+in both `0x1022c520` and `0x1022c630`, so both halves are affected the same
+way structurally): `acc` is poisoned to NaN on the very first loop
+iteration; `round_half_up(NaN)` reproduces x86's own `__ftol`-on-NaN
+"integer indefinite" outcome, which the next line's `if k < 0: k = 0` pins
+to `k = 0` — and because `ratio_den[0]` is the *same* NaN in this frame's
+degenerate scenario, `ratio` stays NaN and `k` stays pinned at 0 for every
+remaining step, making `out[i] = clamp(0 - delta, ...)` constant for the
+rest of that half's walk. The old port instead let `ratio` settle at the
+finite `lo` and kept walking normally — a smoothly increasing curve instead
+of a flat one.
+
+**Why only the light (ascending) half is visibly wrong, not the dark
+(descending) half too — reasoned through, then confirmed, not assumed.**
+Both halves hit the identical NaN cascade (`cross_dark = cross_light = 0`,
+confirmed above). For the descending walk, `idx = cross_dark = 0` is
+*already* the boundary the walk's own `k < 0 -> k = 0` clamp pins to almost
+immediately regardless of whether `ratio` is genuinely stuck at NaN or
+merely clamped-then-decaying (the descending accumulator starts at `idx=0`
+and moves *away* from `pivot_bucket`, going negative within the first few
+steps either way) — so the buggy and correct behaviours coincide there.
+For the ascending walk, `idx=0` is far from where the walk needs to go (up
+past `pivot_bucket=178` to `499`), so the port's wrong clamp let `acc`
+escape and climb smoothly while the real DLL's genuinely-NaN `ratio` never
+escapes — a large, real, visible divergence. **This is not a guess**: a
+scratch-patched copy of `_contrast_map` with only this one line changed
+(`if ratio < lo: ratio = lo`, the IEEE754-correct, NaN-preserving form) was
+run through the rest of `analyze_image`'s own real pipeline
+(`gauss_smooth` → `build_tone_lut` → the pivot-anchored normalisation) on
+this exact frame's real intermediate arrays, and reproduced the real DLL's
+own observed plateau — **1550, constant, for all 3,280 of the affected
+bins — with zero mismatches** — while correctly leaving the (numerically
+coincidental) dark-half region unaffected, exactly matching the real DLL's
+own behaviour on both counts.
+
+**The fix.** `pakon_cna.py`'s `_contrast_map` (used by both
+`contrast_map_up`/`0x1022c630` and `contrast_map_down`/`0x1022c520`):
+
+```python
+# before (silently launders a NaN ratio into the finite lo=0.5):
+if not (ratio >= lo):
+    ratio = lo
+# after (matches the real DLL's own fcom/fnstsw/test-ah,5/jp idiom,
+# 0x1022c57b / 0x1022c68d — an unordered compare no longer takes this
+# branch, so a genuinely-NaN ratio stays NaN, exactly as the real DLL
+# leaves it):
+if ratio < lo:
+    ratio = lo
+```
+
+`pakon_dra.py` needed **no change at all** — its own `cum_bounds`/
+`eff_bounds` were independently confirmed correct against fresh
+disassembly (above), and the fix lives entirely upstream, in `cna`'s own
+tone-curve construction. This is a real, if narrow, correction to the
+`CNA_CONTRAST_MAP_PORTED = True` claim: "verified bit-exact" was true for
+every case this project had exercised before tonight, but not for a
+genuinely NaN-valued `ratio`, a case only a real photo with a fully-empty
+resampled half's histogram and a `cross` far from `pivot` reaches. Full
+citations and the corrected docstring are now in `_contrast_map`'s own
+docstring in `pakon_cna.py` (search "THE LOW-CLAMP TEST'S NaN BEHAVIOUR").
+
+**Verified bit-exact and pixel-identical, not eyeballed.** Two independent
+re-runs against the real, MD5-verified DLL on this exact frame, after the
+fix:
+
+```
+Isolated cna-only harness (pakon_cna_golden.dll_analyze_image):
+  tone_lut mismatches: 0 of 5000            (was 3,280 of 5,000)
+
+Assembled six-subsystem harness (this pass's own repro of the task):
+  Stage 2 field diff: 2 fields (cna.darkInSigma/lightInSigma, both nan==nan
+    — a pre-existing float-comparison artifact of the diff harness itself,
+    unrelated to this fix: nan != nan even when both sides genuinely agree)
+  dra.lumMax / edgeMax / effMax: no longer in the mismatch list at all
+  Stage 3, sRGB [p1, p50, p99]:
+    R: python=[20.0, 126.0, 253.0]  dll_ground_truth=[20.0, 126.0, 253.0]
+    G: python=[71.0, 190.0, 252.0]  dll_ground_truth=[71.0, 190.0, 252.0]
+    B: python=[56.0, 231.0, 254.0]  dll_ground_truth=[56.0, 231.0, 254.0]
+  |python - dll_ground_truth| over all pixels/channels:
+    mean=0.000  p99=0.00  max=0.0
+```
+
+The R-channel shadow point the original report flagged (`p1=26` port vs.
+`p1=20` real DLL) is now **`p1=20.0` on both sides** — pixel-identical
+across the entire frame, not just at the percentile. The scale-sweep
+diagnostic's own 400×400/800×800/1500×1500 crops (printed automatically
+because the harmless `nan`-artifact still counts as "a mismatch" to the
+harness) show non-degenerate `ToneScaleLut`s at every size, consistent with
+this being a genuinely frame-content-dependent trigger, not a
+scale-dependent one.
+
+**What this means for the app.** §23 already established the shipped Go
+engine never wired in this chain at all (still running `ShastaToneRpd`, a
+placeholder), so this fix does not by itself change production behaviour
+tonight — but it removes a real, now-confirmed-fixed defect from the
+Python engine app/main.js was switched to as tonight's interim default,
+and it is one concrete, verified data point that the "whole chain
+bit-exact before wiring into Go" bar (`shasta.go`'s own comment, quoted in
+§23) is closer than it was before this pass started, not farther.
+
+**Honestly scoped.** This fix targets the exact mechanism this pass traced
+and verified end to end on this one real, reproducible case. It was not a
+blind pattern-fix: the `if not (x >= y)` vs. `if x < y` distinction only
+matters when `x` can genuinely be NaN, which the fix's own docstring now
+explains precisely (a `0.0/0.0` from an entirely-empty resampled
+histogram half). No other `not (x >= y)`-shaped comparison anywhere else
+in this project's port code was audited this pass; if any exist and can
+also see a genuine NaN operand, they are a real, separate risk worth a
+future pass's attention, not covered by this fix.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is
@@ -3368,3 +3574,34 @@ confirm this (several `/tmp/_*.py` files, plus ad hoc `r2`/`pd` disassembly
 dumps under `/tmp/pakon_re/` and `/tmp/`) were not committed — only
 `pakon_full_colour_chain_golden.py` itself is new, additive, committed
 code, and no existing golden file was modified on disk by this pass.
+
+§30's reproduction used a throwaway wrapper (not committed) that imports
+`pakon_full_colour_chain_golden` and monkeypatches its module-level
+`CAPTURE`/`FRAME_INDEX` at runtime, per this pass's own instructions not to
+edit that file's own citation of its original §24 capture; the golden file
+on disk is byte-for-byte what §24 left it. `cum_bounds`'s full-function
+disassembly (`af`+`pdf @ 0x10228bc0`, 257 B, 19 basic blocks) and both
+`_contrast_map` bodies' disassembly (`0x1022c630`, `0x1022c520`) were read
+fresh this pass against the same MD5-verified DLL every other section
+cites, not transcribed from any prior document. `hist_resample`'s isolation
+test used `pakon_cna_golden.dll_resample` — an existing, previously-built
+but never-exercised-at-this-scale golden function — completely unmodified;
+its own heap size was fine for the size involved (500 buckets), so unlike
+`dll_analyze_image` it needed no heap relocation. The
+`dll_analyze_image`/`CnaEmu` isolated harness required the identical
+class of fix §24 already found in `pakon_autotone_shell_golden.Emu.call`
+(heap relocation + the instruction-cap/EIP-check patch) — applied at
+runtime in this pass's own throwaway scripts via the same
+`shellg.HEAP`/`HEAP_SZ` globals and `patch_unchecked_instruction_cap()`
+function §24 already added to `pakon_full_colour_chain_golden.py`, not a
+new or rediscovered fix, and not a change to `pakon_cna_golden.py` on disk.
+The one-line fix itself (`pakon_cna.py`'s `_contrast_map`) was verified
+bit-exact twice, independently: first via the isolated `cna`-only harness
+(`tone_lut` 0 of 5,000 mismatches, down from 3,280), then via a full,
+independent re-run of the assembled six-subsystem harness end to end,
+including the final `AnselEngine.to_srgb` render diffed pixel-for-pixel
+against the real DLL's own ground-truth render on the identical real
+frame (`max=0.0` over every pixel and channel) — not inferred from the
+`cna`-level fix alone. No golden file was modified on disk; the only
+production-code change is the one line (plus docstring) in
+`pakon_cna.py`'s `_contrast_map`, described and cited above for review.

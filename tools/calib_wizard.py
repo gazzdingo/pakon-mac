@@ -392,13 +392,32 @@ def film_precheck(link, seconds: float = FILM_PRECHECK_S) -> GateVerdict:
     return v
 
 
-def verdict_from_run(result: dict) -> GateVerdict:
+def verdict_from_run(result: dict, trust_classifier: bool = True) -> GateVerdict:
     """The gate verdict a completed capture already contains.
 
     ``run_scan`` polls the film sensors and classifies every window through
     ``pakon_gate`` as a matter of course, so a probe capture answers the
     question without a single extra transaction. The sensors win when they
-    spoke; the classifier is the positive determination when they did not.
+    spoke; the classifier is the positive determination when they did not --
+    UNLESS ``trust_classifier=False``, in which case the classifier's opinion
+    is not consulted at all and an unopinionated sensor read stays
+    undetermined (``present=None``, not a film verdict).
+
+    Why that escape hatch exists: ``pakon_gate``'s classifier compares the
+    live capture against a *borrowed* reference (this repo's existing
+    calibration/, built at whatever exposure it happened to be captured at).
+    That comparison is only meaningful when the live capture's own exposure is
+    close to the borrowed reference's. During ``step_duty``'s search, it is
+    not -- on-counts sweep from near-saturation down to a fraction of the
+    borrowed reference's own duty -- and a genuinely empty gate at one of
+    those intermediate exposures reads dimmer than the reference's clear_cut
+    for the capture's *entire* duration, not just a noisy window or two.
+    Confirmed on hardware: 1792/1792 lines read "film" at on-counts
+    [160,145,127] with the gate independently confirmed empty, reproducing
+    identically across repeated runs. Trusting the classifier here does not
+    add safety, since it is not detecting film -- it is detecting "this
+    exposure differs from the borrowed reference's," which is true by
+    construction mid-search and stops the run whether or not film is present.
     """
     fs = result.get("film_sense") or {}
     # ScanResult calls it `run`; the capture sidecar calls the same dict
@@ -421,6 +440,12 @@ def verdict_from_run(result: dict) -> GateVerdict:
                     f"{'loaded' if v.present else 'clear'}")
         return v
 
+    if not trust_classifier:
+        v.present = None
+        v.detail = ("the film sensors said nothing, and the gate classifier's "
+                    "borrowed reference is not valid at this un-converged "
+                    "search exposure -- not consulted")
+        return v
     film_lines = int(rd.get("film_lines") or 0)
     clear_run = int(rd.get("clear_run") or 0)
     v.source = "gate-classifier"
@@ -596,8 +621,28 @@ class Wizard:
 
     # ---- capture ----
     def capture(self, label: str, config: dict, *, lamp: bool,
-                max_bytes: int) -> dict:
+                max_bytes: int, check_film: bool = True) -> dict:
         """One ``pakon_scan.py run``. Returns its ``done`` record.
+
+        ``check_film=False`` skips the LIVE per-window abort below (not the
+        film sensors, and not the caller's own post-hoc ``verdict_from_run``
+        check on the completed ``done`` record -- both still apply). Use this
+        only for throwaway probe captures at a candidate exposure that has not
+        converged yet, e.g. ``step_duty``'s search rounds. The live abort
+        classifies each ~256-line window against ``pakon_gate``'s *borrowed*
+        reference (this repo's existing calibration/, captured at whatever
+        exposure it happened to be built at) with zero tolerance -- a single
+        window is enough to kill the capture. That is fine once the search has
+        converged near the target exposure, where the borrowed reference's
+        absolute thresholds are close to valid. Mid-search, on-counts can be a
+        fraction of the borrowed reference's own exposure, so a genuinely empty
+        gate can read dimmer than that reference's clear_cut and trip a false
+        positive -- confirmed reproducing deterministically on this hardware
+        (same round, twice, gate independently confirmed empty both times).
+        The whole-capture ``verdict_from_run`` check the caller runs on the
+        returned ``done`` is not this fragile: it prefers the real DX film
+        sensors when they have an opinion, and falls back to pakon_gate's
+        *aggregate* state over the whole run rather than one window snapshot.
 
         THE LIVE FILM ABORT ONLY APPLIES WITH THE LAMP ON. ``pakon_gate``
         classifies by how much light reaches the sensor, so with the lamp off
@@ -650,7 +695,7 @@ class Wizard:
                     # rather than kill, because pakon_scan's signal handler is
                     # what stops the transport and turns the lamp off -- killing
                     # it outright would leave the motor running.
-                    if lamp and (w.get("state") == "film"
+                    if check_film and lamp and (w.get("state") == "film"
                                  or (r.get("film_lines") or 0)):
                         aborted = True
                         proc.terminate()
@@ -814,9 +859,22 @@ class Wizard:
         for rnd in range(1, MAX_DUTY_ROUNDS + 1):
             self.p.round = rnd
             label = f"duty{rnd}"
-            done = self.capture(label, cfg, lamp=True, max_bytes=PROBE_BYTES)
+            # check_film=False: this is a throwaway probe at a candidate
+            # exposure that has not converged yet, where the live per-window
+            # abort's borrowed reference is not valid (see capture()'s own
+            # docstring). Safety is not weakened -- verdict_from_run below
+            # still runs on the completed capture, preferring the real DX
+            # film sensors and falling back to pakon_gate's aggregate state
+            # over the whole run rather than a single window.
+            done = self.capture(label, cfg, lamp=True, max_bytes=PROBE_BYTES,
+                                check_film=False)
 
-            v = verdict_from_run(done)
+            # trust_classifier=False: the borrowed reference is not valid at
+            # this un-converged search exposure (see verdict_from_run's own
+            # docstring). Real DX film sensors still gate this -- they are
+            # the primary signal and are not skipped, only the light-level
+            # fallback is.
+            v = verdict_from_run(done, trust_classifier=False)
             if v.present is True:
                 self.emit(state=FILM_IN_GATE, detail=v.detail)
                 raise FilmInGate(v)
@@ -982,6 +1040,16 @@ class Wizard:
             v = self.step_gate(link)
             if v.present is True:
                 return self.report(FILM_IN_GATE, gate=v.to_json())
+            # step_gate is the only step that uses the precheck link -- every
+            # later step (step_black, step_duty, step_references, ...) drives
+            # the scanner through its own `pakon_scan.py run` subprocess, each
+            # of which claims the USB interface itself. Holding this link
+            # claimed past this point makes every one of those subprocesses
+            # fail with "Access denied" (macOS libusb: interface already
+            # claimed by another process). Close() is idempotent, so this is
+            # safe even though cmd_run's own finally also closes it.
+            if link is not None:
+                link.close()
 
             self.step_eeprom()
             cfg = self.seed_config()

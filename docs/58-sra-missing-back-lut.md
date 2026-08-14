@@ -1,5 +1,13 @@
 # 58 — The port applies SRA's forward LUT and never inverts it
 
+> **PARTLY WITHDRAWN — see `docs/61`.** The title claim is false on the path
+> that actually runs. `apply_1d_lut(x, self.sra_lut)` sits in the fallback
+> branch (`pakon_ansel.py:795`, inside the `else:` at 789), which does not
+> execute when `setshifts_out` is set — and it is set live. The forward LUT is
+> loaded and never applied. The proof that the two LUTs invert each other, and
+> that the port never loads the back LUT, both stand; the washout mechanism
+> proposed here does not.
+
 **Date: 2026-08-13.** A concrete, verifiable defect upstream of the entire tone
 chain. Found by comparing the file set the vendor actually opens during a render
 (`docs/56`) against what the port loads.

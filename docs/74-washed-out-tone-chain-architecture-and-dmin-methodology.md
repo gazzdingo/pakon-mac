@@ -1831,6 +1831,265 @@ in §23) was not yet met, the corrected finding is the opposite: one more
 real, large-scale data point that the six-subsystem chain DOES meet that
 bar, on every frame and crop this doc has ever tested it against.
 
+## 25 — `analyzeAttributes` read in full, real entry to real leaf: it's the
+`orderOrientation` auto-rotation classifier's gate, not a tonal stage —
+confirms `docs/64`'s existing prose classification with real instruction
+evidence for the first time, and closes it as a shadow-defect candidate
+
+Picked up directly from this doc's own priority list (item 1: the four
+unreplicated stages), the one member neither §11 nor §12 had read yet —
+`analyzeAttributes`. DLL re-verified before use: MD5
+`eea9dcf78ee21d4f7c515a6c2512242d` (`/tmp/pakon_re/PakonIMAu.dll`), matching
+the copy every prior section of this doc cites. Real entry address taken
+from `pakon_analyse_roll.py`'s own already-catalogued
+`PATH_ANALYZE_ATTRIBUTES = 0x100FB3D0` (not guessed), cross-checked against
+§11's own real analyze-time call-order table (`… → analyzeAttributes
+(0x100fb3d0) → …`) — the two independent citations agree.
+
+**Function boundary, confirmed by explicit `af`+`pdf`, not a raw byte-range
+read** (this project's own established convention, per `docs/67`): `af @
+0x100fb3d0` finds a clean 859-byte function, `0x100fb3d0`–`0x100fb72a` (last
+instruction `ret` at `0x100fb72a`), ending exactly 5 bytes before
+`analyzeAutoTone`'s own already-established entry at `0x100fb730` — a real
+consistency check, not assumed. Self-naming confirms identity independent
+of the address citation: the string `"ColorNegativePath::analyzeAttributes"`
+(`0x10586a38`) and the file path
+`"\Atc\ansel\src\libPaths.ansel\cnMethods.cpp"` (`0x10586844`) are both
+pushed at three separate sites inside this exact 859-byte span
+(`0x100fb4de`, `0x100fb528`, `0x100fb5d4`) — the same self-naming method
+`docs/64`'s own `declare` disambiguation and this doc's §18 SRA read both
+already established as decisive. Single incoming argument (`arg_50h`, the
+function's only parameter — this function does not build an EBP frame,
+using ESP-relative locals throughout, so `ebp` itself is repurposed as a
+plain register holding that one argument for the whole body) — consistent
+with §11's own finding that `balanceAreaImage`/`analyzeArea`/
+`analyzeFalloff`/`analyzeAutoTone` are all called with the identical
+`&[ebp+0xc]` holder argument at the driver; `analyzeAttributes` takes the
+same single-pointer shape.
+
+**The body, read in full, is a capability-shell gate wrapping exactly one
+real call — not an independent computation.** Three pieces of evidence,
+all address-level, not inferred from the name:
+
+1. **`0x10020a40` at `0x100fb441`** — `CAP_FIND_BY_NAME`, the *identical*
+   capability-set lookup `analyzeAutoTone`'s own `cna`/`dra`/`toneHelper`/
+   etc. acquire calls use (already ported and Unicorn-verified in
+   `pakon_autotone.py`'s capability shell) — here keyed to the literal
+   string `"orderOrientation"` (constructed via
+   `sym.imp.MSVCP71.dll_?basic_string...@QAE@PBD@Z` at `0x100fb421`, then
+   destroyed again at `0x100fb4c6`), a name `analyzeAutoTone`'s own
+   `CAPABILITIES` tuple never looks up (§22 already enumerated it
+   exhaustively: `cna`/`dra`/`toneHelper`/`contrast`/`ast`/`pfd`/`citras`
+   only). The lookup result is compared against the DLL's own
+   null-capability sentinel at `0x106b5bd4` (`setne bl` @ `0x100fb493`) —
+   the same sentinel-compare idiom `dra`'s "lighting" `find` and
+   `balanceAreaImage`'s "area" `find` already use elsewhere in this doc.
+   - **HIT** (`"orderOrientation"` capability object already exists for
+     this scene — bl≠0): falls straight through to `call 0x1001f770` @
+     `0x100fb4e9` (line 798 of `cnMethods.cpp`, per the pushed constant
+     `0x31e`) then jumps to the shared cleanup/return block — the real
+     `AnsOrderOrientationCapability::analyze` body is never called on this
+     branch.
+   - **MISS** (normal, first-time case — bl=0): falls through to a second
+     gate at `0x100fb4f6`.
+2. **`0x104ffdd6` at `0x100fb507`** — confirmed by direct disassembly to be
+   a bare 6-byte IAT thunk, `jmp dword [sym.imp.MSVCR71.dll___RTDynamicCast]`
+   (`0x105735c0`) — the real Windows `__RTDynamicCast`, i.e. a
+   `dynamic_cast<T>()`. This is the *exact same* RTTI-cast mechanism
+   `pakon_autotone.py`'s own docstring already documents generically for
+   every one of `analyzeAutoTone`'s six subsystem lookups ("`cap =
+   __RTDynamicCast(iface, 0, AnsCapability, <target>, 0)`" — that file's own
+   words, `pakon_autotone.py:58`), now confirmed to be the *identical* gate
+   `analyzeAttributes` runs for `"orderOrientation"`, not a different
+   mechanism.
+   - **Cast fails** (`iVar3==0`, i.e. the wrong RTTI type or genuinely
+     absent): throws `"OrderOrientation capability not found."`
+     (`0x10586a10`) via `0x1001ed90` @ `0x100fb530` — the same "`<Name>`
+     capability not found." throw shape `pakon_autotone.py:842` already
+     documents for the six *ported* subsystems' own missing-capability
+     path.
+   - **Cast succeeds** (`*(iVar3+0xc) != 0`): calls
+     `AnsOrderOrientationCapability::analyze` (`0x101218c0`) at
+     `0x100fb576` — `ecx` = the found/cast capability object itself (not
+     `ctx`, not `holder`), one stack-struct argument built from the
+     driver's own `[ebp+0xc]`-derived data — the **only** substantive
+     analysis call anywhere in `analyzeAttributes`'s own 859 bytes. This is
+     the exact call site `pakon_analyse_roll.py`'s own pre-existing comment
+     already named: *"`OrderOrientation` Cap `0x101218c0` is not in
+     [`analyzeAneOrder`] — called from `analyzeAttributes` (`0x100fb576`)"*
+     — now confirmed with the full surrounding logic, not just the bare
+     address.
+3. **After the call**, the analyze() return is checked against the same
+   `0x106b5bd4` sentinel (`setne bl` @ `0x100fb598`); if non-sentinel
+   (`bl≠0`), a *second* `call 0x1001f770` fires (line 809, `0x100fb5df`)
+   before falling into the shared cleanup block at `0x100fb5e7`; if it *is*
+   the sentinel (`bl=0`, analyze produced no real result), execution skips
+   `0x1001f770` entirely and goes straight to a plainer cleanup path at
+   `0x100fb680`. `pakon_autotone.py`'s own docstring already characterizes
+   what `0x1001f770` does generically — "returns a non-OK `AnsStatus`"
+   (`pakon_autotone.py:1400`), not a C++ throw — consistent with every call
+   site here falling through normally afterward rather than unwinding.
+
+**`AnsOrderOrientationCapability::analyze` (`0x101218c0`), read in full via
+`af`+`pdf`** — 329 bytes total realsz, self-naming confirmed independently
+via four sites inside it (`"AnsOrderOrientationCapability::analyze"`
+`0x10588688`, file
+`"\Atc\ansel\src\libOrderOrientation.ansel\AnsOrderOrientationCapability.cpp"`
+`0x105885c8`, plus three distinct `" Caught EkcError/std::exception/Unknown
+exception."` catch-block strings — the bulk of the function's own byte
+count past `0x10121998` is these three MSVC-generated exception-catch
+handlers, only reached on unwind, not on normal execution, which is why
+`r2`'s own linear `pdf` view initially rendered them as a visual gap before
+a raw `pD` sweep confirmed they're real, contiguous, in-function bytes, not
+missing analysis). The function's own real, normal-path logic is short: a
+smart-pointer AddRef/Release dance around `this+0x10`, one real call —
+`call 0x102101d0` @ `0x10121933`, passed `&var_14h_3` as its sole explicit
+argument with `ecx = this+0x10`'s object — and, if the result is non-null,
+`mov byte [edi+0xf], 1` @ `0x10121994` (a flag on the capability object
+itself, `edi` = the original `this`). That's the entire direct-logic
+content of `AnsOrderOrientationCapability::analyze`.
+
+**`0x102101d0` — the real leaf, read in full (1,169 bytes, `af`+`pdf`,
+complete)** — this is where any tonal relevance would have to live, and it
+doesn't:
+
+* `0x10210297`–`0x102102b9`: checks whether an incoming descriptor's two
+  size fields are **exactly** `[obj+0x10] == 0x80` (128) and
+  `[obj+0xc] == 0xc0` (192).
+* If not exact, `0x1021049b`–`0x102104ba`: a signed-modulo idiom
+  (`and eax, 0x8000007f` + sign-correction, then `idiv 0xc0`/192 with a
+  remainder check) accepts any size that is an **exact multiple** of a
+  128×192 tile; anything else falls through to a sentinel path
+  (`0x102105e2`: loads a fixed double constant from `0x10574f40` and
+  returns without running any correlation at all).
+* On a dimension match (either shape), the function copies two fixed-size
+  structs onto the stack via `rep movsd` — 68 dwords (272 B) from
+  `this+0x30`, 28 dwords (112 B) from `this+0x140` — computes a row/col
+  byte offset into what the `imul ×width; shl 1` idiom marks as a 16-bit
+  pixel buffer (the same "stride×2 for 16-bit samples" shape this
+  project's own decode code uses elsewhere), and calls `0x10285f90` — a
+  genuinely large function (confirmed by `af`: **2,143 instructions, 430
+  basic blocks, 5 arguments**, bigger than `dra`'s entire subsystem) — with
+  the two region descriptors and the computed offsets. The single x87
+  double it returns is stored to a local **and** to `this+0x1d0` on the
+  capability object (`fst`/`fstp` @ `0x1021030d`/`0x10210310`). For the
+  multi-tile case, a second helper (`0x100d9930`, confirmed ≥1,621 bytes,
+  called @ `0x10210531`) builds an equivalent tile-grid descriptor before
+  the same `0x10285f90` scoring call runs again.
+* **Zero density/log/percentile/channel-balance instructions anywhere in
+  this leaf or in `analyzeAttributes`/`AnsOrderOrientationCapability::
+  analyze` above it** — the only x87 activity in the whole three-function,
+  2,357-byte chain (`analyzeAttributes` + `analyze` + this leaf's own
+  visible shape) is `fld`/`fst`/`fstp` moving a pre-existing or
+  freshly-computed scalar in or out, never the `log10`/multi-term
+  arithmetic chain `f135_rom12_to_rpd12`, `cna`, and `dra` all visibly use.
+  The whole shape — fixed 128×192-or-multiple tile descriptors in, one x87
+  double correlation/score out, cached on the capability object itself —
+  is a tile-based image-region classifier, not a tone-curve or histogram
+  computation.
+
+**This confirms, and adds real instruction-level evidence to, a
+pre-existing but previously address-free classification.**
+`docs/64-pruned-tone-producers.md`'s own table (line 80, from an earlier,
+independent scoping pass) already lists `orderOrientation` as:
+*"Auto-rotation classifier — publishes `orderOrientationProb`/
+`frameOrientationProb` confidence scores from sky/grass-style top-vs-bottom
+colour statistics. Functionally geometric, not a colour transform. 0%
+ported."* That entry cited no address and no disassembly — it was almost
+certainly derived by reading capability names/strings, not by tracing the
+real driver's own call graph down to a leaf. This section arrived at the
+same conclusion independently, starting from `analyzeAttributes`'s own real
+driver call site (not from the `"orderOrientation"` name) and reading every
+function in the chain down to its own real leaf math — a genuine
+cross-check, not a restatement, and it holds: fixed small-tile region
+correlation is a plausible, consistent mechanism for exactly the
+"top-vs-bottom" classifier `docs/64` already describes.
+
+**Honestly scoped, the same way §12 scoped `analyzeArea`'s own entry
+read.** `0x10285f90` (the 2,143-instruction scoring function) and the two
+struct-builder helpers (`0x100d9930`, `0x100da770` — the latter also called
+once from `analyzeAttributes`'s own miss-path secondary lookup context, per
+`pakon_analyse_roll.py`'s existing citation of `0x100da770` as "no name
+string in first 0x300 B") were **not** disassembled to their own last
+instruction — `0x10285f90` alone is bigger than `dra`'s entire ported
+subsystem, and fully closing it would be its own multi-pass undertaking,
+out of proportion to what's needed to answer "is this tonal." The fixed
+tile dimensionality and single-scalar-output shape already settle that
+question regardless of `0x10285f90`'s own exact internals; no live Unicorn
+execution of any of these three functions was attempted, for the same
+reason — this is a real, in-full, function-boundary-disassembly read of
+the two thin control-flow layers a driver call has to pass through
+(`analyzeAttributes`, `AnsOrderOrientationCapability::analyze`), plus a
+disassembly-only characterization of the one leaf's calling shape, not a
+claim that every byte of the `orderOrientation` feature has been read.
+
+**No live channel to `analyzeAutoTone`, extending §22's already-verified
+finding to this stage's own real output specifically, not just
+generically.** §22's own live `UC_HOOK_MEM_READ` watch on the real DLL's
+`analyzeAutoTone`, run end-to-end under Unicorn with all six real subsystem
+Impls, found it reads exactly `holder+0x4` (refcount only) and three fixed
+`ctx` offsets (`+0x44`, `+0x4bc`, `+0x64d0`) — nothing else, from any
+object, for the whole six-subsystem chain. `AnsOrderOrientationCapability`'s
+own instance — where this section's `this+0x1d0` correlation score and
+`this+0xf` flag actually live — is a *different* object from both `holder`
+and `ctx`, found only under the capability name `"orderOrientation"`, and
+`analyzeAutoTone`'s own by-name capability lookups (`pakon_autotone.py`'s
+`CAPABILITIES` tuple, already cross-checked against the real DLL in §22)
+never include `"orderOrientation"` — only `"cna"`/`"dra"`/`"toneHelper"`/
+`"contrast"`/`"ast"`/`"pfd"`/`"citras"`. Both possible live channels (a
+shared-field mutation, and a by-name capability re-lookup) are therefore
+ruled out for `analyzeAttributes`'s one real output specifically, not just
+inferred from the class-wide §22 finding.
+
+**Verdict: ruled out, with real evidence, not a name-based guess — no port
+written.** `analyzeAttributes` is a thin capability-shell gate around
+exactly one named sub-capability (`"orderOrientation"`), whose own real
+leaf computation is a fixed-tile image-region correlation/classifier
+(auto-rotation detection) with a single cached scalar output and zero
+density/histogram/log arithmetic anywhere in its visible shape, feeding an
+object `analyzeAutoTone` never looks up and never reads a shared field
+from. Porting it would add nothing to the shadow/black-point
+investigation — consistent with this task's own instruction to document
+and rule out, not force a port, when a stage is clearly non-tonal. This
+closes one more member of this doc's own priority-list item 1 (the four
+unreplicated stages): `analyzeFalloff` was already dead (structurally
+absent calibration data), and `analyzeAttributes` is now closed too, on
+real disassembly evidence rather than the name-based classification
+`docs/64` already carried. `analyzeArea`'s own 732-function body and
+`balanceAreaImage`'s own miss-path body remain the only genuinely open
+members of that list.
+
+**Verification.** All addresses in this section were read directly from
+`/tmp/pakon_re/PakonIMAu.dll` (MD5 `eea9dcf78ee21d4f7c515a6c2512242d`,
+re-checked immediately before use, the same copy every prior section of
+this doc cites) via `radare2`'s explicit `af`+`pdf` function-boundary
+disassembly for all three functions in the real call chain
+(`0x100fb3d0`/859 B, `0x101218c0`/329 B, `0x102101d0`/1,169 B) — never a
+raw `pD` byte-range guess, per this project's own established convention.
+Every address cited was either read directly off this pass's own
+disassembly output or cross-checked against an address already catalogued
+in `pakon_analyse_roll.py` (`PATH_ANALYZE_ATTRIBUTES`,
+`ORDER_ORIENTATION_CAP_ANALYZE`) or `pakon_autotone.py` (the capability-shell
+idiom's own already-documented meaning for `0x1001f770`/`0x1001ed90`/
+`0x104ffdd6`/`__RTDynamicCast`) — no address or instruction semantics in
+this section were invented or assumed from the function's name alone. The
+self-naming strings for both `analyzeAttributes` and
+`AnsOrderOrientationCapability::analyze` were read directly out of the
+loaded binary, not transcribed from any prior doc. `0x104ffdd6`'s identity
+as the real `__RTDynamicCast` IAT thunk was confirmed by direct
+disassembly of its own 6 bytes (`jmp dword
+[sym.imp.MSVCR71.dll___RTDynamicCast]`), not assumed from its address
+alone. `0x10285f90`'s size/argument-count claim came from `radare2`'s own
+`afi` function-info output (`realsz`/`num-instrs`/`num-bbs`/`args`), not
+estimated. No port file was written or changed by this pass (no
+`pakon_attributes.py` — there is nothing tonal to port); no golden file was
+touched; no Unicorn execution was attempted, consistent with this section's
+own honest scoping note above. Scratch `r2` output used to produce this
+section's disassembly excerpts lives under `/tmp/pakon_re/` (a shared
+scratch directory this project's own prior passes already use — files
+added this pass: `attributes_plain.txt`, `orderorient_full.txt`,
+`orient_leaf.txt`, `attr_pdg.r2`), not committed to the repo.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is

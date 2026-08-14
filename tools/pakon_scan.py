@@ -2513,7 +2513,8 @@ def cmd_run(a) -> int:
         threading.Thread(target=watch_parent, args=(cancel,), daemon=True).start()
 
     try:
-        cfg = ScanConfig.from_calibration(dpi_base=a.base, speed=a.speed,
+        cfg = ScanConfig.from_calibration(cal_dir=a.cal_dir, dpi_base=a.base,
+                                          speed=a.speed,
                                           film_path=a.film_path, dx=a.dx)
     except Exception as e:                                  # noqa: BLE001
         _emit("error", message=str(e))
@@ -3628,6 +3629,11 @@ def main() -> int:
                         "78-13. Recorded alongside whatever the DX board "
                         "reads; the typed value is the one used (see "
                         "DX_PRECEDENCE).")
+    r.add_argument("--cal-dir", default=None, metavar="DIR",
+                   help="alternate calibration directory (must contain its "
+                        "own README.json in the same shape as calibration/). "
+                        "Defaults to calibration/. For testing an exposure "
+                        "hypothesis without touching the working calibration.")
     r.add_argument("--dry-run", action="store_true",
                    help="build and print the sequence; send nothing")
     r.add_argument("--json", action="store_true", help="NDJSON progress on stdout")

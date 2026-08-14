@@ -1171,6 +1171,62 @@ existing stages without first resolving how PSI's "RAW" stage maps onto
 this project's own `inv16`/post-balance/post-FUGC domains — an open
 question, not yet a blocker, but not a five-minute substitution either.
 
+## 16 — Tried the direct version of the SRA fix. It does not work — it
+massively overcorrects, and that itself is real evidence
+
+Ran the most literal, direct interpretation of `docs/58`/`docs/60`'s own
+hypothesis: apply the shipped `common-sraFwdLut-metric-default.lut`
+immediately before `real_auto_tone()` (the same already-Unicorn-verified
+six-subsystem chain every other section of this doc has used unmodified)
+and `common-sraBkLut-metric-default.lut` immediately after it, on the
+same frame and roll as §14/§15, everything else held identical to the
+baseline render.
+
+Confirmed the LUTs themselves first: `fwd` is 4096 entries mapping onto
+`[0, 3903]`, `bk` is 3904 entries mapping onto `[0, 4095]`, and
+`bk(fwd(x)) == x` for spot-checked values (`1024→1024`, `2048→2049`) —
+matches `docs/58`'s own round-trip claim.
+
+**Result: it does not fix the shadow floor — it crushes the entire
+frame toward black, highlights included.**
+
+```
+                 sRGB [p1, p5, p50, p95, p99]
+baseline (no SRA)    R [79,103,149,229,248]  G [84,100,199,239,250]  B [86,99,212,252,254]
+SRA-wrapped          R [ 0,  0,  1,  4,  6]  G [ 1,  1,  3,  5,  6]  B [ 1,  1,  3,  7,  9]
+```
+
+`p1 = 0` — but `p99 = 6-9` too. The whole frame goes near-black, not
+"real blacks with the rest of the tonal range intact" the way the
+vendor's own `AA005` does (`p1=0/6/5`, `p99=241/245/253`). This is
+overcorrection, not the fix.
+
+**Why, mechanically**: the post-FUGC RPD-12 domain for this frame is
+`[1218, 2791]` — almost entirely *above* the tone chain's own neutral
+pivot (1550). The forward LUT maps that same range to `[2811, 3549]` —
+deep in SRA space's own *highlight-compression* region (the curve
+"massively expands shadows and compresses highlights," per `docs/58`
+itself). Handed that as input, the tone chain's own DPI-calibrated
+constants — `paperMin=1200`, `paperMax=2000`, `neutralBalancePoint=1550`,
+`fpo=879-1386` — are RPD-12-referenced values (independently confirmed
+throughout this doc: §5, §9, §14), not SRA-space ones. Fed SRA-space
+numbers, every one of those anchors is now wrong by construction, and
+the chain does something incoherent with them — which is exactly what
+crushing the whole frame looks like.
+
+**What this does and doesn't settle.** It rules out the *literal,
+naive* form of the hypothesis — wrapping the existing, unmodified
+six-subsystem chain in forward/backward SRA with no other changes is
+not the fix, and produces something worse, not better. It does not
+rule out a more sophisticated integration (the tone chain's own
+constants re-expressed in SRA-space terms, or SRA applied around only
+part of the analysis rather than the whole chain, or an entirely
+different insertion point than "immediately around `real_auto_tone`") —
+`docs/60`'s own caveat, "where the inverse belongs is an architecture
+question," was right to hedge exactly this. But it is a real, negative,
+experimentally-obtained data point, not more architecture reasoning:
+this specific, most-obvious way to test the hypothesis does not work.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is
@@ -1386,3 +1442,14 @@ comparison rendered all 10 real frames of `scan-20260812-091633.bin`
 `to_srgb` path every other section of this doc uses), not a subset.
 `self.sra_lut`'s actual call site was found by direct `grep` against
 `pakon_ansel.py`, not inferred. No port file changed.
+
+§16's LUTs were parsed directly from the shipped
+`vendor/ansel/anselinstalldir/dataPathItems/common/` files (the same
+files §14/§15 cite), not synthesized, and the round-trip property was
+checked against real loaded arrays before drawing any conclusion from
+the render result. The experiment ran entirely in a scratch script
+(this session's own job tmp dir); `real_auto_tone()` and every other
+port function called were used completely unmodified — the only new
+code is the LUT application at the two insertion points and a
+standalone backward-LUT text parser mirroring `pakon_sra.py`'s own
+forward-LUT parser. No port file changed.

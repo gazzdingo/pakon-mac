@@ -1227,6 +1227,63 @@ question," was right to hedge exactly this. But it is a real, negative,
 experimentally-obtained data point, not more architecture reasoning:
 this specific, most-obvious way to test the hypothesis does not work.
 
+## 17 — Closed the real-data gap: the assembled six-subsystem chain is
+bit-exact against the real DLL on real image data too, not just tiny
+synthetic patterns
+
+§9's own aside flagged this project's "assembled verification"
+(`pakon_autotone_assembled_golden.py`, Phase 6.1, the test that runs the
+real DLL's `analyzeAutoTone` end to end — all six subsystems, no
+entry points stubbed — against the pure-Python assembled chain) as
+having only ever been exercised on tiny synthetic patterns (flat/
+gradient/high-contrast/random, 6×6 to 48×48 pixels), never real scanned
+image data. That gap is now closed.
+
+Adapted the existing harness's own `build_dll`/`host_run`/`_diff_*`
+functions, completely unmodified, to real pixel data instead of
+`make_image()`'s synthetic patterns: real post-FUGC RPD-12 crops from
+`scan-20260812-091633`, the same roll every recent section of this doc
+uses. Three crops, same real DLL (the MD5-verified copy §5 established),
+same real port code:
+
+```
+crop                          pixels   result                    wall time
+middle-of-frame, 48×48          2,304   bit-exact                    0.5s
+darkest region, 48×48           2,304   bit-exact                    0.5s
+large area, 400×400           160,000   bit-exact                    2.8s
+```
+
+**Every field checked matches exactly** — `cna`'s `ToneScaleLut`,
+`LuminanceHist`, all summary scalars; `dra`'s `DraLut` and its
+`effMin`/`effMax`/`lumMin`/`lumMax` etc; `contrast`'s `OutToneLut` and
+slopes — on real image content, including a crop centered on the
+frame's own actual darkest pixels, not hand-built test patterns. This
+closes the concern §9 raised about untested real-data behavior: the six
+tone subsystems, assembled together exactly as `analyzeAutoTone` itself
+drives them, are not merely correct on synthetic inputs — they are
+correct on this exact scene's own real data too.
+
+**What this settles, and what it doesn't.** It rules out "the six
+subsystems only look bit-exact because nobody tried real image
+structure" as an explanation for the defect — checked directly, not
+assumed. It does **not** show what input those subsystems *should* be
+receiving (§16's SRA-space experiment already showed feeding them the
+wrong-domain input breaks things badly) — only that, given whatever
+input this port's own pipeline currently hands them, their computation
+matches the real DLL's own computation on that same input, exactly.
+Combined with §16, this narrows things further: if SRA-space input is
+part of the real answer, it is not simply "feed the same six subsystems
+different-domain data with no other change" (§16 tried that, it broke),
+and it is not "the subsystems have a real-data-only divergence bug"
+(§17 rules that out) — the missing piece is specifically about the real
+DLL's own *wiring*, not about anything already verified being subtly
+wrong. A parallel disassembly pass into `AnsSraCapabilityImpl::
+makeSRALUTS` (`0x10594b78`) and its real callers, to find that wiring
+directly rather than guess at it again, was started the same session
+this section was written; see whichever later section reports its
+result, or `docs/66`/this doc's own reading order if it landed
+separately.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is
@@ -1453,3 +1510,11 @@ port function called were used completely unmodified — the only new
 code is the LUT application at the two insertion points and a
 standalone backward-LUT text parser mirroring `pakon_sra.py`'s own
 forward-LUT parser. No port file changed.
+
+§17 called `pakon_autotone_assembled_golden.py`'s own `build_dll`,
+`host_run`, `_diff_scalars`, `_diff_array`, and `shipped_contrast_params`
+functions completely unmodified — only the `image` argument changed,
+from `make_image()`'s synthetic pixels to a real crop of this doc's own
+already-computed `post_fugc` array (§14's own render chain, unmodified).
+No port file, and no line of the assembled-golden harness itself,
+changed.

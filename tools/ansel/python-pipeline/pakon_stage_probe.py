@@ -236,6 +236,9 @@ def main() -> int:
     ap.add_argument("--dump-dir", type=Path,
                     help="write a PNG per stage here")
     ap.add_argument("--ansel-root", type=Path, default=None)
+    ap.add_argument("--assembled-shasta", action="store_true",
+                    help="use the assembled Shasta tone LUT branch instead of "
+                         "the production stand-in. Not what a real render does.")
     ap.add_argument("--no-invert", action="store_true",
                     help="skip f135_rom12_to_rpd12. Only for isolating that "
                          "step -- the output will look catastrophically wrong.")
@@ -267,7 +270,13 @@ def main() -> int:
         eng = A.AnselEngine.load(
             scene=A.scene_from_filmstock(path="ColNeg", dx_part1=96,
                                          dx_part2=1, iso=400), **kw)
-        print(f"engine loaded. shasta_stand_in={getattr(eng, 'shasta_stand_in', '?')}")
+        # AnselEngine's dataclass default is False, but every production
+        # entry point (pakon_decode.py:1520, pakon_render.py:604) and the
+        # F-135 test fixture set it True. Loading without setting it measures
+        # the assembled-Shasta branch, which is NOT what a real render takes.
+        eng.shasta_stand_in = not args.assembled_shasta
+        print(f"engine loaded. shasta_stand_in={eng.shasta_stand_in}"
+              f"{'  (production default)' if eng.shasta_stand_in else '  (NON-PRODUCTION branch)'}")
         if not args.no_invert:
             # The negative -> positive step. render_scene does NOT do this;
             # skipping it silently produces a positive-of-a-negative that

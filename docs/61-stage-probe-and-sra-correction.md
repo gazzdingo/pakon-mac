@@ -1,5 +1,14 @@
 # 61 — Per-stage probe, and a correction to `docs/58`
 
+> **TWO FINDINGS WITHDRAWN — see `docs/63`.** The probe ran with
+> `shasta_stand_in=False` (the dataclass default; every production entry point
+> sets it True), so the "tone stage floors at ~1460 and compresses 2.5x"
+> result and the "we run a tone stage the vendor does not" conclusion both
+> describe a branch no real render takes. The "inversion clips B to 4095"
+> result was an artefact of the raw8x16 input sitting below the poly pedestal;
+> valid data clips 0.000%. The SRA correction, the vendor transfer curve and
+> the polarity trap all stand.
+
 **Date: 2026-08-13.** Built to answer "where does our render break". It does,
 and the answer is not what `docs/58` said.
 

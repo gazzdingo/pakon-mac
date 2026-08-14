@@ -1284,6 +1284,93 @@ this section was written; see whichever later section reports its
 result, or `docs/66`/this doc's own reading order if it landed
 separately.
 
+## 18 — The SRA disassembly landed, and it's a real contradiction, not a
+confirmation: SRA is statically unreachable from every Color-Negative
+path variant
+
+The subagent dispatched to find `AnsSraCapabilityImpl::makeSRALUTS`'s
+real wiring reported back. Two solid findings, one genuine open
+contradiction with everything §16-17 assumed.
+
+**Corrected address**: `0x10594b78` (what `pakon_sra.py` and this doc
+had been citing as `makeSRALUTS`) is the function's own **self-naming
+string**, not its entry point. The real body is `0x101a6be0`-`0x101a7075`
+(confirmed by SEH prologue/epilogue and `ret 0x30`). Read in full: it
+builds two named parametric curves ("aRender", "aGamma") from ~6
+calibration doubles pulled from the SRA object's own fields — tracing to
+`sra-params-metric-*.dpi`'s own `SRA_BLACK_POINT`/`SRA_WHITE_POINT`/
+`SRA_GRAY_POINT`/`SRA_MIDTONE_RANGE`/`SRA_ALPHA`/`SRA_BETA` fields, **not**
+`analyzeAutoTone`'s `paperMin`/`paperMax`/`neutralBalancePoint` — then
+composes them into three destination LUTs via three `dest[i] =
+curveB[curveA[i]]` loops. Its sole caller, `AnsSraCapabilityImpl::analyze`
+(`0x101a7080`), self-identifies via its own assert string
+(`"allocation of aRed, aGrn, aBlu luts failed."`) that the real output is
+**three per-channel (R/G/B) composed LUTs**, not a generic third
+forward/backward curve.
+
+**The decisive, and contradicting, finding**: traced upward from both
+SRA entry points through the real call graph, confirmed at every hop
+(r2's automated `axt` cross-reference plus manual disassembly, not
+either alone). `AnsSraCapabilityImpl::analyze`'s only caller
+(`fcn.100e2ff0`) has exactly five callers, and **none of them is a
+Color-Negative path**: `AnsCpRestorePath`/`AnsCpLockbeamPath`/
+`AnsCpBalancePath::analyzeScene` (Color-*Positive*, i.e. slide film),
+`AnsArchivePath::analyzeScene`, and one function reachable only from
+`AnsDcEnhancedPath`/`AnsDcBalancePath::analyzeScene` (a third, distinct
+path-class family, confirmed separate from `AnsCn*Path` by its own
+self-naming strings). **All four real Color-Negative path variants
+present in the DLL** — `AnsCnPremiumPath`, `AnsCnOpticalPath`,
+`AnsCnLockbeamPath`, and `AnsCnEnhancedPath` (the one this whole
+project's F-135 port targets) — were individually, fully disassembled at
+their own `analyzeScene` entry points, and **none contains any call**
+into SRA's own functions or `fcn.100e2ff0`. `AnsCnEnhancedPath::
+analyzeScene`'s own single substantive call goes to `fcn.10069490` — the
+exact CN-Enhanced per-scene driver §11 already fully catalogued the call
+order of — and `analyzeAutoTone` remains that function's only real
+analysis call, with no SRA anywhere in the chain.
+
+**At the level checked, SRA and `analyzeAutoTone` are architecturally
+disjoint call trees for a colour negative — not wrapping it, not
+running as a parallel stage within the same scan, not reachable at
+all.** This directly contradicts the premise `docs/58`/`docs/60`/§16-17
+of this doc have all been working from: that SRA forward/backward sit
+around the CN tone chain in the real DLL.
+
+**This does not settle the question — it reopens it, honestly.** The
+real API-trace evidence behind the SRA hypothesis (`docs/56`: both
+`common-sraFwdLut`/`common-sraBkLut` files genuinely opened during a
+live PSI render of real film) is not invalidated by a static
+call-graph read; the two findings are in real tension, and the
+subagent's own report flags exactly the caveat that resolves it,
+without confirming which way: **file opens prove only that a path was
+considered, not that it executed** — the same "opening is not using"
+caveat `docs/56` stated about its own inventory from the start,
+now sharpened into a specific, concrete candidate resolution: the
+opened files may belong to a *different* real consumer this pass didn't
+trace — **DSba**, which has its own dedicated LUT-key strings
+(`dsba_sra_fwd_lut_key`, `dsba_sra_data_key`) distinct from
+`makeSRALUTS`'s own — or a generic capability-declaration/file-load step
+that runs regardless of which path type ends up actually using the
+capability at render time. Neither traced this pass. A third,
+unconfirmed candidate: `AnsDeRenderCapability::apply` (self-named,
+called from code near the same "Dc"-path helper SRA itself is reachable
+from), a plausibly-shaped but entirely unverified stand-in.
+
+**What this changes about the recommended next step, directly**: the
+disassembly path has now hit a genuine fork that only live execution
+can resolve — does `AnsSraCapabilityImpl::analyze` (`0x101a7080`) or
+`makeSRALUTS` (`0x101a6be0`) ever actually get **called** during a real
+colour-negative render, or only during Color-Positive/Archive/Dc scans
+that happen to share the same VM session? This is a far smaller ask
+than `docs/57`'s full DynamoRIO execution trace (blocked on a 32-bit
+XP-compatible build): a single debugger breakpoint at each of those two
+VAs in a live `PSI.exe` process, during an actual colour-negative scan,
+answers it directly. If neither breakpoint ever fires on a CN render,
+this closes the SRA hypothesis for good, and the four unreplicated
+stages (§11-12) become the clear priority again. If either fires, that
+confirms real, if not-yet-fully-mapped, CN-reachability — worth
+knowing regardless of which way it resolves.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is
@@ -1518,3 +1605,15 @@ from `make_image()`'s synthetic pixels to a real crop of this doc's own
 already-computed `post_fugc` array (§14's own render chain, unmodified).
 No port file, and no line of the assembled-golden harness itself,
 changed.
+
+§18 is a subagent's own disassembly work (re-extracted, MD5-verified
+copy of the same DLL, `/tmp/sra_re/` scratch, read-only throughout) —
+summarized and cross-checked against this doc's own established VAs
+(`analyzeAutoTone` at `0x100fb730`, the CN-Enhanced driver at
+`0x10069490`, both already independently confirmed in §11) rather than
+taken uncritically. The specific claim that `AnsCnEnhancedPath::
+analyzeScene`'s only substantive call goes to `fcn.10069490` is
+consistent with, not contradicted by, §11's own independently-derived
+call order for that same function. Full intermediate disassembly dumps
+are preserved at `/tmp/sra_re/` on whichever machine ran the agent, not
+copied into this repo.

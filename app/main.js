@@ -75,7 +75,7 @@ function api(pathname, { method = 'GET', body = null, timeout = 15000 } = {}) {
 
 function startBackend(port) {
   const script = path.join(repoRoot(), 'tools', 'pakon_app.py');
-  const py = process.env.PAKON_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  const py = process.env.PAKON_PYTHON || 'python';
   // --watch-parent: the backend exits when this process does, however this
   // process ends. Belt to the braces below — those handlers cannot run if we
   // are SIGKILLed, and a backend that outlives its window keeps its scan child

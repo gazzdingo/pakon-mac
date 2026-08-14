@@ -1593,6 +1593,199 @@ call at `main.go:568`, the same way the ICC transform, AFE gain, and
 falloff stages already made that same Python-verify-then-Go-port
 crossing earlier in this project's history.
 
+## 24 — A genuine full-frame, real-DLL Unicorn harness: bit-exact (and
+pixel-identical) at crop scale, but a real, new, scale-dependent `cna`
+divergence found on the real full frame — never caught by any prior test.
+`balanceAreaImage`'s own real body run for real: no pixel-buffer writes
+observed, in either branch tested.
+
+New, additive script this pass:
+`tools/ansel/python-pipeline/pakon_full_colour_chain_golden.py`. Does not
+modify any existing golden file — every DLL-side call reuses
+`pakon_autotone_assembled_golden.py`'s own `build_dll`/`RealCapset`/
+`host_run`/`_diff_scalars`/`_diff_array`/`shipped_contrast_params`
+completely unchanged, the same adaptation-not-rewrite §17 already used, now
+extended from a hand-picked crop to a genuine full captured frame. DLL
+re-verified MD5 `eea9dcf78ee21d4f7c515a6c2512242d` (the same copy every
+prior section cites) immediately before use. Real capture, at the owner's
+own direction this pass:
+`~/Library/Caches/PakonScan/captures/fresh-calibration-scan-20260814-065421.bin`
+(today's post-recalibration test scan, already cited by
+`pakon_ansel.py`'s own `real_auto_tone`-neighbourhood comment — not one of
+the earlier `gold400.bin`/`scan-20260812-*` captures §4-§15 used, a
+deliberate switch to current, not pre-recalibration, hardware state), frame
+index 1 of 5 (the one `confidence="good"` frame on this roll), real post-FUGC
+RPD-12 input captured by intercepting `pakon_ansel.real_auto_tone` at its own
+call boundary — the function still runs completely unmodified; only its
+argument is additionally recorded on the way through, the exact real value
+every real render already computes.
+
+**Finding 1 — bit-exact, and now pixel-identical end to end, on real crop
+content from this new capture too.** A real 400×400 crop of this frame (the
+same crop size §17 already validated, on a different capture): `cna`/`dra`/
+`toneHelper`/`contrast`/`citras` all diff at zero fields between the real
+DLL and the pure-Python assembled chain. New beyond §17: applying the real
+DLL's own `contrast_results()['OutToneLut']` through the SAME already-verified
+`citras_driver.apply_citras` vendor-apply step `pakon_ansel.real_auto_tone`
+itself uses, then through the same `AnselEngine.to_srgb`, and diffing against
+the Python port's own `real_auto_tone()`/`.to_srgb()` output on the
+IDENTICAL crop (same analysis scope both sides — an earlier draft of this
+check diffed the DLL crop-render against a crop OF the full-frame Python
+render and found ~6-code differences, which turned out to be an artefact of
+comparing two different analysis populations, not a real divergence; caught
+and corrected within this same pass before drawing any conclusion from it):
+
+```
+abs(python_srgb - dll_ground_truth_srgb) over the whole 400×400×3 crop:
+  mean=0.0  p99=0.0  max=0.0  — 100% of pixels bit-identical
+```
+
+This is the "genuine ground-truth reference render… bit-exact" this doc has
+lacked since §13/§15's own crude carving-based comparisons — at this scale,
+not an estimate.
+
+**Finding 2 — new, real, and NOT previously caught: `cna`'s real DLL body
+diverges from the verified Python port on the real, full, uncropped frame.**
+Running the real six-subsystem chain on the whole 2,965×2,000 (5,930,000-pixel)
+frame — a scale no Unicorn harness in this project's history has ever
+exercised, §17's own largest case was 400×400 — completes cleanly (no
+Unicorn fault, top-level status OK, 16.5s wall time) but 27 fields
+disagree, all downstream of `cna`:
+
+```
+cna.threshold:      dll=-1     host=50
+cna.nEdgePixels:    dll=-1     host=1,224,975
+cna.darkInSigma/lightInSigma/darkOutSigma/lightOutSigma: dll=-1.0 (all four) host=real values (24-27)
+cna.elmoPercent:    dll=-1.0   host=0.0
+cna.ToneScaleLut:   dll all-zero over the mismatched entries   host=real curve
+dra.* :             dll all-zero (nSmallBins, nLumPixels, lumMin/Max, effMin/Max, DraLut length…)  host=real values
+```
+
+`-1`/`-1.0` is not a crash sentinel invented by this harness — it is
+`pakon_cna.py`'s own documented "gate never entered" seed
+(`ElmoResult.elmo_percent: float = -1.0`, `analyze_image`'s own docstring:
+"When the threshold loop bails out none of this runs… `elmoPercent` and
+`bElmoOccured` keep their `-1.0f` / 0 seeds and the four sigmas keep
+theirs"). The real DLL, on this real full frame, is landing in exactly the
+give-up branch `pakon_cna.analyze_image_threshold`'s own docstring already
+describes — the question this raises is *why* the real relaxation loop
+gives up on real, full-scale content when the Python port's own port of
+that same loop does not.
+
+Narrowed with a scale sweep on real crops of this same frame (cheap, since
+each is a few seconds to low tens of seconds, not a full-frame re-run):
+
+```
+   size          pixels      threshold   nEdgePixels   ToneScaleLut
+400×400          160,000     24 (sane)   17,342         real curve, non-zero
+800×800          640,000     26 (sane)   65,307         ALL ZERO
+1,500×1,500     2,250,000     47 (sane)  237,078         ALL ZERO
+2,965×2,000     5,930,000     -1 (gave up) -1 (gave up)  ALL ZERO
+```
+
+Two distinct symptoms, not one: between 400×400 and 800×800, `threshold`/
+`nEdgePixels` stay sane (the relaxation loop itself succeeds) but
+`ToneScaleLut` already degrades to all-zero — i.e. stages 6-8 of
+`analyze_image` (smoothing, per-bin expansion, pivot normalisation, per
+its own docstring) are producing zero, not the give-up identity fill, on
+the REAL DLL specifically, well before the full frame. Only at the full
+5,930,000-pixel scale does the earlier threshold-search loop itself also
+give up. **Ruled out as a harness artefact, not just assumed**: re-ran the
+800×800 case with the emulated heap enlarged in place at its ORIGINAL
+address (`0x0D000000`, not relocated to the `0x20000000` region this
+pass's larger frames otherwise need) — same all-zero `ToneScaleLut`,
+confirming this is not an effect of this pass's own heap-relocation
+plumbing (needed only so a real multi-megapixel pixel buffer fits at all;
+see the script's own `run_assembled_chain_on_real_frame` docstring).
+
+**Not root-caused this pass — flagged as a real, open, well-bounded lead,
+not oversold.** One concrete, untested hypothesis this pass's own reading
+of `pakon_cna.py` raises: `analyze_image`'s bucketing step accumulates each
+bucket's edge-histogram sum with Python `i32` arithmetic (`s = i32(s +
+st.edge_hist[k])`, `pakon_cna.py` around the bucketing loop cited in
+`analyze_image`'s own docstring step 2) — if the real vendor code instead
+uses a 16-bit accumulator there, a bucket sum exceeding 32,767 (plausible
+once real edge-pixel counts run into the hundreds of thousands, as the
+800×800+ cases above show) would silently truncate on the real DLL without
+the port reproducing it. This is a hypothesis raised by this pass's own
+evidence, not confirmed by disassembly — the next pass should check the
+real bucketing accumulator's operand width directly before treating it as
+established.
+
+**Whether this is the washed-out defect's cause: almost certainly not, on
+its own.** Every prior frame this whole investigation (`docs/66` and this
+doc's §1-23) has measured the defect on was rendered through the
+PRODUCTION path, which (§23) never runs this Python port's `analyzeAutoTone`
+at all — the Go engine's `ShastaToneRpd` stand-in is what actually ran.
+This finding is instead a second, independent, previously-unknown gap
+specifically in the six-subsystem port's own bit-exactness claim, real
+only at a pixel-count scale no test before this pass ever reached — worth
+fixing before that port is trusted as the thing to wire into Go, but not
+itself a candidate explanation for numbers measured through a code path
+that never called it.
+
+**Finding 3 — `balanceAreaImage` (`0x10102b20`), real body, real Unicorn
+execution: no pixel-buffer writes observed, in either branch tested.**
+Directly targets §22's one remaining open thread. Calling convention
+derived fresh this pass from live, tool-verified disassembly (not
+transcribed from any prior pass, not guessed): r2's own automatic variable
+recovery (`aa; af @ 0x10102b20; afvj`) finds a single real cdecl parameter
+at `var_8h` (`ebp+8`), read 13 times through the function body; the real
+caller (`fcn.10069490`, live `pd` at `0x10069835`-`0x10069859`, re-run this
+pass) pushes `&[ebp+0xc]` — the driver's own local slot, itself holding a
+pointer to a 3-dword record `{*esi (AddRef'd via `0x10006880`, fully
+disassembled this pass — a generic "wrap a raw pointer, AddRef it" helper,
+`ret 4`, the same shape as the AddRef idiom already characterized
+elsewhere in this DLL as `0x100065e0`), zx(byte[esi+0x29]), &esi+0x4ac}`.
+Built this exact structure (with the two fields this pass has no
+independent citation for — `*esi` and `esi+0x29` — filled from the
+already-built `RealCapset.holder`/zero respectively, flagged plainly as
+synthetic scaffolding, not derived vendor values) and called the real
+`0x10102b20` under Unicorn with a `UC_HOOK_MEM_WRITE` watch on the exact
+real pixel-buffer address range, on the real 48×48 crop:
+
+```
+find("area") MISS  (the entry-guard's own throw path, 0x10102c0b):
+  ran to completion, no Unicorn fault, 0 pixel-buffer writes.
+find("area") HIT   (synthetic placeholder Impl, past the entry guard,
+                     into the function's real body):
+  ran to completion, no Unicorn fault, 0 pixel-buffer writes.
+```
+
+Both branches ran the real `0x10102b20` machine code to its own `ret 8`
+without a single invalid-memory fault, and neither wrote a single byte
+into the shared pixel buffer this pass gave it. **This is a real, direct
+answer, not an inference from static reading** — the exact thing §22 said
+would need a live trace to settle either way.
+
+**Honestly caveated, not oversold.** The "hit" branch's Impl is a
+zero-filled placeholder behind a generic one-slot vftable (every virtual
+call resolves to a bare `ret 4`) — the same shape `RealCapset` itself
+already uses for its own permanently-disabled `"pfd"` capability, not a
+real `area` Impl this project has ever characterized. This result
+therefore does not prove the REAL vendor Impl's real field values would
+take the same path through the function's own 295 basic blocks; it proves
+that the specific paths THIS harness's real code actually executed — which
+plausibly diverge from vendor-normal execution the deeper the function's
+own control flow goes — did not touch the pixel buffer. Combined with §22's
+own partial static read ("operating on a freshly-allocated 0x3000-byte
+scratch buffer rather than obviously the caller's own pixel buffer"), this
+is now two independent lines of evidence pointing the same way, neither
+alone conclusive.
+
+**What this settles, and what it doesn't.** Extends §17's real-image-data
+closure to a genuine full frame for the first time, and finds it holds at
+crop scale on a second, independent, fresher capture — but finds a real,
+new, unresolved scale-dependent gap in the same port's own `cna` body that
+no test before this pass was ever large enough to reach. Adds real,
+direct (not static-inference) weight to §22's "no evidence of pixel-buffer
+mutation" reading of `balanceAreaImage`, without fully closing it. Neither
+finding changes §23's own conclusion — the production Go engine still
+never calls any of this Python code at all — but Finding 2 is a concrete,
+newly-discovered reason the "whole chain bit-exact before wiring anything
+into Go" bar `shasta.go`'s own comment sets (quoted in §23) is not
+actually met yet, in a way no prior pass had visibility into.
+
 ## What this changes about the open item list
 
 **§13 changes the question this list is answering.** It used to be "is
@@ -1839,3 +2032,28 @@ consistent with, not contradicted by, §11's own independently-derived
 call order for that same function. Full intermediate disassembly dumps
 are preserved at `/tmp/sra_re/` on whichever machine ran the agent, not
 copied into this repo.
+
+§24's own script (`pakon_full_colour_chain_golden.py`) is new and additive;
+it was checked with `python3 -m py_compile` and run end to end multiple
+times (small real crops first, to validate each stage cheaply, then the
+full real frame) before any number above was recorded — every number in
+§24 is this pass's own direct terminal output, not transcribed from a
+draft or predicted in advance. The DLL's MD5 was re-checked by the script
+itself, printed at the top of its own run, before any comparison ran. The
+scale-sweep table's "not a harness artefact" claim was checked, not
+assumed: the 800×800 case was re-run with the emulated heap enlarged in
+place at its original address rather than relocated, and the same
+all-zero `ToneScaleLut` reappeared. The crop-vs-full-frame-population
+mismatch this pass's own first draft of the 400×400 ground-truth
+comparison produced (~6-code average difference, looked like a real
+divergence at first) was caught by re-deriving the Python side from
+`ansel.real_auto_tone()` run on the SAME crop rather than a crop of the
+already-full-frame-analysed Python render, and the corrected, same-scope
+comparison is what §24 reports (pixel-identical) — the miscomparison
+itself is recorded here rather than silently discarded, consistent with
+this doc's own practice elsewhere (§9's "first pass at this used the wrong
+array" note). All scratch/smoke-test scripts used to reach the numbers
+above (several `/tmp/_*.py` files) were deleted after use and are not
+part of this commit — only `pakon_full_colour_chain_golden.py` itself is
+new, additive, committed code, and no existing golden file was modified by
+this pass.

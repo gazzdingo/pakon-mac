@@ -295,8 +295,12 @@ export default function Export({
                 <>
                   The sRGB path ends in an <b>8-bit</b> ICC transform, so sRGB exports are 8-bit —
                   padding them into a 16-bit file would claim precision the pipeline does not
-                  produce. Linear (scanner RPD) is genuinely 16-bit end to end and is the vendor's
-                  "Save As Raw".
+                  produce. Linear (scanner RPD) is genuinely 16-bit end to end in this app's own
+                  pipeline, at the same stage as the vendor's "Save As Raw" — but the real vendor
+                  software's own Save As Raw file is actually 8-bit (checked against a real export),
+                  even though the scanner's sensor captures far more than 8 bits. This file keeps
+                  what the vendor's own software throws away; it is not a copy of the vendor file's
+                  depth.
                 </>
               }
             >

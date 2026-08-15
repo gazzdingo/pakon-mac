@@ -3586,7 +3586,287 @@ evidence about where the true root cause can *not* be, ruling out an entire
 class of single-parameter fixes within the existing formula for the first
 time in this investigation.
 
+## 32 — `f135_rom12_to_rpd12` checked directly against the real DLL for the
+first time: the two candidate addresses are resolved (neither is it), a
+genuine machine-instruction search for the formula elsewhere in TLB.dll
+comes back empty, and PakonIMAu.dll's own search space is too large to
+finish in one pass — thread closed without resolving the mystery
+
+§31 named `f135_rom12_to_rpd12` (`F135_INVERT_PORTED = False`) the sharpest
+remaining unverified thread behind the ~88-89 sRGB code uniform brightness
+excess, and flagged that no prior pass had ever checked it against a real
+DLL call site — everything else in this doc's chain has been (`cna`/`dra`
+bit-exact §24, `fpo` live-verified §29, FUGC real-DLL-verified §10/§27-28,
+`analyzeAutoTone` bit-exact at full-frame scale §24), but this one stage
+never has. This section does that check directly, with live disassembly
+against the real, hash-verified DLLs, not by re-reading prior citations.
+
+### 32.1 — DLL provenance, checked fresh, not assumed
+
+`PakonIMAu.dll` at `/Users/guy/pakon-windows-repair/COM-SERVER/PakonIMAu.dll`
+hashes `eea9dcf78ee21d4f7c515a6c2512242d` — an exact match to the hash every
+prior pass in this doc (§5, §10, §24, §31) cites before relying on it.
+
+`TLB.dll` needed its own re-verification, per this task's own instruction —
+this doc has never cited a TLB.dll hash itself. `docs/70` (digital-ice
+groundwork, this same session) already did this work: *"(private remote)
+against `TLB.dll` md5 `193d9b2ce0a4b77ae9b78262bd06c0fc`."*
+`/Users/guy/pakon-windows-repair/COM-SERVER/TLB.dll` hashes exactly that.
+**This is the copy used for everything below.** For completeness: three
+other local copies exist, at `~/Downloads/FX35_PR1[…]/installer/
+InstallationFiles/TLB.dll` (all three identical to each other), hashing
+`e7f21021e0140c1935a3ae4de7bd3498` — a *different* build, not cited by any
+doc in this repo, and **not used** for any of the disassembly below. Flagged
+explicitly rather than silently picking whichever copy was more convenient.
+
+### 32.2 — The two candidate addresses, disassembled directly: neither is
+the inversion, and the "naming ambiguity" resolves to "both are PolyPixel"
+
+This task named two candidates from `tools/re/live_hooks/agent.js`/
+`common.h`/`README.md` — `0x1000d880` and `0x10034b9b` — flagged there as an
+"internally inconsistent" citation the live-hook harness hooked *both*
+addresses specifically to resolve live, but never did (no capture was ever
+run through it for this). Read that flag directly rather than guessed at:
+`agent.js`'s own comment says the ambiguity is between "`TLB.dll fcn.1000d880
+@ 0x10034b9b`" (this port's own citation) and "docs/65's separate citation
+of `TLB.dll:fcn.1000d880`" — i.e. the ambiguity was always about whether
+these are *the same function under two names* or *two different functions*,
+**not** about whether either one is the negative→positive log inversion.
+That framing turns out to matter, below.
+
+Both were given full function-boundary disassembly (`aa; af @ <addr>; pdf @
+<addr>`, r2 6.1.8, PE loaded at its real base `0x10000000`) — not a raw
+byte-range guess:
+
+**`0x1000d880`** (`fcn.1000d880`, 845 bytes, 28 basic blocks, 258
+instructions): opens with a `switch` on a film-class argument compared
+against `7` (`cmp eax, 7` @ `0x1000d89e`, 8-case jump table), where case 2
+selects `lea edx, [esi + 0xc8]` and every other case selects `lea ecx, [esi
++ 0x50]` — an **exact** structural match to `pakon_decode.check_film_class`'s
+own already-documented citation, *"filmClass 2 (colour reversal, PosMatrix
+at TLB this+0xc8)"* vs. the default NegMatrix branch. After the switch: a
+tight per-pixel loop over three `word` planes (`movzx ax/cx/dx, word [edi]/
+[ebx]/[ebp]`) doing `fild`→`fmul`→`faddp` chains against ten stored
+coefficients per channel — a **3×10 float polynomial**, exactly what every
+existing citation in this repo already says `0x1000d880` is (`pakon_color.py`,
+`pakon_color_golden.py`, `pakon_render.py`, `pakon_raw_decoder.c`,
+`pakon_pipeline_cli.c`). **Zero log-family FPU instructions anywhere in the
+function.** This is `PolyPixel`, confirmed, not reconstructed from a prior
+citation.
+
+**`0x10034b9b`** (`fcn.10034b9b`, 1141 bytes, huge switch-and-registry-driven
+body): its **very first instruction** is `call fcn.1000d880` — it does not
+compute a polynomial itself, it *calls* the one above. This is an exact
+match to this port's own existing, correctly-scoped citation in
+`pakon_scene_context.py:488-492` (`addscene_colneg_remap_dmin_rgb_f135`):
+*"Roll driver `fcn.10034a60` calls poly on the seeded frame dmin words
+(`+0x6cac…`) before packing the AddScene desc."* It is AddScene's
+**dmin-priming driver** — it runs the raw FindDmin-measured film-base RGB
+through the same PolyPixel polynomial ordinary pixels get, so the AddScene
+descriptor's dmin field lands in the same poly-corrected domain as the rest
+of the frame. **Zero log-family FPU instructions in this function either.**
+
+**Verdict: neither address is `f135_rom12_to_rpd12`, and the "naming
+ambiguity" is resolved** — both addresses are the PolyPixel family (the
+general polynomial, and its caller in the specific context of AddScene's own
+dmin priming), not two names for one function and not a log-based inversion
+under either name. This directly negates the reading of these two citations
+as candidates for the stage-2 inversion's entry point; `agent.js`'s own
+hedge ("an r2 auto-name/VA pair that looks inconsistent... hooked below
+precisely so a live capture can resolve which is which") can now be answered
+without needing a live capture: they're two different functions, one calling
+the other, both PolyPixel-family, confirmed by static disassembly alone —
+the ambiguity was real but narrower than "is one of these the inversion."
+
+### 32.3 — Searched TLB.dll exhaustively for the one instruction the formula
+structurally requires; the fullest traceable chain is unrelated CRT plumbing
+
+`rpd12 = fpo + 1000*(log10(base-c9) - log10(poly-c9))` requires a log
+somewhere. TLB.dll imports **no CRT DLL** (`ii` lists only `VERSION.dll`,
+`KERNEL32.dll`, `USER32.dll`, `ADVAPI32.dll`, `ole32.dll`, `OLEAUT32.dll`,
+`SHLWAPI.dll` — no `MSVCRT.dll`), meaning its CRT is statically linked, so
+`log10` would show as internal code with no import-table name to grep for.
+The period-correct way to find it is the x87 opcode itself:
+`fyl2x`/`fyl2xp1` (`d9 f1`/`d9 f9`) are how this era of MSVC computes
+`log`/`log10`/`ln`. Searched the **whole binary**, not scoped to any
+function (`r2`'s `/x` raw byte search): **7 `fyl2x` sites, 0 `fyl2xp1`, 2
+genuine `f2xm1` sites** (a third apparent hit, `0x1005a093`, disassembles to
+garbage at that exact byte offset — inside the tail bytes of an unrelated
+`jmp` instruction, not real code; discarded as a false positive from
+unaligned byte matching, not counted above).
+
+Traced the fullest, most completely reachable chain end-to-end via real
+`axt` (cross-reference) evidence at every hop, not inferred from proximity:
+
+```
+fcn.100341b0  (CiTLAMain COM vtable method — confirmed by a real DATA xref:
+               registered via `push 0x100341b0` @ 0x10040236, inside
+               method.ATL::CComObject_class_CiTLAMain_.8.virtual_28)
+  -> 0x10034374  call fcn.100125a0
+    -> 0x100129b8  call fcn.1000f130
+      -> 0x1000f240  call fcn.1000ef80
+        -> 0x1000f0ce, 0x1000f118  call fcn.1000dfc0  (TWICE)
+          -> fcn.1000dfc0 itself contains the actual fyl2x pair,
+             @ 0x1000dffb and @ 0x1000e049
+```
+
+Read `fcn.100341b0`'s full 1533-byte body (559-line `pdf`) rather than
+stopping at the call graph. It is a **scan-session bookkeeping routine**:
+`CreateEventW` for four named events (`"EventScanPacketReady"`,
+`"EventScanWriteToDisk"`, `"EventScanCalibrate"`, `"EventSaveToClientMemory"`),
+a `"HiResMegabytesTotal or HiResMegabytesRoll"` free-space check, a read of
+registry key `"Software\Pakon\TLB"` feeding directly into the traced call
+chain above (`push str.SoftwarePakonTLB; push reloc...SysReAllocString; call
+fcn.100125a0` @ `0x10034368-0x10034374` — i.e. this is a registry-string
+read converted to a number, the classic CRT `atof`/`strtod` shape: scaling a
+parsed decimal by a power of ten via `fyl2x`, not colour density), and a
+conditional `DMLDICELib.dll` load. **This has nothing to do with per-pixel
+colour** — it is session/hardware setup, not the F-135 pixel path. This one
+chain alone accounts for 3 of the 7 `fyl2x` hits (the pair inside
+`fcn.1000dfc0`, reached twice) plus the two calling functions that lead to
+it; the remaining `fyl2x` sites (`fcn.1004926d`/`fcn.10050d10`,
+`fcn.10050a2e`) and the 2 genuine `f2xm1` sites sit at addresses this
+project's own docs have never cited for anything F-135/AddScene/colour
+related, and were not individually traced to their own root callers within
+this pass's time budget — noted as incomplete for those specific sites, not
+claimed as ruled out.
+
+**For TLB.dll specifically: no log-family instruction this pass could trace
+leads to a per-pixel colour formula.** This is new, real, negative evidence
+— not a repeat of "no DLL call site was ever found," but an actual
+instruction-level search for the operation the formula requires, run for
+the first time.
+
+### 32.4 — Extended to PakonIMAu.dll: search space far larger, spot-checked,
+not exhaustively triaged
+
+The same byte search against `PakonIMAu.dll` (the DLL hosting
+`analyzeAutoTone` and everything downstream) finds **61 `fyl2x` + 64
+`f2xm1` sites** — an order of magnitude more than TLB.dll, consistent with
+PakonIMAu.dll being the much larger binary (ICC/KCMS colour management,
+JPEG-family codec code, and multiple already-documented statistics-heavy
+capabilities: `noiseTable`/`pnr`/`nra`, `analyzeArea`'s own 732-function
+dust/scratch detector per `docs/67`).
+
+Spot-checked the cluster nearest the already-extensively-characterized
+AutoTone/`analyzeArea` address neighbourhood: `fcn.100e37d0`
+(`0x100e37d0`-`0x100e3d0a`, 1338 bytes) contains **11 of the 61** `fyl2x`
+hits within ~800 bytes — far too many, and far too densely packed, to match
+the formula's own shape (exactly two log calls per pixel, in a loop, each
+followed by a subtraction). That density is much more consistent with a
+statistical/entropy-style computation than a per-pixel density conversion —
+plausibly in `analyzeArea`'s own domain (dust/scratch statistics), which
+this doc's §27 already spent a 943-function reachable-set walk on without
+surfacing this specific address. Two further clusters (`fcn.10262fd0`,
+1452 bytes; `fcn.104693f0`, 1710 bytes) were also identified but not read in
+full — both are large, multi-purpose functions, not the small, tight,
+two-log-call shape the target formula would produce.
+
+**Stated plainly: this is a spot-check, not an exhaustive search.** Unlike
+§32.3's TLB.dll result (all 7 real `fyl2x` sites accounted for or traced),
+this pass did not individually triage the remaining ~50 `fyl2x` and ~64
+`f2xm1` sites in PakonIMAu.dll — a binary this large and this unfamiliar,
+carrying multiple unrelated subsystems, would need a properly scoped
+follow-up (most plausibly: start from `analyzeAutoTone`'s and its six
+subsystems' own already-catalogued reachable sets, which are already
+enumerated by `tools/re/reachability.py` per `docs/67`, and check which if
+any of the 125 log-family sites fall inside them) rather than a raw
+whole-binary grep. Flagged as incomplete, not as a clean negative result,
+for PakonIMAu.dll specifically.
+
+### 32.5 — Why static disassembly, not Unicorn, for §32.2's two addresses
+
+Per this task's own instruction, live execution is the stronger form of
+evidence when it's available, but static disassembly alone is acceptable
+when a function is small/simple enough to read with high confidence. Both
+`0x1000d880` and `0x10034b9b` qualify: the question being asked of them
+("does this function compute a log-difference density formula") is answered
+by their control-flow *shape* alone — a switch-dispatched, FPU-multiply-only
+polynomial loop, with **zero** `fyl2x`/`fyl2xp1`/`f2xm1`/`fyl2xp1`-family
+instructions present anywhere in either function's bytes — not by any
+register value that could differ under live execution. No Unicorn run
+could change "this function contains no log instruction." Unicorn was
+therefore not run for §32.2; it was used implicitly nowhere in this
+section, consistent with prior static-only sections of this doc (§11, §12,
+§18 already used this same standard).
+
+### 32.6 — Context from this doc's own prior work, not re-litigated: why the
+formula's overall *shape* is still plausible even though its exact
+correctness remains unverified
+
+Not new work — cited here because it bears directly on how to weigh this
+section's negative result. §9 already established, on real data, that
+`f135_rom12_to_rpd12`'s construction places every frame's Dmin within ~35
+codes of `dra`'s own `lowFixedPoint`/`highFixedPoint` and SBA's
+`neutralBalancePoint` (1550) — both independently, real-DLL-verified
+constants this formula was never fitted to match, and has no way to miss by
+construction only if its overall anchor placement (`fpo`, itself real-DLL-
+verified live in §29) is roughly right. If the formula's structure were
+badly wrong, the natural failure mode would be a Dmin landing far from that
+shared pivot — a much cruder symptom (severe clipping, a wrong hue cast, or
+`dra`'s shadow band actually engaging hard) than "uniform ~88-89 codes too
+bright across every percentile." This is circumstantial, not a
+verification, and does not change §32.2-32.4's finding that no DLL call
+site was located — but it is a real reason not to treat "unverified" as
+"probably wrong" going into whatever checks the formula next.
+
+### 32.7 — Verdict
+
+**This thread is closed without resolving the mystery**, per this task's own
+explicit fallback instruction. Specifically:
+
+1. The two candidate addresses this task named are **resolved**: both are
+   part of the PolyPixel stage-2 colour-matrix family (§32.2), not the
+   negative→positive log inversion, and not two names for one function
+   either — the "naming ambiguity" in `tools/re/live_hooks/agent.js` is now
+   answered by static evidence, without needing the live capture that
+   comment called for.
+2. A genuine, first-of-its-kind instruction-level search of TLB.dll for the
+   log operation the formula requires comes back empty for every site this
+   pass could trace (§32.3) — real, new negative evidence, not a repeat of
+   the standing "no DLL call site" finding.
+3. The same search in PakonIMAu.dll is **incomplete**, not negative (§32.4)
+   — the highest-value spot-check (the cluster nearest `analyzeArea`) does
+   not match, but ~50 `fyl2x` and ~64 `f2xm1` sites remain untriaged.
+4. **No discrepancy was found to compare against the port's own
+   implementation**, so — per this task's own explicit instruction — no fix
+   was attempted or shipped. `F135_INVERT_PORTED` remains correctly `False`.
+   `f135_rom12_to_rpd12` is not confirmed correct and not confirmed wrong;
+   it is, after this pass, more narrowly *unverifiable by the two addresses
+   this task named*, with a real but bounded amount of the remaining search
+   space (TLB.dll) now checked and coming back empty, and a much larger part
+   of it (PakonIMAu.dll) still open for whoever picks this up next, ideally
+   scoped via `tools/re/reachability.py` against `analyzeAutoTone`'s own
+   already-catalogued reachable sets rather than a raw whole-binary grep.
+
+**§31's ~88-89 code uniform brightness excess remains unexplained.** Per
+this doc's own §31.4, the next concrete lead is the polynomial colour-
+matrix's own calibration currency relative to the new lamp duty
+(`load_unit_matrix`, EEPROM-sourced) — this section did not start that work,
+only confirms it's now the sharpest remaining item, since §32.2-32.4 close
+out (for TLB.dll) or substantially narrow (for PakonIMAu.dll) the inversion-
+formula lead without finding the bug.
+
 ## What this changes about the open item list
+
+**§32 update.** Item 6 below (added by §31: the inversion formula's own
+construction) is now **narrowed, not closed**. §32 checked the two specific
+candidate addresses this task named against the real, hash-verified
+TLB.dll directly (full function-boundary disassembly) and confirmed neither
+is `f135_rom12_to_rpd12` — both are the PolyPixel stage-2 colour-matrix
+family. A genuine instruction-level search of TLB.dll for the log operation
+the formula requires comes back empty for every traceable site. The same
+search in PakonIMAu.dll found a much larger, only partially spot-checked
+space (~50 `fyl2x` + ~64 `f2xm1` sites untriaged) — real remaining work, not
+a dead end. No discrepancy was found, so nothing was fixed; the formula
+remains unverified rather than confirmed wrong. **Item 6's other half — the
+polynomial colour-matrix's own calibration currency (`load_unit_matrix`,
+EEPROM-sourced) — is now the single sharpest remaining lead**, ahead of the
+four unreplicated stages, since the inversion-formula lead itself is now
+either closed (TLB.dll) or requires a properly scoped follow-up
+(PakonIMAu.dll, via `tools/re/reachability.py` against `analyzeAutoTone`'s
+own reachable sets, not a raw whole-binary grep) rather than more reasoning
+about it in the abstract.
 
 **§31 update.** Item 4 below ("get the definitive vendor comparison...
 colour negative film... exported as TIFF") is now **satisfied**: `AA001.tif`
@@ -4002,3 +4282,33 @@ consistent with this doc's own established practice of leaving scratch
 diagnostics out of the repo. This doc's own rule against describing
 `captures/`/cache pixel content in writing was followed throughout — only
 aggregate percentile statistics are reported anywhere in §31.
+
+§32's DLL hashes were computed directly this pass (`md5 -q`), not copied
+from a prior citation, against local copies at
+`/Users/guy/pakon-windows-repair/COM-SERVER/{PakonIMAu,TLB}.dll` — this
+repo's own `research/sdk/PAKONF135.iso` is gitignored and not present in
+this checkout, so this pass used the closest available previously-verified
+copies rather than re-extracting from an ISO it didn't have; the TLB.dll
+match against `docs/70`'s own independently-recorded hash
+(`193d9b2ce0a4b77ae9b78262bd06c0fc`) is what establishes this copy as the
+right one, not an assumption. All disassembly used real `r2` (radare2
+6.1.8) `af`+`pdf` function-boundary output against these files with
+`bin.baddr=0x10000000` (the DLL's real PE base) — never a raw byte-range
+read. The `fyl2x`/`fyl2xp1`/`f2xm1` search used `r2`'s `/x` raw byte search
+over each **whole binary**, not a `.text`-only or function-scoped search,
+so the counts reported (7/0/2 for TLB.dll after discarding one false
+positive; 61/64 for PakonIMAu.dll) are complete statements about instruction
+occurrence, not a sample — what is *not* exhaustive is the tracing of every
+one of PakonIMAu.dll's 125 sites back to a caller, stated plainly as
+incomplete in §32.4. The one fully-traced TLB.dll chain
+(`fcn.100341b0` → `fcn.100125a0` → `fcn.1000f130` → `fcn.1000ef80` →
+`fcn.1000dfc0`) was walked via real `axt` (cross-reference) output at every
+hop, not inferred from address proximity, and `fcn.100341b0`'s own
+559-line body was read in full (`pdf`), not skimmed, before concluding it
+is scan-session bookkeeping rather than colour math. No Unicorn execution
+was run for §32 — §32.5 states explicitly why static disassembly was judged
+sufficient for the specific question asked of the two candidate addresses.
+No production code was changed by this pass; `pakon_decode.py`'s
+`f135_rom12_to_rpd12` and `check_film_class` were read, not edited, and the
+disassembly work happened entirely against external DLL copies outside this
+repo, read-only throughout.

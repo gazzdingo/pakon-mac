@@ -3279,7 +3279,335 @@ in this project's port code was audited this pass; if any exist and can
 also see a genuine NaN operand, they are a real, separate risk worth a
 future pass's attention, not covered by this fix.
 
+## 31 — A real, matched vendor TIFF of this exact roll settles the direction
+question §13/§15 could only settle statistically: the port is ~2× too bright
+at every percentile, not just in the shadows. A new, genuine film_base bug is
+found and fully characterized — but proven, both analytically and
+empirically, insufficient to explain it. Root cause still open.
+
+**The new evidence, and why it's stronger than §13/§15's.** The project
+owner had a real Pakon PSI scan of the *exact same physical roll* already in
+hand: `AA001.tif`–`AA006.tif`, real vendor TIFFs, direct-visual-confirmed
+(same street corner, same "Fellow Barber" sign, same person) as the same
+photograph as frame 0 of this project's own `test123.bin` — a roll captured
+tonight, well after every hardware fix this doc's earlier sections describe.
+Unlike §13 (carved, B&W, caveated) or §15 (a different roll, only
+"confirmed... same physical scan session" by the owner's word), this is a
+same-roll, same-frame, losslessly-exported colour comparison — no caveats
+about carving, film type, or roll identity.
+
+**Reproduced directly first, per this task's own instruction, not assumed.**
+`tools/pakon_render.render_frame` (`PAKON_COLOUR_ENGINE=python`,
+`film_path="ColNeg"`, the existing opened roll at
+`~/Library/Caches/PakonScan/workspace/f4c91b62/roll.json`, real roll-wide
+`film_base=[3107, 2490, 2414]`, real `fpo=(879,1250,1386)`, real
+`setshifts_out=(683,297,151)`), frame 0 (`a=2048,b=5048`, `confidence=low,
+phase=LookAtBeginning` — the framing cascade's own weakest placement grade
+on this roll, noted for completeness, not shown to matter below), default
+`scale="preview"`:
+
+```
+              p0.1   p1    p5    p50   p95   p99   p99.9
+R  ours:        0    20    62   178   249   254   254
+R  AA001.tif:   0    10    17    90   235   252   255
+G  ours:       41    51    71   192   250   254   254
+G  AA001.tif:   8    11    17   103   239   251   255
+B  ours:       25    41    58   217   254   254   254
+B  AA001.tif:   7    10    18   139   246   255   255
+```
+
+Confirms the task's own transcribed numbers to within a few codes (this
+session's own re-measurement, not copied) and confirms the framing: **the
+gap is not confined to the shadow end** — the median alone is 88/89/78 sRGB
+codes too bright (R/G/B), and even p95/p99 sit 14-19 codes high. This is a
+different-shaped defect from §1-9's "no real blacks" framing (a compressed
+shadow band on an otherwise-plausible curve) — it is closer to a uniform
+excess across the whole tonal range, now provable in absolute terms against
+a real, matched reference for the first time in this doc.
+
+### 31.1 — Traced `scene_rpd12`'s real call chain stage by stage, per this
+task's own method
+
+Same production code, same frame, direct calls to `pc.poly_hwc` →
+`pr._rpd16` → `ansel.rpd16_to_rpd12` → `dec.f135_rom12_to_rpd12` →
+`eng.render_scene` (SBA balance apply → FUGC apply-LUT → the six-subsystem
+`analyzeAutoTone`, per `pakon_ansel.AnselEngine.render_scene`'s own body,
+`:839-899`) → `eng.to_srgb`, each stage's own `[p1,p50,p99]` reported:
+
+```
+stage                          R                    G                    B
+0. calibrated 14-bit    [  662, 3669, 9791]  [  468,2399,6702]  [  214,1467,6016]
+1. poly (rpd12 domain)  [  352, 1199, 2819]  [  572,1102,2335]  [  701,1057,2234]
+2. inv16 (post-invert)  [923.7,1331.7,2064]  [1284,1743,2456]   [1432,2011,2820]
+3. toned (post autoTone)[ 1384, 1760, 2421]  [1386,1795,2415]   [1329,1908,2596]
+4. sRGB                 [   10,  181,  254]  [  68, 194, 254]   [  55, 217, 254]
+```
+
+Every stage's own output is internally consistent with the already-verified
+formulas cited throughout this doc (§8's own stage table, on a different
+roll, shows the identical shape: sharp compression at the poly→inv16
+boundary, near-flat span through toning). The question this task asks —
+does any stage's *own* output look implausible, not just "does it run" — is
+answered at the film_base measurement specifically, below.
+
+### 31.2 — The real, new bug: roll-wide `film_base_codes` is contaminated
+by real photo highlights on this roll, under the *current* lamp calibration
+— the same mechanism §2 found in the single-frame fallback, now shown to
+also reach the "correct," roll-wide, production path
+
+`roll.film_base=[3107,2490,2414]` came from `open_capture`'s real,
+roll-wide `FindDmin` pass (`pakon_render.py:864-895`, `dec.film_base_codes`
+→ `film_base_window` → `film_base_line_mask`, the exact mechanism §3/§4 of
+this doc treated as "the real, correctly-measured roll-wide film base," in
+contrast to the single-frame fallback §2 found broken). Re-ran this pass's
+own accumulation loop directly, with diagnostics `film_base_window` itself
+doesn't expose:
+
+```
+lin_lines kept: 19,129 of 25,427 (75.2%)   lin_px: 37,684,130   thr (0.1%): 37,684
+```
+
+**Per-chunk keep fraction, against the roll's own known geometry**
+(`film_start=2048`, `film_stop=21248`, 5 frames spanning 2048-18804):
+
+```
+lines      0- 4096: kept 2072/4096 (50.6%)   [head leader 0-2048 + frame 0]
+lines   4096-20480: kept 4096/4096 (100.0%)  [frames 1-4 + every inter-frame gap]
+lines  20480-24576: kept  673/4096 (16.4%)   [tail edge of film + early tail leader]
+lines  24576-25427: kept    0/ 851 (  0.0%)  [deep tail leader]
+```
+
+This is almost exactly `film_start`/`film_stop`: 2072≈2048 (the head-leader
+lines correctly excluded), 673≈768 (the real film lines in that chunk,
+20480 to `film_stop`=21248, correctly kept), 0% correctly excluded past
+`film_stop`. **The line-level leader/film split itself is working exactly
+as designed** — this is not a repeat of §22's `balanceAreaImage` polarity
+bug or anything like it.
+
+**But the consequence is that essentially none of the "kept" population is
+genuine clear film.** Every chunk inside `[2048, 21248)` — the real film
+region, including every inter-frame gap — is kept at ~100%, and the true
+leader (correctly excluded) contributes ~0 pixels to the histogram
+`find_dmin_code_from_hist` actually walks. Reading that walk's own top of
+histogram directly for R (code, count, cumulative %):
+
+```
+4095:   47   (0.0001%)      3110: 934  (0.1187%)
+4036:    1   (0.0001%)      3107: 858  (0.1020%)  <- FindDmin(R) lands here
+3947:    1   (0.0002%)      3100: 934  (0.1187%)
+...  a smooth, monotonically increasing count from 4095 down to 3107,
+...  no spike, no plateau, no cliff anywhere in the range
+```
+
+A genuine clear-film Dmin should show a tall, narrow spike (clear film reads
+consistently) with a sharp drop into real image content just below it. What
+this shows instead — smooth, continuously increasing counts with **zero**
+structural break anywhere from 4095 down through 3107 — is the signature of
+a natural photographic highlight histogram tail, the identical shape §2.2
+already characterized for the single-frame fallback ("numerically
+indistinguishable from the frame's own 99th-percentile highlight"). Direct
+confirmation: measuring the *whole film region* (`2048:21248`, i.e. exactly
+the population `film_base_line_mask` keeps) as ordinary image content —
+
+```
+region                          R                    G                    B
+whole film region (2048:21248)  p99=2994  p99.9=3108  p99=2420 p99.9=2489  p99=2350 p99.9=2412
+current roll.film_base                    3107                  2490                  2414
+```
+
+— matches the *current* `roll.film_base` almost exactly, to single digits.
+**`roll.film_base` is measuring the top ~0.1% of five real photographs
+(frame content and inter-frame gaps alike), not clear film**, on this roll,
+under this calibration.
+
+**Why genuine leader isn't reaching the walk: it's saturating the poly
+domain, not just (or not even) the sensor.** Measuring the known head/tail
+leader regions directly (`film_start`/`film_stop` boundaries, not the
+saturation mask):
+
+```
+region                mean line-sat%   R                        G                     B
+HEAD leader (0:2048)      98.78%      0.39% at ceiling,         98.78% at ceiling     1.50% at ceiling,
+                                       unsat p99.9=3972           (1.22% survive)      unsat p99.9=4082
+TAIL leader (21248:n)    100.00%      99.95% at ceiling,        100.00% at ceiling    99.81% at ceiling,
+                                       unsat p99.9=4090           (0 survive)          unsat p99.9=4090
+```
+
+Genuine clear film on this roll reads at **~4070-4090 in the poly domain**
+(near its own 4095 ceiling) — roughly 1,000+ codes above the contaminated
+`roll.film_base` — but nearly all of it is *at* that ceiling, and
+`film_base_line_mask`'s per-line ≥50%-saturated test (correctly) excludes
+those lines wholesale, leaving nothing but real photo content for the walk.
+**A cross-check on the raw sensor domain shows this saturation is not
+uniformly a hardware ceiling**: HEAD leader's raw 14-bit data is nowhere
+near clipped (R 0.09% at the raw ceiling, G 0.00%, p50≈14,000 of 16,383),
+even though the *same* pixels read 98.78% saturated in the poly domain for
+G — i.e. the polynomial colour-matrix stage itself (`pc.poly_hwc`, this
+unit's registry/EEPROM-sourced coefficients, unrelated to the lamp-duty
+fix) is what clamps clear film to its own 4095 ceiling for G, not the CCD.
+TAIL leader, by contrast, *is* genuinely sensor-saturated (R 23.8%, G
+34.2%, B 34.6% at the raw 16,383 ceiling) — a real, independent
+confirmation of §6's own finding that the post-recalibration lamp duty is
+strong enough to saturate clear film outright at some points in the scan.
+Both mechanisms point the same way: under the *current* calibration, this
+roll's genuine Dmin is not reliably recoverable from a histogram-percentile
+walk over "unsaturated lines," because there usually aren't enough
+unsaturated near-Dmin pixels left to walk.
+
+**This is a real, previously-undocumented bug, distinct from §2's.** §2
+found the single-frame `film_base=None` fallback path broken because it had
+*no leader in view at all*. This is the roll-wide, production
+`film_base_codes` path — the one §3/§4 treated as the fix — breaking for a
+different, newer reason: genuine leader *is* in view, but the current
+(post-2026-08-12) lamp duty saturates it too hard, at the poly-domain
+level, for the existing line-saturation heuristic to leave anything useful
+behind.
+
+### 31.3 — Tested directly, not assumed: this bug does **not** explain the
+brightness gap, and provably cannot on its own
+
+**A corrected film_base, substituted into the same unmodified chain.**
+Built a candidate from genuine leader pixels only (`film_start`/`film_stop`
+boundaries, literal ceiling pixels excluded as uninformative, same
+`find_dmin_code_from_hist` walk): `R=4090` (32.8% of leader pixels
+informative), `B=4082` (32.5%), `G=4069` (only 0.40% informative — flagged
+as a small, unstable sample, not a confident measurement). Re-rendered
+frame 0 with this candidate, same unmodified `scene_rpd12`/`render_scene`:
+
+```
+                     sRGB median [R, G, B]
+film_base=[3107,2490,2414] (current):  [181, 192, 217]
+film_base=[4090,4069,4082] (candidate): [168, 214, 239]
+target (AA001.tif):                     [ 90, 103, 139]
+```
+
+R moves modestly toward target (181→168, still far short of 90); **G and B
+move away from target** (192→214, 217→239). Net effect: not an improvement.
+A joint proportional sweep (all three channels scaled down together) finds
+no single factor that helps all three either — e.g. `base=(1200,1000,900)`
+lands `[140,109,47]`: G lands almost exactly on 103, but R is still far
+too bright and B has overshot past the target into too-dark. Per-channel
+independent sweeps (one channel's base moved, the other two held) run into
+gamut-clipping artefacts (R collapses to 0 well before reaching a plausible
+value) that make them unreliable evidence either way.
+
+**Why, analytically, this had to fail.** `f135_rom12_to_rpd12`'s own
+formula is `rpd12 = fpo + 1000·(log10(base−c9) − log10(poly−c9))`. A pure
+multiplicative rescaling of `base` and `poly` together — which is what
+"the calibration is off by a factor" would look like — pushes `log10(base)`
+and `log10(poly)` up by the *same* additive amount and **cancels exactly**
+in the subtraction; it cannot produce a uniform brightness shift by itself,
+only in combination with the fact that only `base` (not `poly`, which
+tracks each pixel's own real content) is being changed in this test. This
+is confirmed, not just argued: the film_base sweep above changes the
+image, but not in a way that closes the gap for more than one channel at a
+time, exactly as this algebra predicts for a single, imperfectly-chosen
+lever.
+
+**c9 (the polynomial pedestal) was tried too, since it does *not* cancel
+the same way** (it is subtracted from both `base` and `poly`, but by a
+fixed additive amount, so it changes their *ratio*, not just a shared
+offset). Same frame, film_base held at the current (contaminated) value,
+`c9` scaled uniformly by a single factor across all three channels:
+
+```
+c9 scale   c9 = (R,G,B)                     sRGB median [R,G,B]
+  1.0      (159.6, 444.7, 635.5)  [orig]     [181, 194, 218]
+  1.5      (239.4, 667.1, 953.3)             [ 88, 162, 232]   <- R lands on target
+  2.0      (319.2, 889.5, 1271.1)            [  8, 156, 227]   <- R overshoots
+  3.0      (478.8, 1334.2, 1906.6)           [  0, 179, 226]
+  5.0      (798.0, 2223.7, 3177.7)           [178, 188,   0]   <- unstable (B crashes)
+  8.0      (1276.7, 3558.0, 5084.3)          [207,  27,  30]   <- unstable (G,B crash)
+target                                        [ 90, 103, 139]
+```
+
+R passes almost exactly through its own target at `c9 scale=1.5`, while G
+and B are still 60-90 codes short of moving toward *their* targets at the
+same scale, and the whole family becomes numerically unstable (non-
+monotonic, chaotic) above `scale≈2` as `poly−c9` approaches zero for a
+growing fraction of pixels and the clamp in `f135_rom12_to_rpd12` engages.
+**No single uniform scale factor — on `film_base` or on `c9` — reproduces
+the vendor's per-channel targets simultaneously**, and the channels' wildly
+different sensitivities to both parameters (driven by how close each
+channel's own `base`/`c9` already sit to each other) make a hand-tuned
+per-channel fix indistinguishable from curve-fitting to one frame, not a
+principled correction.
+
+**Ruled out independently, not re-litigated:** `fpo` — confirmed live,
+this exact unit, §29, matches what this port already uses, no per-unit
+correction exists anywhere in the running vendor software. `setshifts_out`
+— deterministic, DPI-file-static, built from already-Unicorn-verified
+`sba_apply.setshifts_12`/`preference_shift_words`, identical for every
+frame on this roll (§9 already established this; unaffected by which frame
+or which film_base is used). FUGC's apply-LUT gate and near-identity
+behaviour — real-DLL-verified (§10, §27-28). `analyzeAutoTone` itself —
+bit-exact at full-frame scale, this roll's own calibration state (§24).
+
+### 31.4 — Verdict: two real findings, root cause still open
+
+1. **A real, new, fully-characterized bug**: `film_base_codes`'s roll-wide
+   `FindDmin` walk, on this roll, under the current (post-2026-08-12) lamp
+   calibration, draws its population almost entirely from real
+   photographic content rather than genuine clear film, because genuine
+   leader now saturates the *polynomial colour-matrix stage's own 4095
+   ceiling* too heavily (and, at the tail specifically, the raw sensor's
+   own ceiling too) for the existing per-line saturation heuristic to
+   leave a usable near-Dmin population behind. This is a real, independent,
+   worth-fixing defect in the same family as §2's — not a re-statement of
+   it, a second, distinct mechanism reaching the "already fixed" roll-wide
+   path this time.
+2. **That bug is not the (sole) explanation for the ~2× brightness gap**,
+   shown both empirically (the best available correction improves one
+   channel and worsens two) and analytically (a pure-scale correction to
+   `base`/`poly` together cancels in the log-difference formula and cannot
+   produce a uniform shift). Root cause remains genuinely unresolved. The
+   two most likely remaining loci, neither confirmed this pass:
+   `f135_rom12_to_rpd12`'s own formula construction (`F135_INVERT_PORTED
+   = False` — "no DLL call site was ever found... the formula was
+   reconstructed from first principles," per §8's own already-standing
+   caveat, now sharpened by a real vendor comparison rather than just "no
+   real blacks" reasoning), or the polynomial colour-matrix coefficients
+   themselves (`load_unit_matrix`, EEPROM-sourced — §31.2's own finding
+   that clear film clips the poly domain without clipping the raw sensor
+   is at least suggestive that this per-unit calibration may not correctly
+   match the post-recalibration lamp intensity it now receives, though
+   this pass did not establish that directly).
+
+**No production code was changed by this pass.** The film_base
+contamination bug (§31.2) is real and independently worth fixing, but this
+pass's own attempted correction (§31.3) does not improve the match against
+the real vendor TIFF — it worsens it for two of three channels — so,
+per this task's own explicit instruction not to claim success without a
+verified, closed gap, nothing was shipped. Flagging §31.2 plainly as a
+real, evidenced defect for a future pass to fix on its own merits (the
+same category as §2's Dmin methodology gap: correct to fix, not shown to
+explain this symptom), and §31.3's negative result as real, load-bearing
+evidence about where the true root cause can *not* be, ruling out an entire
+class of single-parameter fixes within the existing formula for the first
+time in this investigation.
+
 ## What this changes about the open item list
+
+**§31 update.** Item 4 below ("get the definitive vendor comparison...
+colour negative film... exported as TIFF") is now **satisfied**: `AA001.tif`
+is exactly that — a real, colour-negative, matched-roll, matched-frame
+vendor TIFF, no carving caveats. §31 used it to confirm the defect's shape
+(uniform ~2× brightness excess at every percentile, not just a shadow
+floor) and to test — directly, empirically, and analytically — whether the
+roll-wide `film_base` measurement (item 5, "worth fixing anyway") could
+explain it. It found a real, new, distinct film_base bug (the roll-wide
+`FindDmin` walk is contaminated by real photo highlights on this
+specific roll, for a different mechanism than item 5's single-frame gap —
+see §31.2) but proved, both empirically and analytically, that fixing it
+does not close the gap (§31.3) — ruling out an entire class of
+single-parameter fixes to `f135_rom12_to_rpd12` (uniform rescaling of
+`base`, or of `c9`) for the first time. Root cause remains open; the
+formula's own construction (`F135_INVERT_PORTED=False`) and the polynomial
+matrix's own calibration currency are now the two sharpest remaining
+leads, ahead of the four unreplicated stages below, since §31 is the first
+section to test the inversion formula's own parameters against a real,
+matched, colour-negative vendor target rather than reasoning about it in
+the abstract.
 
 **§13 changes the question this list is answering.** It used to be "is
 this even a bug." It no longer is: the real vendor software, on this
@@ -3339,13 +3667,16 @@ defect, not vendor-intended behaviour. Updated priority order:
    on this exact unit does not look similar — it has real blacks. Kept
    here, struck through, as the record of a real hypothesis that was
    tested and closed, not silently dropped.
-4. **Get the definitive vendor comparison** — §13's own "what would make
-   this fully definitive": colour negative film (not B&W), PSI's
-   default automatic settings, exported as 16-bit TIFF via USB mass
-   storage rather than carved from the disk image. Removes every
-   caveat in §13 at once and enables a real stage-by-stage comparison
-   against this port's own intermediate arrays (§8's own method is a
-   ready-made template for that comparison once the file exists).
+4. ~~Get the definitive vendor comparison~~ **Done — §31.** `AA001.tif`
+   (colour negative, matched roll, matched frame, no carving caveats) is
+   exactly what this item asked for. Used in §31 to confirm the defect's
+   real shape (uniform, not just shadow-floor) and to test the leading
+   film_base hypothesis directly; a real stage-by-stage comparison against
+   this port's own intermediate arrays (§8's own method, cited here as the
+   template) has not yet been run against `AA001.tif` specifically and
+   remains the next concrete step — §31 tested parameters (film_base, c9)
+   rather than tracing every stage's own absolute value against the
+   vendor's.
 5. **Fix the measurement harness's Dmin methodology anyway — real bug,
    just not the cause.** `measure_python_autotone.py`'s `film_base=None`
    on a lone TIFF is still measuring "the frame's own highlights" and
@@ -3355,6 +3686,26 @@ defect, not vendor-intended behaviour. Updated priority order:
    otherwise inherit this): thread a real roll-wide base through, the
    way `tools/pakon_render.py`'s own `open_capture`/`scene_rpd12` already
    do (§4's own method is a working, minimal example of exactly this).
+   **§31.2 finds the roll-wide path has its own, newer version of the same
+   class of bug**, on real production data, under the current lamp
+   calibration — genuine leader saturates the poly-domain ceiling before
+   the line-saturation heuristic can isolate it, so the "roll-wide, already
+   fixed" path (§3/§4's own framing) draws its Dmin from real photo
+   highlights too. Worth fixing on its own merits, same as this item
+   always was — but §31.3 shows it will not, by itself, close the
+   brightness gap.
+6. **New, from §31**: the inversion formula's own construction
+   (`f135_rom12_to_rpd12`, `F135_INVERT_PORTED=False`) and the polynomial
+   colour-matrix's own calibration currency (`load_unit_matrix`,
+   EEPROM-sourced, unrelated to the lamp-duty fix — §31.2's own finding
+   that clear film clips the poly domain without clipping the raw sensor
+   is at least suggestive) are now the sharpest concrete leads for the
+   brightness gap specifically, ahead of the four unreplicated stages
+   (item 1), since every stage between the inversion and the final image
+   is now independently verified correct (analyzeAutoTone bit-exact at
+   full-frame scale, §24; FUGC and SBA-apply verified; `fpo` live-verified,
+   §29) and §31.3 rules out simple single-parameter fixes to the inversion
+   formula's existing inputs.
 
 ## Verification
 
@@ -3605,3 +3956,49 @@ frame (`max=0.0` over every pixel and channel) — not inferred from the
 `cna`-level fix alone. No golden file was modified on disk; the only
 production-code change is the one line (plus docstring) in
 `pakon_cna.py`'s `_contrast_map`, described and cited above for review.
+
+§31's reproduction used the same unmodified `tools/pakon_render.render_frame`
+production entry point every other real-render section of this doc uses
+(`PAKON_COLOUR_ENGINE=python`, `film_path="ColNeg"`, frame 0 of
+`test123.bin`), against the roll already opened by the app itself at
+`~/Library/Caches/PakonScan/workspace/f4c91b62/roll.json` (read-only —
+nothing in this pass re-opened or re-decoded the capture) so the real,
+already-computed roll-wide `film_base` was used unmodified, not
+re-derived. `AA001.tif`'s percentiles were computed directly with `PIL`/
+`numpy` from the file at
+`/Users/guy/.claude-account-1/jobs/5e3f6f65/tmp/vendor-tiffs/AA001.tif`
+(re-measured this pass, not taken from the task's own transcribed numbers,
+which it independently reproduces to within a few codes). §31.1's stage
+trace called `pc.poly_hwc`, `pr._rpd16`, `ansel.rpd16_to_rpd12`,
+`dec.f135_rom12_to_rpd12`, `eng.render_scene`, and `eng.to_srgb` directly —
+the same already-cited, already-verified functions every earlier stage
+trace in this doc (§8, §9) used, on this new roll and frame. §31.2's
+film_base diagnostics re-ran `open_capture`'s own accumulation loop
+(`pakon_render.py:824-895`) with added instrumentation, calling the same
+`dec.film_base_line_mask`/`ansel.scene_ctx.find_dmin_code_from_hist`
+functions §2-4 already used and cited as `[VERIFIED, vendor]` for the walk
+itself and `[OURS]`/`FILM_BASE_WINDOW_PORTED=False` for the window —
+labels read directly from `pakon_decode.py`'s own comments this pass, not
+paraphrased from memory. The head/tail leader measurements used
+`roll.framing["film_start"]`/`["film_stop"]`, the same five-phase-cascade
+boundaries `pakon_framing` already computed and stored on this roll at
+open time — not re-derived or guessed. The raw-14-bit-vs-poly-domain
+saturation comparison (proving the head leader's poly-domain clamp is not
+a raw-sensor ceiling) called `dec.apply_unit_calibration` directly on the
+same cached strip every other stage in this doc reads from `roll.attach()`.
+§31.3's film_base and `c9` sweeps called `dec.f135_rom12_to_rpd12` and
+`eng.render_scene`/`.to_srgb` directly and unmodified, varying only their
+own explicit parameters — no port file was edited to run any sweep. Every
+number in §31 is this pass's own direct terminal output, re-measured
+against real files (the real `AA001.tif`, the real `test123.bin`, the real
+already-computed `roll.film_base`), not estimated, interpolated, or carried
+over from the task's own prompt. **No production code was changed by this
+pass** — `pakon_decode.py`, `pakon_render.py`, `pakon_ansel.py`, and every
+other file this section reads were read-only throughout; the only new
+files are disposable scratch scripts under `/tmp` (`repro_wash.py`,
+`trace_stages.py`, `diag_filmbase.py`, `diag_leader.py`,
+`diag_leader_dmin.py`, `c9sweep2.txt` and similar), not committed,
+consistent with this doc's own established practice of leaving scratch
+diagnostics out of the repo. This doc's own rule against describing
+`captures/`/cache pixel content in writing was followed throughout — only
+aggregate percentile statistics are reported anywhere in §31.

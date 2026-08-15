@@ -7987,3 +7987,44 @@ cap, and (b) leaves the register at a value that, independently
 re-measured, is inside `BLACK_MIN_WIRE`/`BLACK_MAX_WIRE`. That is real,
 supervised verification this session did not reach, stated plainly rather
 than implied to have happened.
+
+## 45 — A real confound ruled out directly by the project owner: the
+`AA001`-`AA006` reference TIFFs carry no manual correction. The
+~88-89 code gap is a genuine software discrepancy, not an artefact of a
+hand-tweaked comparison target.
+
+Every section from §31 onward has measured this doc's own still-open
+brightness gap against `AA001.tif` (and the sibling `AA002`-`AA006`) as
+ground truth, on the working assumption that these are PSI's own pure
+automatic output. That assumption had never been directly confirmed by
+anyone with access to the real capture session — until now. Asked
+directly, the project owner (who produced these exports) confirmed
+nothing was touched: the reference frames are exactly PSI's own
+automatic render, no manual density/colour slider used. Also confirmed,
+same conversation: PSI itself has no histogram/scene-analysis panel
+exposing its own computed auto-exposure values for direct comparison —
+closing off what would otherwise have been the cheapest remaining
+real-vendor-software cross-check.
+
+**What this settles.** Rules out the one confound that could have
+invalidated the entire §31-44 investigation at a stroke: if the
+reference had carried an undocumented manual correction, the measured
+gap would have been comparing this port's honest automatic output
+against a human-adjusted target, and every ruled-out hypothesis since
+§31 would have been chasing a phantom. It is not a phantom — the target
+is genuinely PSI's own automatic render, and the gap between it and this
+port's own automatic render is real.
+
+**What it doesn't settle.** Nothing about the gap's cause — this closes
+a methodology question, not a mechanism one. With PSI's own diagnostic
+panel ruled out as unavailable, the two live real-vendor-software
+avenues left are: (1) a fresh, deeper live hook capture specifically
+targeting `analyzeArea`'s own internals (732 functions, still the sole
+standing major unread territory per every prior section's own priority
+list) for a genuine, previously-unhooked pixel-writing call site — not
+yet attempted, since every hook added so far into that function's
+neighbourhood (`balanceAreaImage`'s SCPLut path, §37-39; the FUGC
+apply-LUT thunk, §27-28) targeted capability-lookup/gating logic, not a
+pixel write, and both were independently ruled out; and (2) the
+untriaged `PakonIMAu.dll` `fyl2x`/`f2xm1` instruction sites §32.4 left
+incomplete.

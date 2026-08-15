@@ -5048,7 +5048,480 @@ confirmed this pass:**
    real, live per-frame render path for this roll, first raised by §35.6 and
    still unanswered.
 
+## 37 — §36.4's open question run to ground: `applyBalanceShifts` is real,
+reachable, gated code inside `analyzeArea` (0% ported) — not dead — and a
+second, wholly independent, previously-unread mechanism found in
+`balanceAreaImage`'s own body composes the same shift math with an
+unaccounted-for `SCPLut` curve. Both obvious fix hypotheses this raises
+("the port double-applies the shift" / "just stop applying it") are tested
+directly, on the real matched frame, and both fail.
+
+**Provenance.** `http://192.168.86.67:8000/` timed out this pass (`curl -sv
+-m5`, "Connection timed out after 5002 milliseconds") — the XP box was not
+reachable. Per this task's own fallback instruction, searched this
+session's own scratch/job directories before concluding the file was
+unavailable, and found it already present in three places: `/private/tmp/
+live_hooks_analysis/live_hooks_20260815-085356.jsonl`, its `/System/
+Volumes/Data` mirror, and `/Users/guy/.claude-account-1/jobs/5e3f6f65/tmp/
+live_hooks_v3/live_hooks_20260815-085356.jsonl` — all three MD5-identical
+(`735d9d09f6df950a137a15e7254a736e`), 229 lines, matching §35's own cited
+line count exactly. `PakonIMAu.dll` re-verified fresh at
+`/Users/guy/pakon-windows-repair/COM-SERVER/PakonIMAu.dll`, MD5
+`eea9dcf78ee21d4f7c515a6c2512242d`, matching every prior citation in this
+doc. `radare2 6.1.8`, plus a new, uncommitted, additive Python PE/E8-scan
+script (not `pakon_color_golden.py` or any golden file — a one-off
+analysis script, matching this doc's own established scratch-analysis
+convention).
+
+### 37.1 — Re-confirmed directly, not trusted from prior prose: `sba_apply_balance_shifts`
+genuinely has zero real call events, and the shifts were genuinely non-zero
+for this capture
+
+Parsed the raw JSONL directly (not grep, a real JSON decode): 229 lines
+break down as `{"call": 210, "hook_installed": 15, "status": 4}`, matching
+§35's own count. The single `hook_installed` line for this hook reads:
+
+```
+{"kind":"hook_installed","hook_id":"sba_apply_balance_shifts",
+ "module":"PakonIMAu.dll","va_documented":"0x1019a0c0",
+ "rt_address":"0x07e9a0c0","exit_enabled":true,"tick":29720078}
+```
+
+— confirmed to match `tools/re/live_hooks/win_inject/hookcore_real_table.c`'s
+own entry for this hook (`{ "PakonIMAu.dll", 0x1019a0c0,
+"sba_apply_balance_shifts", "AnsAreaCapabilityImpl::applyBalanceShifts —
+the real PER-PIXEL LUT apply..." }`, `exit_enabled=1`) byte-for-byte:
+same module, same documented VA, same hook_id string, exit hooking genuinely
+enabled (so a LEAVE event would have logged too, had ENTER ever fired).
+Counting `"kind":"call"` events grouped by `hook_id` across the whole file
+gives 14 distinct hooks with nonzero counts (`sba_get_shifts` 36,
+`sba_preference` 24, `tlb_afe_offset_write` 18, `sba_set_shifts` 12,
+`cn_enhanced_driver` 12, `fugc_analyze` 12, `fugc_set_lut_info` 12,
+`balance_area_image` 12, `analyze_area` 12, `analyze_attributes` 12,
+`analyze_falloff` 12, `analyze_auto_tone` 12, `icc_effect_op` 12,
+`icc_xform_apply` 12 — summing to 210, matching the file's own total) and
+exactly one hook with **zero**: `sba_apply_balance_shifts`. This is a
+direct re-derivation from the raw file, not a re-citation of §35.6's own
+prose — genuinely, unambiguously zero.
+
+Task's own item 2, third bullet, checked directly: were the shifts
+themselves trivially zero for this capture, making the whole question
+moot? No — `sba_set_shifts`'s own 6 real ENTER events (`call_id` 23, 27,
+31, 35, 39, 43) all decode to non-null pointer arguments (this hook's own
+`stack_dwords` are pointers into the shared per-frame objects, not the raw
+int16 triple itself — matching every other hook in this table), and this
+project's own already-established decode of this exact roll's real
+`setshifts_out` (`eng.engine().setshifts_out`, read live from
+`roll.engine()` in §36, cross-checked directly again this pass by
+re-opening the same `~/Library/Caches/PakonScan/workspace/f4c91b62/
+roll.json`) is `(683, 297, 151)` — genuinely, substantially non-zero on
+every channel. The "shifts were legitimately zero" explanation is closed.
+
+### 37.2 — Exhaustive `.text` E8-opcode scan (this project's own established
+convention when `r2`'s default analysis misses xrefs) finds exactly one
+static caller of `applyBalanceShifts` in the whole DLL
+
+Wrote a small, uncommitted Python PE parser: locates the `.text` section
+from the real PE section table (`virt_addr=0x1000, raw_size=0x572000`,
+image base `0x10000000`), scans every byte for opcode `0xE8`, decodes the
+32-bit relative displacement, computes the real call target, and checks it
+against a small set of already-cited addresses. This is the same
+byte-exhaustive-search convention §32.3/§32.4 already used for the
+`fyl2x`/`f2xm1` search, applied here to `E8 CALL` instead. Results:
+
+```
+0x1019a0c0 (applyBalanceShifts)     -> 1 caller:  0x100dc331
+0x1006c4f0 (shift-LUT builder)      -> 4 callers: 0x10072b29, 0x100fe807,
+                                                    0x10102fc0, 0x1019a22a
+0x100f42a0 (master-clip-LUT ctor)   -> 1 caller:  0x1056a47e
+0x10100260 (sba_set_shifts)         -> 3 callers: 0x10058bcf, 0x1006b74f,
+                                                    0x10101f89
+0x10124000 (sba_get_shifts)         -> 6 callers
+0x1028c780 (sba_preference)         -> 1 caller:  0x10216444
+```
+
+The master-clip-LUT ctor's one caller (`0x1056a47e`) matches §36.2's own
+citation of the real CRT-init call site (`~0x1056a470`) to within the
+few bytes separating a `push`/`mov ecx` prologue from the `call`
+instruction itself — a real, independent confirmation that this scan
+methodology finds the same real call sites this doc's own prior,
+manually-read disassembly already established. `sba_preference`'s one
+caller (`0x10216444`) likewise matches `pakon_sba_apply.py`'s own already-
+cited "analyzePass2 @ 0x10216433" (same function, a few bytes later, the
+same margin as above).
+
+`0x1019a0c0`'s one caller, `0x100dc331`, disassembles to a single
+instruction inside a tiny (45-byte, `0x100dc310`-`0x100dc33a`) function
+that does nothing but reshape its own four stack arguments and forward
+them, unconditionally, straight into `applyBalanceShifts`, then return a
+cached copy of its own first argument:
+
+```
+0x100dc310  push ecx
+0x100dc311  mov eax, [esp+0x14]      ; arg
+0x100dc315  mov edx, [esp+0x10]      ; arg
+0x100dc319  mov ecx, [ecx+0x10]      ; ecx <- [ecx+0x10] (real "this")
+0x100dc31c  push esi
+0x100dc31d  mov esi, [esp+0xc]       ; cache first arg (return value)
+0x100dc321  push eax
+0x100dc322  mov eax, [esp+0x14]
+0x100dc326  push edx
+0x100dc327  push eax
+0x100dc328  push esi
+0x100dc329  mov dword [var_14h], 0
+0x100dc331  call fcn.1019a0c0        ; applyBalanceShifts, unconditional
+0x100dc336  mov eax, esi
+0x100dc338  pop esi
+0x100dc339  pop ecx
+0x100dc33a  ret 0x10
+```
+
+A full `aaa` analysis of the whole binary (14,361 functions total, run this
+pass, `afl` output saved) independently names four functions immediately
+adjacent to this one — `0x100dc2f0`, `0x100dc370`, `0x100dc630`,
+`0x100dc920` — as `method.AnsAreaCapability.virtual_4` /
+`.virtual_8` / `.virtual_0` / `.virtual_24` respectively: r2's own
+heuristic has already recognised this address range as the abstract
+`AnsAreaCapability` interface's own vtable-thunk cluster (distinct from
+`AnsAreaCapabilityImpl`, the concrete class `applyBalanceShifts` itself
+belongs to, per this hook's own documented real name
+`AnsAreaCapabilityImpl::applyBalanceShifts`). `fcn.100dc310` sits directly
+between the `virtual_4` and `virtual_8` thunks and has exactly their shape
+(reshape args, one unconditional forwarding call, return) — consistent
+with, though not independently confirmed by this pass as, being this same
+interface's own `ApplyBalanceShifts` thunk.
+
+**A real methodological caveat, stated plainly.** This E8 scan finds only
+*direct* (`E8 rel32`) call sites. A genuine C++ interface method — which
+this address range increasingly looks like — is normally invoked through
+its vtable (`call dword [eax+N]`), which this scan structurally cannot
+find. So "exactly one caller" is a real, verified, additive data point
+(one concrete site, confirmed by disassembly), not a complete census of
+every possible call site in the binary. This does not weaken §37.1's own
+finding, which is dynamic, not static: the live hook was genuinely
+installed with exit tracing enabled and genuinely logged zero real
+invocations across a complete real scan, independent of how many static
+call sites exist.
+
+### 37.3 — The one direct caller found: inside `analyzeArea` itself (the
+project's own already-flagged 0%-ported, 732-function capability), gated
+behind a single flag byte
+
+The wrapper's own one caller, `0x100dc331`'s call-site's own caller —
+i.e. the one place in `.text` that calls `fcn.100dc310` directly — is
+`0x100e1b85`. Disassembled its containing function: it falls inside
+`0x100e16d0`–`0x100e1e10` (1,856 bytes, confirmed by `afl`'s own function
+boundary, ending exactly at the next function start), which is `PakonIMAu.dll`
+`0x100e16d0` — exactly `analyze_area` per
+`hookcore_real_table.c`'s own table entry, and self-confirmed by the
+function's own embedded error-path strings a few dozen bytes past the call
+site: `push str.analyzeArea` (`"analyzeArea"`) and
+`push str.Atc_ansel_srclibPaths.ansel_areaMethods.cpp`
+(`"\Atc\ansel\src\libPaths.ansel\areaMethods.cpp"`), at `0x100e1bd1` /
+`0x100e1bcc`.
+
+The call itself is conditionally gated, immediately above it:
+
+```
+0x100e1b4d  mov ecx, esi
+0x100e1b4f  call 0x100dc0a0
+0x100e1b54  mov ecx, esi
+0x100e1b56  call 0x100dc070          ; mov eax,[ecx+0x10]; mov al,[eax+0x1a0]; ret
+0x100e1b5b  test al, al
+0x100e1b5d  jne 0x100e1cde           ; SKIP the whole block, incl. the call below, if AL != 0
+0x100e1b63  mov eax, [esp+0xe8]      ; a 3x int16 shift-triple pointer
+0x100e1b6c  mov dx, [eax+4]
+0x100e1b72  mov cx, [eax+2]
+0x100e1b76  push edx
+0x100e1b79  mov dx, [eax]
+0x100e1b7c  push ecx
+0x100e1b81  mov ecx, esi
+0x100e1b83  push edx
+0x100e1b85  call 0x100dc310          ; the applyBalanceShifts wrapper (SS37.2)
+```
+
+`0x100dc070` is a one-line accessor (`mov eax,[ecx+0x10]; mov al, byte
+[eax+0x1a0]; ret`) that reads a single flag byte at a fixed offset inside a
+capability object — reused, unmodified, at this exact same address from
+`balanceAreaImage`'s own body too (§37.4). When that flag is nonzero, this
+whole block — including the `applyBalanceShifts` call — is skipped
+entirely.
+
+**This directly explains §37.1's own zero-call finding, concretely rather
+than as an open mystery.** `analyze_area` itself fired exactly 12 real
+call events (6 ENTER + 6 LEAVE) in this capture — once per frame, matching
+every other subsystem — while `sba_apply_balance_shifts` fired zero. Since
+the only static path from `analyzeArea` into `applyBalanceShifts` is this
+one gated call, and the gate reads a flag this pass did not further trace
+the origin of, the direct, evidence-grounded conclusion is: **the flag
+evaluated to "skip" on every one of the six real frames this capture
+covers.** `applyBalanceShifts` is not unreachable, orphaned, or dead code
+in the abstract — it is real, live, in-scope code inside the exact
+function (`analyzeArea`) this doc has called "the sole remaining concrete
+software lead" since §13 — just conditionally routed around, for a reason
+this pass identifies the location of but does not resolve.
+
+### 37.4 — A second, wholly independent finding: `balanceAreaImage`'s own
+"miss-path" body — explicitly flagged unread by both §11 and
+`hookcore_real_table.c`'s own docstring — builds the same shift math and
+composes it with an unaccounted-for `SCPLut` curve
+
+`hookcore_real_table.c`'s own entry for `balance_area_image` reads: *"opens
+with `find("area")` idempotency guard (a HIT throws; a MISS falls through —
+docs/74 §11 already ruled out the `find("area")` HIT path as a live
+data-consumption channel, but never read the miss-path body itself)."*
+Read it in full this pass (`0x10102b20`–`0x10103ab2`, the real function
+`balanceAreaImage`, confirmed live-firing 12/12 times in this exact
+capture per §37.1's own tally).
+
+Past the `find("area")` guard and a `filmLut` capability lookup, the
+function reaches:
+
+```
+0x10102f9d  xor edx, edx
+0x10102f9f  mov dx, [eax+4]          ; eax = [ebp+0x14] + 0xa  (see below)
+0x10102fa3  movsx eax, word [eax+2]
+0x10102fa7  push edx
+0x10102fa8  push eax
+0x10102fa9  push ecx
+0x10102faa  push 0x1000
+0x10102faf  lea ecx, [ebp-0x28]
+0x10102fb2  push ecx
+0x10102fb3  lea edx, [ebp-0x2c]
+0x10102fb6  push edx
+0x10102fb7  lea eax, [ebp-0x24]
+0x10102fba  push eax
+0x10102fbb  mov ecx, 0x106b5f74      ; the SAME real global singleton
+0x10102fc0  call 0x1006c4f0          ; the SAME shift-LUT primitive SS36.2
+                                      ;   already Unicorn-verified bit-exact
+```
+
+Seven stack args, `ret 0x1c` — exactly §36.2's own already-documented
+`(thiscall, 7 stack args)` signature for `0x1006c4f0`: 3 shift values + a
+size (`0x1000`) + 3 output-LUT pointers. The 3 shift values come from
+`eax = [ebp+0x14] + 0xa`; `[ebp+0x14]` is `ctx`, the second of the two
+independently-shared per-frame pointers §35.2 already established is
+passed identically into all six subsystem calls, including
+`balance_area_image` itself — so the real shift triple this call reads
+lives at **`ctx+0xa`**, a new, more precise fact than anything §35.2 itself
+established.
+
+The built LUT is **not** applied to a pixel buffer here. Instead, a
+0x3000-byte (three 4096-word bands) buffer is allocated (`call
+0x100a8730`), and a second, separately-fetched 3-band×4096-entry table —
+identified unambiguously by the function's own embedded error strings,
+`"SCPLut capability not found."` (`0x1057a488`) and `"SCP LUT is not 3
+bands by 4096 bins"` (`0x10586d64`) — is composed with the shift LUT,
+per channel, in a straight lookup loop:
+
+```
+0x10103107  movsx ecx, word [ebx + eax*2]     ; ecx = shiftLUT_R[i]
+0x1010310b  mov edx, [ebp-0x54]                ; edx = SCPLut band-R base
+0x1010310e  mov cx, word [edx + ecx*2]         ; cx = SCPLut_R[ shiftLUT_R[i] ]
+0x10103112  mov word [ebx + eax*2], cx         ; combined[i] = cx
+                                                 ; (repeated for G/esi, B/edi)
+```
+
+i.e. `combined[i] = SCPLut[clamp(i + shift, 0, 4095)]` — **function
+composition of the shift with a second per-channel curve**, not a bare
+`clamp(code+shift,0,4095)`. The temporary shift-only LUTs are then freed
+(`0x104ffe3e`, an MSVCR71 `operator delete` thunk — confirmed by
+disassembling it: a plain `jmp dword [import]`), and the function goes on
+to look up the `"fugc"` capability (string pushed at `0x101031a0`) and
+continues into FUGC-adjacent code.
+
+**This is a real, previously-unread mechanism this port does not model at
+apply time.** `pakon_scp_lut.py` already exists in this codebase and is
+already used — but only during `setshifts_12`'s own *analysis*-time
+computation of `setshifts_out` itself
+(`pakon_ansel.py:748-759`: `band3 = scp_lut.load_3band_lut_ascii(lut_path);
+... setshifts_out = sba_apply.setshifts_12(preference_a, preference_a,
+band3.planar, band3.num_lut)`). The resulting `band3` is stored on the
+engine (`band3_lut=band3`, `pakon_ansel.py:830`, matching the
+`AnselEngine.band3_lut` field declared at line 649) and then **never read
+again anywhere in the file** — confirmed by direct grep for
+`self.band3_lut`/`.band3_lut` across `pakon_ansel.py`: zero hits after
+construction. Checked directly this pass whether it's even populated for
+this exact roll: yes — `eng.band3_lut.name ==
+"luts6_postROMM_equalRGBshort.lut"`, `num_lut=4096`, `num_bands=3`,
+4,079/4,096 nonzero entries, a real (not identity) curve (mean absolute
+deviation from identity ≈227 over nonzero entries — aggregate statistics
+only, per this project's rule).
+
+**Whether this already-loaded data is the SAME `SCPLut` capability
+instance the real DLL's apply-time compose reads is not established this
+pass, stated plainly rather than assumed.** The real DLL fetches its
+apply-time `SCPLut` object via a second, distinct accessor
+(`call 0x104ffdd6`, reused with different type-descriptor-looking
+immediates per capability — `0x10692518`/`0x106927d4`/`0x106927f8` — a
+shape consistent with a template/type-keyed capability registry, not the
+string-keyed `AnsSceneContext::find("filmLut")` mechanism used moments
+earlier in the same function), and the shipped file's own name
+("...postROMM_equalRGBshort...") together with its only other use in this
+codebase (a chroma-pivoted `0x60e − x` axis computation inside
+`setshifts_12`) are both more consistent with a colour-space/chroma remap
+table than a general per-code brightness curve. Composing it naively with
+raw pixel-domain codes was not attempted or reported as a fix candidate
+for exactly this reason — flagged as the concrete open question instead of
+guessed at, per this doc's own no-guessing standard.
+
+### 37.5 — Direct empirical test #1: does the port double-apply the shift
+via FUGC? No — instrumented directly, FUGC's own contribution is currently
+near-inert on this frame
+
+`fugc_set_lut_info` (`0x101f82c0`) is already real-DLL-verified (§10) and
+its own aim-offset formula, read directly in `pakon_fugc.py`
+(`aim_offset`), is `offset[c] = (w60ec[c] − w60f8[c]) + arg_ebp14[c]`,
+where `arg_ebp14 ≡ setshifts_out` — i.e. FUGC's own LUT construction
+*also* independently consumes the same shift triple `balanceAreaImage`
+does. The obvious hypothesis this raises: is `pakon_ansel.render_scene`
+(`sba_apply.apply_balance_shifts(x, setshifts_out)` immediately followed,
+later in the same function, by FUGC's own `apply_1d_lut(x, apply_lut)`,
+itself built from the same `setshifts_out`) applying the shift twice?
+
+Instrumented the real, unmodified `eng.render_scene` call directly (a
+runtime wrapper around `sba_apply.apply_balance_shifts` and
+`fugc_mod.build_setlutinfo_apply_lut`/`pakon_ansel.apply_1d_lut`, printing
+before/after percentiles at each call — no port file edited), on
+`test123.bin` frame 0, same roll/reference `AA001.tif` §31-36 all used:
+
+```
+sba_apply.apply_balance_shifts:  p50 delta = +683 / +297 / +151  (R/G/B)
+                                  -- exactly setshifts_out, as expected
+fugc_mod.build_setlutinfo_apply_lut computed offs = (1067, 1021, 1165)
+                                  -- large, NOT simply setshifts_out again
+apply_1d_lut(fugc apply_lut):    p50 delta =   -1 /   -1 /   -1  (R/G/B)
+```
+
+FUGC's own computed offset is large (1067/1021/1165), but composing it
+with the shipped generic seed LUT at these specific pixel values produces
+an apply-LUT that is, in practice, almost exactly identity here (-1 code
+median shift, all three channels). **This directly refutes the "double
+application via FUGC" hypothesis, as currently wired**: FUGC is not
+currently redundant with `apply_balance_shifts` in any material sense on
+this frame — it is close to inert, for reasons unrelated to
+`apply_balance_shifts`'s own +683/+297/+151 contribution.
+
+### 37.6 — Direct empirical test #2: does simply not applying the shift
+(mirroring what §37.3 shows the real DLL doing for `analyzeArea`'s own
+gated call) converge toward `AA001.tif`? No — it makes the match strictly
+worse
+
+Patched `sba_apply.apply_balance_shifts` to an identity pass-through
+(clip to `[0,4095]` only, no shift added — `pakon_sba_apply.py` itself
+untouched on disk, a runtime monkeypatch matching this doc's own
+established convention), left everything else — including FUGC's own
+near-inert `apply_lut` from §37.5 — completely unmodified, and re-ran the
+same unmodified `tools.pakon_render.render_frame` production entry point
+§31 used (`PAKON_COLOUR_ENGINE=python`, frame 0, `scale="preview"`, the
+same real opened roll), then re-measured `AA001.tif` directly again this
+pass (not copied from §31's own numbers):
+
+```
+                p0.1   p1    p5    p50   p95   p99   p99.9
+baseline (unmodified port), vs SS31's own numbers -- reproduced exactly:
+R  ours:          0    20    62   178   249   254   254
+R  AA001.tif:      0    10    17    90   235   252   255
+
+patched (apply_balance_shifts -> identity, FUGC apply_lut unchanged):
+R  patched:        0     0     0     0   145   229   254
+G  patched:       18    22    29   133   231   252   254
+B  patched:       32    38    52   200   252   254   254
+
+p50 delta vs AA001.tif:
+              baseline        patched
+R:              +88             -90
+G:              +89             +30
+B:              +78             +61
+```
+
+**Not a fix.** R collapses catastrophically — from 88 codes too bright to
+90 codes too *dark*, overshooting the correction by roughly 2× in the
+opposite direction, since R carries this roll's largest shift (683) and
+nothing else in the current port compensates once it's removed. G and B
+move partway toward the target (89→30, 78→61) but remain far off, an order
+of magnitude larger than the ≤18-code residuals §33-34 already ruled
+in/out for other mechanisms. **This rules out "the port over-applies the
+shift and should simply stop" as a standalone, correct fix** — exactly
+consistent with, not contradicted by, §37.5's own finding: removing the
+shift doesn't reveal a correct value hiding underneath (there is no
+working replacement currently wired in), it just deletes a necessary
+correction. This is the expected shape if `apply_balance_shifts` is
+currently standing in for a combination of effects — the real gated skip
+inside `analyzeArea` (§37.3) *and* the entirely separate, unmodelled
+`SCPLut` composition inside `balanceAreaImage` (§37.4) *and* whatever that
+composed result is actually used for once it reaches the `fugc` capability
+— rather than a single, cleanly swappable, one-for-one duplicate.
+
+### 37.7 — Verdict, honest per this task's own instruction: two real
+architectural findings, neither one a confirmed fix
+
+**What is now confirmed, not assumed.** (1) `sba_apply_balance_shifts`
+(`applyBalanceShifts`, `0x1019a0c0`) genuinely has zero real call events
+across a complete, real, 6-frame scan (§37.1) — but it is not dead or
+unreachable code: it is real, statically-reachable, single-gated code
+inside `analyzeArea` itself (§37.2-37.3), the exact 0%-ported,
+732-function capability this doc has called "the sole remaining concrete
+software lead" since §13, and the live evidence now pins down precisely
+*where* inside it the gate lives and *what* it reads (a flag byte at a
+fixed offset via the same `0x100dc070` accessor `balanceAreaImage` also
+uses). (2) `balanceAreaImage` — which does fire live, every frame — has,
+in its own previously-unread body, a genuinely new mechanism this port has
+never modelled: it builds a shift LUT via the exact same already-verified
+primitive (§36.2) and then composes it with a per-scene `SCPLut` curve
+this codebase already has a loader for (`pakon_scp_lut.py`) but currently
+only uses for a different, upstream purpose (§37.4).
+
+**What is not confirmed.** Neither finding was shown to explain the
+§31-36 brightness gap. The obvious "double-apply via FUGC" hypothesis is
+directly refuted by instrumentation (§37.5: FUGC currently contributes
+about -1 code, not a second shift). The obvious "just stop applying the
+shift, since the real DLL skips it here too" hypothesis is directly
+refuted by re-measurement against the real `AA001.tif` (§37.6: R gets
+dramatically worse, G/B only partially improve). Whether the missing
+`SCPLut` composition itself would close some or all of the gap, once
+correctly sourced and correctly wired ahead of (not instead of) some
+working shift/FUGC combination, is a real, concrete, well-scoped next
+question — not something this pass tested, because doing so with data
+this pass could not confirm is the *right* data would have risked
+reporting a numerically meaningless result, which this doc's own standard
+does not permit.
+
+**Net effect on the open item list.** Item 1 (the four unreplicated
+stages) does not close, but sharpens materially. It is no longer simply
+"`analyzeArea`/`balanceAreaImage` are unread" — it is now specifically:
+(a) trace the flag `analyzeArea`'s own `0x100dc070` read gates
+`applyBalanceShifts` on, and what would make it evaluate the other way;
+(b) determine whether `eng.band3_lut`'s already-loaded, already-shaped
+`SCPLut`-family data is or is not the same object `balanceAreaImage`'s
+real apply-time compose reads, and if not, locate the real one via the
+GUID/type-keyed accessor at `0x104ffdd6`; (c) trace where
+`balanceAreaImage`'s own composed LUT actually goes once it reaches the
+`"fugc"` capability lookup at the end of its own body. All three are
+concrete, addressed, disassembly-reachable follow-ups inside the same two
+functions this pass already opened up — not a return to "the four
+unreplicated stages" as an undifferentiated block.
+
+**No production code was changed.** `pakon_ansel.py`, `pakon_sba_apply.py`,
+`pakon_fugc.py`, and `pakon_scp_lut.py` were read-only throughout; the
+identity-patch in §37.6 and the instrumentation wrappers in §37.5 were
+runtime monkeypatches in uncommitted scratch scripts, the same pattern
+§24/§36 already established for this doc, not edits to any file on disk.
+
 ## What this changes about the open item list
+
+**§37 update.** Runs §36.4's own open question to ground with real
+evidence on both sides, and adds a second, independent finding neither
+§35 nor §36 had located. Closes no item, opens none, but narrows item 1
+from "four unread stages" to three specific, addressed follow-up
+questions inside two of those stages' own bodies (§37.7's own list).
+Directly tested, and directly refuted, the two most obvious hypotheses
+this pass's own findings raise — double-application via FUGC, and simple
+removal — so the next pass should not re-try either without new evidence.
+**Item 1 remains the sole standing software lead**, now with a
+substantially sharper, disassembly-grounded target inside it than any
+prior section has had.
+
 
 **§36 update.** Closes no new item and opens none, but changes the *kind* of
 confidence behind two already-closed items. PolyPixel (already confirmed

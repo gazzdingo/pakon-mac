@@ -5759,7 +5759,394 @@ not in any tracked file — per this task's own instruction not to ship an
 unverified fix, and this pass's own result is a clean, repeated negative,
 not a partial win worth landing behind a flag.
 
+## 39 — §38.7's own remaining question closed: the real `0x104ffdd6` object
+`balanceAreaImage` composes with **is** `eng.band3_lut` — not a different
+capability, not a different file. §38's negative result stands as
+genuinely conclusive, not a data-provenance artifact.
+
+§37.4/§37.7/§38 all flagged the same open question, worded slightly
+differently each time but never resolved: is the `SCPLut` object
+`balanceAreaImage`'s apply-time compose reads via `0x104ffdd6` the same
+object `eng.band3_lut` already represents, or something this project has
+never loaded? This pass traces the real call site, the real accessor it
+feeds into, the real constructor of the object it reads, and the real
+shipped file on disk — address by address, string by string, byte by byte
+— and answers: **the same object.**
+
+**Provenance.** `/Users/guy/pakon-windows-repair/COM-SERVER/PakonIMAu.dll`,
+MD5 `eea9dcf78ee21d4f7c515a6c2512242d`, re-verified fresh — the same copy
+every prior section of this doc cites. `radare2 6.1.8`, `af`+`pdf`
+function-boundary disassembly throughout, never a raw `pD` byte-range read,
+per this project's own established convention. One additional,
+uncommitted, additive Python E8-opcode scan script (the same convention
+§37.2 already established), plus direct filesystem reads of two real,
+shipped, on-disk data files (not capture pixel content — this project's
+captures-description rule does not apply to shipped calibration/lut/dpi
+files).
+
+### 39.1 — Re-derived, not re-cited: the exact instruction(s) where
+`0x104ffdd6` is called inside `balanceAreaImage`'s `"scpLut"` fetch, and
+what it's actually given
+
+Re-disassembled `balanceAreaImage` in full (`af`+`pdf @ 0x10102b20`, the
+same 4,020-byte function §37.4 already function-boundary-confirmed).
+§37.4 already quoted the compose loop (`0x10103107`-`0x10103112`) and named
+the fetch's error strings, but never quoted the fetch's own instructions —
+this pass does:
+
+```
+0x10102e1c  push str.scpLut                    ; 0x1057a038 -- SAME string
+                                                 ;   pakon_scp_lut.py's own
+                                                 ;   STR_CAP_NAME already
+                                                 ;   cites for the ANALYZE-
+                                                 ;   time "scpLut" find
+0x10102e21  lea ecx, [var_80h]
+0x10102e24  call MSVCP71...basic_string ctor
+0x10102e2a  lea eax, [var_18h]; push eax
+0x10102e2e  lea ecx, [var_80h]; push ecx
+0x10102e32  mov ecx, dword [var_10h]
+0x10102e35  lea edx, [var_24h]; push edx
+0x10102e3d  call 0x10020a40                     ; CAP_FIND_THUNK / CAP_FIND_
+                                                 ;   BY_NAME -- the IDENTICAL
+                                                 ;   capability-set lookup
+                                                 ;   "area"/"filmLut" use
+                                                 ;   moments earlier in this
+                                                 ;   same function (§37.4's
+                                                 ;   own citation), and the
+                                                 ;   IDENTICAL address §19/§22
+                                                 ;   already disambiguated
+                                                 ;   from AnsSceneContext::
+                                                 ;   find (0x10022a40)
+  ... [sentinel compare vs 0x106b5bd4, same idiom as area/filmLut] ...
+0x10102ee2  mov eax, dword [var_18h]             ; eax = find("scpLut")'s
+                                                 ;   own result
+0x10102ee5  push edi                             ; 0 -> isReference
+0x10102ee6  push 0x106927d4                      ; TargetType
+0x10102eeb  push 0x10692518                      ; SrcType
+0x10102ef0  push edi                             ; 0 -> VfDelta
+0x10102ef1  push eax                             ; inptr = the found object
+0x10102ef2  call 0x104ffdd6
+```
+
+Five pushes, `add esp, 0x14` after the call (20 bytes = 5 dwords) — exactly
+the real `void* __RTDynamicCast(void* inptr, long VfDelta, void* SrcType,
+void* TargetType, int isReference)` signature `docs/74 §25` already
+identified `0x104ffdd6` as (a bare IAT thunk, `jmp dword
+[sym.imp.MSVCR71.dll___RTDynamicCast]`, re-confirmed present at this exact
+address again this pass). **The load-bearing fact §37.4/§38 did not have:**
+`inptr` is not some independently-sourced handle — it is `eax`, loaded two
+instructions earlier directly from `var_18h`, which is the identical
+out-parameter `call 0x10020a40` (the `find("scpLut")` call, same string,
+same address, same sentinel-compare idiom as `"area"`/`"filmLut"`) just
+wrote. **The `0x104ffdd6` call is not an alternative to the string-keyed
+find — it is chained directly onto that find's own result, in the same
+five-instruction window, on the same object.** §37.4's own framing ("a
+second, distinct accessor... not the string-keyed `AnsSceneContext::
+find("filmLut")` mechanism used moments earlier in the same function") was
+correct that the *instruction* is different from `0x10020a40` — it is a
+different call — but incomplete in a way that mattered: it did not state
+(because it had not yet traced the five instructions immediately before
+the call) that the object being cast is `find("scpLut")`'s own output, not
+an independent lookup. There is no second registry here; there is a find,
+then a downcast of what the find returned — the exact same two-step idiom
+`docs/74 §25` already fully characterized for `analyzeAttributes`'s
+`"orderOrientation"` lookup (`find` by name, then `__RTDynamicCast` to the
+concrete Impl type), applied here to `"scpLut"`, `"filmLut"`, and `"area"`
+identically, back to back, in the same function.
+
+### 39.2 — The `TargetType`/`SrcType` immediates are not opaque
+"type-descriptor-looking" values — they self-identify, by direct memory
+read, as the exact RTTI type descriptors their names imply
+
+§37.4 called `0x10692518`/`0x106927d4`/`0x106927f8` "type-descriptor-looking
+immediates" without reading what they point to. This pass reads them
+directly (`px` at each address, same MD5-verified DLL):
+
+```
+0x10692518: c8 e0 5d 10 00 00 00 00 2e 3f 41 56 41 6e 73 43 ...
+            -> ASCII from +8: ".?AVAnsCapability@@"
+0x106927d4: c8 e0 5d 10 00 00 00 00 2e 3f 41 56 41 6e 73 53 ...
+            -> ASCII from +8: ".?AVAnsSCPLutCapability@@"
+0x106927f8: c8 e0 5d 10 00 00 00 00 2e 3f 41 56 41 6e 73 46 ...
+            -> ASCII from +8: ".?AVAnsFilmLutCapability@@"
+0x10692ce0: c8 e0 5d 10 00 00 00 00 2e 3f 41 56 41 6e 73 41 ...
+            -> ASCII from +8: ".?AVAnsAreaCapability@@"
+```
+
+These are textbook MSVC `type_info` objects (`vftable` pointer at +0, a
+16-byte spare/hash field, then the mangled `.?AV<ClassName>@@` name) — not
+inferred, read directly out of `.rdata`. `0x10692518` (`SrcType` at every
+one of these call sites, per §39.1) is the common `AnsCapability` base
+class; `0x106927d4` (`TargetType` at the `"scpLut"` site specifically) is
+`AnsSCPLutCapability` — the exact class the capability string `"scpLut"`
+names. **This settles the task's own question 2 directly: `0x104ffdd6`
+is not a generic capability-*find*-by-type registry parallel to
+`CAP_FIND_THUNK` — it is literal `dynamic_cast<AnsSCPLutCapability*>
+(foundObject)`, called on the object `find("scpLut")` already returned.**
+An exhaustive `.text` E8-opcode scan (same convention as §37.2, this
+pass's own script) finds `0x106927d4` referenced from 9 distinct call
+sites across the whole DLL, including `0x100fd190` — which is exactly
+`PATH_ANALYZE_SCP_LUT_BALANCE`, `pakon_scp_lut.py`'s own already-catalogued
+address for `ColorNegativePath::analyzeScpLutBalance`, the **analyze-time**
+path. **Direct, static, address-level proof that the analyze-time path and
+`balanceAreaImage`'s apply-time path cast to the identical concrete type,
+via the identical `find("scpLut")` capability-set entry** — not two
+independent objects that merely share a name.
+
+### 39.3 — The 3-band table itself: fetched via the exact accessor address
+`pakon_scp_lut.py` already documents and `pakon_setshifts_golden.py`
+already DLL-golden-verifies
+
+Past the cast (gated by a flag at `[cast_result+0xc]`, the identical idiom
+§25 already documented for `orderOrientation`'s own post-cast gate, and
+the identical idiom `balanceAreaImage`'s own `"filmLut"` fetch uses two
+hundred bytes earlier in the same function, per §37.4's own citation of
+`0x10102da7`), the 3-band table read is:
+
+```
+0x10102f29  mov ecx, eax          ; ecx = the cast AnsSCPLutCapability* /
+                                  ;   really the Impl pointer
+0x10102f2b  call 0x10122150       ; == pakon_scp_lut.SCP_GET_3BAND_PARAMS,
+                                  ;   already declared in that file, already
+                                  ;   exercised by pakon_setshifts_golden.py
+                                  ;   (GET_PARAMS = 0x10122150)
+```
+
+`0x10122150` disassembled in full (`af`+`pdf`, 15 instructions, 2 basic
+blocks, real function boundary — not assumed from the name in
+`pakon_scp_lut.py`, independently re-read this pass):
+
+```
+0x10122150  mov ecx, dword [ecx + 0x10]     ; ecx = Impl+0x10 (the
+                                             ;   Ans3BandLutParams* member)
+0x10122153  jmp 0x10212100
+0x10212100  mov eax, dword [ecx + 0x10]     ; eax = (*Impl+0x10)+0x10, a
+                                             ;   nested pointer field
+0x10212103  movsx edx, word [eax]           ; word @ [obj+0]  -> out arg 1
+0x1021210a  mov dword [arg_4h], edx
+0x1021210c  mov edx, dword [ecx + 0x10]
+0x1021210f  movsx eax, word [edx + 2]       ; word @ [obj+2]  -> out arg 2
+0x10212117  mov dword [arg_8h], eax
+0x10212119  mov eax, dword [ecx + 0x10]
+0x1021211c  mov ecx, dword [eax + 4]        ; dword @ [obj+4] -> out arg 3
+0x10212123  mov dword [arg_ch], ecx
+0x10212125  ret 0xc
+```
+
+Mapped back onto `balanceAreaImage`'s own three stack slots (`var_44h` =
+`arg_4h`, `var_50h` = `arg_8h`, `var_3ch` = `arg_ch`, per this project's
+own `thiscall`/stack-arg-order convention, cross-checked against the
+already-quoted `"SCP LUT is not 3 bands by 4096 bins"` error path §37.4
+already cited): `var_44h` = a 16-bit count checked `== 0x1000` (4096),
+`var_50h` = a 16-bit count checked `== 3`, `var_3ch` = a data pointer
+checked non-null — **`NUM_LUT`/`NUM_BANDS`/planar-data-pointer, in that
+exact order**, then R/G/B band bases computed as `data+0`, `data+0x2000`,
+`data+0x4000` (`4096`-word, i.e. `num_lut`-word, stride per band) — **the
+identical band-major planar layout `pakon_scp_lut.load_3band_lut_ascii`
+already produces**, not merely "structurally usable as" per §38.2's more
+cautious phrasing, but demonstrably the same accessor reading the same
+shape. `var_54h` (R base) is exactly the pointer the compose loop's own
+`0x1010310b mov edx, [ebp-0x54]` (§37.4/§38.1's own cited "SCPLut band-R
+base") reads three basic blocks later in the same function — traced end to
+end, not assumed.
+
+### 39.4 — Where that data actually comes from: `AnsSCPLutCapabilityImpl`'s
+real constructor, read in full, resolves via `common-3BandLuts.dpi` to the
+one shipped `.lut` file this project already parses
+
+`Ans3BandLutParams`'s owning object is `AnsSCPLutCapabilityImpl`, whose
+real C++ constructor — self-naming, confirmed by its own embedded strings
+(`"AnsSCPLutCapabilityImpl::AnsSCPLutCapabilityImpl"` @ `0x1059da24`,
+`"Failed when allocating member Ans3BandLutParams object."` @
+`0x10596684`) — is `0x10213123`-`0x10213411` (750 bytes, `af`+`pdf`, full
+function boundary; this matches `pakon_scp_lut.py`'s own already-declared
+`SCP_IMPL_PARAMS_STORE = 0x10213123`, previously documented only as "`mov
+[esi+0x10], eax`" — this pass reads the whole function, not just that one
+instruction). After allocating the member, it fetches three scene
+attributes — `"sourceType"`, `"productCode"`, `"genCode"` (three separate
+string pushes, three separate `call 0x10022a40` — `AnsSceneContext::find`,
+the exact address §19 already disambiguated from `CAP_FIND_THUNK`, used
+here for scene *attribute* lookup rather than capability lookup, matching
+that disambiguation's own stated purpose) — then calls `0x10212d90`
+(`af`+`pdf`, 769 bytes, full boundary), which seeds three local strings to
+the literal `"default"` (`0x1059412c`, read directly) and, only if a real
+override value is present, overwrites them via `sprintf("%d", ...)`,
+before trying up to four candidate resource names through `0x10212ba0`
+(`af`+`pdf`, 428 bytes; an E8 scan confirms all 4 of its callers are inside
+`0x10212d90`, none elsewhere) — the identical `<selector>-<source>-
+<product>-<gen>`-with-`"default"`-fallback naming pattern
+`pakon_scp_lut.py`'s own docstring already documents for the sibling
+`SCPLut-scanner-prod-gen-default-default-default.dpi` selector.
+
+**This does not, by itself, prove which literal filename gets opened for
+this roll's own real scanner attributes** — the candidate-building logic
+was read to its own shape, not single-stepped with this roll's real
+`sourceType`/`productCode`/`genCode` values, and no live hook exists for
+`0x100fd190`/`0x10213123`/`0x10212d90` in this project's own
+`hookcore_real_table.c` (checked directly, grep for `scp`/`Scp`/`SCP`: zero
+hits) to settle it dynamically. **But the real, on-disk install tree makes
+the question moot regardless of which candidate tier the selector lands
+on**, checked directly this pass, on both real, MD5-verified copies of the
+install this doc's own citations use:
+
+```
+/Users/guy/pakon-windows-repair/COM-SERVER/anselinstalldir/dataPathItems/
+  common/common-3BandLuts.dpi:
+    "#common-3BandLuts.dpi
+     # This file contains all of the 3 band luts which can be used by
+     # the Ans3BandLutCapability
+     LUT_DPI = luts6_postROMM_equalRGBshort.lut"
+
+/Users/guy/Downloads/Pakon Update 3/.../F-X35 COM SERVER/anselinstalldir/
+  dataPathItems/common/common-3BandLuts.dpi:  byte-identical content
+```
+
+One entry, naming one file, and its own embedded comment self-identifies
+as the index for exactly the capability this pass traced
+(`Ans3BandLutCapability`). `find . -iname "*.lut"` under either install
+tree turns up exactly one file matching the `luts6_*` family
+(`luts6_postROMM_equalRGBshort.lut`) and `find . -ipath "*SCPLut*"` turns
+up exactly one `.dpi` (`SCPLut-scanner-prod-gen-default-default-default.dpi`)
+— there is no second, scanner-specific variant present anywhere on this
+machine for either DPI-selector logic to have resolved to instead. The two
+copies of `luts6_postROMM_equalRGBshort.lut` (one beside each DLL copy)
+are byte-identical: MD5 `4608618c51fbde373250309db7c17eed`, both. This is
+the exact same physical file `pakon_scp_lut.find_shipped_3band_lut`/
+`load_3band_lut_ascii` already load to populate `eng.band3_lut`
+(`pakon_ansel.py:748-759`, already cited in §37.4) — confirmed this pass by
+re-reading `find_shipped_3band_lut`'s own candidate paths directly, not
+assumed.
+
+### 39.5 — What this settles, stated as precisely as §38.7 left it open
+
+Chained together, address to address, this pass traces: `balanceAreaImage`
+calls `find("scpLut")` (`0x10020a40`) → casts the result to
+`AnsSCPLutCapability*` via `__RTDynamicCast` (`0x104ffdd6`, `TargetType`
+self-identifying as `.?AVAnsSCPLutCapability@@` by direct memory read) →
+reads its `Ans3BandLutParams` member via `0x10122150`/`0x10212100` (the
+exact accessor `pakon_scp_lut.py` already names and
+`pakon_setshifts_golden.py` already DLL-golden-exercises) → whose owning
+object's real constructor (`0x10213123`, self-naming, fully disassembled)
+resolves a scanner-attribute-keyed selector to the sole shipped
+`common-3BandLuts.dpi` entry, `luts6_postROMM_equalRGBshort.lut` — the one
+and only file of that family present in either real, MD5-matched install
+tree on this machine, byte-identical to itself across both copies, and the
+exact file `eng.band3_lut` already loads.
+
+**This is the answer to the task's own question 5, not question 4.** The
+real object flowing through `0x104ffdd6` at this call site is not a
+different registry, not a different file, and not scan-specific runtime
+data — it is architecturally the same `luts6_postROMM_equalRGBshort.lut`
+content `eng.band3_lut` already represents, reached by a different
+*instruction* (a downcast, not a `find`) but not a different *find*: the
+downcast is chained directly onto the same `find("scpLut")` call §37.4
+already knew ran moments earlier. **§38's negative result — composing this
+exact mechanism with this exact data made every channel worse, at every
+percentile from p0.1 through p95, on the real matched `AA001.tif` frame —
+therefore stands as genuinely conclusive, not an artifact of testing the
+wrong table.** No re-test was run this pass: the data source is unchanged
+from §38.4 (`eng.band3_lut`, same shipped file, same parse), so re-running
+`apply_balance_shifts_scp_composed` against `AA001.tif` would reproduce
+§38.5's own numbers exactly (median gap widening from ~88-89 to ~97-111
+codes) — re-deriving an unchanged result was not attempted, per this
+task's own instruction not to force a positive where the evidence gives a
+clean negative.
+
+**One honest gap, stated plainly, not papered over.** Whether the
+`[cast_result+0xc]` gate — which controls whether `balanceAreaImage`'s
+whole `"scpLut"` 3-band-fetch-and-compose block runs at all, the same
+gating shape §37.3 already found genuinely skipped `applyBalanceShifts` on
+every one of this capture's six real frames — was itself non-zero during
+`test123.bin`'s own real scan, was not settled this pass. No live hook
+exists for `analyzeScpLutBalance` (`0x100fd190`) or this constructor chain
+in `hookcore_real_table.c` (checked directly, zero matches), so this
+project's existing live capture cannot resolve it either way, and this
+pass did not add a new hook or attempt a live-XP or full-scan-replay
+Unicorn run to settle it (the XP box was not re-attempted this pass; §37's
+own note that it was unreachable last pass was not re-checked, since the
+static chain above answers the task's actual question — object identity —
+regardless of whether the block executes). If it is in fact zero on real
+frames, the honest conclusion would shift toward the task's own question 6
+(dead code on the real path) rather than question 5 (right mechanism,
+already-tested data) — but that would not reopen §38's own result, which
+already tested the mechanism unconditionally; it would instead mean the
+real DLL itself never runs this composition on this roll's own real
+frames, which is a different, but equally closed, kind of "not the cause."
+Distinguishing those two would need a live hook on `0x100fd190` or
+`[cast_result+0xc]` itself — a concrete, scoped, addressed next step, not
+a vague one.
+
+### 39.6 — Verdict, honest per this task's own instruction
+
+**The real object is the same data, not different data.** §37.4/§37.7/§38
+all correctly flagged this as unresolved and correctly declined to guess;
+this pass resolves it with direct disassembly (the five instructions
+immediately preceding the `0x104ffdd6` call, not previously quoted),
+direct memory reads (the four RTTI type descriptors' own self-naming
+strings, not previously read), a full-boundary read of the real
+constructor (`0x10213123`, not previously disassembled past its one cited
+store instruction), and a direct on-disk comparison of both real install
+trees' shipped selector and data files (not previously checked at the
+file-content level). Every one of those four evidence types independently
+points the same direction: same find, same type, same accessor, same
+file. **§38's result — the only concrete, implemented test of this
+mechanism this investigation has run — is not a false negative from wrong
+data. It is a real negative.** Item 1 (the four/now-effectively-two
+unreplicated stages) remains the sole standing software lead, but the
+`SCPLut`-composition sub-thread §37 opened is now closed on its own
+provenance question, for the first time with a definite answer rather than
+an open one: **`balanceAreaImage`'s `SCPLut` composition, correctly
+sourced, still does not explain the §31 gap.** The one remaining loose
+end inside this specific sub-thread is §39.5's own honest gap (the
+`+0xc` live-gate value) — real, scoped, and named, not swept aside — but
+it bears on *whether the real DLL runs this block at all on this roll*,
+not on *which data it would use if it did*, which is the question this
+pass closes.
+
+**No production code was changed.** `pakon_scp_lut.py`, `pakon_ansel.py`,
+`pakon_sba_apply.py`, and `hookcore_real_table.c` were read-only
+throughout this pass — `pakon_scp_lut.py`'s own existing docstring already
+correctly documented `SCP_GET_3BAND_PARAMS = 0x10122150` and the
+`luts6_postROMM_equalRGBshort.lut`-via-`common-3BandLuts.dpi` provenance
+before this pass began (this pass's new contribution is the missing link:
+that `balanceAreaImage`'s own apply-time compose calls that exact same
+accessor, and that the `0x104ffdd6` cast immediately preceding it is
+chained onto the same `find("scpLut")` §37.4 already knew about, not a
+separate mechanism) — no correction to that file was needed. All new
+disassembly and file-comparison output used to write this section lives
+in `/tmp/pakon_re/`-equivalent scratch (`/tmp/balanceAreaImage_full.txt`,
+`/tmp/scp_params_ctor.txt`, `/tmp/scp_0x10212d90.txt`,
+`/tmp/scp_0x10212ba0.txt`, `/tmp/scp_impl_analyze.txt`, `/tmp/e8scan.py`),
+not committed to the repo.
+
 ## What this changes about the open item list
+
+**§39 update.** Closes the specific provenance question §37.7/§38.7 both
+left open: whether the real, apply-time `SCPLut` object `balanceAreaImage`
+composes with (fetched via the `0x104ffdd6` `__RTDynamicCast` accessor) is
+the same data `eng.band3_lut` already represents. Traced address to
+address: the `0x104ffdd6` call is chained directly onto the same
+`find("scpLut")` call already known about, its `TargetType` immediate
+self-identifies (by direct memory read of the RTTI type descriptor) as
+`AnsSCPLutCapability`, the 3-band table itself is fetched via the exact
+accessor address (`0x10122150`) `pakon_scp_lut.py` already documents and
+`pakon_setshifts_golden.py` already DLL-golden-exercises, and that
+accessor's owning object's real constructor resolves, via the sole shipped
+`common-3BandLuts.dpi` entry (byte-identical across both real install
+trees on this machine), to the one and only `luts6_postROMM_equalRGBshort
+.lut` file present anywhere — the exact file `eng.band3_lut` already
+loads. **Answer: the same data, not different data.** §38's negative
+result therefore stands as genuinely conclusive, not a wrong-data
+artifact — closing this specific sub-thread of item 1 for the first time
+with a definite answer. One honest, scoped gap remains (whether the
+`[cast_result+0xc]` gate that controls whether this block runs at all was
+actually non-zero on this capture's own real frames — no live hook exists
+for `analyzeScpLutBalance` to settle it), which bears on whether the real
+DLL runs the block at all, not on which data it would use if it did. No
+production code was changed; `pakon_scp_lut.py`'s own pre-existing
+docstring already had the accessor address right — this pass supplied the
+missing link connecting it to `balanceAreaImage`'s own apply-time call
+site.
 
 **§38 update.** Directly implements and directly tests §37's own named
 next question — the `SCPLut` composition inside `balanceAreaImage`,

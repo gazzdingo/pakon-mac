@@ -337,6 +337,40 @@ const HOOKS = [
     cite: 'docs/72 §1.3 ("FN_bDrvPutCcdAtoDOffsets at 0x100299c0, ' +
           '[VERIFIED-FROM-BINARY]")',
   },
+
+  // ---- Area image per-pixel LUT apply (docs/74 §46) ----
+  {
+    dll: 'PakonIMAu.dll', va: 0x100d9340, id: 'area_image_apply_lut',
+    role: 'stage', pixelBuffer: true,
+    desc: 'AnsImageData::applyLut -- self-named by its own embedded ' +
+          'strings ("AnsImageData::applyLut" @ 0x10584320 and three ' +
+          'sibling error strings, path ' +
+          '"\\Atc\\ansel\\src\\libStub.ansel\\AnsImageData.cpp" @ ' +
+          '0x10584274). A real nested width/height-bounded loop (outer ' +
+          'row loop 0x100d97f0-0x100d98be, inner column loop ' +
+          '0x100d9822-0x100d986b) doing, per pixel, an indexed LUT ' +
+          'lookup (`mov bx,word[lutBase+ebx*2]`) and indexed pixel write ' +
+          '(`mov word[dst+idx],bx`) for each of R/G/B against three ' +
+          'separate 4096-entry caller-supplied LUTs -- the genuine ' +
+          'per-pixel write §27.4/§37.7/§45 had been missing, not another ' +
+          'capability-object field write. Called 4x from ' +
+          'balanceAreaImage (all on the AREA capability\'s own real ' +
+          '"AREA analysis image" object, this+0x1a4 per §27.3), once ' +
+          '(currently gated off) from sba_apply_balance_shifts, once ' +
+          'from analyzePostBalance (0x100fdc40), and 3x from ' +
+          'AnsDcPremiumPath\'s own CN-Premium vtable method -- 10 real ' +
+          'static callers total, E8-scan confirmed. Independently ' +
+          'corroborated by docs/62 §2.5, docs/64, and ' +
+          'docs/reports/autotone-scope-2026-08-10/{fugc,filmLut}.md, ' +
+          'none of which this investigation had cross-referenced before ' +
+          'this pass. Still-open question this hook exists to help ' +
+          'settle: whether the "AREA analysis image" aliases the shared ' +
+          'scene buffer cna/dra actually reads, or is a private, ' +
+          'analysis-only copy (docs/58 §16.5 as quoted in docs/62 §2.5).',
+    cite: 'docs/74 §46; docs/62 §2.5; docs/64; docs/58 §16.5 (quoted in ' +
+          'docs/62); docs/reports/autotone-scope-2026-08-10/' +
+          '{fugc,filmLut}.md',
+  },
 ];
 
 // ---------------------------------------------------------------------

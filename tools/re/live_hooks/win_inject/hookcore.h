@@ -102,12 +102,16 @@ extern "C" {
 
 /* ---------------------------------------------------------------------
  * Fixed slot count. The asm side (hookstub.S) hand-defines exactly this
- * many Thunk_NN entry stubs (Thunk_00 .. Thunk_22). hookdll.c's real table
- * uses all 23 for the documented PSI.exe hooks; selftest.c reuses the same
+ * many Thunk_NN entry stubs (Thunk_00 .. Thunk_24). hookdll.c's real table
+ * uses all 25 for the documented PSI.exe hooks; selftest.c reuses the same
  * fixed slots 0..N for its own small synthetic table. Never grow this
- * without adding matching Thunk_NN stubs in hookstub.S.
+ * without adding matching Thunk_NN stubs in hookstub.S -- see hookstub.S's
+ * own Thunk_23 comment (docs/74 §46) for what happens when this drifts:
+ * a prior commit bumped this define and inserted a table[] entry
+ * mid-array without adding a matching thunk, silently leaving one real
+ * hook's entryThunk NULL.
  * --------------------------------------------------------------------- */
-#define HOOKCORE_MAX_HOOKS 24
+#define HOOKCORE_MAX_HOOKS 25
 
 /* Must exactly match the PUSHAD+PUSHFD+index+retaddr stack layout that
  * hookstub.S's SharedEntryHandler builds -- see that file's header
@@ -350,6 +354,7 @@ extern void Thunk_12(void); extern void Thunk_13(void); extern void Thunk_14(voi
 extern void Thunk_15(void); extern void Thunk_16(void); extern void Thunk_17(void);
 extern void Thunk_18(void); extern void Thunk_19(void); extern void Thunk_20(void);
 extern void Thunk_21(void); extern void Thunk_22(void);
+extern void Thunk_23(void); extern void Thunk_24(void);
 
 #ifdef __cplusplus
 }

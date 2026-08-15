@@ -100,7 +100,16 @@ void HookCore_BuildRealTable(HookEngine *eng) {
         (void *)&Thunk_12, (void *)&Thunk_13, (void *)&Thunk_14,
         (void *)&Thunk_15, (void *)&Thunk_16, (void *)&Thunk_17,
         (void *)&Thunk_18, (void *)&Thunk_19, (void *)&Thunk_20,
-        (void *)&Thunk_21, (void *)&Thunk_22,
+        (void *)&Thunk_21, (void *)&Thunk_22, (void *)&Thunk_23,
+        (void *)&Thunk_24,
+        /* Thunk_23 fixes a real, latent NULL-entryThunk bug left by the
+         * prior commit (6d2e36a) that inserted analyze_scp_lut_balance
+         * mid-array without adding a matching thunk -- see hookstub.S's
+         * own comment on Thunk_23 for the full account. Thunk_24 is the
+         * new slot for this pass's own addition, area_image_apply_lut,
+         * appended at the END of table[] below specifically so no
+         * existing entry's index (and therefore no existing entry's
+         * thunk assignment) moves again. */
     };
 
     static const HookDef table[HOOKCORE_MAX_HOOKS] = {
@@ -438,6 +447,79 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "throughout both new 2026-08-14 captures.",
           "docs/72 SS1.3 (\"FN_bDrvPutCcdAtoDOffsets at 0x100299c0, "
           "[VERIFIED-FROM-BINARY]\"); r2 af/axt re-check 2026-08-15", 0, 1, 0, 0, 0 },
+
+        /* ---- Area image per-pixel LUT apply (docs/74 SS46) ---- */
+        { "PakonIMAu.dll", 0x100d9340, "area_image_apply_lut",
+          "AnsImageData::applyLut -- self-named by 4 embedded strings in "
+          "its own body (\"AnsImageData::applyLut\" @ 0x10584320, "
+          "\"Images must have 3 bands.\" @ 0x10584338, \"Source and "
+          "destination have different packing.\" @ 0x105842f0, \"Source "
+          "and destination are different sizes.\" @ 0x105842c4; path "
+          "\"\\Atc\\ansel\\src\\libStub.ansel\\AnsImageData.cpp\" @ "
+          "0x10584274) -- THE genuine per-pixel write this doc's own "
+          "priority list (docs/74 SS27.4/SS37.7/SS45) had been missing: "
+          "a real nested width/height-bounded loop (outer row loop "
+          "0x100d97f0-0x100d98be, inner column loop 0x100d9822-0x100d986b, "
+          "both `dec reg; jne`-terminated against edi->+0xc/+0x10, the "
+          "same width/height offsets pakon_fugc.FUGC_IMG_DESC_WIDTH_OFF/"
+          "HEIGHT_OFF already document for this same AnsImageData-shaped "
+          "descriptor layout) doing, per pixel per row: `movsx "
+          "ebx,word[src+idx]; mov bx,word[lutBase+ebx*2]; mov "
+          "word[dst+idx2],bx` for R, G, and B against three SEPARATE "
+          "caller-supplied 4096-entry LUTs (0x100d9822/0x100d9837/"
+          "0x100d9846) -- a genuine `[base+index*stride]`-shaped indexed "
+          "LUT lookup AND indexed pixel write inside an image-bounded "
+          "loop, not a struct-field or capability-object write (the "
+          "shape every other function read in this neighbourhood turned "
+          "out to have -- AnsFugcCapabilityImpl::applyLut/0x101fa5b0 in "
+          "SS28 had zero indexed writes in 705 instructions; "
+          "analyzeScpLutBalance/0x100fd190 in SS40 never wrote its own "
+          "flag byte at all). Called (E8 exhaustive .text scan, this "
+          "pass, 10 real static callers total) 4x from balanceAreaImage "
+          "(0x10103561/0x1010386a/0x101038f7/0x10103965, ALL on the "
+          "AREA capability's own real \"AREA analysis image\" object -- "
+          "the exact this+0x1a4 field SS27.3 already read via "
+          "fcn.100dc060, confirmed here to be var_34h at each of these "
+          "4 call sites, with LUT triples from the shift+SCPLut-composed "
+          "buffer SS37.4/SS38-40 already traced), once from "
+          "sba_apply_balance_shifts/0x1019a274 (currently gated off per "
+          "SS37.3, 0/12 real fires), once from analyzePostBalance "
+          "(0x100fdc40, per docs/62 SS2.5's own citation of the scene "
+          "order \"analyzePostBalance 0x100fdc40 -> analyzeFugc -> "
+          "balanceAreaImage\"), and 3x from AnsDcPremiumPath's own "
+          "vtable method_12 (0x1006fa90 range -- the CN-Premium path, "
+          "not this doc's own CN-Enhanced negative path per docs/64). "
+          "Independently corroborated by THREE pre-existing docs this "
+          "investigation had not cross-referenced before this pass: "
+          "docs/62 SS2.5 (\"balanceAreaImage composes filmLut_c . "
+          "scpLut_c . shift_c . fugc_c and applies it through "
+          "AnsImageData::applyLut 0x100d9340\"), docs/64 (\"They compose "
+          "into the pixel buffer in balanceAreaImage\"), and "
+          "docs/reports/autotone-scope-2026-08-10/{fugc,filmLut}.md "
+          "(\"applied to image pixels via AnsImageData::applyLut "
+          "0x100d9340 -- genuine per-channel density math\"). The "
+          "STILL-open question those same earlier docs flag and this "
+          "pass does not resolve (docs/58 SS16.5 as quoted in docs/62 "
+          "SS2.5): whether this \"AREA analysis image\" aliases the "
+          "shared scene buffer cna/dra actually read, or is a private "
+          "analysis-only copy -- exactly what this live hook is for. "
+          "approximate=0: afij (1,505 realsz/473 ninstrs/106 nbbs, "
+          "single real exit ebbs=1, minaddr/maxaddr span matches the "
+          "full af+pdf read exactly) plus this section's own E8 scan "
+          "(10 real CALL xrefs, not a guess) both independently confirm "
+          "a genuine, independently call-reachable function entry, the "
+          "same standard SS37.2/SS39.2/SS40 already established. "
+          "wantExitDefault=1, hotPathDisabled=0: called a small, bounded "
+          "number of times PER FRAME externally (<=4 from "
+          "balanceAreaImage, <=1 each from the other real call sites) "
+          "-- its own internal per-pixel loop is opaque to the external "
+          "call count, unlike tlb_polypixel (called roughly every 15-45 "
+          "ticks, i.e. externally once per scanline-batch) -- so full "
+          "entry+exit tracing at this call frequency is not the "
+          "high-volume hot-path risk hotPathDisabled exists for.",
+          "docs/74 SS46; docs/62 SS2.5; docs/64; docs/58 SS16.5 (quoted "
+          "in docs/62); docs/reports/autotone-scope-2026-08-10/"
+          "{fugc,filmLut}.md", 0, 1, 0, 0, 0 },
     };
 
     int i;

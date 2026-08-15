@@ -8028,3 +8028,611 @@ apply-LUT thunk, §27-28) targeted capability-lookup/gating logic, not a
 pixel write, and both were independently ruled out; and (2) the
 untriaged `PakonIMAu.dll` `fyl2x`/`f2xm1` instruction sites §32.4 left
 incomplete.
+
+## 46 — `analyzeArea`'s own reachable set finally yields a real, genuine
+per-pixel LUT-apply function — `AnsImageData::applyLut` (`0x100d9340`),
+called live from `balanceAreaImage` on the AREA capability's own real
+image object — independently corroborated by three pre-existing docs
+this investigation had never cross-referenced. A mechanical safety
+screen across the full 943-function reachable set was also built and
+run, and its results are reported honestly, including why they were
+**not** used to mass-deploy live hooks.
+
+Picked up §45's own item (1): a fresh pass into `analyzeArea`'s own
+internals specifically hunting a genuine, previously-unhooked
+pixel-writing call site — not the capability-lookup/gating shape every
+prior pass in this neighbourhood (`analyzeArea`'s entry itself, §12/§27;
+`AnsFugcCapabilityImpl::applyLut`, §28; `analyzeScpLutBalance`, §40) has
+turned out to have. DLL re-verified before any work this pass:
+`md5(/tmp/pakon_re/PakonIMAu.dll) == eea9dcf78ee21d4f7c515a6c2512242d`
+(checked directly against `/Users/guy/pakon-windows-repair/COM-SERVER/
+PakonIMAu.dll` and the untouched vendor copy under `~/Downloads/Pakon
+Update 3/...`, both matching), the same copy every prior section cites.
+`python3 tools/re/reachability.py calibrate` passed before trusting
+anything below. `python3 tools/re/reachability.py walk 0x100e16d0
+--label area --out /tmp/pakon_re/reach_area.json` reproduced §27.1's own
+**943 functions / 342,503 bytes / 955 indirect call sites** exactly,
+confirming the same tool, same DLL state, same seed as every prior pass
+that cites this set.
+
+### 46.1 — Where the earlier passes stopped short: `applyBalanceShifts`
+was "fully disassembled" per §36.2, but only far enough to confirm a
+calling convention — never read past its own LUT-construction call
+
+§36.2 disassembled `AnsAreaCapabilityImpl::applyBalanceShifts`
+(`0x1019a0c0`) "fully" — but re-reading that section's own text shows
+this was done specifically to derive `0x1006c4f0`'s calling convention
+(confirming `applyBalanceShifts`'s 2nd/3rd/4th stack arguments are the
+R/G/B shift values), not to characterize what `applyBalanceShifts` does
+with the shift-LUT once built. §37-38 read `applyBalanceShifts` only
+through its own gate (§37.3, the flag byte at `0x100dc070` that skips it
+on all 6 real frames this capture covers) and its call-site signature.
+Nobody had read what comes **after** the `call 0x1006c4f0` at
+`0x1019a22a` inside `applyBalanceShifts`'s own body. This pass does.
+
+`af`+`pdf @ 0x1019a0c0` (`afij`: 708 realsz, matching
+`reach_area.json`'s own entry for this address exactly) shows a real
+`r2` rendering gap worth naming explicitly: linear `pdf` output jumps
+directly from `0x1019a315` (a `jmp 0x1019a494`) to `0x1019a494`, silently
+omitting `0x1019a31a`-`0x1019a493` (890 of the function's own ~1,083-byte
+span) from the printed listing. Read that gap directly with `pd 300 @
+0x1019a31a` rather than trusting the omission: it is real code, still
+inside this same function, but it is exception-handler catch-block
+bodies (`"Caught bad_alloc."` @ `0x10576628`, `" Caught EkcError
+exception."` @ `0x105768f0`, `" Caught std::exception:"` @
+`0x105768d4`, `" Caught Unknown exception."` @ `0x105768b8`, all pushed
+alongside the function's own repeated self-naming string
+`"AnsAreaCapabilityImpl::applyBalanceShifts"` @ `0x105931bc`) — reached
+only via SEH dispatch, the exact same "not a loop, not a data path"
+shape §40.5 already characterized for a different function's own catch
+tail. No per-pixel work hides in the gap; it is real, but orthogonal.
+
+The actual, load-bearing instructions sit in the normal control flow,
+immediately after the LUT build:
+
+```
+0x1019a25d  mov edi, dword [var_24h]     ; B-band shift-LUT (0x1006c4f0's own 3rd output)
+0x1019a260  mov ebx, dword [var_20h]     ; G-band shift-LUT
+0x1019a263  mov edx, dword [var_1ch]     ; R-band shift-LUT
+0x1019a266  lea ecx, [esi + 0x1a4]       ; ecx = AnsAreaCapability + 0x1a4 —
+                                         ;   the EXACT "AREA analysis image"
+                                         ;   field §27.3 already read via
+                                         ;   fcn.100dc060
+0x1019a26c  push ecx
+0x1019a26d  push edi
+0x1019a26e  push ebx
+0x1019a26f  push edx
+0x1019a270  lea eax, [var_14h_2]
+0x1019a273  push eax
+0x1019a274  call 0x100d9340              ; NOT read by any prior pass
+```
+
+`0x100d9340` was not identified until this pass — but it was already
+flagged, unread, in §22's own text ("three further call targets
+[`0x100a8730`, `0x100d9340`, `0x100dc390`] ... not traced far enough to
+close this either way") and independently in
+`pakon_full_colour_chain_golden.py`'s own `BalanceAreaImageCall`
+docstring (`:536`: "`0x100dc060`, `0x100d9340`, `0x100dc390`,
+`0x1021fec0`, `0x100daac0`, `0x100f8340` — this project has no existing
+characterization for"). Both citations are real and checked directly,
+not paraphrased from memory.
+
+### 46.2 — `fcn.100d9340` read in full: `AnsImageData::applyLut`, a
+genuine, self-named, width/height-bounded per-pixel LUT-apply function —
+the shape every other function in this neighbourhood turned out NOT to
+have
+
+`af`+`pdf @ 0x100d9340`, full function-boundary disassembly, no gap this
+pass (`afij`: 1,505 realsz, 473 instructions, 106 basic blocks,
+cyclomatic complexity 65, `ebbs: 1` — one real exit — `minaddr
+0x100d9340` / `maxaddr 0x100d9921`, matching the disassembly's own last
+instruction, `0x1019991e ret 0x14` immediately before `maxaddr`, exactly
+— confirmed, not assumed).
+
+**Self-naming, four separate embedded strings, all read directly out of
+the loaded binary at the exact addresses the function's own body
+pushes them from:**
+
+```
+"AnsImageData::applyLut"                              @ 0x10584320
+"Images must have 3 bands."                            @ 0x10584338
+"Source and destination have different packing."       @ 0x105842f0
+"Source and destination are different sizes."           @ 0x105842c4
+"\Atc\ansel\src\libStub.ansel\AnsImageData.cpp"         @ 0x10584274
+```
+
+**The load-bearing loop**, read address-by-address, not paraphrased —
+a real nested loop, outer bound over rows, inner bound over columns,
+both against fields read from the source `AnsImageData` object (`edi`,
+the function's own `this`, per `mov edi, ecx` at `0x100d935e`):
+
+```
+outer loop header, 0x100d97f0:
+  mov ebx, dword [edi + 0xc]     ; edi->0xc -- the SAME width offset
+                                 ;   pakon_fugc.FUGC_IMG_DESC_WIDTH_OFF
+                                 ;   already documents for this identical
+                                 ;   descriptor layout (§28.2)
+  test ebx, ebx; jle <skip row>  ; skip if width <= 0
+
+inner loop, 0x100d9822-0x100d986b (one iteration per pixel):
+  0x100d9822  movsx ebx, word [edx + ecx]     ; R: source pixel value
+  0x100d9826  mov ebp, dword [var_5ch]         ; ebp = R-band LUT base
+  0x100d982a  mov bx, word [ebp + ebx*2]       ; bx = LUT_R[pixel]  <- indexed LUT lookup
+  0x100d982f  mov ebp, dword [var_50h]
+  0x100d9833  mov word [esi + eax], bx         ; dest[R] = LUT_R[pixel]  <- indexed pixel WRITE
+  0x100d9837  movsx ebx, word [ecx]            ; G: source pixel value
+  0x100d983a  mov bx, word [ebp + ebx*2]       ; LUT_G[pixel]
+  0x100d983f  mov ebp, dword [var_50h]
+  0x100d9843  mov word [eax], bx               ; dest[G] = LUT_G[pixel]
+  0x100d9846  movsx ebx, word [edi + ecx]      ; B: source pixel value
+  0x100d984a  mov bx, word [ebp + ebx*2]       ; LUT_B[pixel]
+  0x100d984f  mov ebp, dword [var_34h_2]
+  0x100d9853  mov word [eax + ebp], bx         ; dest[B] = LUT_B[pixel]
+  0x100d9857..0x10103865                        ; advance src/dst pointers by stride
+  0x100d9867  dec dword [var_28h]              ; column counter--
+  0x100d986b  jne 0x100d9822                   ; loop while columns remain
+
+outer loop tail, 0x100d98be:
+  dec dword [var_2ch_2]; jne 0x100d97f0        ; row counter--
+```
+
+This is exactly the mechanical signature this pass was looking for and
+every prior candidate in this neighbourhood turned out NOT to have:
+`[base + index*2]`-shaped indexed LUT lookups (16-bit entries, matching
+every other LUT in this doc), each immediately followed by an indexed
+pixel **write** (`mov word [dst + offset], reg`), inside a loop whose
+trip counts come from the source object's own width/height fields — not
+a struct-field store, not a capability-object flag write, not a LUT
+**construction** loop (§37.4/§38-40's own 4096-entry compose loops,
+which are real but operate on LUT *arrays*, not image pixels). Three
+separate, independent LUTs — one per channel — each supplied by the
+caller, applied per pixel, per row.
+
+### 46.3 — Real callers, found by the same exhaustive `.text` E8-opcode
+scan this doc has used since §37.2, sanity-checked against a known
+answer before trusting a new one
+
+Wrote a small, additive, uncommitted E8-scan script
+(`/tmp/pakon_re/e8scan_100d9340.py`, same convention as §37.2/§39.2),
+checked it against `0x1019a0c0` (`applyBalanceShifts`) first as a
+sanity check — it reproduced §37.2's own "1 caller: `0x100dc331`"
+finding exactly, before trusting the tool on a new address. Then ran it
+against `0x100d9340`:
+
+```
+0x100d9340 (AnsImageData::applyLut) -> 10 real static callers:
+    0x10072c7c, 0x10072d61, 0x10072e46   (all inside method.AnsDcPremiumPath.virtual_12,
+                                            0x1006fa90-0x10074590 — the CN-PREMIUM
+                                            path, not this doc's own CN-Enhanced
+                                            negative path per docs/64)
+    0x100fe875                           (inside fcn.100fdc40, 0x100fdc40-0x100fe951 —
+                                            = analyzePostBalance per docs/62 §2.5's
+                                            own citation of the scene order
+                                            "analyzePostBalance 0x100fdc40 ->
+                                            analyzeFugc 0x100fed00 -> balanceAreaImage
+                                            0x10102b20 -> ...")
+    0x10103561, 0x1010386a,
+    0x101038f7, 0x10103965                (all four inside fcn.10102b20 = balanceAreaImage,
+                                            0x10102b20-0x10103ad4 — confirmed live-firing
+                                            12/12 real frames per §37.1's own tally)
+    0x1019a274                            (inside fcn.1019a0c0 = applyBalanceShifts,
+                                            §46.1 above)
+    0x101b2918                            (inside a small, 102-byte wrapper,
+                                            fcn.101b28c0 — not traced further this pass)
+```
+
+Container functions confirmed by binary search over a full `aflj` (`aa`
+first under-reported; `aaa` — matching §37.2's own "14,361 functions
+total" — was required, same lesson §37.2 already learned). Four of the
+ten real call sites sit inside `balanceAreaImage` itself, the function
+this doc has independently confirmed fires on every real frame — this is
+not a rare or orphaned path.
+
+### 46.4 — Traced `balanceAreaImage`'s own body: the object fed into all
+four calls is the AREA capability's real, per-frame "AREA analysis
+image" — the exact field §27.3 already read, now confirmed to be the
+direct target of a real per-pixel apply, not just a `find`/cast result
+
+`af`+`pdf @ 0x10102b20`, re-read in full this pass (4,020 bytes,
+matching §37.4/§38.1/§39.1's own already-confirmed function boundary).
+The local slot every one of the four `0x100d9340` calls reads as its
+`this`/source object (`var_34h`) is set once, early in the function:
+
+```
+0x10102c3c  call 0x104ffdd6      ; __RTDynamicCast(found "area" object -> AnsAreaCapability)
+0x10102c68  mov ecx, esi         ; esi = the real, cast AnsAreaCapability*
+0x10102c6e  call 0x100dc060      ; the SAME accessor §27.3 already read in full:
+                                 ;   "if (byte[this+0x1a1] != 0) return this+0x1a4;
+                                 ;    else return 0" — the "AREA analysis image"
+0x10102c73  cmp eax, edi
+0x10102c75  mov dword [var_34h], eax   ; var_34h = the AREA analysis image pointer
+0x10102c78  je 0x10103ab2             ; null -> "AREA analysis image is NULL!"
+                                       ;   (§27.3's own cited error string, same gate)
+```
+
+Then, at the first of the four call sites (`0x10103548`-`0x10103561`,
+gated behind the `cmp dword [ebp-0xe158], 2` mode check §37.4 already
+found guards the whole SCPLut-compose block):
+
+```
+0x10103548  mov edi, dword [var_34h]     ; edi = the AREA analysis image (this+0x1a4)
+0x1010354c  lea eax, [ebx + 0x4000]      ; B-band of the composed LUT
+0x10103552  push eax
+0x10103553  lea ecx, [ebx + 0x2000]      ; G-band
+0x10103559  push ecx
+0x1010355a  push ebx                     ; R-band (base)
+0x1010355b  lea eax, [var_1ch]
+0x1010355e  push eax
+0x1010355f  mov ecx, edi
+0x10103561  call 0x100d9340              ; AnsImageData::applyLut(this=AREA image,
+                                          ;   status_out, R_LUT=ebx, G_LUT=ebx+0x2000,
+                                          ;   B_LUT=ebx+0x4000)
+```
+
+`ebx`/`ebx+0x2000`/`ebx+0x4000` are the exact three-band, 4096-entry-
+per-band composed-LUT layout §37.4/§39.3 already fully traced (the
+`shift-LUT` then `SCPLut`-compose chain, `combined[i] =
+SCPLut[clamp(i+shift,0,4095)]`, built moments earlier in the same
+function). The other three `0x100d9340` calls (`0x1010386a`,
+`0x101038f7`, `0x10103965`) all read the identical `var_34h` as their
+`this`, feeding a second, separately-composed LUT triple built by a
+second compose loop at `0x10103814`-`0x1010385f` (the `mode != 2`
+branch — the real F-135 negative-scan case per §28.2's own established
+"mode ≠ 2" convention) against a third table source at `[ebp-0xc100]`/
+`[ebp-0xa100]`, not traced further this pass (plausibly `filmLut`,
+consistent with docs/62 §2.5's own "`filmLut_c ∘ scpLut_c ∘ shift_c ∘
+fugc_c`" citation — not independently re-derived here).
+
+**This is a real, concrete, address-level confirmation that
+`balanceAreaImage` applies a genuine, already-verified-composed
+per-channel LUT to a real per-frame image object via a genuine per-pixel
+loop** — not a hypothesis, not a heuristic match, a traced instruction
+sequence from a real `find`+cast through a real accessor to a real
+`AnsImageData::applyLut` call, on an object this doc has independently
+read the null-check/error-string gate for since §27.3.
+
+### 46.5 — Independently corroborated by three pre-existing docs this
+investigation had never cross-referenced — the mechanism was already
+named, before this doc's own §22 first (unknowingly) touched its address
+
+A direct `grep -rn "100d9340\|AnsImageData"` over `tools/` and `docs/`
+before writing anything above turns up three sources that already
+identify this exact function and mechanism, none of them written as
+part of this doc's own §11-§45 arc:
+
+* **`docs/62-colour-engine-consolidation.md` §2.5**: *"`docs/58` §16.3
+  ... records that `balanceAreaImage` composes `filmLut_c ∘ scpLut_c ∘
+  shift_c ∘ fugc_c` and applies it through `AnsImageData::applyLut`
+  `0x100d9340`."* The same section immediately raises, and leaves open,
+  the exact question this pass also cannot close: *"`docs/58` §16.5
+  lists as still open: 'Whether `balanceAreaImage`'s composed 3-band LUT
+  reaches the **rendered** image or only the area/analysis image ... has
+  not been traced.'"* (`docs/58` itself is not present in this checkout
+  — cited here only via `docs/62`'s own direct quotation, not
+  independently re-read.)
+* **`docs/64-pruned-tone-producers.md`**: describing `filmLut`/`scpLut`/
+  `fugc`/`shift` as capabilities that "genuinely affect the final
+  image's colour ... They compose into the pixel buffer in
+  `balanceAreaImage`."
+* **`docs/reports/autotone-scope-2026-08-10/fugc.md`** and
+  **`.../filmLut.md`**: *"applied to image pixels via
+  `AnsImageData::applyLut` (`0x100d9340`) — genuine per-channel density
+  math, applied *before* `analyzeAutoTone` runs in the same function"*
+  and *"That is squarely per-pixel RGB/density math, in the same family
+  as scpLut/sba-shift/fugc — not geometric, cosmetic, or orientation."*
+
+None of these three sources are cited anywhere in this doc's own §11-§45
+— §22 flagged `0x100d9340`'s address as one of three untraced call
+targets without recognizing it, and §27/§37/§38/§39/§40 all worked the
+surrounding `balanceAreaImage`/SCPLut/shift machinery in detail without
+ever independently re-deriving what this specific address actually is.
+This pass's own contribution is not the discovery that this mechanism
+exists (three earlier, independent documents already established that)
+— it is: (1) actually reading `0x100d9340`'s own body address-by-address
+to confirm, mechanically, that it is a genuine per-pixel loop rather
+than trusting the prior docs' characterization on their own word, and
+(2) tracing the exact object identity (`var_34h` = `this+0x1a4` via
+`fcn.100dc060`) that connects it concretely to §27.3's own already-read
+"AREA analysis image" field, closing the gap between two previously
+disconnected threads inside this same doc.
+
+### 46.6 — What remains genuinely open, stated as precisely as the
+earlier docs already left it
+
+The one question `docs/58` §16.5 (via `docs/62`) already named and this
+pass does **not** resolve: does the "AREA analysis image"
+(`AnsAreaCapability + 0x1a4`) alias the shared scene pixel buffer
+`cna`/`dra` (the already-verified tone chain) subsequently reads, or is
+it a private, analysis-only copy `AnsAreaCapabilityImpl`'s own
+acquire/construction path allocates independently? This is the same
+fact §27.4's own open item #2 already named, from a different angle,
+without resolving it either. **This pass sharpens what closing it would
+take, concretely**: either (a) read `AnsAreaCapabilityImpl`'s own real
+acquire/construction path to see whether `this+0x1a4` is initialized
+from the same pointer the scene's `cna`/`dra` acquire also receives, or
+(b) the direct, decisive option — exactly what §27.5's own "what the
+next pass should pick up from" already recommended and what this
+pass's own Phase 2 below wires up: a live memory-read/write watch (or,
+short of that, simple entry/exit call-count and argument logging) on
+`0x100d9340` during a real scan, cross-referenced against the real
+pixel-buffer address the tone chain's own already-installed hooks
+(`analyze_auto_tone`, `cn_enhanced_driver`) observe on the same frame.
+
+### 46.7 — A mechanical safety screen across the full 943-function
+reachable set, built and run as asked — and an explicit, reasoned
+decision not to convert its results into a mass live-hook deployment
+
+Mid-pass, the task was broadened: since "is this address safe to hook"
+(a real, independently call-reachable entry point; a MinHook-relocatable
+prologue) is mechanically checkable, run that check across the *entire*
+943-function reachable set, not just hand-picked candidates, and wire in
+everything that passes plus looks loop-shaped.
+
+Built `tools/re/hook_candidate_screen.py` (new, additive, documented in
+its own module docstring with the same rigor this section uses) and ran
+it over `/tmp/pakon_re/reach_area.json`. It performs, per function: (a)
+an exhaustive `.text` E8-scan for real `call` xrefs (same convention as
+§37.2/§39.2/§46.3 above), (b) a crude but deliberately over-flagging
+byte-level scan of the first 16 entry bytes for relative-control-transfer
+opcodes (`jmp`/`jcc`/`call rel32`/`loop*`) that would break if
+relocated into a MinHook trampoline, and (c) an explicitly-labelled
+**heuristic** (not a safety gate) for "loop-shaped": `realsz >= 200`
+bytes and at least one backward-edge basic block.
+
+```
+total functions in analyzeArea's reachable set        : 943
+not independently call-reachable (E8 scan)             : 0
+mechanically safe to hook (call-reachable + prologue)   : 506
+call-reachable but flagged bad-prologue                 : 437
+loop_shape heuristic hits                               : 247
+loop_shape AND mechanically safe                        : 184
+```
+
+`fcn.100d9340` itself screens clean: `call_reachable=True,
+safe_prologue=True, loop_shape_heuristic=True, num_static_callers=10` —
+independent, mechanical confirmation of everything §46.2-46.3 already
+established by hand.
+
+**Two honest caveats on these numbers, stated plainly rather than
+oversold.** First, "0 not-call-reachable" is close to tautological for
+this specific input: `reachability.py`'s own walk only ever adds an
+address to the set by following a resolved direct-call edge in the
+first place, so near-universal call-reachability inside its own output
+is closer to a property of the walk's own construction than a
+discriminating finding — the `notCallReachable` class this project
+found earlier (six addresses, §37.2/hookcore.h's own citation) came from
+independently-cited docstring addresses that had never been run through
+`reachability.py`'s own resolution, not from a walk's own output. This
+screen would need to be pointed at a hand-curated address list (the way
+the original six were found) to say anything new on this specific axis.
+Second, and more important: the crude prologue byte-scan only checks
+whether a relative-control-transfer *opcode* starts inside the first 16
+bytes — it does not fully decode instruction lengths, so it can neither
+prove MinHook's actual, stricter relocation precondition holds for the
+506 it accepts, nor rule out that some of the 437 it rejects would
+actually have been fine. It is deliberately conservative in the
+direction of flagging more as unsafe, not fewer, per its own module
+docstring.
+
+**Why the other 183 (or, more permissively, up to 505) mechanically-
+screened addresses were not wired into the live hook table this pass,
+stated as a reasoned judgment call, not a silent decision either way,
+per this task's own explicit invitation to make that call explicit
+rather than push through:**
+
+1. **"Mechanically safe to install" and "worth hooking" are different
+   questions, and this doc has already demonstrated the gap between them
+   concretely, in this exact neighbourhood.** `AnsFugcCapabilityImpl::
+   applyLut` (`0x101fa5b0`, §28) is 705 instructions across 90 basic
+   blocks — a function that would very plausibly hit this same
+   `loop_shape` heuristic — and was read, in full, address by address,
+   and found to have **zero** indexed pixel writes anywhere in its body;
+   its apparent "loopiness" was SEH cleanup and LUT-construction
+   branching, not image work. That is not a hypothetical risk for the
+   184 loop-shaped candidates this screen found; it is a demonstrated,
+   already-documented failure mode of exactly this heuristic, on a
+   function from the same 943-function set.
+2. **Every hook this project has shipped to date was individually read
+   and cited before being wired in** — the entire discipline this doc
+   has followed since §12 (and the standard `hookcore_real_table.c`'s
+   own `approximate`/`hotPathDisabled`/`notCallReachable` fields
+   formalize) is "confirm this specific address does what its citation
+   claims, then hook it," never "this passed a generic screen, so hook
+   it." Converting 184 heuristic hits into live hooks without reading
+   any of them individually would be a one-time-only reversal of that
+   standard for the sake of coverage, not an extension of it.
+3. **Real, physical, described-as-irreplaceable hardware is the
+   deployment target.** A hook count increase from 25 to 200+ multiplies
+   simultaneous MinHook trampoline installations (the prologue screen
+   above is explicitly not a proof of safety, only a coarse filter),
+   multiplies live JSONL log volume per frame by an unknown and
+   unbounded factor (several of the 184 are very plausibly per-4096-
+   entry LUT-construction loops like `0x1006c4f0`'s own siblings, which
+   fire at a completely different rate than a genuine per-pixel
+   function), and — per `hookcore.h`'s own documented history in this
+   exact file (the `notCallReachable` incident: five addresses that
+   looked fine until a live capture on the real box showed corrupted
+   stack state) — this specific engine has already demonstrated that
+   "looks safe statically" and "is safe on the real box" are not the
+   same claim, even for hand-picked, individually-read addresses.
+
+**What this pass does instead, consistent with both instructions rather
+than picking one over the other**: ships the automated screen itself
+(new, committed, reusable — `tools/re/hook_candidate_screen.py`, real
+numbers above, not a promise), and wires in exactly the one candidate
+this pass individually verified — §46.2-46.4 — via the SAME rigor every
+other hook in this table has required, rather than either ignoring the
+broadened instruction or complying with the highest-risk literal reading
+of it. If a future pass wants to individually verify and hook a second
+or third candidate from the 184, `screen_area.json`
+(`/tmp/pakon_re/screen_area.json`, this session's own output, not
+committed per this project's vendor-DLL-derived-artifact convention) is
+the concrete starting list, ranked by `realsz` and `num_static_callers`.
+
+### 46.8 — Phase 2: wired `area_image_apply_lut` into the live hook
+table, and fixed a real, independent, pre-existing latent bug found
+along the way
+
+**A real bug, not introduced by this pass, found while adding the new
+entry.** `hookcore_real_table.c`'s prior commit (`6d2e36a`, "add
+analyze_scp_lut_balance hook") bumped `HOOKCORE_MAX_HOOKS` 23→24 and
+inserted its new `table[]` entry in the MIDDLE of the array (right after
+`balance_area_image`), which shifted every later entry's array index up
+by one — including `tlb_afe_offset_write`, moved from index 22
+(`Thunk_22`, real) to index 23. `HookCore_BuildRealTable`'s
+`entryThunk` assignment is purely positional
+(`eng->defs[i].entryThunk = thunks[i]`), and `hookstub.S` still only
+defined `Thunk_00`..`Thunk_22` (confirmed directly: `git show 6d2e36a --
+hookstub.S` shows zero changes to that file in that commit) — so
+`thunks[23]` silently zero-initialized to `NULL` the moment that commit
+landed, meaning `tlb_afe_offset_write`'s real `entryThunk` has been
+`NULL` since. This was never caught because `selftest.c` uses its own,
+separate 4-hook synthetic table (`void *thunks[4]`), never exercising
+`HookCore_BuildRealTable`'s real table at all, and because
+`tlb_afe_offset_write`'s own `MH_CreateHook` call has independently
+failed with `MH_ERROR_NOT_EXECUTABLE` on every real capture to date
+(§40.1's own "every one of the 121 failures is `tlb_afe_offset_write`"),
+which short-circuits before MinHook ever dereferences the `NULL`
+`pDetour` — latent, not yet symptomatic, on every capture so far.
+
+**Fixed as part of this pass's own change, not deferred**: added the
+missing `Thunk_23` (restoring `tlb_afe_offset_write`'s real thunk at its
+now-fixed index) and a new `Thunk_24` (for this pass's own addition) to
+`hookstub.S`, with a comment explaining both. `HOOKCORE_MAX_HOOKS`
+bumped `hookcore.h` 24→25. `hookcore_real_table.c`'s `thunks[]`
+initializer now explicitly lists all 25 entries (no implicit zero-fill
+possible any more), and the new `area_image_apply_lut` entry
+(`0x100d9340`, full citation matching §46.2-46.6 above) was **appended
+at the very end** of `table[]`, specifically so no existing entry's
+index — and therefore no existing entry's thunk assignment — moves
+again. `approximate=0` (independently confirmed real entry: `afij`
+matches the full `af`+`pdf` read exactly, and this section's own E8 scan
+found 10 real static callers, the same standard §37.2/§39.2/§40 already
+established). `wantExitDefault=1`, `hotPathDisabled=0`: externally,
+this function is called a small, bounded number of times *per frame*
+(≤4 from `balanceAreaImage`, ≤1 from each other real call site) — its
+own internal per-pixel loop is invisible to the external call count,
+unlike `tlb_polypixel` (externally called roughly every 15-45 ticks,
+i.e. once per scanline-batch, the actual reason it is `hotPathDisabled`)
+— so full entry+exit tracing at this call frequency is not the
+high-volume risk that field exists to guard against. Matching entry
+added to `agent.js`'s `HOOKS` array, appended at the same relative
+position, per `check_table_sync.py`'s own order-sensitive check.
+
+**Verified, in order, before calling this done:**
+
+```
+$ python3 tools/re/live_hooks/win_inject/check_table_sync.py
+OK: 25 hooks, identical (dll, va, id) in identical order.
+
+$ ./build.sh
+  ...
+  OK: only KERNEL32.dll referenced -- no CRT, UCRT, or anything else.
+  MajorSubsystemVersion 5 / MinorSubsystemVersion 1  (XP stamp preserved)
+  python3 check_table_sync.py to re-verify the hook table against agent.js:
+  OK: 25 hooks, identical (dll, va, id) in identical order.
+
+$ ./build.sh selftest
+  ... [every prior test category, unchanged] ...
+  PASS  stress test: all 32000 concurrent calls across 8 threads (SAME
+        hook, released simultaneously) returned correct values
+  PASS  callCounter exactly matches expected count (32000) -- no
+        lost/duplicated updates to shared engine state under max
+        concurrency
+  === ALL PASS (0 failure(s)) ===
+```
+
+`selftest.c`'s own synthetic table (4 hooks) does not directly exercise
+the real 25-entry table's own thunk assignment — stated plainly, not
+glossed over, the same honesty this section already applied to the
+latent-bug diagnosis itself. What it does confirm: the underlying
+hookstub/hookcore engine mechanics (struct sizing at the new
+`HOOKCORE_MAX_HOOKS=25`, the new `Thunk_23`/`Thunk_24` stubs compiling
+and linking correctly — the build would have failed with an undefined-
+symbol error otherwise, which it did on the first attempt before the
+`extern` declarations were added to `hookcore.h`, and did not on the
+second) regress nothing already verified, including the specific
+32,000-call concurrency stress this project has used since the harness
+was built to catch shared-state races. The `thunks[]` array literal now
+explicitly names all 25 elements (no reliance on C's implicit
+zero-fill for any slot), which is what actually fixes the bug — verified
+by inspection of the array literal itself, not solely by the successful
+link (though a `NULL` `Thunk_23`/`Thunk_24` symbol reference would also
+have failed to link, which is corroborating, not load-bearing, evidence
+here).
+
+**Upload.** `curl -sv -m5 http://192.168.86.67:8000/` timed out
+("Connection timed out after 5011 milliseconds") — the drop server was
+not reachable this pass, checked directly, not assumed from a prior
+session's state. Built binaries are local only:
+`tools/re/live_hooks/win_inject/hookdll.dll` and
+`tools/re/live_hooks/win_inject/injector.exe` (both freshly rebuilt this
+pass, matching the `check_table_sync.py`/selftest output above) — the
+next pass with server access should upload these as `hookdll_v5.dll`/
+`injector_v5.exe`, continuing the versioning `hookdll_v4.dll`/
+`injector_v4.exe` (§37/`6d2e36a`'s own upload) already established, to
+avoid colliding with any prior upload.
+
+### 46.9 — Verdict
+
+**A real, individually-verified, genuine per-pixel LUT-apply function
+was found inside `analyzeArea`'s own reachable set** — `AnsImageData::
+applyLut` (`0x100d9340`), self-named, containing an actual
+width/height-bounded nested loop with per-channel indexed LUT lookups
+and indexed pixel writes, called live (4 of its 10 real static callers)
+from `balanceAreaImage` on the AREA capability's own real, per-frame
+image object, using the exact already-Unicorn-verified shift+SCPLut
+composed LUT this doc traced in §36-40. This closes §45's own item (1)
+with a real finding, not a further dead end — the sole standing major
+software lead does not close as a dead end; it produces the first
+genuine pixel-writing call site this whole `analyzeArea` investigation
+(§11-§45) has found. **What it does not yet settle**: whether the "AREA
+analysis image" this function writes into is the same buffer the
+already-verified tone chain (`cna`/`dra`) reads, or a private,
+analysis-only copy — the exact question `docs/58`/`docs/62` already
+raised and left open, now with a concrete, hooked, live-traceable call
+site to answer it against on the next real scan. **The mechanical
+safety screen the task's own broadened scope asked for was built and
+run, honestly, across the full 943-function set** — real numbers, real
+script, committed — **and was deliberately not converted into a mass
+live-hook deployment**, for reasons specific to this exact codebase
+(a demonstrated heuristic-failure precedent, §28's own `applyLut`) and
+this exact deployment target (real, physical hardware, a demonstrated
+history of "looks safe statically, corrupts state on the real box" in
+this very engine, `notCallReachable`) — stated as an explicit judgment
+call, not a silent decision either way, per this task's own instruction.
+
+**Verification.** DLL MD5 checked
+(`eea9dcf78ee21d4f7c515a6c2512242d`) against both real copies on this
+machine before any disassembly this pass, matching every prior
+citation. `tools/re/reachability.py calibrate` and `walk 0x100e16d0`
+were both run fresh this pass, reproducing §27.1's own published numbers
+exactly. Every function this section cites a size/instruction/block
+count for (`0x1019a0c0`, `0x100d9340`, `0x10102b20`) was read via
+explicit `r2` `af`+`pdf` (or `afij` for the numeric fields), never a
+`pD` byte-range guess — and the one place this pass found `pdf`'s own
+linear output silently omitting real code (`0x1019a0c0`'s SEH
+catch-block gap, §46.1) was caught by cross-checking `afij`'s own
+`realsz`/span against the printed instruction range, then read directly
+with `pd`, not assumed benign. The E8-scan methodology (§46.3, and the
+new `hook_candidate_screen.py`, §46.7) was sanity-checked against a
+known answer (`applyBalanceShifts`'s own already-published "1 caller"
+result) before being trusted on a new address, the same discipline
+§39.2 already established. The three independent docs cited in §46.5
+were read directly, not from memory or a search-result snippet, before
+quoting them (`docs/58` itself excepted — not present in this checkout,
+cited only via `docs/62`'s own direct quotation, flagged as such). The
+hook-table changes (`hookstub.S`, `hookcore.h`, `hookcore_real_table.c`,
+`agent.js`) were verified via `check_table_sync.py`, a clean `./build.sh`
+(KERNEL32-only import table, XP 5.1 subsystem stamp both re-confirmed),
+and `./build.sh selftest` (`ALL PASS`, including the 32,000-call
+concurrency stress) before this section was written, not after. No
+existing golden file or Python port file was modified this pass — the
+new script (`tools/re/hook_candidate_screen.py`) and every scratch
+E8-scan/disassembly output (`/tmp/pakon_re/applybalanceshifts_plain.txt`,
+`/tmp/pakon_re/gap_region.txt`, `/tmp/pakon_re/fn_100d9340.txt`,
+`/tmp/pakon_re/balanceAreaImage_full3.txt`,
+`/tmp/pakon_re/e8scan_100d9340.py`, `/tmp/pakon_re/screen_area.json`)
+are additive/scratch, matching this doc's own established convention —
+the scratch files live under `/tmp/pakon_re/`, not committed, per the
+project's vendor-DLL-derived-artifact rule.

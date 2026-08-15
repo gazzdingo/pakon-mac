@@ -7243,3 +7243,68 @@ aggregate curve statistics from the shipped, non-capture
 `luts6_postROMM_equalRGBshort.lut` calibration file are reported anywhere
 in §38, consistent with this project's rule against describing
 `captures/`/cache contents; no pixel data or image content is reproduced.
+
+## 41 — §34's flagged action item resolved: `calibration-fresh-scan/`
+promoted into `calibration/`, per `docs/71`'s own documented
+never-overwrite procedure.
+
+§34 found a real, live, unpromoted self-calibration
+(`calibration-fresh-scan/README.json`, a genuine `calib_wizard.py`
+hardware run on this same unit, serial 16275) sitting outside the
+directory the code actually loads from, generated 3h43m before the
+`test123.bin` capture that has anchored this doc's own §31-40 brightness-
+gap investigation — but never installed, per this project's own
+documented "never overwrite, only timestamp" convention (`docs/71` §9).
+This section is the resolution, not a new investigation: the owner asked
+directly for this specific item to be actioned.
+
+**Compared before promoting, not assumed.** `calibration/README.json`'s
+own `generated_at` — `2026-08-12T08:21:09` — against
+`calibration-fresh-scan/README.json`'s — `2026-08-14T06:50:06` —
+confirms the fresh set is genuinely newer, not just differently
+labeled. Checked which files the real loaders actually require before
+treating the fresh set's missing `.csv` files as a blocker: `pakon_gate.py`
+(`Gate.from_calibration`, line ~224) reads only `dark_2000x3.npy`,
+`gain_2000x3.npy`, and `README.json` — the `.csv` files are a
+human-inspection-only artifact of `build_calibration.py`, never read by
+any loader. `calibration-fresh-scan/` already had everything actually
+required.
+
+**Installed exactly per `docs/71` §9's own documented procedure, not
+improvised.** Backed up the outgoing set first, nothing deleted:
+
+```
+cp calibration/dark_2000x3.{npy,csv} calibration/dark_2000x3.pre-freshscan-promotion-20260815.{npy,csv}
+cp calibration/gain_2000x3.{npy,csv} calibration/gain_2000x3.pre-freshscan-promotion-20260815.{npy,csv}
+cp calibration/README.json           calibration/README.pre-freshscan-promotion-20260815.json
+```
+
+Then installed the fresh set:
+
+```
+cp calibration-fresh-scan/dark_2000x3.npy calibration/dark_2000x3.npy
+cp calibration-fresh-scan/gain_2000x3.npy calibration/gain_2000x3.npy
+cp calibration-fresh-scan/README.json     calibration/README.json
+```
+
+**Verified per `docs/71` §9's own post-install check, both passing:**
+
+```
+python3 tools/pakon_gate.py selftest   ->  SELFTEST PASS
+python3 tools/test_calib.py            ->  191/191 checks passed
+```
+
+No test regressed; the wizard's own "never writes into `calibration/`"
+invariant (checked by `test_calib.py` itself) is unaffected since this
+was a manual, documented, human-directed promotion, not a wizard write.
+
+**What this does and doesn't settle.** This is an operational fix, not a
+software one — no port file changed, nothing here bears on §31-40's own
+still-open brightness-gap investigation (§34 already tested and ruled
+out the duty/level discrepancy this promotion corrects as an explanation
+for that gap, at its own real magnitude, before this promotion — that
+analysis stands unchanged). What it does fix: this unit's active
+calibration now reflects its own most recent, on-hardware
+self-measurement, closing the exact gap `calib_wizard.py`'s own
+docstring warns about (a real calibration silently computed and never
+installed) — found once in §34, now closed rather than left flagged.

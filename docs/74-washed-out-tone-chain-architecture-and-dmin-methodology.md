@@ -7524,3 +7524,274 @@ calibration now reflects its own most recent, on-hardware
 self-measurement, closing the exact gap `calib_wizard.py`'s own
 docstring warns about (a real calibration silently computed and never
 installed) — found once in §34, now closed rather than left flagged.
+
+## 43 — A new per-frame raw-floor lead, run to ground on a fresh capture:
+not the lamp, not the AFE — a real, now-fixed framing-cascade blind spot
+that pads short real runs into interframe gap material, confirmed on two
+independent captures, but confirmed **not** to explain §31-42's own
+reference frame or its ~88-89 code gap
+
+A fresh scan (`scan-20260815-122838.bin`, 4 frames, F-135, ColNeg) showed
+frame 1's raw14 shadow floor (`p0.1`) running 1.5-2x higher than frame 0's
+across all three channels, with frame 0 alone at `confidence="good"` and
+frames 1-3 all `"low"`. Four real, concrete hypotheses were tested against
+this exact capture's own log and pixel data — a lamp-duty-switch
+mid-frame, genuine lamp intensity drift, a stale/drifting AFE offset, and a
+framing-detector artifact. Three are refuted or closed outright; the
+fourth is real, reproduces on a second, independent roll, and is now fixed
+with a small, additive diagnostic field
+(`pakon_framing.Frame.content_fraction`) rather than left as a finding
+only. **It does not, however, explain §31-42's own long-running ~88-89
+code brightness gap** — tested directly against the exact reference frame
+that gap was measured on, not assumed — so the two investigations are
+real, but separate.
+
+### 43.1 — Hypothesis 1, lamp duty switch mid-frame: refuted directly
+against the DX log's own line-tagged packets
+
+`tools/pakon_scan.py:2508-2511` fires `lamp_switch_to_scan_duty` exactly
+once, gated on `film.armed and not was_armed` — and `FilmSense.armed`
+(`pakon_scan.py:1391-1397`) is a one-way latch: the **first** DX status
+packet reporting `film_present=True` sets it permanently, regardless of
+any bouncing afterward. The event itself is logged only via the
+in-process `log("lamp_duty_switch", ...)` callback (`_emit`, stdout-only
+when `--json` is passed — `pakon_scan.py:2854`), with no line position and
+no timestamp, and this run did not capture stdout to a file — exactly the
+gap the task flagged. But the DX packets that *drive* `armed` are logged,
+per-packet, in `scan-20260815-122838.dx.jsonl`, and each one carries its
+own sensor line number in its header (`dx_decode.DxStream.feed`,
+`tools/dx_decode.py:451-519`, `packet_line` from the response's own 16-bit
+counter). Replaying every `"kind":"dx"` record through the real
+`dx_decode.DxStream`/`dx_read.dx_payload` (not a reimplementation) gives
+the exact line/time the latch fired:
+
+```
+t=5.6925s  line=2889   film_present=True   (first status-valid packet, gate 0x22)
+```
+
+Frame 0 starts at line 5971 and frame 1 at line 9807 — 3082 and 6918 lines
+*after* the latch, respectively (roughly 6.2 s and 14.1 s later at this
+scan's own pace). Both frames were captured entirely under "with-film"
+duty; neither straddles the switch, and neither predates it. This
+hypothesis is refuted by direct evidence, not by assumption.
+
+### 43.2 — Hypothesis 2, genuine lamp intensity drift: refuted by the
+full percentile profile, not just the shadow end
+
+If frame 0's own capture window had genuinely seen less light (a lamp
+warming up, drifting, or a duty mismatch spanning it), the *highlights*
+should read low too, proportionally — not just the shadows. Re-measured
+`roll.slice14()` (the real, unmodified per-frame calibrated-14-bit output,
+`tools/pakon_render.py:564-571`) for all four frames, full percentile
+spread, not just `p0.1`:
+
+```
+        p0.1   p1    p5    p50    p95     p99    p99.9
+0 R      753  1153  2184  4342  10611   11135   15863   conf=good
+1 R     1380  1697  2013  6659  10741   11223   14283   conf=low
+2 R      910  1074  1838  6161  10902   11474   16222   conf=low
+3 R      727   892  1380  5008  10833   11420   15566   conf=low
+
+0 G      526   774  1107  1966   7050    7359   11206
+1 G      793   922  1039  4676   7030    7306    9979
+2 G      607   731  1197  4808   7093    7414   11402
+3 G      518   647  1007  3394   7098    7437   10833
+
+0 B      358   436   499  1187   6496    6804   11457
+1 B      423   465   517  3571   6551    6832    8934
+2 B      368   461   653  3892   6588    6921   11372
+3 B      333   419   542  2844   6630    6975   10657
+```
+
+`p95`/`p99`/`p99.9` agree across all four frames to within a few percent,
+per channel, with no monotonic or frame-0-specific offset (R `p95` ranges
+10611-10902, `p99` 11135-11474; G `p95` 7030-7098; B `p95` 6496-6630). The
+low/mid percentiles and the median move by thousands of codes between
+frames (R `p50`: 4342/6659/6161/5008). A genuine lamp-intensity difference
+would scale the *whole* distribution, ceiling included; this shape — flat
+highlights, swinging shadows and median — is the signature of a changing
+*content mix* per frame, not a changing light level. Refuted.
+
+### 43.3 — Hypothesis 4, AFE offset drift mid-scan: closed architecturally,
+not just for this capture
+
+`ccd_configure` (`tools/pakon_scan.py:1580-1622`, writing
+`ADC_IDX_OFFSET_R/G/B` from `cfg.afe_offsets`) has exactly one call site in
+the whole scan loop, at `pakon_scan.py:2350` — inside the one-time setup
+phase, before `reset_fifos` and before the acquisition loop even opens
+(`log("phase", phase="acquire", ...)` first appears at `:2389`, after
+`ccd_configure` has already run). There is no second call, no per-frame
+re-write, and no code path in this project that could change the AFE
+offset mid-roll even if it wanted to — this is the same "written once per
+capture" shape §34.3 already established for AFE *gain*, now confirmed
+for AFE *offset* too, by the same kind of direct call-site check. Closed,
+not just untested-and-unlikely.
+
+### 43.4 — Hypothesis 3, a framing artifact: confirmed real, with a
+verified mechanism, and reproduced independently on a second roll
+
+`roll.json`'s own `framing.counts` for this capture already hinted at it:
+frame 0 alone came from phase 1 (`LookForNicePictures`); frames 1-3 all
+came from phase 3 (`LookAtEnd`), with `pitch_rejected_reason: "measured
+1755.0 vs geometry 3166.7 (44.6% off, over the 15% tolerance)"` — i.e. the
+cascade's own pitch *measurement* was thrown out as implausible and a pure
+geometric nominal pitch was used for placement instead
+(`tools/pakon_framing.py:370-425` `estimate_pitch`, rejected by
+`pakon_framing.py:484-491`'s `PITCH_AGREEMENT_FRAC` check).
+
+Read `frame_cascade`'s own `place()` closure (`pakon_framing.py:541-572`)
+to see exactly what phase 3/4 placement does: it searches for a real
+"ones" (image-density) run near the predicted position and, if the run is
+found but is *shorter* than the phase-1 acceptance window
+(`[lo_lim, hi_lim]`, `2850..3450` lines here), pads the far end out to the
+**full nominal frame width** anyway (`newv = s + width`,
+`pakon_framing.py:554`) rather than stopping where the real run actually
+ends. The start snaps to real, detected evidence; the end does not.
+
+Recomputed the roll's own `trace_1d` directly from `roll.slice14()` in
+chunks (the same computation `open_capture` performs,
+`pakon_render.py:841-872`) and re-ran `pakon_framing._runs` against
+`trace_1d < ones_threshold` (the roll's own recorded `4969.1`, restricted
+to `[film_start, film_stop]`) to find every real image-density run on this
+strip, independent of the cascade's own bookkeeping:
+
+```
+frame 0 [5971, 9022]   fraction of window inside a real "ones" run: 1.000
+frame 1 [9807, 12807]                                              0.502
+frame 2 [13317, 16075]                                             0.626
+frame 3 [16075, 19075]                                             0.823
+```
+
+Frame 0's declared window is **entirely** real detected content (a single
+3051-line run, matching the window almost exactly). Frames 1-3's declared
+windows are each snapped, at their *start*, to a real detected run — but
+that run is far shorter than the nominal width (1485/1185/1677 lines
+respectively, against a 3000-line window), and the padded tail runs on
+past it into brighter, gap-classified material for roughly half (frame 1)
+to a fifth (frame 3) of the declared window. This is sufficient on its own
+to explain a raw-floor and median difference between frame 0 and frames
+1-3: the "frame" being percentiled for 1-3 is a real blend of actual
+photographic content and interframe gap, not a clean single population the
+way frame 0 is.
+
+**Independently reproduced, not a one-roll coincidence.** The exact
+mechanism this doc's own §31 anchors on — `test123.bin`, workspace
+`f4c91b62` (since cleaned up) — was re-decoded from the raw `.bin`
+directly, using the *exact* pre-promotion calibration §42 backed up
+before installing `calibration-fresh-scan/`
+(`calibration/{dark,gain}_2000x3.pre-freshscan-promotion-20260815.npy`,
+`README.pre-freshscan-promotion-20260815.json`, confirmed by its own
+`generated_at: 2026-08-12T08:21:09`, matching §34.2's "used by
+`test123.bin`" citation exactly) so the reproduction is faithful to what
+§31 actually analyzed, not today's calibration. Re-running
+`gate.Gate.from_calibration` → `pakon_decode.to_rgb14`/`ccd_deskew` →
+`apply_unit_calibration` → `pakon_framing.find_frames_traces`, all real,
+unmodified functions, reproduces `roll.json`'s own cited frame 0 boundary
+exactly (`a=2048, b=5048, phase=LookAtBeginning`, present-mask first-True
+line **2048** — matching to the line) and finds:
+
+```
+frame 0 [2048, 5048]   LookAtBeginning   fraction inside a real "ones" run: 0.997
+frame 1 [5286, 8343]   LookForNicePictures                                 1.000
+frame 2 [9128, 12128]  LookAtEnd                                           0.520
+frame 3 [12637, 15637] LookAtEnd                                           0.659
+frame 4 [15804, 18804] LookAtEnd                                           0.753
+```
+
+The `LookAtEnd` frames on this second, independent roll dilute to
+0.52/0.66/0.75 — strikingly close to the new capture's own 0.50/0.63/0.82,
+the same mechanism, the same rough magnitude, on a different roll captured
+three days earlier under different calibration. This is a real,
+reproducible bug in the cascade's phase-3/4 padding, not an artifact of
+one capture.
+
+**The honest, load-bearing negative result.** `test123.bin` frame 0 — the
+*exact* frame `AA001.tif` was matched against throughout §31-42, already
+flagged there as `confidence=low, phase=LookAtBeginning`, "the framing
+cascade's own weakest placement grade on this roll, noted for
+completeness, not shown to matter" (§31) — reads **0.997**, not diluted.
+Its low-confidence flag is real (the boundary placement itself was
+uncertain: the nearby run's length, `2645+445` lines split by a 10-line
+blip, didn't cleanly satisfy the phase-1 acceptance window either), but
+its *content* is essentially pure real photographic material, unlike the
+`LookAtEnd` frames on both rolls. **This mechanism, confirmed real and now
+fixed, does not explain §31-42's own ~88-89 code gap** — tested directly
+against the actual frame that gap was measured on, not inferred by
+analogy. The two are real, adjacent, and separate findings.
+
+### 43.5 — Fix implemented and verified: `content_fraction`, a new,
+additive diagnostic field — no frame boundary, export, or render behaviour
+changed
+
+`confidence`/`framing_risk` (`pakon_render.py:1075-1092`,
+`_flag_confidence`) only describe how a boundary was *placed* — which
+cascade phase, how odd its width is relative to the roll's median. Neither
+says anything about what is actually *inside* the declared window, which
+is exactly the gap §43.4 exploited by hand. Added
+`pakon_framing.Frame.content_fraction` (`pakon_framing.py:205-238`): the
+fraction of each **final** frame window (after the phase 2-4 snapping and
+the overlap trim, `pakon_framing.py:634-643`, since trimming can shorten a
+padded tail) that the cascade's own already-computed `ones` array
+classifies as real image content. Computed once per frame,
+right after the trim, from data the cascade already holds — no new pass
+over the pixels, no change to any `start`/`stop`, no change to which
+frames get placed or how. Carried through into
+`pakon_render.Frame.content_fraction` (`pakon_render.py:427-436`) and the
+one real construction site (`pakon_render.py:1005-1016`); the exception
+fallback path (`pakon_render.py:996-1003`) leaves it at its `None`
+default, honestly marking "not computed" rather than inventing a number
+for a path this investigation never exercised.
+
+**Verified, not just written.** `python3 tools/pakon_framing.py
+--self-test` — all checks pass, including the vendor-invariant and
+hysteresis groups unrelated to this change. `python3 tools/test_calib.py`
+— 191/191. `python3 tools/test_render_f135.py` — full pass, the frame/app
+render path unaffected. Both `Frame(...)` construction sites the new field
+could have broken (`pakon_framing.py:567` and `:588`, inside `place()`)
+use positional `(start, stop, phase)` with the new field defaulted, so
+neither needed a change. Re-ran the real, now-patched
+`pf.find_frames_traces` end-to-end (not the hand-rolled check above)
+against both real captures, decoding each from its raw `.bin` with the
+correct calibration for that capture (current for
+`scan-20260815-122838.bin`, the backed-up pre-promotion set for
+`test123.bin`) and got exactly the numbers already shown in §43.4 back out
+of the real code path: `1.0/0.502/0.626/0.823` for the new roll,
+`0.997/1.0/0.52/0.659/0.753` for `test123.bin`. Not yet plumbed into
+`pakon_app.py`'s Review UI (`pakon_app.py:388-392` whitelists which
+`Frame` fields reach the client) — a natural, low-risk follow-up, left
+undone here to keep this change to exactly the diagnostic it is.
+
+### 43.6 — Verdict
+
+1. **Not the lamp.** The duty switch fired ~3000-7000 lines before either
+   frame in question, confirmed against the DX log's own per-packet line
+   numbers, not inferred from timing alone (§43.1). Highlights are flat
+   across all four frames while shadows and the median swing by thousands
+   of codes — the opposite of what a lamp intensity difference would
+   produce (§43.2).
+2. **Not the AFE.** One write, one call site, before the acquisition loop
+   starts; architecturally incapable of a mid-scan change on this
+   codebase (§43.3).
+3. **A real framing-cascade bug, confirmed and fixed.** Phase 3/4
+   (`LookAtEnd`/`LookAtBeginning`) placements snap their *start* to real
+   detected content but pad their *end* to the nominal frame width
+   regardless of where that content actually ends, silently mixing
+   interframe gap material into the declared frame whenever the real run
+   is markedly shorter than nominal. Confirmed on this capture (frames 1-3,
+   50-82% real content) and independently reproduced on `test123.bin`
+   (frames 2-4, 52-75% real content) — two different rolls, three days
+   apart, under different calibration. This is the real, sufficient
+   explanation for the specific raw-floor difference that opened this
+   investigation. Now surfaced as `content_fraction`, an additive,
+   verified diagnostic field; no existing boundary, export, or render
+   behaviour changed.
+4. **Does not explain §31-42's own gap.** Tested directly against the
+   exact reference frame that gap was measured on
+   (`test123.bin` frame 0) rather than assumed by analogy: it reads
+   **0.997**, essentially undiluted, despite carrying the same
+   `confidence=low` flag as the diluted frames elsewhere. The ~88-89 code
+   brightness excess §31-42 chased for eleven-plus sections remains open,
+   and this section's own fix does not move it. Stated plainly rather than
+   stretched to close a different, longer-running mystery: this is a real
+   bug, found and fixed, adjacent to that investigation, not the answer to
+   it.

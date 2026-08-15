@@ -427,6 +427,13 @@ class Frame:
     phase: str = ""                 # LookForNicePictures | ... | "" | manual
     framing_risk: int = 0           # TLXLib.FRAMING_RISK_000: 0 ok, 1 fair, 4 blind
     scan_warning: int = 0           # TLXLib.SCAN_WARNINGS_000 for this frame
+    #: docs/74 §43 — pakon_framing.Frame.content_fraction, carried through:
+    #: the share of [a, b) the cascade's own binarisation calls real
+    #: photographic content rather than interframe gap. None when the
+    #: cascade did not fill it in (the exception fallback path, or a roll
+    #: opened before this field existed). Purely a diagnostic -- nothing
+    #: reads it to change a boundary, an export, or a render.
+    content_fraction: float | None = None
 
 
 @dataclass
@@ -1005,7 +1012,8 @@ def _frame_roll(roll: Roll, trace: np.ndarray, green: np.ndarray,
     roll.frames = [Frame(index=i, a=int(f.start), b=int(f.stop),
                          phase=f.phase.vendor_name,
                          framing_risk=f.phase.risk,
-                         scan_warning=int(f.phase))
+                         scan_warning=int(f.phase),
+                         content_fraction=f.content_fraction)
                    for i, f in enumerate(frames)]
     report["detector"] = "pakon_framing five-phase cascade"
     # The binarisation level is the one part of the cascade that is not the

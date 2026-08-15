@@ -197,13 +197,25 @@ checks above, three separate things were dynamically tested under Wine
    computed reference. **Actually run, under Wine, on this Mac:**
    `ALL PASS (0 failure(s))` — every call across all four conventions,
    recursion, and concurrent-thread use returned byte-identical results to
-   the un-hooked reference. The resulting JSONL log showed exactly 330
-   `enter` and 330 `leave` events (perfectly balanced) with correct LIFO
-   nesting order on the recursive calls (a deeper call's `leave` logged
-   before its parent's) — real evidence the return-address-swap shadow
-   stack is behaving correctly under real recursion, not just "the numbers
-   happened to match". All 667 log lines from that run were confirmed
-   valid JSON.
+   the un-hooked reference. As of 2026-08-15 the self-test also includes an
+   EXTREME concurrency stress section, added specifically to investigate
+   the "stops mid-loop under real load" failures documented below: 8
+   threads, all created first and held at a manual-reset event so they
+   pile up before being released simultaneously, then each hammering the
+   SAME hook (`test_fastcall`) 4000 times with unique per-thread-per-
+   iteration inputs — 32,000 genuinely concurrent re-entries of one hook,
+   all correct, plus the shared (non-TLS) `callCounter` landing on exactly
+   the right total (no lost/duplicated `InterlockedIncrement`s). The full
+   resulting JSONL log (ordinary tests + stress section) showed exactly
+   32,330 `enter` and 32,330 `leave` events (perfectly balanced, including
+   correct LIFO nesting order on the recursive calls — a deeper call's
+   `leave` logged before its parent's), all 64,667 lines valid JSON, and
+   zero false-positive rejections from the `LooksLikeCodeAddress` guard
+   added the same pass (see "A real root cause, found 2026-08-15" below) —
+   real evidence the shared engine mechanism itself (return-address-swap
+   shadow stack, MinHook trampolines, the global log lock, the atomic call
+   counter) is NOT what was racing or corrupting state, even under
+   deliberately maximized concurrent pressure on a single hook.
 2. **A real-but-throwaway end-to-end injection test**: a second, separate
    Wine process (`idle_target_for_testing.c`, not part of the shipped
    tooling, not committed) was launched, and the freestanding
@@ -363,9 +375,98 @@ practice, but not built speculatively here.
   from the hot path costs nothing in the failure mode that matters most
   here, while removing the single most expensive syscall from the busiest
   code path. Re-verified via `./build.sh selftest` after this change:
-  still `ALL PASS (0 failure(s))`, still exactly 330 `enter`/330 `leave`
-  events, 667 total lines, all valid JSON — the periodic/deferred flush
-  does not drop or corrupt any log data, only changes when it reaches disk.
+  still `ALL PASS (0 failure(s))`, all 667 log lines valid JSON — the
+  periodic/deferred flush does not drop or corrupt any log data, only
+  changes when it reaches disk. **This fix did NOT resolve the "stops
+  mid-loop, no shutdown message" failure** — two new real captures the
+  same night (`live_hooks_20260814-110254.jsonl`, a clean full run —
+  ending in a proper `shutting down: disabling all hooks` status line, the
+  first this project ever got — and `live_hooks_20260814-112642.jsonl`,
+  which again stopped abruptly mid-loop with no shutdown message, this
+  time inside `icc_effect_op`/`icc_xform_apply` rather than
+  `tlb_polypixel`) proved the underlying instability was still there. See
+  the next bullet for what that turned out to be.
+- **A real root cause, found 2026-08-15: several hook addresses are NOT
+  independently call-reachable function entries.** A targeted r2
+  `af`+`axt` cross-reference pass against the MD5/sha256-verified vendor
+  DLLs (PakonIMAu.dll sha256 already cited by `reachability.py`; TLA.dll
+  md5 `33f7a247d79286a31b192e83d3c37425` and TLB.dll md5
+  `193d9b2ce0a4b77ae9b78262bd06c0fc`, both freshly extracted from the same
+  `research/sdk/PAKONF135.iso`) found that `sba_set_shifts_12` and
+  `icc_effect_op_ctor` (PakonIMAu.dll) and `tla_baddscene`,
+  `tla_colneg_planar_scan`, and `tla_colneg_mmx_kernel` (TLA.dll) are all
+  addresses reached only via an internal `jmp`/`jcc` (or, for
+  `tla_baddscene`, inconclusively — see its own citation) from WITHIN a
+  different, larger enclosing function — never via a genuine `call`. Worse
+  still, the already-disabled `tlb_f135_poly_remap` turned out to be the
+  literal byte address of a `call` OPCODE inside another function, not any
+  kind of function boundary at all — this also fully resolves the naming
+  ambiguity that hook existed to settle: `tlb_polypixel` (`0x1000d880`) is
+  the one real `PolyPixel` function, and `0x10034b9b` is simply the call
+  site that invokes it. This matters because `hookstub.S`'s
+  return-address-swap technique has exactly one hard precondition: the
+  DWORD sitting at `[esp]` when a hooked address is reached is always a
+  genuine return address, because the only way to reach it is via `call`.
+  Reached via an internal jump instead, `[esp]` holds whatever real local
+  variable or spilled register the ACTUAL enclosing function put there —
+  and the entry stub overwrites it with `OnReturnThunk`'s address,
+  corrupting live data (or, for `tlb_f135_poly_remap`, live CODE)
+  belonging to a function this harness never intended to touch. **Direct
+  live evidence**: in every one of the 3 times `sba_set_shifts_12` fired
+  across both new captures (2 in the clean run, 1 in the crashed run), the
+  PARENT `sba_set_shifts` call's shadow-stack frame was permanently
+  orphaned immediately afterward, and in 2 of those 3 cases that OS thread
+  never logged another hook event for the rest of the capture. The
+  consequences of this corruption are inherently data-dependent — sometimes
+  the clobbered stack slot is never touched again in a way that matters
+  (both occurrences in the clean run), sometimes it eventually manifests as
+  a hang or crash on a completely different, unrelated thread (plausibly
+  via the global `logLock` critical section, held extremely frequently
+  across every thread and every hook — a thread corrupted while holding or
+  near that lock would freeze every other thread's logging forever,
+  including the shutdown path itself, exactly matching "no shutdown
+  message ever appears"). Also resolves a smaller open question from the
+  same two captures: both showed only 17/23 hooks installed. 2 are
+  `approximate` and 1 is `hotPathDisabled` (already correctly off by
+  default before this pass), leaving 3 unaccounted for — all 3 turned out
+  to be the TLA.dll hooks (`tla_baddscene`, `tla_colneg_planar_scan`,
+  `tla_colneg_mmx_kernel`); TLA.dll simply had not finished loading into
+  the process during either capture window (`hookdll.c`'s worker thread
+  retries installation for up to 60s per hook, but the captures evidently
+  ended before that happened) — expected behavior, not a bug. With those
+  same 3 hooks now ALSO disabled by default (`notCallReachable`, below),
+  this is moot going forward: every hook enabled by default now targets
+  only PakonIMAu.dll/TLB.dll, both of which are loaded from the start of a
+  normal PSI run, so a future capture should show every enabled hook
+  installed immediately rather than waiting on TLA.dll at all.
+  This is a fully general engine-validity bug, not
+  specific to `icc_effect_op`/`icc_xform_apply` (both of which were
+  independently re-verified via fresh disassembly and DO have genuine
+  `call` xrefs, and every one of their logged enter/leave pairs across
+  both new captures is perfectly balanced — they are innocent, just the
+  hottest code running when an EARLIER corruption's consequences happened
+  to surface). Fixed two ways: (1) all five confirmed/suspect addresses are
+  now disabled by default (`notCallReachable` in `hookcore.h`/
+  `hookcore_real_table.c`, distinct from `approximate`/`hotPathDisabled`
+  — see each hook's own citation for its specific evidence); (2) a GENERAL
+  runtime guard, `LooksLikeCodeAddress` in `hookcore.c`, now checks (via
+  `VirtualQuery`) that the value about to be trusted as a real return
+  address actually points into committed, executable memory BEFORE
+  `HookEntryC` ever commits to the swap — for ANY hook, present or future,
+  not just the five now known to need it. Re-verified via
+  `./build.sh selftest` (including the new extreme-concurrency stress
+  section — see "What was actually verified" above): `ALL PASS
+  (0 failure(s))`, zero false-positive `LooksLikeCodeAddress` rejections
+  even under 32,000 genuinely concurrent calls. A second, smaller,
+  independently-found bug was fixed the same pass while reading
+  `hookstub.S`'s `OnReturnThunk` very carefully: it executed `sub esp, 16`
+  (which sets EFLAGS) BEFORE its own `pushfd`, so it captured and later
+  restored its own clobbered flags instead of the hooked function's real
+  return-time flags — unlikely to be anyone's actual crash (no mainstream
+  x86 Windows calling convention treats EFLAGS as preserved across a
+  `call`), but a real, confirmed discrepancy from this file's own
+  documented contract, fixed for free (same instruction count, just
+  reordered).
 - **One real, explicitly-not-hidden technical assumption**: the generic
   entry/exit engine's exit path (the "return-address swap" — see
   `hookcore.h`'s header comment for the full derivation) assumes the
@@ -518,7 +619,7 @@ empirically, from real data.
 | `cn_enhanced_driver` | PakonIMAu.dll | `0x10069490` | per-scene driver — frame boundary marker |
 | `analyze_auto_tone` | PakonIMAu.dll | `0x100fb730` | `ColorNegativePath::analyzeAutoTone` — tone-chain boundary |
 | `sba_set_shifts` | PakonIMAu.dll | `0x10100260` | `ColorNegativePath::setShifts` — SBA neutral-balance OUT |
-| `sba_set_shifts_12` | PakonIMAu.dll | `0x10100a37` | shipped CN `(1,2)` closed-form setShifts entry |
+| `sba_set_shifts_12` | PakonIMAu.dll | `0x10100a37` | shipped CN `(1,2)` closed-form setShifts entry — **confirmed NOT call-reachable (internal branch target inside `sba_set_shifts`), OFF by default in `win_inject/`, see below** |
 | `sba_get_shifts` | PakonIMAu.dll | `0x10124000` | `getShifts` |
 | `sba_preference` | PakonIMAu.dll | `0x1028c780` | `Preference` — the confirmed writer of `+0x3a38` |
 | `sba_apply_balance_shifts` | PakonIMAu.dll | `0x1019a0c0` | `AnsAreaCapabilityImpl::applyBalanceShifts` — real per-pixel apply |
@@ -531,11 +632,11 @@ empirically, from real data.
 | `analyze_attributes` | PakonIMAu.dll | `0x100fb3d0` | `analyzeAttributes` |
 | `icc_xform_apply` | PakonIMAu.dll | `0x102f8420` | `ImaICCXForm::apply` — ICC transform |
 | `icc_effect_op` | PakonIMAu.dll | `0x1016ede0` | `ImaICCEffectOp` — source/dest max scale (unresolved in docs/62 §12.4.2) |
-| `icc_effect_op_ctor` | PakonIMAu.dll | `0x1016e680` | `ImaICCEffectOp` ctor — writes `this+0x118` |
-| `tla_baddscene` | TLA.dll | `0x1003f7db` | `bAddScene` — real writer of FUGC's "dmin" bag |
-| `tla_colneg_planar_scan` | TLA.dll | `0x100064d0` | `PIColorCorrectColNegPlanarScan` |
-| `tla_colneg_mmx_kernel` | TLA.dll | `0x1001c470` | inner MMX kernel |
-| `tlb_f135_poly_remap` | TLB.dll | `0x10034b9b` | F-135 ColNeg poly remap — **naming ambiguity, see agent.js** |
+| `icc_effect_op_ctor` | PakonIMAu.dll | `0x1016e680` | `ImaICCEffectOp` ctor — writes `this+0x118` — **confirmed NOT call-reachable (internal branch target), OFF by default in `win_inject/`, see below** |
+| `tla_baddscene` | TLA.dll | `0x1003f7db` | `bAddScene` — real writer of FUGC's "dmin" bag — **suspect (likely not call-reachable), OFF by default in `win_inject/`, see below** |
+| `tla_colneg_planar_scan` | TLA.dll | `0x100064d0` | `PIColorCorrectColNegPlanarScan` — **confirmed NOT call-reachable (internal branch target), OFF by default in `win_inject/`, see below** |
+| `tla_colneg_mmx_kernel` | TLA.dll | `0x1001c470` | inner MMX kernel — **confirmed NOT call-reachable (internal branch target), OFF by default in `win_inject/`, see below** |
+| `tlb_f135_poly_remap` | TLB.dll | `0x10034b9b` | F-135 ColNeg poly remap — **naming ambiguity RESOLVED 2026-08-15: this VA is the address of a `call` opcode inside another function, not a function at all — see below** |
 | `tlb_polypixel` | TLB.dll | `0x1000d880` | `PolyPixel` — general stage-2 3×10 quadratic — **confirmed real entry, but OFF by default in `win_inject/` (not `agent.js`), see below** |
 | `tlb_afe_offset_write` | TLB.dll | `0x100299c0` | `FN_bDrvPutCcdAtoDOffsets` — AD9826 offset register |
 

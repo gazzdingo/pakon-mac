@@ -1,11 +1,26 @@
 # Copy this to `hooks.cfg` next to hookdll.dll on the XP box to override
 # which hooks are enabled / exit-hooked, without a rebuild. Not required --
 # if hooks.cfg is missing, the built-in defaults apply (every confirmed
-# address enabled with entry+exit, EXCEPT: the two `approximate: true`
-# addresses -- fugc_mode_dispatch, tlb_f135_poly_remap -- disabled until
-# you've verified them live; and tlb_polypixel, disabled by default for a
-# DIFFERENT reason -- see below). See ../README.md for the full hook table
-# and per-address citations.
+# address enabled with entry+exit, EXCEPT:
+#   - the two `approximate: true` addresses -- fugc_mode_dispatch,
+#     tlb_f135_poly_remap -- disabled until you've verified them live;
+#   - tlb_polypixel, disabled by default for a DIFFERENT reason (confirmed
+#     real, but a demonstrated hot path with no remaining diagnostic value
+#     -- see below);
+#   - five `notCallReachable` addresses -- sba_set_shifts_12,
+#     icc_effect_op_ctor, tla_baddscene, tla_colneg_planar_scan,
+#     tla_colneg_mmx_kernel -- disabled because a 2026-08-15 r2 audit found
+#     these are NOT independently call-reachable function entries (internal
+#     branch targets inside a different, larger function, or -- for
+#     tla_baddscene -- suspected but not fully confirmed either way).
+#     UNLIKE the other two categories, there is nothing to verify live that
+#     would make it safe to turn these back on: enabling one of these VAs
+#     via hooks.cfg re-introduces the exact stack-corruption mechanism that
+#     (most likely) caused this harness's real "stops mid-loop under load,
+#     no shutdown message" failures on 2026-08-14 -- do not re-enable any
+#     of these five without first re-deriving a genuinely different,
+#     call-reachable address for whatever they were meant to observe.
+# See ../README.md for the full hook table and per-address citations.
 #
 # Syntax:
 #   # comment
@@ -18,15 +33,6 @@
 # disassembly on the XP box and want to try it:
 #
 # fugc_mode_dispatch=on
-
-# Example: tla_colneg_mmx_kernel is described in its own citation as "the
-# inner MMX kernel itself" -- if a first live run shows it firing at high
-# frequency (large log volume / noticeable slowdown), turn off just its
-# exit-hooking (keeps entry markers, drops the return-address-swap
-# overhead), or disable it entirely:
-#
-# tla_colneg_mmx_kernel.exit=off
-# tla_colneg_mmx_kernel=off
 
 # tlb_polypixel is OFF by default (unlike everything else that isn't
 # `approximate: true`) -- NOT because its address is in doubt (docs/74

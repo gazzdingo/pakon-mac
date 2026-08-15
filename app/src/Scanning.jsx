@@ -39,6 +39,33 @@ function AfterScan({ job, open, onOpenAnyway, onDismiss }) {
   );
 }
 
+// A small stand-in for the lamp itself: off before it is lit, dim amber
+// through the open-gate warm-up, bright once the film sensors have reported
+// film present and the duty has switched to the with-film set (docs/59).
+// Driven by `job.lamp_duty`, which pakon_app.py's `_pump` sets from the real
+// `phase`/`lamp_duty_switch` events the scan process emits — not a timer.
+function LampDot({ duty }) {
+  const lit = duty === 'open-gate' || duty === 'with-film';
+  const bright = duty === 'with-film';
+  return (
+    <span
+      title={
+        !lit ? 'Lamp off' : bright ? 'Lamp at full scan brightness' : 'Lamp warming up (dim, open-gate duty)'
+      }
+      style={{
+        display: 'inline-block',
+        width: 9,
+        height: 9,
+        borderRadius: '50%',
+        background: !lit ? 'var(--faint)' : bright ? '#fff4d8' : 'rgba(255, 190, 90, 0.55)',
+        boxShadow: bright ? '0 0 7px rgba(255, 224, 150, 0.9)' : lit ? '0 0 3px rgba(255, 190, 90, 0.4)' : 'none',
+        transition: 'background 250ms ease, box-shadow 250ms ease',
+        flex: '0 0 auto',
+      }}
+    />
+  );
+}
+
 export default function Scanning({ job, onCancel, busy, open, onOpenAnyway, onDismiss }) {
   const running = job.status === 'running';
   const w = job.window || {};
@@ -47,11 +74,15 @@ export default function Scanning({ job, onCancel, busy, open, onOpenAnyway, onDi
   const cap = job.max_seconds || 0;
   const pct = cap ? Math.min(100, (elapsed / cap) * 100) : 0;
   const lampBad = job.lamp?.ok === false;
+  const phaseInfo = api.scanPhaseInfo(job.phase);
 
   return (
     <main className="scanstage">
       <div className="stagehead">
-        <span className="title">{running ? 'Scanning' : job.message || 'Scan ended'}</span>
+        <span className="title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {running ? phaseInfo.label : job.message || 'Scan ended'}
+          {running ? <LampDot duty={job.lamp_duty} /> : null}
+        </span>
         {lampBad ? <Chip tone="bad" dot>Lamp fault</Chip> : null}
         <span className="sp" />
         <span className="quiet">{gate.note}</span>

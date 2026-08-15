@@ -529,3 +529,41 @@ void HookCore_BuildRealTable(HookEngine *eng) {
         eng->defs[i].entryThunk = thunks[i];
     }
 }
+
+/* ---------------------------------------------------------------------
+ * g_extraDumps[] -- docs/74 SS47's own re-derived calling convention for
+ * area_image_apply_lut (0x100d9340), from a fresh af+pdf this pass (not
+ * reused from SS46's transcription, which SS47.1 found had dropped a real
+ * `push edi` instruction at the first balanceAreaImage call site). Stack
+ * layout at entry, confirmed against BOTH the caller-side push order AND
+ * the callee-side [esp+N] reads independently, and cross-checked live
+ * (ecx == stack_dwords[4] on all 18 real captured calls, docs/74 SS47.2):
+ *
+ *   stack_dwords[0] = &status   (caller-owned out-param, NOT a buffer)
+ *   stack_dwords[1] = R-band LUT pointer (4096 x int16 = 8192 bytes)
+ *   stack_dwords[2] = G-band LUT pointer (= R + 0x2000 in every real
+ *                      capture from balanceAreaImage's own compose chain,
+ *                      but NOT assumed here -- read via its own pointer)
+ *   stack_dwords[3] = B-band LUT pointer (= R + 0x4000, same caveat)
+ *   stack_dwords[4] = dup-this: the SAME AnsImageData* as `this`/ecx
+ *
+ * Pixel-buffer preview: `this->0x20` (source object's own pixel-data
+ * base-pointer field, per docs/74 SS47.1's own trace of the "if
+ * width/height/bands > 0: eax = [edi+0x20]; cache it for the loop" block
+ * at 0x100d9650-0x100d9664) is this pass's OWN inference -- unlike the
+ * width/height offsets (+0xc/+0x10) this project already cites elsewhere
+ * (pakon_fugc.FUGC_IMG_DESC_WIDTH_OFF/HEIGHT_OFF), +0x20 as "the pixel
+ * data pointer" is NOT independently corroborated by any other doc in
+ * this tree as of SS47 -- flagged here, not overstated. Kept to a small
+ * 256-byte preview (not a full-image dump: real per-frame widths here
+ * run into the hundreds of pixels x 3 bands x 2 bytes, i.e. plausibly
+ * tens of KB, well past what's worth risking on the real box for a
+ * "preview") specifically because of that lower confidence.
+ */
+const ExtraDumpSpec g_extraDumps[] = {
+    { "area_image_apply_lut", "r_lut", EXTRA_DUMP_STACK_PTR, 1, 0, 8192 },
+    { "area_image_apply_lut", "g_lut", EXTRA_DUMP_STACK_PTR, 2, 0, 8192 },
+    { "area_image_apply_lut", "b_lut", EXTRA_DUMP_STACK_PTR, 3, 0, 8192 },
+    { "area_image_apply_lut", "pixel_data_preview", EXTRA_DUMP_DEREF_PTR, 4, 0x20, 256 },
+    { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0 }, /* sentinel */
+};

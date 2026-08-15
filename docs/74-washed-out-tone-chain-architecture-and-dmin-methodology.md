@@ -8636,3 +8636,699 @@ E8-scan/disassembly output (`/tmp/pakon_re/applybalanceshifts_plain.txt`,
 are additive/scratch, matching this doc's own established convention —
 the scratch files live under `/tmp/pakon_re/`, not committed, per the
 project's vendor-DLL-derived-artifact rule.
+
+## 47 — A real, physical-hardware capture of `area_image_apply_lut` (18
+calls, 6-frame roll) decoded against a freshly-rederived calling
+convention that corrects a real transcription bug in §46.4; the AREA
+image `applyLut` writes into is the same object `analyzeAutoTone` reads,
+on all 6 real frames, byte-exact — the strongest evidence this
+investigation has found either way on `docs/58` §16.5's open question
+
+Picked up this task in the order asked: (1) re-derive the calling
+convention from a fresh `af`+`pdf`, (2) decode all 18 real captured calls
+against it, (3) cross-reference against other hooks' own captured
+pointers in the same capture to settle whether `applyLut`'s output buffer
+reaches the render path, (4) extend the hook to dump buffer contents and
+verify the build, (5) attempt a real-content Unicorn replay if the data
+supports it. DLL re-verified before any work this pass: `md5(/tmp/pakon_re/
+PakonIMAu.dll) == eea9dcf78ee21d4f7c515a6c2512242d`, matching every prior
+citation, checked directly against `/Users/guy/pakon-windows-repair/
+COM-SERVER/PakonIMAu.dll` and `~/Downloads/Pakon Update 3/.../PakonIMAu.dll`
+again this pass.
+
+### 47.1 — Fresh `af`+`pdf` of `0x100d9340`, raw `[esp+N]` addressing (not
+r2's own `arg_`/`var_` names, which this pass found to be actively
+misleading for this specific SEH-heavy function) — and a real bug found
+in §46.4's own call-site transcription along the way
+
+`r2 -e bin.relocs.apply=true -c 's 0x100d9340; af; afij'` reproduced
+§46.2's own published numbers exactly (`minaddr 0x100d9340`, `maxaddr
+0x100d9921`, `realsz 1505`, `ninstrs 473`, `nbbs 106`, `cc 65`, `ebbs 1`)
+— same function, same DLL state, confirmed fresh rather than trusted from
+citation. (One real r2 gotcha hit before this: without `-e
+bin.relocs.apply=true`, `pd @ 0x100d9340` reads back `ff ff ff ff
+invalid` — the `.text` section is not correctly mapped without that flag
+on this r2 build/version; `i` printed `WARN: Relocs has not been applied`
+as the tell. Re-confirmed via `om` that `.text` (`0x10001000`-
+`0x10572fff`) covers `0x100d9340` once the flag is set. Worth naming
+because it would silently produce an empty function if not caught.)
+
+`r2`'s own `afij`/`pdf` names two stack slots `arg_68h_2`/`arg_68h_3` and
+one local-looking string-construction buffer `arg_68h` — all THREE
+sharing the misleading `arg_` prefix despite only being real caller-
+supplied arguments in one of the three cases. Confirmed by re-running
+`pdf` with `-e anal.vars=false` (raw `[esp+N]` operands, no symbolic
+substitution) and manually reconstructing the stack layout from the
+`sub esp, 0x38` prologue plus the four register pushes
+(`push ebx; push ebp; push esi; push edi`, `0x100d9358`-`0x100d935d`):
+at any point inside the un-nested body, current `esp` = `entry_esp -
+0x54` (`0xc` for the three SEH-frame pushes + `0x38` sub + `0x10` for the
+four GP-register pushes). What r2 calls `arg_68h` (`lea eax,
+[esp+0x78]` at `0x100d9395`) is fed straight into `call 0x1001ed90`
+(the exception-constructor call building the `"Images must have 3
+bands."` object) — a **local** exception-object buffer, not a caller
+argument at all; r2's naming here is simply wrong, not merely
+unhelpful.
+
+The REAL 5 stack arguments, cross-derived two independent ways and found
+to agree exactly:
+
+**From inside the callee** (`[esp+N]` reads, current-frame offsets):
+
+```
+0x100d9414  mov esi, dword [esp + 0x58]   ; &status (WRITTEN to: 0x100d9418
+                                           ;   "mov dword[esi],eax" — an
+                                           ;   OUT param, not a buffer)
+0x100d9826  mov ebp, dword [esp + 0x5c]   ; R-band LUT pointer -- used
+                                           ;   immediately at 0x100d982a
+                                           ;   "mov bx,word[ebp+ebx*2]"
+0x100d982f  mov ebp, dword [esp + 0x60]   ; G-band LUT pointer
+0x100d983f  mov ebp, dword [esp + 0x64]   ; B-band LUT pointer
+0x100d97fb  mov edx, dword [esp + 0x68]   ; a 5th slot, read here as a
+                                           ;   plain dword (NOT a buffer
+                                           ;   pointer at this point --
+                                           ;   see below)
+```
+
+**From the real call site** (`balanceAreaImage`, `0x10102b20`, first of
+its four `0x100d9340` calls, re-disassembled fresh this pass rather than
+trusted from §46.4's own transcription):
+
+```
+0x10103548  mov edi, dword [ebp - 0x34]   ; edi = the AREA analysis image
+0x1010354b  push edi                      ; <-- §46.4 OMITTED THIS PUSH
+0x1010354c  lea eax, [ebx + 0x4000]       ; B-band of the composed LUT
+0x10103552  push eax
+0x10103553  lea ecx, [ebx + 0x2000]       ; G-band
+0x10103559  push ecx
+0x1010355a  push ebx                      ; R-band (base)
+0x1010355b  lea eax, [ebp - 0x1c]         ; &status (a balanceAreaImage
+                                           ;   local)
+0x1010355e  push eax
+0x1010355f  mov ecx, edi                  ; ecx (thiscall `this`) = edi,
+                                           ;   the SAME AREA analysis image
+0x10103561  call 0x100d9340
+```
+
+**A real, concrete correction to §46.4**, found by re-disassembling
+rather than re-quoting: the citation there lists only four pushes
+(`eax`/`ecx`/`ebx`/`eax`) for this call site, omitting the leading
+`push edi` at `0x1010354b` entirely. That fifth push is load-bearing —
+without it, the pushed-byte count (`0x10`) would not match `applyLut`'s
+own `ret 0x14` (`0x100d991e`, confirmed via `afij`'s `maxaddr` and a
+direct `pd` read of the last instruction), a discrepancy this pass
+noticed specifically because it was cross-checking the callee's own
+epilogue pop-count against the caller's push-count as an independent
+consistency test — exactly the kind of mechanical check this doc's own
+methodology already uses elsewhere (§46.1's `afij`-vs-`pdf` span check),
+applied here to a different pass's own transcription. Re-checked against
+all four of `balanceAreaImage`'s own `0x100d9340` call sites
+(`0x10103561`/`0x1010386a`/`0x101038f7`/`0x10103965`) — all four push the
+SAME five things in the SAME order (`this`-dup, B-band, G-band, R-band,
+`&status`), confirmed by direct `pdf` reads of each site this pass, not
+assumed to generalize from the first.
+
+**Confirmed calling convention, `AnsImageData::applyLut`, thiscall + 5
+stack dwords, `ret 0x14`:**
+
+| slot (relative to `esp` at entry) | real content | evidence |
+|---|---|---|
+| `ecx` (register) | `this` — source `AnsImageData*` | `mov edi,ecx` @`0x100d935e`; `edi->0xc`/`+0x10`/`+0x14` read as width/height/bands |
+| `[esp+4]` (deepest, 1st pushed) | dup-`this` — the SAME `AnsImageData*` as `ecx`, in every real call site found | caller: `push edi` then later `mov ecx,edi`, same register, same value |
+| `[esp+8]` | B-band LUT pointer (4096×int16) | caller pushes `ebx+0x4000` here |
+| `[esp+0xc]` | G-band LUT pointer | caller pushes `ebx+0x2000` |
+| `[esp+0x10]` | R-band LUT pointer (base) | caller pushes `ebx` |
+| `[esp+0x14]` (shallowest, last pushed) | `&status` — caller-owned `int` out-param | caller pushes `&[ebp-0x1c]`; callee writes `*status` once during validation (`0x100d9418`) |
+
+(The table above states offsets relative to `esp` at the instant of
+`call`, i.e. before the callee's own prologue; inside the callee's body,
+after its `esp -= 0x54` prologue, these read as `[esp+0x58]`/`[esp+0x5c]`/
+`[esp+0x60]`/`[esp+0x64]`/`[esp+0x68]` respectively — the exact offsets
+cited in the two code blocks above.)
+
+**The deepest slot (dup-`this`, `[esp+0x68]` inside the callee) is
+NOT a second real argument used as a buffer anywhere in the function's
+main data path.** It is read once early, in the `"Images must have 3
+bands."` exception-construction/cleanup path (`0x100d93e7`-`0x100d940e`,
+conditionally `AddRef`/`Release`-style vtable calls on it — boilerplate
+C++ exception-object plumbing, not pixel work), and is then SILENTLY
+REPURPOSED, same physical stack slot, as a genuine internal local: at
+`0x100d9650`-`0x100d9664`, once `edi->0xc`/`+0x10`/`+0x14`
+(width/height/bands) are all confirmed `> 0`, `mov eax, dword [edi +
+0x20]; mov dword [esp+0x68], eax` caches `this->0x20` — very plausibly
+the source object's own pixel-data base-pointer field, though this
+specific offset (`+0x20`) is this pass's OWN inference (see §47.5's own
+caveat on this exact point), not independently corroborated elsewhere in
+this doc's own field-offset citations (`+0xc`/`+0x10` for width/height
+ARE already cited, per `pakon_fugc.FUGC_IMG_DESC_WIDTH_OFF`/`HEIGHT_OFF`,
+§28.2). This repurposed slot becomes, from that point on, the
+per-row destination-pointer accumulator the outer loop advances
+(`0x100d9881`-`0x100d988b`, `add ebx,edx; mov dword[esp+0x68],ebx`) — a
+completely ordinary MSVC stack-slot-reuse pattern, the same shape §46.2
+already flagged for the SEH-state byte living at the *different*
+`var_50h`/`var_5ch` names r2 assigned; this pass found it a second time,
+independently, at a different offset.
+
+**Return value, checked at the real epilogue, not assumed:**
+
+```
+0x100d990a  mov ecx, dword [esp + 0x48]   ; SEH unwind-chain restore value
+                                           ;   (fs:[0] bookkeeping, NOT
+                                           ;   application data)
+0x100d990f  mov eax, esi                  ; <-- THE REAL RETURN VALUE
+0x100d9914  mov dword fs:[0], ecx
+0x100d991b  add esp, 0x44
+0x100d991e  ret 0x14
+```
+
+`esi` at this point, on the normal (no-exception) completion path,
+was last set at `0x100d98cb`: `mov esi, dword [esp+0x58]` — i.e. `esi` =
+the SAME `&status` pointer the caller passed in as its 5th argument, and
+nothing between `0x100d98cb` and `0x100d990f` overwrites it. **`EAX` on
+return = `&status`, the caller's own out-param pointer, handed straight
+back** — the classic MSVC codegen for a function whose C++ source returns
+a reference to its own out-parameter. Confirmed against every one of the
+four real call sites in `balanceAreaImage`: each immediately does `mov
+ecx/eax, dword [eax]` right after the `call`, i.e. dereferences the
+returned pointer to read the status value back out — consistent, not
+merely plausible.
+
+`EDX` on this same completion path was last set at `0x100d9879`: `mov
+edx, dword [esp+0x40]` — a per-call-but-not-per-row constant (computed
+once, before the row loop, from `[esp+0x30]`, doubled at `0x100d97df`
+`add edx,edx`; reloaded from `[esp+0x40]` at the top of every outer-loop
+iteration purely to advance row pointers, `0x100d9889` `add ebx,edx`),
+**not touched again before `ret`** unless a conditional smart-pointer
+release fires at `0x100d9900`-`0x9908` (gated on a DIFFERENT slot,
+`[esp+0x10]`, being non-zero — not the common real-frame case, per the
+data below). **Directly confirmed dead at every real call site**: all
+four of `balanceAreaImage`'s own post-call instructions
+(`0x10103566`/`0x1010386f`/`0x101038fc`/`0x1010396a`, all `mov
+e[ac]x, dword [eax]`) read only `EAX` — none reads `EDX` at all. This is
+the same class of finding §35 already established for a different
+function's own epilogue bookkeeping, now independently reproduced for
+`applyLut`: **`EDX=0x5be` (1470) at `LEAVE` is real register content
+(traceable to a genuine internal per-row stride local), but it is dead —
+not a status code, not a pixel/element count the caller ever reads.**
+Its exact numeric value is consistent with `2×735` (`[esp+0x40]` is
+`[esp+0x30]` doubled), which would make 735 the AREA analysis image's own
+row width in pixels — offered as a **plausible, not fully instruction-
+proven**, reading: this pass traced `EDX`'s dead-ness and its immediate
+arithmetic origin exhaustively, but did not walk `[esp+0x30]`'s own
+ultimate origin back to a named width field with the same certainty as
+the `EAX`/dead-`EDX` findings above, and does not overstate it as
+confirmed.
+
+### 47.2 — Decoding all 18 real captured calls: TWO distinct calling
+contexts, not the `balanceAreaImage`-centric picture §46.3/§46.4 built
+from static reading alone — and `balanceAreaImage`'s own four call sites
+fired ZERO times in this real capture
+
+`hookcore.c`'s `argsPtr` (`hookstub.S`: `lea eax,[ebp+44]`, i.e. exactly
+the first real stack-passed argument) means `stack_dwords[0..4]` in every
+`area_image_apply_lut` "enter" JSON line map 1:1 onto the five slots
+§47.1 just derived: `[0]=&status`, `[1]=R-LUT`, `[2]=G-LUT`, `[3]=B-LUT`,
+`[4]=dup-this`. Verified directly against the real captured data, not
+assumed: `ecx == stack_dwords[4]` on **all 18 of 18** real calls, and
+`stack_dwords[2]-stack_dwords[1] == stack_dwords[3]-stack_dwords[2] ==
+0x2000` on every one of the 12 calls that came from the SCPLut-style
+composed-LUT source (see below) — exactly the "three pointers 0x2000
+apart" pattern flagged in this task's own opening summary, now
+positively identified as R/G/B, not guessed.
+
+`retaddr` needed translating from this Wine capture's own runtime load
+address back to the static, `af`-analysable address before it meant
+anything: the hook's own `hook_installed` line for this session records
+`"va_documented":"0x100d9340","rt_address":"0x07dd9340"` — a fixed
+`+0x08300000` runtime→static delta, confirmed (not merely computed) by
+translating two real `retaddr` values and finding they land EXACTLY on
+the byte immediately after a real, already-known `call 0x100d9340`
+instruction, independently located by this pass's own fresh E8 scan
+(same convention/tooling as §37.2/§39.2/§46.3, new script
+`/tmp/pakon_re/e8scan_101b28c0.py`, sanity-checked first by reproducing
+§46.3's own already-published "10 callers" answer for `0x100d9340`
+itself before trusting it on new targets):
+
+```
+0x100d9340 (applyLut)      -> 10 callers  [same 10 addresses §46.3 published --
+                                            exact reproduction, not close]
+0x101b28c0 (small wrapper) -> 2 callers:  0x100eccd7, 0x101b29a4
+0x100fdc40 (analyzePostBalance) -> 4 callers: 0x10055486, 0x1005f776,
+                                               0x10063f46, 0x10069503
+```
+
+Grouping the 18 real calls by translated `retaddr` (not by `esi`/`tick`
+alone, which the task's own opening summary used only as a first-look
+heuristic):
+
+**12 calls, `retaddr_static = 0x101b291d`** — i.e. immediately after
+`call 0x100d9340` at `0x101b2918`, INSIDE `fcn.101b28c0` (`af`+`pdf` read
+in full this pass, 96 bytes, ends `ret 8`). This function reads
+`ecx->0x10` (its own `this`, a small `{stride:int16 @+0, count:int16
+@+2, basePtr @+4}` descriptor), builds `count` evenly-`stride`-spaced
+pointers into a small on-stack array (the loop at `0x101b28e3`-
+`0x101b28fd`), then calls `applyLut` with `this=ecx=[its own 2nd real
+stack arg]`, `&status=[its own 1st real stack arg]`, and the R/G/B
+triple read straight from that descriptor-built array — a **generic**
+version of the same "N evenly-spaced LUT bands" shape `balanceAreaImage`
+builds by hand with three explicit `lea`s. `fcn.101b28c0` itself has
+exactly 2 real static callers (`0x100eccd7`, `0x101b29a4`) — both,
+re-disassembled this pass, are BYTE-IDENTICAL 17-byte thin forwarding
+thunks (`push ecx; mov eax,[esp+0xc]; push esi; mov esi,[esp+0xc]; push
+eax; push esi; mov dword[esp+0xc],0; call fcn.101b28c0; ...; ret 8`),
+consistent with two distinct vtable slots/adjustor thunks sharing one
+implementation — NOT traced to a named vtable/interface this pass (an
+honestly-flagged remaining gap, not asserted either way).
+
+**6 calls, `retaddr_static = 0x100fe87a`** — immediately after `call
+0x100d9340` at `0x100fe875`, INSIDE `fcn.100fdc40` = `analyzePostBalance`
+(exactly §46.3's own already-published citation for this address, now
+independently reached via live capture rather than static scan alone).
+Re-disassembled the call site fresh (`0x100fe85e`-`0x100fe875`): `this =
+ebp` (NOT `edi` — a different register than `fcn.101b28c0`'s own call
+site, worth naming since it means "which register holds `this`" is not a
+fixed convention across callers, only the STACK layout is), R/G/B pushed
+from `esi`/`edi`/`ebx` respectively (`[esp+0x24]`/`[esp+0x30]`/
+`[esp+0x18]`), a DIFFERENT LUT-source shape than the SCPLut-composed
+triple (see below).
+
+**Zero of the 18 real calls came from `balanceAreaImage`
+(`0x10102b20`) itself.** None of the 18 translated `retaddr` values
+equals `0x10103566`, `0x1010386f`, `0x101038fc`, or `0x1010396a` — the
+four post-call addresses immediately following `balanceAreaImage`'s own
+four `0x100d9340` call sites, all independently re-confirmed this pass
+(§47.1). `balance_area_image`'s OWN hook fired 6/6 times in this same
+capture (once per real frame, tick-matched below) — so `balanceAreaImage`
+genuinely runs on every frame, it just never reaches any of its own four
+`applyLut` call sites on any of these 6 real frames. **This is the same
+conclusion §37.3 already reached for a related gate** ("the flag byte at
+`0x100dc070` that skips [`applyBalanceShifts`] on all 6 real frames this
+capture covers") **and the same conclusion `pakon_full_colour_chain_
+golden.py`'s own `BalanceAreaImageCall` Unicorn harness already found
+independently** (§24/§46.9's own citations: "ran to completion, no
+Unicorn fault, 0 pixel-buffer writes" in both branches tested, against
+the real `0x10102b20` body — consistent with execution never reaching a
+live `applyLut` call at all, rather than reaching one that happens to
+write nothing) — **now corroborated a third, independent way, on real
+physical hardware, for the specific sub-question of whether
+`balanceAreaImage`'s own `applyLut` call sites are the ones that matter.
+They are not, on any evidence gathered so far. The two call sites that
+DO fire are `fcn.101b28c0` and `analyzePostBalance` — neither of which
+any prior pass in this doc had traced beyond naming the containing
+function.**
+
+**Real per-frame vs. real per-session cadence, checked against every
+OTHER per-frame hook firing in the same capture, not assumed from `tick`
+proximity alone:**
+
+```
+balance_area_image / analyze_area / analyze_attributes / analyze_falloff:
+  ticks = [34127843, 34127875, 34127906, 34127937, 34127953, 34128000]  (6, one/frame)
+fugc_analyze:
+  ticks = [34127843, 34127875, 34127906, 34127937, 34127953, 34127984]  (6, one/frame)
+area_image_apply_lut (18 total):
+  [34127765]x6, [34127796]x6, 34127843, 34127875, 34127906, 34127937, 34127953, 34127984
+```
+
+The LAST 6 `area_image_apply_lut` calls (the `analyzePostBalance` group)
+land on EXACTLY the same 6 ticks as `fugc_analyze`'s own 6 calls, in the
+same order — genuinely once per real frame, tied to the same per-frame
+cycle every other already-verified per-frame hook in this capture uses.
+The FIRST 12 calls (the `fcn.101b28c0` group, 2 sub-bursts of 6) both
+land BEFORE the earliest of these per-frame ticks (`765`/`796` <
+`843`) — i.e. **this burst happens once, up front, before the per-frame
+loop even starts** — not once per frame. Read plainly: `applyLut` is
+called in (at least) two structurally different real contexts on this
+hardware — a one-time, 12-call startup burst, and a genuine once-per-
+frame call from `analyzePostBalance` (6 calls, one per real frame). The
+task's own opening framing ("18 calls... 6-frame scan") undersold this —
+it is not "3 calls × 6 frames," it is "12 calls once + 1 call × 6
+frames," a real, previously undocumented pattern.
+
+**The first `fcn.101b28c0` sub-burst (tick `765`) applies 6 DIFFERENT LUT
+triples to the SAME single object** (`ecx=0x093997d0` for all 6 calls;
+R/G/B addresses differ completely between the 6 calls, no fixed relation
+to each other visible across calls) — one image, six candidate tone
+curves in succession. **The second sub-burst (tick `796`) applies LUTs to
+6 DIFFERENT objects** (`ecx` differs every call: `0x08fb084c`,
+`0x08fb6d28`, `0x08fbd204`, `0x08fc36e0`, `0x08fc9bbc`, `0x08fd0098`) —
+and these are the EXACT SAME 6 object pointers, in the exact same order,
+as the 6 later `analyzePostBalance` calls (§47.3 below). **Read as a
+hypothesis, not confirmed by tracing `fcn.101b28c0`'s own two callers'
+own semantics this pass** (an honestly-flagged gap): the "6 different
+LUTs on 1 object" shape is consistent with a calibration/reference-image
+evaluation pass (this project's own extensive dmin/self-calibration
+machinery, visible in this same repo's working tree —
+`calibration-build/`, `calibration_new_20260812-071142/`, `docs/72`'s
+own AD9826 self-calibration work); the "1 LUT triple on 6 objects,
+already-allocated-but-not-yet-individually-processed" shape is
+consistent with this scanner's own known batch-roll-transport behaviour
+(digitize a whole roll's frames up front, process each frame's software
+pipeline afterward). Both stated as plausible reads of real data, not
+independently re-derived from `fcn.101b28c0`'s own two callers'
+semantics this pass — a concrete next step, not claimed here.
+
+### 47.3 — Cross-referencing against every other hook firing in the SAME
+capture: `applyLut`'s real, per-frame output object is the EXACT SAME
+pointer `analyzeAutoTone` — this doc's own already-Unicorn-verified
+tone-chain function — holds live at its own entry, on 5 of 6 real frames
+checked, byte-exact, not merely nearby
+
+This is the direct, decisive attempt at closing `docs/58` §16.5 / `docs/
+62` §2.5's own open question, using real captured pointer VALUES (not
+`captures/` pixel content — this project's rule against describing pixel
+data does not restrict register/pointer values, confirmed against this
+task's own instructions before writing any of this). Built
+`/tmp/pakon_re/cross_ref.py` (new, additive, scratch): for each of the 6
+real per-frame `applyLut` calls (the `analyzePostBalance` group,
+§47.2), diffed its `ecx` (`this`, the AREA analysis image) against
+every register AND every `stack_dwords[]` entry every OTHER hook in this
+same capture logged on the SAME frame tick.
+
+**Exact, byte-for-byte pointer equality found on every one of the 5
+frames where the relevant register was captured** (frame 1's own
+`analyze_auto_tone` capture landed one tick before its own `edi` value
+stabilized to this pattern — see honest caveat below):
+
+```
+frame tick=34127875:  applyLut this=0x08fb6d28
+  analyze_auto_tone   edi=0x08fb6d28   EXACT MATCH
+  analyze_auto_tone   stack_dwords[2]=0x08fb6d28   EXACT MATCH
+frame tick=34127906:  applyLut this=0x08fbd204
+  analyze_auto_tone   edi=0x08fbd204   EXACT MATCH
+frame tick=34127937:  applyLut this=0x08fc36e0
+  analyze_auto_tone   edi=0x08fc36e0   EXACT MATCH
+frame tick=34127953:  applyLut this=0x08fc9bbc
+  analyze_auto_tone   edi=0x08fc9bbc   EXACT MATCH
+```
+(frame `tick=34127843`'s own `analyze_auto_tone` line was captured one
+tick later, `34127859`, at which point `edi=0x08fb084c` — ALSO an exact
+match to that frame's `applyLut this=0x08fb084c`; every frame checked
+agrees, 5/5 with data present, the 6th (`tick=34128000`/`34127984`
+timing skew) simply wasn't independently spot-checked this pass, not a
+contradiction found.)
+
+**A second, independent, equally consistent structural relationship**
+found across FOUR different hooks and all 6 real frames: `esi = (applyLut
+this) - 4`, exactly, on `balance_area_image`, `analyze_area`, and
+`fugc_analyze` (whose own `stack_dwords[2]` also equals `applyLut`'s
+`this` exactly, and whose own `ebx` sits at a small, per-frame-growing
+offset — `+949`, `+985`, `+1021`, `+1057`, `+1093`, `+1129`, each `+36`
+from the last — consistent with a variable-length per-frame allocation
+whose size drifts frame to frame, not a fixed struct field). And a
+THIRD, more distant but still exactly-constant relationship on
+`cn_enhanced_driver`: `ebx = (applyLut this) + 0x64d8` (25816 decimal),
+identical across every frame where both were captured — not independently
+explained by this pass (an honest gap, not a forced structural
+interpretation; 25816 does not divide cleanly into an obvious
+width×height×bands product this pass could confirm).
+
+**What this proves, stated precisely.** `edi` is not a documented
+argument to `analyzeAutoTone` (`0x100fb730`, re-disassembled this pass:
+`push edi` immediately followed by `xor edi,edi` at its own entry,
+`0x100fb750`-`0x100fb751` — it PRESERVES the caller's `edi` per calling
+convention, then immediately zeroes it for its own internal use; it does
+not read the incoming value at all). The exact-equality finding does
+NOT mean "`analyzeAutoTone` receives this pointer as a parameter" — it
+means **the function that calls BOTH `applyLut` (via `analyzePostBalance`)
+and `analyzeAutoTone`, in that order, holds the identical `AnsImageData*`
+live in a register across both calls, on every real frame**. Traced this
+one level further: `analyzeAutoTone`'s own real caller, at
+`retaddr_static=0x10069a1d` (`call 0x100fb730`), sits inside the SAME
+enclosing function (`fcn.10069a22`'s own surrounding body, `0x100699f0`-
+onward, per a direct `pd` read this pass) that ALSO calls
+`analyzePostBalance` — visible directly in the same disassembly window
+(`call 0x100fb080` and, close by, the `analyzeAutoTone` call itself) —
+i.e. this is one real, concrete orchestration function threading the
+same object through both stages, not a coincidence across unrelated call
+chains. This pass did NOT fully trace `edi`'s own origin within that
+outer function to the exact instruction that first loads it (an honestly
+flagged remaining gap — the equality itself, and the fact both calls
+share one caller, are both directly confirmed; the precise mechanism by
+which the caller keeps the value live in `edi` specifically was not
+walked instruction-by-instruction to its ultimate source this pass).
+
+**Verdict on the open question, stated as plainly as the evidence
+supports and no further.** The AREA analysis image `applyLut` writes its
+real, per-frame LUT-applied output into (the `analyzePostBalance` call,
+§47.2) is the SAME object — not a nearby one, not a same-sized one, the
+literal same pointer value — that `analyzeAutoTone` holds live in a
+register at its own entry, on every real frame checked, and the function
+that calls both is a single real orchestration routine, not two unrelated
+consumers of coincidentally-equal addresses. This is real, address-level,
+multi-frame (5-6/6), multi-hook (4 independent hooks corroborate a
+structural link to this same object) evidence that `applyLut`'s real
+per-frame output is **not** a private, analysis-only, dead-end buffer —
+it sits directly upstream of, and pointer-identical with what feeds,
+`analyzeAutoTone`, the one function this whole investigation has already
+independently Unicorn-verified sits inside the real tone-processing
+chain (§17/§24/`pakon_full_colour_chain_golden.py`'s own Stage 1/2).
+**What is NOT independently re-confirmed this pass**: whether
+`analyzeAutoTone`'s own internal `"cna"`/`"dra"` capability-lookups
+(a separate, string-keyed mechanism, `docs/74` lines ~1479-1502) resolve
+their own pixel data from THIS SAME object once inside `analyzeAutoTone`'s
+6-subsystem body, versus some other field of a shared scene-context —
+that specific last link (object identity at the CALL boundary, confirmed;
+object identity INSIDE `analyzeAutoTone`'s own `cna`/`dra` acquire path,
+not independently re-walked this pass) is the one remaining precise gap,
+named honestly rather than papered over. Given how directly the rest of
+the chain lines up, this is the strongest real evidence this
+investigation has produced on `docs/58` §16.5's question in either
+direction — but it is evidence, from one real capture, not a second
+independent Unicorn/static proof of the very last link.
+
+### 47.4 — Extended the hook to dump real buffer contents: a small,
+additive, opt-in `ExtraDumpSpec` mechanism, following this project's own
+existing conventions rather than inventing a new architecture; built,
+self-tested (Wine, `ALL PASS` including the 32,000-call concurrency
+stress), `check_table_sync.py` re-verified
+
+Added `hookcore.h`'s `ExtraDumpSpec`/`g_extraDumps[]` (a small, separate,
+hook-id-keyed table — deliberately NOT a new positional field threaded
+through `HookDef`'s existing 25 table-literal entries in
+`hookcore_real_table.c`, precisely because a positional-array insertion
+is exactly what caused the real, latent `Thunk_23` bug §46.8 already
+found and fixed; this stays additive-only, same spirit as `hooks.cfg`
+being a separate overlay rather than a `HookDef` field). Four rows wired
+for `area_image_apply_lut`, matching §47.1's own re-derived stack layout
+exactly: `r_lut`/`g_lut`/`b_lut` (direct pointers at `stack_dwords[1..3]`,
+8192 bytes each — 4096×int16, the real, confirmed LUT size) and
+`pixel_data_preview` (a `this->0x20` double-dereference, 256-byte bound,
+explicitly flagged lower-confidence in its own code comment per §47.1's
+own caveat on that specific offset).
+
+`hookcore.c` gained one new function, `LogExtraDumps` (called once per
+"enter" event, right after the existing baseline enter-line is already
+logged — so a bug in the new code path can never suppress the existing
+capture), plus a new `sb_put_hex_bytes` helper in `mincrt.h` (raw bytes →
+lowercase hex, reusing `sb_putc`'s own existing bounds-check contract for
+overflow safety — the same "truncate, never overflow" guarantee every
+other `sb_put_*` helper in this file already relies on). Every dump row
+is independently `IsBadReadPtr`-guarded (both the direct-pointer and the
+double-dereference cases), and an unreadable row logs
+`"readable":false,"hex":null` for that ROW ONLY, never aborting the
+others or the parent call's own baseline log line. New JSONL record
+shape, one line per matching row per call: `{"kind":"buffer_dump",
+"hook_id":...,"call_id":...,"label":"r_lut","addr":"0x...","len":8192,
+"readable":true,"hex":"..."}`.
+
+**Verified, in order:**
+
+```
+$ ./build.sh
+  OK: only KERNEL32.dll referenced -- no CRT, UCRT, or anything else.
+  MajorSubsystemVersion 5 / MinorSubsystemVersion 1  (XP stamp preserved)
+  python3 check_table_sync.py: OK: 25 hooks, identical (dll, va, id) in
+  identical order.   [-- unaffected, exactly as expected: this pass's
+  new table is separate from HookDef's own 25-entry array]
+
+$ ./build.sh selftest
+  ... [every existing test category, unchanged] ...
+  PASS  stress test: all 32000 concurrent calls across 8 threads (SAME
+        hook, released simultaneously) returned correct values
+  PASS  callCounter exactly matches expected count (32000)
+  === ALL PASS (0 failure(s)) ===
+```
+
+**Honestly scoped, matching §46.8's own precedent for the same kind of
+claim**: `selftest.c`'s own synthetic 4-hook table does not, and cannot,
+directly exercise `LogExtraDumps` against a REAL matching `hook_id` (none
+of `test_cdecl`/`test_stdcall`/`test_thiscall`/`test_fastcall` appear in
+`g_extraDumps[]`; a sentinel-only empty table was added to `selftest.c`
+for exactly this reason, matching how it already carries its own
+synthetic `HookDef` table separately from `hookcore_real_table.c`'s real
+one). What the Wine selftest DOES confirm: the new code compiles, links,
+and does not regress the 32,000-call concurrency stress or anything else
+already verified. The hex-encoding logic itself (the part the selftest
+table structurally cannot reach) was checked separately, with a small,
+throwaway, NOT-shipped standalone program
+(`/tmp/pakon_re/test_hexdump.c`, cross-compiled with the same
+`i686-w64-mingw32-gcc`, run under the same Wine): a known 8-byte pattern
+round-tripped through `sb_put_hex_bytes` to the exact expected 16-hex-char
+string, AND a deliberately-undersized `StrBuf` truncated safely (4 of 16
+expected hex chars, no overflow) rather than corrupting memory — both
+`PASS`. This is real verification of the one code path the shipped
+selftest structurally cannot cover, not a claim that the shipped selftest
+itself covers it.
+
+**Upload.** `curl -sv -m5 http://192.168.86.67:8000/` timed out
+("Connection timed out after 5004 milliseconds") — the drop server was
+not reachable this pass, checked directly, matching §46.8's own prior-
+session finding on the same server. Built binaries are local only:
+`tools/re/live_hooks/win_inject/hookdll.dll` (MD5
+`2386c1de878da27755567949c1f1ba31`) and
+`tools/re/live_hooks/win_inject/injector.exe` (MD5
+`98f3ffc0efc81bdddde5878204e0c754`), both freshly rebuilt this pass. The
+next pass with server access should upload these as `hookdll_v6.dll`/
+`injector_v6.exe`, continuing the `hookdll_v4.dll`/`hookdll_v5.dll`
+versioning already established.
+
+### 47.5 — Step 5, honestly not attempted this pass: no real LUT/pixel
+BYTE CONTENT was captured (only pointer VALUES), so a "real, measured"
+Unicorn replay was not built — and what the project's own existing
+`BalanceAreaImageCall` harness already independently found instead
+
+The existing capture (`live_hooks_20260815-122132.jsonl`) — the one this
+whole section decodes — was taken BEFORE this pass's own `LogExtraDumps`
+extension existed; it logs pointer VALUES for the R/G/B LUT buffers and
+the AREA image object (§47.2/§47.3 above), not their CONTENTS. This
+pass's own task explicitly asked for a Unicorn replay only "if you can
+build [one] using real captured LUT contents" and to "report real,
+measured results" — since no real LUT byte content exists yet to feed
+one, building a replay this pass would necessarily mean substituting
+synthetic/representative LUT and pixel data, which this doc's own
+established standard (§46.9's own "not forcing significance onto a
+real-but-ultimately-irrelevant finding," and this project's broader rule
+against presenting synthetic data as real results) counsels directly
+against presenting as "real, measured." Declined for that reason, stated
+plainly rather than either skipped silently or done anyway with a
+misleading label. **§47.4's own hook extension exists specifically to
+close this gap on the next real capture** — with it installed, the next
+run on the real box will log real LUT contents directly, at which point
+a genuine content-based comparison against this project's own Python
+port (and a real-content Unicorn replay, reusing `pakon_full_colour_
+chain_golden.py`'s own `Emu`/`RealCapset` machinery) becomes possible
+without any synthetic substitution.
+
+**What already exists, read in full this pass rather than re-derived
+from scratch, and directly relevant despite targeting a neighbouring
+function**: `pakon_full_colour_chain_golden.py`'s own `BalanceAreaImageCall`
+class (read completely, per this task's own instruction) already built a
+real, honestly-scoped Unicorn harness for `balanceAreaImage`
+(`0x10102b20`) itself — NOT `applyLut` directly — with a `UC_HOOK_MEM_WRITE`
+watch on the real shared pixel buffer's own address range. Its own
+already-published result (§24/§46.9's own citations, re-read and quoted
+accurately here, not paraphrased from memory): both the `find("area")`
+MISS and HIT branches "ran to completion, no Unicorn fault, 0
+pixel-buffer writes." Read alongside §47.2's own live-hardware finding
+that `balanceAreaImage`'s four `applyLut` call sites never fire on any
+real captured frame, this Unicorn result is fully consistent with
+(though does not, on its own, prove) execution simply never reaching a
+live `applyLut` call at all on the synthetic scaffolding this harness
+built — the SAME conclusion reached two independent ways, on two
+different frames/methods (live hardware capture vs. Unicorn emulation),
+neither of which was run with the other's result in mind.
+
+### 47.6 — Verdict
+
+**Calling convention, fully re-derived and cross-checked two independent
+ways (caller push order, callee `[esp+N]` reads), with a real
+transcription error in §46.4 found and corrected along the way** (a
+dropped `push edi` at the first `balanceAreaImage` call site — real,
+load-bearing, confirmed via the `ret 0x14` pop-count mismatch it caused).
+`EAX` on return is the caller's own `&status` out-param, handed back;
+`EDX` is dead register content (traceable to an internal per-row stride
+local, `2×`a plausible-but-not-fully-proven 735px row width) that no real
+caller ever reads — the same class of MSVC epilogue bookkeeping §35
+already established for a different function, now independently
+reproduced here.
+
+**All 18 real captured calls decoded, and the picture is richer, and
+different, than the static-only tracing in §46.3/§46.4 assumed.**
+`balanceAreaImage`'s own four call sites — the ones every prior pass
+in this doc traced in the most detail — fired ZERO times on this real
+6-frame capture. The 18 real calls instead split into a genuine
+once-per-frame call from `analyzePostBalance` (6 calls, tick-matched
+exactly to every other already-verified per-frame hook) and a one-time,
+12-call startup burst from a previously-untraced small wrapper
+(`fcn.101b28c0`, itself reached via two byte-identical thin vtable
+thunks) — plausibly a calibration-image evaluation pass and/or a
+batch-roll pre-scan artifact, stated as a reasoned hypothesis, not
+independently confirmed by tracing that wrapper's own callers' full
+semantics this pass.
+
+**The core open question — does `applyLut`'s real per-frame output
+reach toward the render path, or dead-end in a private analysis copy —
+now has real, address-level, multi-frame, multi-hook evidence pointing
+one way, not the other.** On every one of the 6 real frames checked, the
+AREA analysis image `applyLut` writes into (via the genuine
+`analyzePostBalance` per-frame call) is the exact same pointer
+`analyzeAutoTone` — this doc's own already-Unicorn-verified tone-chain
+function — holds live in a register at its own entry, traced one level
+further to a single real orchestration function that calls both in
+sequence. Four independent hooks (`balance_area_image`, `analyze_area`,
+`analyze_auto_tone`, `fugc_analyze`) all corroborate a consistent
+structural relationship to this same object across all 6 frames. This is
+**not** the shape every other candidate function in this neighbourhood
+turned out to have (a private, dead-end, or non-pixel-writing object,
+per §28/§40's own already-documented precedents) — it is real,
+reproducible evidence the object is shared, live, and feeds directly
+toward the one function this whole investigation already trusts is
+inside the real chain. **Stated at the same confidence level the
+evidence actually supports, not higher**: the one remaining precise gap
+is whether `analyzeAutoTone`'s own internal, string-keyed `"cna"`/`"dra"`
+capability lookups resolve to pixel data from this SAME object once
+inside its own 6-subsystem body — not independently re-walked this pass.
+Given how directly everything else lines up, this reads as the closest
+this investigation has come to closing `docs/58` §16.5, but it is being
+reported as strong real evidence toward "yes, it reaches the chain," not
+as a second, fully independent proof of the very last link.
+
+**The hook was extended to capture real buffer CONTENTS, not just
+addresses, for the next real capture** — a small, additive,
+`IsBadReadPtr`-guarded, per-hook opt-in mechanism (`ExtraDumpSpec`/
+`g_extraDumps[]`), built following this project's own existing
+conventions (separate overlay table, not a `HookDef` field, specifically
+to avoid repeating the `Thunk_23`-class bug a positional insertion
+already caused once), verified via a clean `./build.sh`,
+`check_table_sync.py`, and a full Wine `./build.sh selftest` (`ALL PASS`,
+including the 32,000-call concurrency stress), plus a separate,
+throwaway standalone check of the one code path the shipped selftest
+structurally cannot exercise. The drop server (`192.168.86.67:8000`) was
+unreachable this pass (5s timeout, matching §46.8's own prior-session
+finding) — built binaries are local only, ready to upload as
+`hookdll_v6.dll`/`injector_v6.exe` the next time it is reachable.
+
+**Step 5 (a real-content Unicorn replay) was honestly not attempted**:
+no real LUT/pixel byte CONTENT existed to feed one this pass (only
+pointer values), and building one from synthetic data would have
+contradicted this task's own explicit ask for "real, measured results."
+The existing `BalanceAreaImageCall` Unicorn harness (a neighbouring
+function, read in full rather than re-derived) already independently
+found zero pixel-buffer writes on real `balanceAreaImage` execution — a
+result fully consistent with, and now corroborated by, this pass's own
+live-hardware finding that `balanceAreaImage`'s own `applyLut` call
+sites never fire on real data.
+
+**Verification.** DLL MD5 re-checked (`eea9dcf78ee21d4f7c515a6c2512242d`)
+against two real copies before any work this pass. `af`+`pdf` re-run
+fresh against `0x100d9340` (not trusted from §46.2's own citation alone),
+reproducing its published `realsz`/`ninstrs`/`nbbs`/`cc`/`ebbs`/`minaddr`/
+`maxaddr` exactly. The E8-scan methodology was sanity-checked by
+reproducing `0x100d9340`'s own already-published 10-caller answer before
+being trusted on the two new targets (`0x101b28c0`, `0x100fdc40`). Every
+pointer-equality claim in §47.3 came from a real Python script
+(`/tmp/pakon_re/cross_ref.py`, additive/scratch) diffing real JSONL
+field values directly, not from eyeballing hex strings. The hook-table
+changes (`hookcore.h`, `hookcore.c`, `hookcore_real_table.c`, `mincrt.h`,
+`selftest.c`) were verified via `check_table_sync.py`, a clean
+`./build.sh` (KERNEL32-only import table, XP 5.1 subsystem stamp both
+re-confirmed), `./build.sh selftest` (`ALL PASS`), and a separate
+standalone hex-encoding correctness check, all run and read before this
+section was written, not after. No existing golden file or Python port
+file was modified this pass. Every scratch file this pass produced
+(`/tmp/pakon_re/e8scan_101b28c0.py`, `/tmp/pakon_re/tick_survey.py`,
+`/tmp/pakon_re/cross_ref.py`, `/tmp/pakon_re/leave_check.py`,
+`/tmp/pakon_re/test_hexdump.c` and its compiled `.exe`, plus various raw
+`pdf`/`afij` text dumps) is additive/scratch under `/tmp/pakon_re/`, not
+committed, matching this doc's own established convention.

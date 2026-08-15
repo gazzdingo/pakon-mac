@@ -161,6 +161,21 @@ static void sb_put_hex8_quoted(StrBuf *sb, unsigned long v) {
     sb_putc(sb, '"'); sb_puts(sb, "0x"); sb_put_hex8(sb, v); sb_putc(sb, '"');
 }
 
+/* Raw byte buffer -> lowercase hex string, UNQUOTED (caller wraps in its
+ * own quotes so it can also emit a preceding `"hex":` key etc). Used by
+ * hookcore.c's extra-dump feature (docs/74 SS47) to serialize full LUT
+ * buffer contents; relies on sb_putc's own bounds check (sb->len <
+ * sb->cap - 1) for safety, same as every other sb_put_* helper here --
+ * a buffer sized too small truncates rather than overflows. */
+static void sb_put_hex_bytes(StrBuf *sb, const unsigned char *p, int n) {
+    static const char *hexd = "0123456789abcdef";
+    int i;
+    for (i = 0; i < n; i++) {
+        sb_putc(sb, hexd[(p[i] >> 4) & 0xF]);
+        sb_putc(sb, hexd[p[i] & 0xF]);
+    }
+}
+
 /* Writes a JSON string literal, with escaping, from a plain C string. */
 static void sb_put_json_str(StrBuf *sb, const char *s) {
     sb_putc(sb, '"');

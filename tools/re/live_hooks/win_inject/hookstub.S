@@ -110,11 +110,16 @@ _SharedEntryHandler:
  * --------------------------------------------------------------------- */
     .globl _OnReturnThunk
 _OnReturnThunk:
+    /* pushfd MUST be the very first instruction here -- see the fix note
+     * below. It captures the REAL EFLAGS the hooked function set immediately
+     * before its own `ret`/`ret N` (the standard x86-on-Windows rule that,
+     * like EAX/EDX, is convention-independent). */
+    pushfd
     push    ebp
     mov     ebp, esp
-    sub     esp, 16                 /* [ebp-4]=eax [ebp-8]=edx [ebp-12]=eflags [ebp-16]=realRetAddr */
-    pushfd
-    pop     dword ptr [ebp-12]
+    sub     esp, 12                 /* [ebp-4]=eax [ebp-8]=edx [ebp-12]=realRetAddr;
+                                        real eflags sit at [ebp+4] (pushed
+                                        before ebp, above it in this frame) */
     mov     [ebp-4], eax
     mov     [ebp-8], edx
 
@@ -122,17 +127,31 @@ _OnReturnThunk:
     push    eax
     call    _LogExitC
     add     esp, 8
-    mov     [ebp-16], eax           /* real original return address */
+    mov     [ebp-12], eax           /* real original return address */
 
     mov     eax, [ebp-4]            /* restore the function's real return value */
     mov     edx, [ebp-8]
-    push    dword ptr [ebp-12]
-    popfd
-    mov     ecx, [ebp-16]           /* jump target -- ECX is caller-clobberable
+    mov     ecx, [ebp-12]           /* jump target -- ECX is caller-clobberable
                                         on every relevant convention, safe scratch */
     mov     esp, ebp
-    pop     ebp
+    pop     ebp                     /* esp now -> the eflags dword pushed first */
+    popfd                           /* restore the REAL eflags (see fix note above) */
     jmp     ecx
+    /* FIX (2026-08-15): the original version here did `sub esp, 16` --
+     * which sets EFLAGS via its own subtraction result -- BEFORE its own
+     * `pushfd`, so it captured and later restored its OWN clobbered flags
+     * instead of the hooked function's genuine return-time flags. In
+     * practice this is unlikely to be the primary cause of any crash seen
+     * so far (no mainstream x86 Windows calling convention or compiler
+     * treats EFLAGS as preserved across a `call` boundary -- MSVC and GCC
+     * both treat flags as fully clobbered by any call), but it is a real,
+     * confirmed discrepancy from this file's own documented contract
+     * ("preserve EAX/EDX/EFLAGS across the C call"), found by reading this
+     * exact sequence very carefully while investigating the
+     * icc_effect_op/icc_xform_apply "stops mid-loop" failures, and fixed
+     * on the same pass since it costs nothing extra (same instruction
+     * count, just reordered) and there's no reason to ship a known-wrong
+     * flags value instead of a known-correct one. */
 
 /* ---------------------------------------------------------------------
  * Thunk_00 .. Thunk_22 -- 23 fixed slots (HOOKCORE_MAX_HOOKS in

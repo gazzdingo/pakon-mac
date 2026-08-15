@@ -63,6 +63,46 @@ typedef struct ShadowStack {
     ShadowFrame frames[SHADOW_STACK_DEPTH];
 } ShadowStack;
 
+/* ---------------------------------------------------------------------
+ * General runtime guard against the exact corruption mechanism found
+ * 2026-08-15: `sba_set_shifts_12`, `icc_effect_op_ctor`, `tla_baddscene`,
+ * `tla_colneg_planar_scan`, and `tla_colneg_mmx_kernel` were all found
+ * (via a fresh r2 `af`+`axt` cross-reference pass against the verified
+ * vendor DLLs -- see hookcore_real_table.c's citations and this session's
+ * own writeup) to NOT be independently call-reachable function entries --
+ * they are internal branch/fallthrough targets inside a DIFFERENT, larger
+ * function. Those five are now disabled by default (`notCallReachable`,
+ * see hookcore.h), but that is a per-address fix, and this table was
+ * carried over verbatim from agent.js without ever re-checking THIS
+ * specific precondition for every entry -- there is no reason to assume
+ * every remaining hook (or every hook added in the future) has been
+ * checked this thoroughly. This function is the GENERAL fix: it validates,
+ * at the moment a call actually happens, that the DWORD HookEntryC is
+ * about to trust as "the real return address" and unconditionally
+ * overwrite with `OnReturnThunk` actually looks like a real code address
+ * (committed, executable memory) before the swap is performed. A hooked
+ * address reached via anything other than a genuine `call` (fallthrough,
+ * an internal jmp/jcc) will have essentially arbitrary data sitting in
+ * that stack slot -- a pointer, a float, a small integer -- which very
+ * rarely also happens to satisfy "committed + executable", so this check
+ * catches exactly the failure mode that (most likely) explains this
+ * harness's repeated "stops mid-loop under load, no shutdown message"
+ * failures: the engine corrupting a stack slot that was never really a
+ * return address in the first place. Cost: one VirtualQuery syscall per
+ * exit-hooked call, same order of magnitude as the IsBadReadPtr check
+ * already on this same hot path -- a real, non-zero cost, accepted
+ * because the alternative (skip the check) is committing to overwrite
+ * live memory whose true meaning we cannot otherwise confirm. */
+static BOOL LooksLikeCodeAddress(void *addr) {
+    MEMORY_BASIC_INFORMATION mbi;
+    DWORD execMask = PAGE_EXECUTE | PAGE_EXECUTE_READ |
+                      PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+    if (addr == NULL) return FALSE;
+    if (VirtualQuery(addr, &mbi, sizeof(mbi)) != sizeof(mbi)) return FALSE;
+    if (mbi.State != MEM_COMMIT) return FALSE;
+    return (mbi.Protect & execMask) != 0;
+}
+
 static ShadowStack *GetShadowStack(HookEngine *eng) {
     ShadowStack *ss = (ShadowStack *)TlsGetValue(eng->tlsShadowStack);
     if (ss == NULL) {
@@ -81,13 +121,57 @@ static ShadowStack *GetShadowStack(HookEngine *eng) {
  * analysis habits from the Frida sessions carry over directly.
  * --------------------------------------------------------------------- */
 
-static void LogLine(HookEngine *eng, const char *line) {
+/* How many hot-path (per-call) lines to let accumulate in the OS file
+ * cache before an explicit FlushFileBuffers -- see the header comment
+ * above LogLine for why this exists and why it's safe. */
+#define HOTPATH_FLUSH_EVERY_N_LINES 200
+
+/* forceFlush: TRUE for low-frequency events (status/hook_installed/
+ * hook_failed -- a handful of lines total, worth an immediate durable
+ * write for install-time diagnosis). FALSE for the hot per-call entry/exit
+ * path (HookEntryC/LogExitC): a real, measured problem was found here --
+ * an earlier version of this function called FlushFileBuffers() on EVERY
+ * line while holding eng->logLock, meaning every single hooked call, on
+ * every thread, serialized behind a synchronous disk-flush syscall inside
+ * a global lock. For a hook on a demonstrated per-pixel/per-scanline hot
+ * path (e.g. tlb_polypixel -- see hookcore_real_table.c), called from
+ * multiple threads only tens of ticks apart, that is real, avoidable
+ * latency and cross-thread serialization injected into a live scan by
+ * this tooling itself -- exactly the kind of self-inflicted timing
+ * perturbation that could destabilize a vendor pipeline with any
+ * real-time producer/consumer assumption between hardware data delivery
+ * and per-pixel software processing, independent of anything about the
+ * hooked function itself. FlushFileBuffers only protects against losing
+ * the last few lines if the *operating system* goes down before the OS's
+ * own lazy-writer flushes its page cache to disk; it does NOT protect
+ * against PSI.exe (the hooked *process*) crashing or hanging -- the OS
+ * page cache survives a process crash/hang untouched and is written back
+ * on its own schedule regardless of what this DLL does. So skipping the
+ * per-line flush costs nothing in the one failure mode (PSI.exe going
+ * down) this harness actually exists to capture, while removing the most
+ * expensive syscall from the hottest path. A periodic flush every
+ * HOTPATH_FLUSH_EVERY_N_LINES still runs (outside any single call's
+ * critical-section hold beyond the write itself) so a long session still
+ * gets bounded, non-zero durability against the OS-crash case too, and
+ * HookCore_Shutdown still flushes unconditionally on a clean exit. */
+static void LogLine(HookEngine *eng, const char *line, BOOL forceFlush) {
     DWORD written;
+    BOOL doFlush;
     if (eng->logFile == NULL || eng->logFile == INVALID_HANDLE_VALUE) return;
     EnterCriticalSection(&eng->logLock);
     WriteFile(eng->logFile, line, (DWORD)mc_strlen(line), &written, NULL);
     WriteFile(eng->logFile, "\r\n", 2, &written, NULL);
-    FlushFileBuffers(eng->logFile);
+    doFlush = forceFlush;
+    if (!doFlush) {
+        eng->unflushedLines++;
+        if (eng->unflushedLines >= HOTPATH_FLUSH_EVERY_N_LINES) {
+            eng->unflushedLines = 0;
+            doFlush = TRUE;
+        }
+    } else {
+        eng->unflushedLines = 0;
+    }
+    if (doFlush) FlushFileBuffers(eng->logFile);
     LeaveCriticalSection(&eng->logLock);
 }
 
@@ -102,7 +186,7 @@ void HookCore_LogStatus(HookEngine *eng, const char *msg) {
     sb_puts(&sb, ",\"message\":");
     sb_put_json_str(&sb, msg);
     sb_puts(&sb, "}");
-    LogLine(eng, line);
+    LogLine(eng, line, TRUE); /* status messages are rare -- flush immediately */
 }
 
 static void LogHookInstalled(HookEngine *eng, int i, BOOL ok, const char *err) {
@@ -138,7 +222,7 @@ static void LogHookInstalled(HookEngine *eng, int i, BOOL ok, const char *err) {
         sb_put_u32_dec(&sb, GetTickCount());
         sb_puts(&sb, "}");
     }
-    LogLine(eng, line);
+    LogLine(eng, line, TRUE); /* install-time events are rare -- flush immediately */
 }
 
 /* ---------------------------------------------------------------------
@@ -166,14 +250,16 @@ void HookCore_LoadConfig(HookEngine *eng, const char *configDir) {
     }
 
     for (i = 0; i < eng->count; i++) {
-        eng->rt[i].enabled = eng->defs[i].approximate ? 0 : 1;
+        eng->rt[i].enabled =
+            (eng->defs[i].approximate || eng->defs[i].hotPathDisabled ||
+             eng->defs[i].notCallReachable) ? 0 : 1;
         eng->rt[i].exitEnabled = eng->defs[i].wantExitDefault;
     }
 
     f = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL,
                      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f == INVALID_HANDLE_VALUE) {
-        HookCore_LogStatus(eng, "no hooks.cfg found next to the DLL -- using built-in defaults (approximate-address hooks off, others on, exit per wantExitDefault)");
+        HookCore_LogStatus(eng, "no hooks.cfg found next to the DLL -- using built-in defaults (approximate-address and hot-path-disabled-by-default hooks off, others on, exit per wantExitDefault)");
         return;
     }
 
@@ -242,6 +328,7 @@ BOOL HookCore_Init(HookEngine *eng, const char *configDir) {
     InitializeCriticalSection(&eng->logLock);
     eng->tlsShadowStack = TlsAlloc();
     eng->callCounter = 0;
+    eng->unflushedLines = 0;
 
     haveEnv = GetEnvironmentVariableA("HOOKDLL_LOG_PATH", envBuf, MAX_PATH) > 0;
 
@@ -425,29 +512,55 @@ void *HookEntryC(DWORD hookIndex, HookRegs *regs, void *realRetAddr,
     sb_puts(&sb, ",\"stack_dwords\":[");
     sb_puts(&sb, stackBuf);
     sb_puts(&sb, "]}");
-    LogLine(eng, line);
+    LogLine(eng, line, FALSE); /* hot path -- see LogLine's header comment */
 
     if (r->exitEnabled) {
-        ShadowStack *ss = GetShadowStack(eng);
-        if (ss != NULL && ss->top < SHADOW_STACK_DEPTH) {
-            ShadowFrame *fr = &ss->frames[ss->top++];
-            fr->hookIndex = hookIndex;
-            fr->callId = (DWORD)callId;
-            fr->realRetAddr = realRetAddr;
-            fr->entryTick = GetTickCount();
-            *outSwapAddr = (void *)&OnReturnThunk;
-        } else {
+        if (!LooksLikeCodeAddress(realRetAddr)) {
+            /* See LooksLikeCodeAddress's own header comment. realRetAddr
+             * does not look like a real code address, meaning this call
+             * almost certainly did not arrive via a genuine `call`
+             * instruction -- committing the return-address swap here would
+             * overwrite live data belonging to whatever function actually
+             * put this value on the stack, exactly the corruption mechanism
+             * found 2026-08-15 for several now-disabled hook_ids. Falling
+             * back to entry-only logging for this call is always safe;
+             * this is loud (not silent) because it means either a
+             * not-yet-audited hook has the same problem, or something
+             * genuinely unexpected happened for a hook believed to be a
+             * real function entry -- both worth investigating. */
             char msg[256];
             StrBuf msgSb;
             sb_init(&msgSb, msg, sizeof(msg));
-            sb_puts(&msgSb, "shadow stack full or unavailable on tid ");
-            sb_put_u32_dec(&msgSb, GetCurrentThreadId());
-            sb_puts(&msgSb, " for hook_id=");
+            sb_puts(&msgSb, "realRetAddr does not look like a real code address for hook_id=");
             sb_puts(&msgSb, d->id);
             sb_puts(&msgSb, " call_id=");
             sb_put_i32_dec(&msgSb, callId);
-            sb_puts(&msgSb, " -- falling back to entry-only for this call");
+            sb_puts(&msgSb, " retaddr=0x");
+            sb_put_hex8(&msgSb, (unsigned long)(DWORD_PTR)realRetAddr);
+            sb_puts(&msgSb, " -- this call almost certainly was NOT reached via a real `call` instruction; declining the return-address swap (would corrupt live stack data) and falling back to entry-only for this call. This hook_id likely needs `notCallReachable` treatment -- see hookcore.h/README.");
             HookCore_LogStatus(eng, msg);
+        } else {
+            ShadowStack *ss = GetShadowStack(eng);
+            if (ss != NULL && ss->top < SHADOW_STACK_DEPTH) {
+                ShadowFrame *fr = &ss->frames[ss->top++];
+                fr->hookIndex = hookIndex;
+                fr->callId = (DWORD)callId;
+                fr->realRetAddr = realRetAddr;
+                fr->entryTick = GetTickCount();
+                *outSwapAddr = (void *)&OnReturnThunk;
+            } else {
+                char msg[256];
+                StrBuf msgSb;
+                sb_init(&msgSb, msg, sizeof(msg));
+                sb_puts(&msgSb, "shadow stack full or unavailable on tid ");
+                sb_put_u32_dec(&msgSb, GetCurrentThreadId());
+                sb_puts(&msgSb, " for hook_id=");
+                sb_puts(&msgSb, d->id);
+                sb_puts(&msgSb, " call_id=");
+                sb_put_i32_dec(&msgSb, callId);
+                sb_puts(&msgSb, " -- falling back to entry-only for this call");
+                HookCore_LogStatus(eng, msg);
+            }
         }
     }
 
@@ -483,7 +596,7 @@ void *LogExitC(DWORD eaxRet, DWORD edxRet) {
     sb_puts(&sb, ",\"eax\":"); sb_put_hex8_quoted(&sb, eaxRet);
     sb_puts(&sb, ",\"edx\":"); sb_put_hex8_quoted(&sb, edxRet);
     sb_puts(&sb, "}");
-    LogLine(eng, line);
+    LogLine(eng, line, FALSE); /* hot path -- see LogLine's header comment */
 
     return fr->realRetAddr;
 }

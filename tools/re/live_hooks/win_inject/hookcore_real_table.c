@@ -30,6 +30,63 @@
  * (`tla_colneg_mmx_kernel.exit=off` or `tla_colneg_mmx_kernel=off`
  * entirely) without a rebuild if a first live run shows it's too hot --
  * see README.md.
+ *
+ * hotPathDisabled (added after docs/74 SS32's real disassembly of
+ * `tlb_polypixel`/0x1000d880): a second, DISTINCT reason a confirmed-real
+ * hook can default to off, separate from `approximate`. `approximate`
+ * means "this address was never independently re-confirmed as a real
+ * function entry" -- `hotPathDisabled` means the opposite (the address IS
+ * confirmed real, by direct disassembly) but the hook is still off by
+ * default because it's a demonstrated per-pixel/per-scanline hot path AND
+ * its original live-capture purpose has since been fully resolved
+ * statically, leaving nothing left for a live trace to answer. Currently
+ * only `tlb_polypixel` sets this -- see its own citation below for the
+ * full reasoning, and hookcore.h for the field's contract.
+ *
+ * notCallReachable (added 2026-08-15, root-causing the "stops mid-loop
+ * under load, no shutdown message" failure that persisted across two real
+ * XP-box captures -- `live_hooks_20260814-110254.jsonl` (clean shutdown)
+ * and `live_hooks_20260814-112642.jsonl` (no shutdown message) -- even
+ * AFTER the FlushFileBuffers-on-every-line fix): a THIRD, separate reason,
+ * found by re-running `r2 -c 'aaa; af @ <va>; axt @ <va>'` against the
+ * MD5/sha256-verified vendor DLLs fresh (PakonIMAu.dll sha256
+ * 0ede8d9813af4ee95dddd85e5adc495a27f014a8fd4817cfbc3b3b1e107f511f per
+ * reachability.py; TLA.dll md5 33f7a247d79286a31b192e83d3c37425 and TLB.dll
+ * md5 193d9b2ce0a4b77ae9b78262bd06c0fc, both freshly extracted from the
+ * SAME `research/sdk/PAKONF135.iso` this pass -- not independently cited
+ * anywhere before this, but same verified ISO every other MD5 in this repo
+ * traces back to). Five of the (non-approximate) addresses in this table
+ * turned out to NOT be independently call-reachable function entries at
+ * all: `af` analysis starting from the documented VA walked back to an
+ * earlier, different, real function entry, and `axt` found only CODE-type
+ * (jmp/jcc) cross-references from within that enclosing function, never a
+ * CALL-type one. Hooking such an address with this engine's
+ * calling-convention-agnostic return-address-swap technique (hookstub.S)
+ * is unsafe for a reason distinct from both `approximate` (uncertain
+ * citation) and `hotPathDisabled` (certain but too hot to be worth it):
+ * the engine's one hard precondition -- "the DWORD at [esp] when a hooked
+ * address is reached is always a real return address, because the only way
+ * to reach it is via `call`" -- is simply false for these five. Reached via
+ * an internal jmp/jcc instead, [esp] holds whatever real local variable or
+ * spilled register the ACTUAL enclosing function happened to put there,
+ * and this engine's entry stub corrupts it by overwriting it with
+ * `OnReturnThunk`'s address. `sba_set_shifts_12` (see its own citation) has
+ * DIRECT LIVE EVIDENCE of exactly this happening, 3 times across the two
+ * new captures, every single time via the identical mechanism. Disabled by
+ * default regardless of `approximate`/`hotPathDisabled` -- see
+ * hookcore.h's own comment on this field for why re-enabling any of these
+ * five specific VAs is never correct (unlike `approximate`, there is
+ * nothing to "verify live" that would turn this back on; a genuinely new,
+ * independently call-reachable address for the underlying subsystem would
+ * need to be re-derived first). A SEPARATE, general engine-level guard
+ * (`LooksLikeCodeAddress` in hookcore.c, checked before every
+ * return-address swap) was added the same pass specifically so a hook NOT
+ * yet known to have this problem -- including any of the 5 TLA.dll/PakonIMAu.dll
+ * hooks below with zero resolvable r2 xrefs at all (`icc_effect_op`,
+ * `tla_baddscene`'s siblings' own callers, etc. -- indirect/vtable calls
+ * this static pass could not resolve either way) -- can't cause the same
+ * corruption; per-address disabling below is the confirmed-bad list, not
+ * the complete guarantee.
  */
 
 #include "hookcore.h"
@@ -53,99 +110,167 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "the real call-order spine: analyzeFugc -> balanceAreaImage -> "
           "analyzeArea -> analyzeAttributes -> analyzeFalloff -> "
           "analyzeAutoTone -> analyzeSharpening -> ...",
-          "docs/74 SS11 (call order), docs/62 line ~201-202", 0, 1, 0 },
+          "docs/74 SS11 (call order), docs/62 line ~201-202", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x100fb730, "analyze_auto_tone",
           "ColorNegativePath::analyzeAutoTone -- the real 6-subsystem tone "
           "chain (cna/dra/toneHelper/contrast/ast/citras). Every subsystem "
           "individually Unicorn-verified bit-exact per docs/66; this "
           "boundary hook is for correlating a live call with the port's "
           "own real_auto_tone() on the same frame.",
-          "docs/63, docs/65, docs/66, docs/74 (address repeated throughout)", 0, 1, 0 },
+          "docs/63, docs/65, docs/66, docs/74 (address repeated throughout)", 0, 1, 0, 0, 0 },
 
         /* ---- SBA / balance ---- */
         { "PakonIMAu.dll", 0x10100260, "sba_set_shifts",
           "ColorNegativePath::setShifts -- reads via getShifts, writes the "
           "3x int16 OUT balance-shift buffer this whole tone chain anchors "
-          "to (the \"SBA neutral-balance output\" the task asks for).",
-          "tools/ansel/python-pipeline/pakon_sba_apply.py module docstring", 0, 1, 0 },
+          "to (the \"SBA neutral-balance output\" the task asks for). "
+          "Re-confirmed 2026-08-15 as a genuine, independently call-reachable "
+          "entry (r2 `axt` finds 3 real CALL xrefs, `af` resolves to its own "
+          "address exactly) -- unlike sba_set_shifts_12 immediately below, "
+          "which lives INSIDE this same function's body.",
+          "tools/ansel/python-pipeline/pakon_sba_apply.py module docstring; "
+          "r2 af/axt re-check 2026-08-15", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x10100a37, "sba_set_shifts_12",
           "setShifts real closed-form entry for the shipped CN control "
-          "words (ntdChoice,ctdChoice)=(1,2) -- PATH_SET_SHIFTS_12.",
-          "pakon_sba_apply.py: PATH_SET_SHIFTS_12 = 0x10100A37", 0, 1, 0 },
+          "words (ntdChoice,ctdChoice)=(1,2) -- PATH_SET_SHIFTS_12. "
+          "CONFIRMED 2026-08-15 NOT an independently call-reachable function: "
+          "`r2 -c 'aaa; axt @ 0x10100a37' PakonIMAu.dll` finds exactly ONE "
+          "xref in the whole binary -- `fcn.10100260 0x101008e1 [CODE:--x] "
+          "jne 0x10100a37` -- a plain conditional jump FROM WITHIN "
+          "sba_set_shifts's (0x10100260) own body, zero CALL-type xrefs "
+          "anywhere. Live evidence this actually corrupts data: in BOTH new "
+          "2026-08-14 captures, every single time this hook fires (3 times "
+          "total, tid 3020/3452 in the clean run, tid 1556 in the crashed "
+          "run), the PARENT sba_set_shifts call's own shadow-stack frame is "
+          "permanently orphaned right afterward -- its \"leave\" event never "
+          "gets logged, and (in 2 of 3 cases) that OS thread never logs "
+          "another hook event again for the rest of the capture. This "
+          "engine's return-address-swap technique assumes [esp] holds a real "
+          "return address at every hooked VA; reached via an internal `jne` "
+          "instead of `call`, [esp] instead holds whatever real local "
+          "variable/spilled register setShifts's OWN code put there, which "
+          "gets overwritten with OnReturnThunk's address -- live memory "
+          "corruption inside setShifts's own stack frame. DISABLED BY "
+          "DEFAULT (notCallReachable) -- there is no live verification that "
+          "would make hooking THIS address safe; a genuinely separate, "
+          "call-reachable entry for the (1,2) closed-form path (if one is "
+          "ever needed) would have to be found some other way.",
+          "pakon_sba_apply.py: PATH_SET_SHIFTS_12 = 0x10100A37; "
+          "live_hooks_20260814-110254.jsonl call_id 21/51 (orphaned), "
+          "live_hooks_20260814-112642.jsonl call_id 20 (orphaned); "
+          "r2 af/axt 2026-08-15", 0, 1, 0, 1, 0 },
         { "PakonIMAu.dll", 0x10124000, "sba_get_shifts",
           "getShifts -- copies 3x int16 from *(AnsSbaCapability+0x10)+0x3a38.",
-          "pakon_sba_apply.py module docstring", 0, 1, 0 },
+          "pakon_sba_apply.py module docstring", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x1028c780, "sba_preference",
           "Preference -- the ONLY confirmed writer of +0x3a38 (analyzePass2 "
           "@ 0x10216433 passes scene+0x3a30; fist-rounds 3x int16 into "
           "scene+0x3a38/+3a3a/+3a3c).",
-          "pakon_sba_apply.py module docstring", 0, 1, 0 },
+          "pakon_sba_apply.py module docstring", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x1019a0c0, "sba_apply_balance_shifts",
           "AnsAreaCapabilityImpl::applyBalanceShifts -- the real PER-PIXEL "
           "LUT apply (builds three 4096-entry LUTs via 0x1006c4f0, applies "
           "clamp(i+shift,0,4095) to every pixel). This is the closest real "
           "analogue of pakon_sba_apply.apply_balance_shifts() -- the "
           "pixel-buffer stage to diff, not just the scalar shifts.",
-          "pakon_sba_apply.py module docstring", 0, 1, 0 },
+          "pakon_sba_apply.py module docstring", 0, 1, 0, 0, 0 },
 
         /* ---- FUGC ---- */
         { "PakonIMAu.dll", 0x100fed00, "fugc_analyze",
           "analyzeFugc -- FUGC analyze entry point in the real per-scene driver.",
-          "docs/62 line ~201", 0, 1, 0 },
+          "docs/62 line ~201", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x101f82c0, "fugc_set_lut_info",
           "setLutInfo -- builds the FUGC apply LUT from ebp14 (setShifts "
           "OUT @ +0x4b6) and ebp18 (SceneContext \"dmin\" bag). Confirmed "
           "real-DLL-verified including the near-identity offsets=(0,-1,1) "
           "case, docs/74 SS10.",
-          "docs/66 line ~1839; docs/74 SS10", 0, 1, 0 },
+          "docs/66 line ~1839; docs/74 SS10", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x101fc518, "fugc_mode_dispatch",
           "FUGC analyze / mode dispatch: Cap+0x60e8 == 2 -> metrics path, "
           "else -> setLutInfo. Address has a trailing \"...\" in its own "
           "source citation (approximate, not independently re-confirmed "
-          "this pass) -- verify the exact entry live before trusting it.",
-          "pakon_ansel.py comment near fugc_mode field (~line 657-658)", 1, 1, 0 },
+          "this pass) -- verify the exact entry live before trusting it. "
+          "r2 `axt` 2026-08-15 finds ZERO xrefs of any kind (neither CALL "
+          "nor CODE) -- inconclusive (consistent with an indirect/vtable "
+          "call this static pass can't resolve, but does NOT positively "
+          "confirm this is a real entry either) -- stays approximate/off.",
+          "pakon_ansel.py comment near fugc_mode field (~line 657-658); "
+          "r2 axt 2026-08-15 (inconclusive)", 1, 1, 0, 0, 0 },
 
         /* ---- falloff / area / attributes ---- */
         { "PakonIMAu.dll", 0x100fe960, "analyze_falloff",
           "analyzeFalloff -- per-pixel radial lens/scanner vignetting "
           "correction. The \"falloff output\" hook the task asks for.",
-          "docs/62 line ~201-202; docs/74 SS11", 0, 1, 0 },
+          "docs/62 line ~201-202; docs/74 SS11", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x10102b20, "balance_area_image",
           "balanceAreaImage -- opens with find(\"area\") idempotency guard "
           "(a HIT throws; a MISS falls through -- docs/74 SS11 already "
           "ruled out the find(\"area\") HIT path as a live data-consumption "
           "channel, but never read the miss-path body itself).",
-          "docs/74 SS11", 0, 1, 0 },
+          "docs/74 SS11", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x100e16d0, "analyze_area",
           "analyzeArea entry (732-function capability, 0% ported). docs/74 "
           "SS11-12 calls the four unreplicated stages -- this one included -- "
           "\"the sole remaining concrete software lead\" after every other "
           "mechanism was checked against the real DLL and confirmed correct.",
-          "docs/74 SS11, SS12, SS\"What this changes about the open item list\" item 1", 0, 1, 0 },
+          "docs/74 SS11, SS12, SS\"What this changes about the open item list\" item 1", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x100fb3d0, "analyze_attributes",
           "analyzeAttributes -- one of the four unreplicated stages between "
           "FUGC and autoTone, real call order per docs/74 SS11.",
-          "docs/74 SS11", 0, 1, 0 },
+          "docs/74 SS11", 0, 1, 0, 0, 0 },
 
         /* ---- ICC transform ---- */
         { "PakonIMAu.dll", 0x102f8420, "icc_xform_apply",
           "ImaICCXForm::apply -- builds source/dest descriptors and calls "
           "SpEvaluate @ 0x102f884c (kodakcms.dll import thunk 0x10500338). "
-          "The \"ICC transform input/output\" hook the task asks for.",
-          "docs/62 SS12.4.2", 0, 1, 0 },
+          "The \"ICC transform input/output\" hook the task asks for. "
+          "Re-confirmed 2026-08-15: r2 `axt` finds 2 real CALL xrefs "
+          "(one from `method.ImaICCEffectOp.virtual_40`, matching "
+          "icc_effect_op's own citation exactly) -- a genuine, "
+          "independently call-reachable entry, not the source of the "
+          "2026-08-14 icc_effect_op/icc_xform_apply capture stopping "
+          "mid-loop (every logged enter/leave pair for this hook across "
+          "both new captures is perfectly balanced, right up to the last "
+          "line before each log goes silent).",
+          "docs/62 SS12.4.2; r2 af/axt re-check 2026-08-15", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x1016ede0, "icc_effect_op",
           "ImaICCEffectOp -- wraps apply, passes this+0x118 (source max) / "
           "this+0x120 (dest max) at 0x1016ee84-0x1016eef8. The scale "
           "(4095 vs 32767 vs Go's x65535/4095) is explicitly UNRESOLVED "
           "in docs/62 SS12.4.2 -- a live capture of this+0x118/this+0x120 "
-          "settles it directly.",
-          "docs/62 SS12.4.2", 0, 1, 0 },
+          "settles it directly. Re-confirmed 2026-08-15: real disassembly "
+          "shows an ordinary SEH prologue then `mov esi, ecx` -- a genuine "
+          "__thiscall entry (this-pointer in ECX, matching esi+0x118/+0x120 "
+          "used throughout the rest of the function) -- r2's own direct-call "
+          "analysis finds zero xrefs here, consistent with this being "
+          "reached only via indirect/vtable dispatch (the C++ method-call "
+          "shape this class's own name implies), which is a static-analysis "
+          "coverage gap, NOT evidence of a notCallReachable problem the way "
+          "sba_set_shifts_12/icc_effect_op_ctor showed -- live capture data "
+          "backs this up directly: every icc_effect_op enter/leave pair "
+          "logged across both new captures is cleanly balanced, no orphaned "
+          "frames, unlike the confirmed-bad hooks below.",
+          "docs/62 SS12.4.2; r2 af/pdf/axt re-check 2026-08-15", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x1016e680, "icc_effect_op_ctor",
           "ImaICCEffectOp ctor -- the only writer found (static analysis) "
           "for this+0x118, loading the hardcoded 32767.0 from 0x1058fac0. "
           "A live hit here with a DIFFERENT value would directly disprove "
-          "the \"no later setter\" assumption docs/62 flags as unconfirmed.",
-          "docs/62 SS12.4.2", 0, 1, 0 },
+          "the \"no later setter\" assumption docs/62 flags as unconfirmed. "
+          "CONFIRMED 2026-08-15 NOT an independently call-reachable function: "
+          "`af @ 0x1016e680` resolves to a containing function starting at "
+          "0x1016e4d0 (spanning through 0x1016ea3d), and the ONLY xref to "
+          "0x1016e680 anywhere is `fcn.1016e4d0 0x1016e677 [CODE:--x] je "
+          "0x1016e680` -- a conditional jump that skips a vtable/destructor "
+          "call (`call dword [edx+4]`) and lands directly at 0x1016e680, "
+          "which is simply the next straight-line instruction "
+          "(`fld qword [0x1058fac0]` -- literally the hardcoded 32767.0 this "
+          "citation already names), not any function's entry. Never actually "
+          "fired in either 2026-08-14 capture (0 calls logged), so this is a "
+          "latent bug, not one with direct live-corruption evidence like "
+          "sba_set_shifts_12 -- but the same corruption mechanism applies the "
+          "first time this code path executes. DISABLED BY DEFAULT "
+          "(notCallReachable).",
+          "docs/62 SS12.4.2; r2 af/axt 2026-08-15", 0, 1, 0, 1, 0 },
 
         /* ---- F-235 / TLA / TLB dmin-remap chain ---- */
         { "TLA.dll", 0x1003f7db, "tla_baddscene",
@@ -156,23 +281,66 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "(pakon_ansel.py render_scene, `ebp18` / `raw_dmin` block) is "
           "flagged in its own comment as producing values OUTSIDE the "
           "accept band on every real frame tested -- a real, confirmed, "
-          "currently-not-the-206-code-defect wiring bug worth diffing live.",
+          "currently-not-the-206-code-defect wiring bug worth diffing live. "
+          "SUSPECT as of 2026-08-15: `af @ 0x1003f7db` against a freshly "
+          "extracted TLA.dll (md5 33f7a247d79286a31b192e83d3c37425, from the "
+          "same research/sdk/PAKONF135.iso every other MD5 in this table "
+          "traces to) resolves to a containing function starting at "
+          "0x1003f720, not 0x1003f7db itself, and the real disassembly AT "
+          "0x1003f7db (`mov dx, word [ebx+0x6cac]`) is not any recognizable "
+          "function prologue (no push ebp/sub esp/SEH setup) -- it reads "
+          "from `ebx` as if that register was already established by an "
+          "earlier prologue, i.e. it looks like a mid-function continuation, "
+          "matching the SAME pattern independently confirmed for "
+          "sba_set_shifts_12 and icc_effect_op_ctor below. UNLIKE those two, "
+          "this was never exercised in either 2026-08-14 capture (TLA.dll "
+          "never finished loading in that window -- see README \"why only "
+          "17/23 hooks installed\") so there is no live corruption evidence "
+          "either way, and no CALL/CODE xref was found at all (TLA.dll's "
+          "in-degree count for the containing function suggests at least one "
+          "caller elsewhere, not yet traced down to confirm/refute this "
+          "specific sub-address). Downgraded to notCallReachable out of "
+          "caution rather than left enabled on inconclusive evidence -- "
+          "this project's own rule is \"if unsure, say so honestly rather "
+          "than guessing,\" and this address does not currently meet the bar "
+          "this pass set for the other 12 confirmed-real PakonIMAu.dll "
+          "entries above (an actual CALL xref, or `af` resolving to its own "
+          "address).",
           "tools/ansel/python-pipeline/pakon_ansel.py comment ~line 900-932; "
           "docs/66 golden-fleet section corroborates the surrounding TLA "
           "AddScene ColNeg leaf shape (zeroing @ 0x1003f7eb, width=4 push "
-          "@ 0x1003f85d)", 0, 1, 0 },
+          "@ 0x1003f85d); r2 af/pd re-check 2026-08-15 (suspect, not "
+          "definitively confirmed either way -- TLA.dll never loaded live)", 0, 1, 0, 1, 0 },
         { "TLA.dll", 0x100064d0, "tla_colneg_planar_scan",
           "PIColorCorrectColNegPlanarScan -- F-235 stage-2 entry, shuffles "
-          "5 args into the MMX kernel's 7 at 0x1001c470.",
-          "docs/65 line ~93; docs/66 golden-fleet section", 0, 1, 0 },
+          "5 args into the MMX kernel's 7 at 0x1001c470. "
+          "CONFIRMED 2026-08-15 NOT an independently call-reachable "
+          "function: `axt @ 0x100064d0` finds exactly one xref -- "
+          "`CODE XREF from fcn.10006320 @ 0x10006486` -- a jmp/jcc from "
+          "within a DIFFERENT, larger function, not a call. Never fired "
+          "live (TLA.dll never finished loading in either 2026-08-14 "
+          "capture). DISABLED BY DEFAULT (notCallReachable), same reasoning "
+          "as sba_set_shifts_12/icc_effect_op_ctor above.",
+          "docs/65 line ~93; docs/66 golden-fleet section; "
+          "r2 af/axt 2026-08-15", 0, 1, 0, 1, 0 },
         { "TLA.dll", 0x1001c470, "tla_colneg_mmx_kernel",
           "The inner MMX kernel itself (pmulhw x3, independently-truncated "
           "products, THEN summed -- the exact bug docs/66's \"golden "
           "fleet\" section fixed on the port side, one code high). NOTE: "
           "if this fires per-scanline/per-pixel-block rather than once per "
           "frame, it may be high-frequency live -- see hooks.cfg to "
-          "disable if a first run shows it's too hot.",
-          "docs/66 \"6.2 -- golden fleet, colneg_1px remap TLA\"", 0, 1, 0 },
+          "disable if a first run shows it's too hot. "
+          "CONFIRMED 2026-08-15 NOT an independently call-reachable "
+          "function: `af @ 0x1001c470` resolves to a containing function "
+          "spanning 0x1001b160-0x1001dec6 (11622 bytes) -- 0x1001c470 is "
+          "deep inside that function's body, not its own entry. Never "
+          "fired live (TLA.dll never finished loading in either 2026-08-14 "
+          "capture). DISABLED BY DEFAULT (notCallReachable) -- this also "
+          "retires the earlier \"may be high-frequency, disable via "
+          "hooks.cfg if needed\" concern moot: it's off by default now for "
+          "a stronger reason than heat.",
+          "docs/66 \"6.2 -- golden fleet, colneg_1px remap TLA\"; "
+          "r2 af 2026-08-15", 0, 1, 0, 1, 0 },
 
         { "TLB.dll", 0x10034b9b, "tlb_f135_poly_remap",
           "F-135 ColNeg polynomial remap used by bAddScene to turn the raw "
@@ -183,14 +351,66 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "citation of \"TLB.dll:fcn.1000d880\" for the general stage-2 3x10 "
           "polynomial (PolyPixel). Both addresses are hooked (this one and "
           "tlb_polypixel) precisely so a live capture can resolve which is "
-          "which rather than guessing.",
-          "pakon_ansel.py comment ~line 903-904", 1, 1, 0 },
+          "which rather than guessing. RESOLVED 2026-08-15, statically, no "
+          "live capture needed: 0x10034b9b is not a function at all -- it "
+          "is the literal byte address of the `call fcn.1000d880` opcode "
+          "(`e8 e0 8c fd ff`) inside a DIFFERENT function, fcn.10034a60 "
+          "(`mov ecx, dword [0x10075554]; push edx; add ecx, 0x16f4; call "
+          "fcn.1000d880` at exactly 0x10034b9b; `test eax,eax; jne "
+          "0x10034bc4` immediately after). This fully resolves the naming "
+          "ambiguity this hook existed to settle: `tlb_polypixel` "
+          "(0x1000d880) is the one and only real PolyPixel function; "
+          "0x10034b9b is simply a CALL SITE that invokes it. This is worse "
+          "than the other notCallReachable entries in this table -- hooking "
+          "it would plant a JMP over live CALL-instruction bytes inside "
+          "fcn.10034a60, silently rewriting that function's own control "
+          "flow the moment MinHook installs the hook, independent of "
+          "whether the hook ever even fires. `approximate` is kept set "
+          "(it really was never independently re-confirmed, and now we know "
+          "definitively why it never should be) alongside the new "
+          "notCallReachable=1 for a complete, honest record of both how "
+          "this was originally flagged and what was actually found.",
+          "pakon_ansel.py comment ~line 903-904; r2 af/pd/axt 2026-08-15 "
+          "(definitively resolved: this VA is a call-instruction's own "
+          "address, not a function)", 1, 1, 0, 1, 0 },
         { "TLB.dll", 0x1000d880, "tlb_polypixel",
-          "PolyPixel -- general stage-2 3x10 quadratic polynomial (the "
-          "entry address implied directly by its own r2 auto-name, "
-          "fcn.1000d880). See tlb_f135_poly_remap's note above -- hooked "
-          "alongside it to resolve the naming ambiguity live.",
-          "docs/65 line ~86; docs/62 line ~950", 0, 1, 0 },
+          "PolyPixel -- general stage-2 3x10 quadratic polynomial. Address "
+          "confirmed (not just implied) by a real af+pdf disassembly, "
+          "docs/74 SS32.2: 845 bytes, switch-dispatched on filmClass "
+          "(case 2 -> this+0xc8 PosMatrix, matching check_film_class's own "
+          "citation exactly), a tight fild/fmul/faddp per-pixel loop over "
+          "10 stored coefficients per channel, zero fyl2x/log-family FPU "
+          "instructions anywhere in the function. That same pass also "
+          "resolved the naming ambiguity this hook (and tlb_f135_poly_remap "
+          "above) originally existed to settle live -- both addresses are "
+          "PolyPixel-family, statically, with no live capture needed. "
+          "DISABLED BY DEFAULT (hotPathDisabled, distinct from "
+          "`approximate` -- this address IS a confirmed real function "
+          "entry): the disassembly itself (docs/74 SS32.2) shows a "
+          "per-pixel loop (iterates up to 512 word-pixels per call, "
+          "0x1000d8f2-0x1000dab0), i.e. this is a per-pixel or "
+          "per-scanline-batch hot path by construction, not an assumption. "
+          "An unverified JSONL sample from this same session (provenance "
+          "not independently confirmed as a genuine XP-box capture -- see "
+          "the caveat this change's own commit/PR description records) "
+          "showed calls to this address roughly 15-45 ticks apart; even "
+          "taken only as a plausible illustration rather than confirmed "
+          "hardware evidence, it's consistent with the loop structure the "
+          "disassembly already shows. Combined with the fact that this "
+          "hook's only original diagnostic purpose (the naming ambiguity "
+          "above) is now fully resolved by static disassembly alone, "
+          "there is no remaining live-data question that justifies tracing "
+          "it at full entry+exit volume by default. The prologue itself "
+          "was checked directly and is NOT the concern: "
+          "the concern: `push -1; push <SEH handler>; mov eax,fs:[0]; push "
+          "eax; mov fs:[0],esp; sub esp,0x48` is an entirely ordinary "
+          "MSVC/SEH prologue, two immediate-operand instructions with no "
+          "relative jump/call in the relocated bytes -- a completely "
+          "standard, safe MinHook trampoline target. Re-enable via "
+          "hooks.cfg (`tlb_polypixel=on`) if a specific investigation "
+          "needs it again; consider `tlb_polypixel.exit=off` first if you "
+          "do, to keep only entry markers on this hot path.",
+          "docs/74 SS32.2-32.3, SS32.7", 0, 1, 1, 0, 0 },
 
         /* ---- AFE (device-side register write) ---- */
         { "TLB.dll", 0x100299c0, "tlb_afe_offset_write",
@@ -200,9 +420,13 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "documented \"AFE\" hook available. NOTE: this is the OFFSET "
           "write, not GAIN -- no distinct address for a gain-register "
           "write function was found documented anywhere in docs/62-74. "
-          "See README.md \"AFE gain -- honestly unresolved\".",
+          "See README.md \"AFE gain -- honestly unresolved\". Re-confirmed "
+          "2026-08-15: r2 `axt` finds 5 real CALL xrefs from 4 different "
+          "functions -- a genuine, independently call-reachable entry, "
+          "matching the clean/balanced enter+leave pairs this hook logged "
+          "throughout both new 2026-08-14 captures.",
           "docs/72 SS1.3 (\"FN_bDrvPutCcdAtoDOffsets at 0x100299c0, "
-          "[VERIFIED-FROM-BINARY]\")", 0, 1, 0 },
+          "[VERIFIED-FROM-BINARY]\"); r2 af/axt re-check 2026-08-15", 0, 1, 0, 0, 0 },
     };
 
     int i;

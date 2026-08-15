@@ -326,6 +326,46 @@ practice, but not built speculatively here.
   measurable slowdown). It's on by default like everything else, but
   `hooks.cfg` lets you turn off just its exit-hooking, or disable it
   entirely, without a rebuild if a first live run shows it's too hot.
+- **`tlb_polypixel` is OFF by default in `win_inject/`** (`hookcore_real_table.c`'s
+  `hotPathDisabled`, distinct from `approximate` — this is a CONFIRMED real
+  function entry, not a doubtful address). `docs/74` §32 did a full, real
+  `af`+`pdf` disassembly of `0x1000d880` against the hash-verified `TLB.dll`
+  and found: (a) a completely ordinary, safe-to-relocate MSVC/SEH prologue
+  (`push -1; push <SEH handler>; mov eax,fs:[0]; push eax; mov fs:[0],esp;
+  sub esp,0x48` — two immediate-operand instructions, no relative jump/call
+  in the bytes MinHook needs to relocate, nothing unusual about hooking this
+  address specifically); (b) a genuine per-pixel loop (iterates up to 512
+  word-pixels per call) confirming this is a real hot path by construction;
+  and (c) that the live-capture question this hook originally existed to
+  answer — a naming ambiguity between this address and `tlb_f135_poly_remap`
+  — is now fully resolved by that same static disassembly, with no live
+  data needed. Given (b) and (c) together — a demonstrated hot path with no
+  remaining diagnostic purpose — it defaults to off, same spirit as
+  `tla_colneg_mmx_kernel`'s own precedent but taken one step further since
+  there's nothing left this specific hook would tell you. Re-enable it via
+  `hooks.cfg` (`tlb_polypixel=on`, ideally with `tlb_polypixel.exit=off`
+  first) if a new, specific reason to trace it live ever comes up. See
+  `hookcore_real_table.c`'s own citation on this entry for the full
+  reasoning, word for word.
+- **`LogLine`'s per-line `FlushFileBuffers` was removed from the hot
+  entry/exit path** (still happens for the low-frequency `status`/
+  `hook_installed` events, and periodically — every 200 hot-path lines —
+  plus unconditionally on a clean shutdown). The earlier version flushed
+  to disk, synchronously, inside the global log lock, on every single
+  logged call — meaning every hooked call on every thread serialized
+  behind a disk-flush syscall. For a hook on a genuine per-pixel/
+  per-scanline hot path (see `tlb_polypixel` above) called from multiple
+  threads only tens of ticks apart, that's real, self-inflicted latency
+  and cross-thread contention this tooling was injecting into a live scan.
+  `FlushFileBuffers` only protects against an OS-level crash — the OS page
+  cache survives a *process* crash/hang (PSI.exe going down, the actual
+  failure mode this harness exists to capture) untouched — so removing it
+  from the hot path costs nothing in the failure mode that matters most
+  here, while removing the single most expensive syscall from the busiest
+  code path. Re-verified via `./build.sh selftest` after this change:
+  still `ALL PASS (0 failure(s))`, still exactly 330 `enter`/330 `leave`
+  events, 667 total lines, all valid JSON — the periodic/deferred flush
+  does not drop or corrupt any log data, only changes when it reaches disk.
 - **One real, explicitly-not-hidden technical assumption**: the generic
   entry/exit engine's exit path (the "return-address swap" — see
   `hookcore.h`'s header comment for the full derivation) assumes the
@@ -496,7 +536,7 @@ empirically, from real data.
 | `tla_colneg_planar_scan` | TLA.dll | `0x100064d0` | `PIColorCorrectColNegPlanarScan` |
 | `tla_colneg_mmx_kernel` | TLA.dll | `0x1001c470` | inner MMX kernel |
 | `tlb_f135_poly_remap` | TLB.dll | `0x10034b9b` | F-135 ColNeg poly remap — **naming ambiguity, see agent.js** |
-| `tlb_polypixel` | TLB.dll | `0x1000d880` | `PolyPixel` — general stage-2 3×10 quadratic |
+| `tlb_polypixel` | TLB.dll | `0x1000d880` | `PolyPixel` — general stage-2 3×10 quadratic — **confirmed real entry, but OFF by default in `win_inject/` (not `agent.js`), see below** |
 | `tlb_afe_offset_write` | TLB.dll | `0x100299c0` | `FN_bDrvPutCcdAtoDOffsets` — AD9826 offset register |
 
 ## AFE gain — honestly unresolved

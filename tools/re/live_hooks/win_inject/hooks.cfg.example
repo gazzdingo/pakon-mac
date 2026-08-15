@@ -1,10 +1,11 @@
 # Copy this to `hooks.cfg` next to hookdll.dll on the XP box to override
 # which hooks are enabled / exit-hooked, without a rebuild. Not required --
 # if hooks.cfg is missing, the built-in defaults apply (every confirmed
-# address enabled with entry+exit; the two `approximate: true` addresses
-# -- fugc_mode_dispatch, tlb_f135_poly_remap -- disabled until you've
-# verified them live). See ../README.md for the full hook table and
-# per-address citations.
+# address enabled with entry+exit, EXCEPT: the two `approximate: true`
+# addresses -- fugc_mode_dispatch, tlb_f135_poly_remap -- disabled until
+# you've verified them live; and tlb_polypixel, disabled by default for a
+# DIFFERENT reason -- see below). See ../README.md for the full hook table
+# and per-address citations.
 #
 # Syntax:
 #   # comment
@@ -26,3 +27,16 @@
 #
 # tla_colneg_mmx_kernel.exit=off
 # tla_colneg_mmx_kernel=off
+
+# tlb_polypixel is OFF by default (unlike everything else that isn't
+# `approximate: true`) -- NOT because its address is in doubt (docs/74
+# SS32.2 disassembled it directly: a completely ordinary, safe-to-hook
+# function), but because it's a confirmed real per-pixel hot path AND the
+# live-capture question it was originally hooked to answer (a naming
+# ambiguity with tlb_f135_poly_remap) has since been fully resolved by
+# that same static disassembly -- see hookcore_real_table.c's citation for
+# the full reasoning. If you have a NEW reason to trace it live, turn on
+# just entry markers first, not full entry+exit:
+#
+# tlb_polypixel=on
+# tlb_polypixel.exit=off

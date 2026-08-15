@@ -4788,7 +4788,289 @@ reading the raw capture JSONL and from read-only `radare2` disassembly of
 the same two already-MD5-verified DLLs this doc has cited throughout; no
 port file, golden file, or capture file was modified.
 
+## 36 — The technique not yet tried on this specific frame, tried: live
+Unicorn execution (not static reading) of PolyPixel and SBA balance-apply's
+real shift-LUT machinery, on `test123.bin` frame 0's own real data — both
+bit-exact, one of them Unicorn-verified for the first time ever, not just on
+this frame. The gap survives even this. F-135 inversion remains the one
+stage genuinely unreachable by this method.
+
+Every check on the pre-`analyzeAutoTone` stages in §31-33 was done by
+*reading* the real DLL's disassembly and reasoning about it. This section
+does the thing that caught §30's real bug and §24's real harness bug: run
+the real machine code live under Unicorn, on real data, and diff the result
+against the Python port's own computation for the identical input — applied,
+for the first time, to the two pre-tone-chain stages that structurally
+*can* be reached this way (PolyPixel and SBA balance-apply's shift-LUT
+construction), on the exact frame (`test123.bin` frame 0) §31-35's own
+matched-vendor-TIFF comparison used.
+
+New, additive script this pass:
+`tools/ansel/python-pipeline/pakon_prechain_bracket_golden.py`. Does not
+modify any existing golden file. DLLs re-verified fresh:
+`TLB.dll` MD5 `193d9b2ce0a4b77ae9b78262bd06c0fc`, `PakonIMAu.dll` MD5
+`eea9dcf78ee21d4f7c515a6c2512242d` — both match every prior citation in this
+doc. Real data: the same `~/Library/Caches/PakonScan/workspace/f4c91b62/
+roll.json` §31-35 used (`test123.bin`, real `film_base=[3107,2490,2414]`,
+`fpo=(879,1250,1386)`, real `setshifts_out=(683,297,151)`), frame 0, via the
+real, unmodified `Roll.slice14`/`Roll.engine`.
+
+### 36.1 — Stage A: PolyPixel, real full frame, live Unicorn, bit-exact —
+and a real, new instance of §24's own harness-bug class, found and fixed in
+the new script only
+
+Reused `pakon_color_golden.PolyGolden` — the existing, working Unicorn
+harness for TLB.dll `0x1000d880` — completely unmodified in its own
+mechanics, feeding it the real, full, 3000×2000 (6,000,000-pixel) calibrated
+14-bit block for `test123.bin` frame 0 (`roll.slice14(2048, 5048, 1)`, the
+same real production call §31/§33/§34 all used) and this unit's real EEPROM
+matrix (`pakon_color.load_unit_matrix`), instead of the file's own existing
+subcommands' small synthetic/random pixel sets (largest built-in default:
+64×48 = 3,072 pixels).
+
+**Found, before trusting any result, the same bug class §24 already found in
+a different golden file — confirmed directly, not assumed.** `PolyGolden.run`
+hard-codes `uc.emu_start(COLOR_CORRECT, STOP, count=40_000_000)` and never
+checks that EIP actually reached `STOP` afterward — exactly
+`pakon_autotone_shell_golden.Emu.call`'s own pre-§24 shape. Checked directly:
+a real 250×2000 (500,000-pixel) crop of this same frame hits the
+40,000,000-instruction cap silently — `emu_start` returns with no exception,
+EIP stopped mid-loop at `0x1000da4c`, not at `STOP` — and the unmodified
+`run()` has no way to notice; it would have returned whatever partial bytes
+happened to sit in the image buffer as if they were a completed run. Fixed
+the same way §24 fixed it: a runtime-only monkeypatch
+(`patch_polygolden_checked_run`, in the new script, not an edit to
+`pakon_color_golden.py` on disk) that raises the cap to 8,000,000,000 and
+explicitly asserts EIP reached `STOP` before trusting any result. Re-ran
+after the fix, foreground, waited for completion.
+
+```
+250x2000 (500,000 px) with the fix: reaches STOP, matches pakon_color.poly_hwc
+  exactly on this crop -- confirms the fix, not just the bug.
+
+FULL frame (3000x2000, 6,000,000 px), test123.bin frame 0, real calibrated
+14-bit input, real EEPROM matrix, film_class=1:
+  wall time: 41.4-41.5s (two independent runs, same process each time)
+  execution confirmed to reach STOP (not instruction-cap truncated)
+  values checked: 18,000,000 (6,000,000 px x 3 channels)
+  mismatches: 0   max_abs_diff: 0
+```
+
+**Bit-exact.** Real DLL PolyPixel, live-executed under Unicorn, produces
+IDENTICAL output to `pakon_color.poly_hwc` on every one of 18,000,000 values,
+on this frame's real, full, calibrated 14-bit data — reproduced on two
+independent runs of the whole script, byte-for-byte identical both times.
+This is the same PolyPixel address §32.2 already confirmed, by static
+disassembly, is a switch-dispatched float polynomial with zero log-family
+instructions — now additionally confirmed by making that exact real machine
+code actually run, on this exact frame's real data, rather than only reading
+it.
+
+### 36.2 — Stage B: SBA balance-apply's real shift-LUT machinery, live
+Unicorn, for the first time ever — not just for the first time on this frame
+
+`pakon_sba_apply.py`'s own module docstring already cites, by address, the
+mechanism behind `apply_balance_shifts`'s `clamp(code+shift,0,4095)` model:
+`AnsAreaCapabilityImpl::applyBalanceShifts` (`0x1019a0c0`), a master-clip-LUT
+ctor (`0x100f42a0`, called from CRT init at `0x1056a470` with
+`bits=0xc, floor=0, max=0xfff`), and a LUT-build loop (`0x1006c582`:
+`out[i] = master[i + shift]`). Checked directly, before assuming this was
+already live-verified (the task's own instruction, per docs/74 §9's own
+citation of this exact function as "the already-Unicorn-verified,
+real-DLL-bit-exact function this whole investigation has relied on since
+`docs/66`'s eleventh pass"): **no existing golden file in this repo actually
+executes either function under Unicorn.** `pakon_shasta_aim_golden.py`'s own
+module docstring is explicit about what its own prior pass actually did —
+*"Host closed-form checks for master clip LUT... (master LUT ctor
+`0x100f42a0` / CRT `0x1056a470` cited)"* — a citation of the disassembly,
+not a Unicorn run. **§9's own characterization was imprecise**: the
+function's *arithmetic* was correctly reverse-engineered from reading, but
+"Unicorn-verified" was not, until this pass, literally true. Flagged plainly,
+in the same spirit as §10's correction of the eleventh pass's own stale
+hedge — not a retraction of §9's numbers (the `apply_balance_shifts` model
+itself turns out to be correct, confirmed below), only of what kind of
+evidence backed it.
+
+Disassembled both real functions fresh this pass (`aa; af; pdf`, r2 6.1.8,
+`PakonIMAu.dll` at its real base `0x10000000`) to derive the calling
+convention, then executed both live:
+
+* **`0x100f42a0`** (`ret 0xc`, thiscall, 3 stack args): the real CRT-init
+  call site (`0x1056a470`, read directly) is `push 0xfff; push 0; push 0xc;
+  mov ecx, 0x106b5f74; call 0x100f42a0` — confirming `pakon_sba_apply.py`'s
+  own `(bits=0xc, floor=0, max=0xfff)` citation byte-for-byte against the
+  real vendor call site, not just the ctor body. Built a fresh `this` object
+  (not the DLL's own static `0x106b5f74` singleton — that would need CRT
+  init replayed; flagged explicitly as a modelling choice in
+  `SbaShiftLutGolden`'s own class docstring, the same honesty standard
+  `BalanceAreaImageCall`'s docstring already set in §24) and called the real
+  ctor with the real vendor args.
+* **`0x1006c4f0`** (`ret 0x1c`, thiscall, 7 stack args): disassembled the
+  real caller, `applyBalanceShifts` itself (`0x1019a0c0`, also fully
+  disassembled this pass), and confirmed its own 2nd/3rd/4th real stack
+  arguments (`arg2`/`arg3`/`arg4`) are pushed, in order, as R/G/B shift
+  values into `0x1006c4f0` — independently confirming, by direct
+  disassembly of the real call site, `pakon_sba_apply.py`'s own prior
+  (reading-based) claim about which caller arguments are the shifts.
+  Called it with this roll's own real `setshifts_out=(683, 297, 151)`
+  (read live from `roll.engine()`, not hardcoded).
+* Two CRT thunks (`operator new`/`operator delete`, both unresolved imports
+  into the unloaded `MSVCR71.dll`) were stubbed with a plain bump allocator
+  and a no-op respectively — a narrow, standard-library-contract stub, the
+  same category of stub `pakon_shasta_aim_golden.py`'s own module docstring
+  already uses for this exact situation ("stubbed `operator new` / malloc"),
+  not a guess about unknown vendor logic.
+
+```
+master-clip-LUT ctor (0x100f42a0): 65,536 entries checked -- EVERY
+  addressable index from -0x8000 to 0x7fff, not a sample -- against the
+  closed form pakon_sba_apply.py's own docstring already states
+  (master[i]=0 for i<=0; master[i]=i for 1..0xfff; master[i]=0xfff for
+  i>0xfff): 0 mismatches, max_abs_diff=0.
+
+shift-LUT builder (0x1006c4f0), this roll's real setshifts_out=(683,297,151):
+  R (shift=683): 4096/4096 entries checked, 0 mismatches
+  G (shift=297): 4096/4096 entries checked, 0 mismatches
+  B (shift=151): 4096/4096 entries checked, 0 mismatches
+```
+
+**Bit-exact, all 3×4096 LUT entries plus all 65,536 master-table entries —
+every possible input value, not a sample.** Real DLL shift-LUT construction,
+live-executed under Unicorn for the first time ever against this specific
+mechanism, produces IDENTICAL output to `pakon_sba_apply.apply_balance_shifts`'s
+`clamp(code+shift,0,4095)` model, using this exact roll's real shift values.
+
+### 36.3 — Stage C: the real, live-executed LUT applied to this frame's real
+post-inversion array
+
+Applied the three REAL, live-executed LUTs from §36.2 directly to
+`test123.bin` frame 0's own real post-inversion RPD-12 array (from
+`pr.scene_rpd12` — the same still-`F135_INVERT_PORTED=False` formula every
+other section of this doc uses; only the balance-*apply* step is being
+live-checked here, not the inversion that produced this array) and diffed
+against `pakon_sba_apply.apply_balance_shifts` on the identical array:
+
+```
+18,000,000 values checked (6,000,000 px x 3 channels): 0 mismatches,
+  max_abs_diff=0.
+```
+
+Bit-exact on the real frame, not just on the abstract 0..4095 domain §36.2
+already covered exhaustively — confirms the LUT match from §36.2 actually
+holds when applied to this specific frame's real value distribution, not
+just in principle.
+
+### 36.4 — An honest caveat this pass's own result surfaces, not resolves:
+§35.6 already found live evidence that `applyBalanceShifts` itself never
+fires during a real scan
+
+§36.2 executed `0x100f42a0`/`0x1006c4f0` — the shift-LUT *construction*
+machinery `applyBalanceShifts` (`0x1019a0c0`) itself calls internally — not
+`applyBalanceShifts` as a whole. §35.6 already reported, from a genuine live
+hook capture of a complete real 6-frame scan, that
+`sba_apply_balance_shifts` (the live-hook name for `0x1019a0c0` itself,
+confirmed by direct address match against
+`tools/re/live_hooks/win_inject/hookcore_real_table.c`) *"is installed but
+never fires (0 of 210 call events) despite `sba_set_shifts`/`sba_get_shifts`
+firing normally"* — and that doc section explicitly states it has *"no
+established basis for what triggers it, so no interpretation is offered."*
+This pass does not resolve that question either. What §36.2-36.3 establish
+is narrower and still real: *if* the real vendor pipeline reaches this
+specific LUT-construction code (whether via `applyBalanceShifts` itself, at
+export time, or some other call site this doc hasn't located), it computes
+exactly what `pakon_sba_apply.py` already assumes it computes. Whether this
+is in fact the mechanism the live CN-Enhanced render path actually exercises
+for `test123.bin`'s own frames — as opposed to some other, not-yet-located
+balance-apply path — is the same open question §35.6 already flagged, not a
+new one, and not answered here. Stated plainly rather than glossed over,
+per this doc's own standard.
+
+### 36.5 — What this settles, and what it doesn't
+
+**Both stages this pass could reach live are bit-exact, live-execution
+confirmed, on this exact matched frame.** PolyPixel: reconfirms §32.2's
+static-disassembly-based verdict with genuine execution, on real full-frame
+data, for the first time on this specific capture. SBA balance-apply's
+shift-LUT math: Unicorn-verified for the first time ever, not merely
+re-verified on new data — the "already-Unicorn-verified" label §9 had been
+carrying for this function turns out to become true only as of this pass.
+
+**The gap survives even this.** §31's ~88-89 sRGB code uniform brightness
+excess is not explained by anything this pass checked, exactly as §32/§33/§34
+already found for the inversion formula's own construction, the polynomial
+matrix, and lamp duty/AFE gain respectively. This is now the strongest form
+of evidence this investigation has applied to the pre-tone-chain stages —
+live execution, not reading — and it comes back clean on both sides of the
+one stage it cannot reach.
+
+**The F-135 inversion remains the one stage genuinely unreachable by this
+method**, not from lack of trying this pass but because §32 already ran an
+exhaustive (TLB.dll) and partial (PakonIMAu.dll) instruction-level search for
+the one operation (`fyl2x`/`fyl2xp1`/`f2xm1`) the formula's own log-difference
+construction requires, and found no candidate site. This pass did not
+re-attempt that search; it instead confirmed, as tightly as live execution
+can, that the stage immediately before the inversion and the mechanism used
+immediately after it are both correct — which sharpens rather than
+broadens the remaining uncertainty. Bracketing a gap that live execution
+cannot directly close is real, useful progress: it means the true cause,
+whatever it is, has to be either (a) inside the inversion formula itself,
+still unreachable by this method per §32.4's own unfinished PakonIMAu.dll
+triage, or (b) somewhere this whole investigation has not yet looked.
+
+**Concrete candidates for (b), named per this task's own instruction, none
+confirmed this pass:**
+
+1. **PakonIMAu.dll's own untriaged log-instruction sites** (§32.4: ~50
+   `fyl2x` + ~64 `f2xm1` sites, only the cluster nearest `analyzeArea`
+   spot-checked) — still the single most concrete unexplored code-search
+   space for the inversion formula itself, and the natural next step if
+   another RE pass is willing to scope it via `tools/re/reachability.py`
+   against `analyzeAutoTone`'s own already-catalogued reachable sets.
+2. **The four unreplicated stages** (`analyzeArea`/`analyzeAttributes`/
+   `analyzeNoise`/`analyzeFalloff`, §11) — this doc's own running tally
+   already carries this as the sole standing *software* lead; nothing in
+   this pass changes that ranking, since none of these four sit between
+   PolyPixel and the inversion or between the inversion and balance-apply,
+   the two boundaries this pass checked.
+3. **Something upstream of PolyPixel itself** — this pass's own Stage A
+   feeds the IDENTICAL real calibrated 14-bit array to both the DLL and the
+   Python port, so it verifies PolyPixel's own correctness on that input,
+   but it does NOT independently verify that `Roll.slice14`'s own
+   `apply_unit_calibration` (dark/gain correction, upstream of PolyPixel
+   entirely) produces vendor-correct values in the first place — a stage
+   this doc has not run a live-DLL comparison against at all.
+4. **Frame 0's own framing grade** — §31 already noted, without following
+   up, that frame 0 carries this roll's weakest framing-cascade placement
+   (`confidence=low, phase=LookAtBeginning`) and flagged it as "not shown to
+   matter" rather than ruled out. Still not ruled out.
+5. **§36.4's own open question** — whether `applyBalanceShifts` (as
+   opposed to the LUT-construction math this pass verified) is even on the
+   real, live per-frame render path for this roll, first raised by §35.6 and
+   still unanswered.
+
 ## What this changes about the open item list
+
+**§36 update.** Closes no new item and opens none, but changes the *kind* of
+confidence behind two already-closed items. PolyPixel (already confirmed
+correct by static disassembly, §32.2) and SBA balance-apply's shift-LUT
+math (already assumed correct, on an imprecise "already-Unicorn-verified"
+citation, §9) are now both confirmed by genuine live Unicorn execution on
+`test123.bin` frame 0's own real data — bit-exact, full-domain (every LUT
+entry, not a sample), reproduced across independent runs. Along the way,
+found and fixed (in the new script only, not on disk in
+`pakon_color_golden.py`) a second independent instance of §24's own
+instruction-cap-with-no-completion-check bug class, and corrected §9's own
+overstated verification claim for `apply_balance_shifts`. **Item 1 (the four
+unreplicated stages) remains the sole standing software lead** — nothing
+between PolyPixel and the inversion, or between the inversion and
+balance-apply, moved. The practical effect: live execution, the strongest
+evidence tier this investigation has, has now been applied to every stage
+that has a known DLL entry point on either side of `f135_rom12_to_rpd12`,
+and all of it comes back clean — sharpening, not lowering, the priority of
+either finishing PakonIMAu.dll's own untriaged log-instruction search
+(§32.4) or finishing the four unreplicated stages (§11), since both are now
+the only concrete leads this doc has left that live execution has not
+already reached.
 
 **§35 update.** The first complete live hook capture of a real scan (six
 frames, zero deviations from §11's documented call order) is a genuinely
@@ -5398,3 +5680,41 @@ and ratio statistics from `test123.bin`/`AA001.tif` are reported above,
 consistent with this project's rule against describing `captures/`
 contents; no pixel data or image content is reproduced anywhere in this
 section.
+
+§36's new script (`pakon_prechain_bracket_golden.py`) was run to completion
+multiple times (a small 250×2000 crop first, to validate each stage cheaply
+and to confirm the instruction-cap bug/fix directly, then the full real
+frame twice) before any number in §36 was recorded, the same discipline §24
+used for its own new script. Both DLL MD5s were re-checked by the script
+itself, printed at the top of its own run, against the same two hashes
+every prior section of this doc cites. The 500,000-pixel instruction-cap
+failure (`0x1000da4c`, not `STOP`) was observed directly, not inferred —
+`g.uc.reg_read(UC_X86_REG_EIP)` was read immediately after the unmodified
+`PolyGolden.run()` returned and compared against `pcg.STOP` explicitly,
+the same check §24's own `patch_unchecked_instruction_cap` performs. The
+calling conventions for `0x100f42a0` and `0x1006c4f0` were derived from
+fresh `r2` `af`/`pdf`/`afvj` output against the real, MD5-verified
+`PakonIMAu.dll` this pass (not transcribed from `pakon_sba_apply.py`'s own
+prior, reading-based citation, though the two independently agree), with
+the ctor's own three argument VALUES additionally confirmed byte-for-byte
+against the real CRT-init call site at `0x1056a470`. The master-table check
+(§36.2) reads all 65,536 addressable entries directly from the emulated
+heap via `uc.mem_read` and compares against the closed-form expectation
+with `numpy`, not a sampled or spot-checked subset. The shift-LUT check
+reads all three real, DLL-allocated 4096-entry buffers in full. §36.3's
+post-inversion array came from the same unmodified `pr.scene_rpd12` call
+(same roll, same frame, same real `film_base`/`fpo`/`setshifts_out`) every
+other real-render section of this doc uses, not a synthetic array. §36.4's
+citation of `sba_apply_balance_shifts` never firing was cross-checked
+directly against `tools/re/live_hooks/win_inject/hookcore_real_table.c`'s
+own hook table (confirming `0x1019a0c0` is the address that hook name
+refers to) rather than taken on §35.6's prose alone. **No production code
+was changed by this pass** — `pakon_color.py`, `pakon_color_golden.py`,
+`pakon_sba_apply.py`, `pakon_render.py`, and every other file this section
+reads were read-only throughout (`git status`/`git diff` confirm zero
+modifications to any tracked file); the only new file is
+`tools/ansel/python-pipeline/pakon_prechain_bracket_golden.py` itself,
+additive, committed for review. Only aggregate count/percentile statistics
+from `test123.bin` are reported anywhere in §36, consistent with this
+project's rule against describing `captures/`/cache contents; no pixel data
+or image content is reproduced.

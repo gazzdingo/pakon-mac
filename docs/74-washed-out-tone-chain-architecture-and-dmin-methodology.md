@@ -7795,3 +7795,195 @@ undone here to keep this change to exactly the diagnostic it is.
    stretched to close a different, longer-running mystery: this is a real
    bug, found and fixed, adjacent to that investigation, not the answer to
    it.
+
+## 44 — A live AFE dark-offset convergence loop implemented, tested with
+synthetic data, and run twice on real hardware, tonight, supervised; the
+stored calibration comes out looking *closer* to a reasonable target than
+the vendor's own un-converged seed does, and the brightness-gap connection
+remains unverified, not confirmed
+
+§43.3 closed one AFE-offset question — the register is written once per
+capture, never mid-scan. This section is the other one, flagged separately
+tonight and distinct from §43.3's: `ccd_configure` (`tools/pakon_scan.py`)
+has never done what `docs/55-vendor-ccd-bringup-captured.md` steps 19-34
+show the real `PSI.exe` doing at the **start of every scan** — a live,
+measured successive-approximation search for the AFE dark offset, starting
+at a fixed `+10,+10,+10` guess and converging (`+10,+10,+10` ->
+`-29,-38,-30` -> `-21,-30,-22` -> `-19,-25,-19` -> G settling at `-26`)
+before the real acquisition begins. This port has only ever written the
+single value stored in `calibration/README.json`, with nothing measuring
+whether it is still right. A stale stored offset would shift the effective
+black point upstream of everything §31-43 already checked, in a way none
+of that verification would have caught, since all of it assumed the AFE
+offset itself was already correct.
+
+### 44.1 — What was built, and what stayed exactly as it was
+
+Three new pieces in `tools/pakon_scan.py`:
+
+- `converge_afe_offsets(link, cfg, ...)` (`:1841`) — the search loop.
+  Starts at `LIVE_AFE_SEED = (10, 10, 10)` (`:1703`, the vendor's own
+  captured guess), bounded to `LIVE_AFE_MAX_ROUNDS = 5` rounds (`:1710` —
+  one more than the 4 rounds `calib_wizard.MAX_BLACK_ROUNDS` already uses
+  for the identical register). Each round writes a probe offset through
+  the ordinary `ccd_configure`, takes a short stationary (no transport
+  movement) lamp-off read-back, and decides the next probe using
+  `build_calibration.solve_offset` — called for real, not reimplemented,
+  through a small duck-typed shim (`_ProbeCapture`, `:1726`) that lets the
+  file-backed `Capture` API `calib_wizard.step_black` already trusts run
+  against an in-memory probe instead of a capture on disk. If it does not
+  land within the round cap it leaves the AFE register at the best
+  measurement actually seen and **raises**, rather than silently returning
+  an unconverged guess — the same "refuse rather than guess" posture
+  `calib_wizard.step_black` already takes on this exact register.
+- `_live_afe_measure` (`:1768`) — one probe round: write, `reset_fifos`
+  twice, acquire on, read `EP 0x86` into a buffer, decode with
+  `pakon_gate.find_phase`/`split_lines` (the same primitive `run_scan`'s
+  own capture loop already uses on every real scan), acquire off. Bounded
+  per round by a 15 s timeout and a 3 s no-data stall check.
+- `--live-afe-converge` on `pakon_scan.py run` (`:4343`), threaded through
+  `run_scan`'s new `live_afe_converge`/`live_afe_target` parameters
+  (`:2518`). Wired in immediately after `link.clear_fault()` and **before**
+  `lamp_on` is ever reached, which is the one place in the module
+  guaranteed to have the lamp off regardless of the scan's own `lamp=`
+  setting. Default `False`. `ccd_configure` is unmodified; a scan run
+  without the flag writes exactly the stored `cfg.afe_offsets`, byte for
+  byte as before. Under `--dry-run` or `PAKON_SCAN_SIMULATE` the flag is a
+  documented no-op (there is no real dark level to measure) rather than a
+  silent skip or a crash.
+
+### 44.2 — Logic verified with synthetic measurement data before anything
+touched real hardware
+
+`tools/test_calib.py` gained `test_live_afe_converge_logic` and
+`test_live_afe_converge_bounded_refusal` (`:925`, `:1008`), both run as
+part of the existing `test_calib.py` suite (**200/200 checks pass**,
+including the 9 new ones). `_live_afe_measure` is monkeypatched with a
+synthetic linear dark-level model (a plausible, not vendor-matching,
+per-channel slope) so the search runs against known ground truth:
+
+- Starting the seed deliberately far outside `build_calibration
+  .BLACK_MIN_WIRE`/`BLACK_MAX_WIRE`, the loop takes the documented path —
+  not solvable from one point, a blind step, solvable from two, an exact
+  algebraic solve — and lands in 3 of the 5 available rounds, at offsets
+  the AD9826 encoder round-trips correctly (`pc.afe_offset_value(pc
+  .afe_offset_word(v)) == v` for every converged value).
+- A register modelled with **zero** slope (no measurable effect on the
+  black level, the one edge case a real slope-solve must not paper over)
+  is refused, not guessed at, after exactly `max_rounds` probes — not
+  fewer (giving up early) and not more (unbounded).
+
+This is the "does the search actually converge, respect its cap, and
+encode correctly" check the task asked for before anything real was
+touched.
+
+### 44.3 — Real hardware, run one: the measurement primitive alone,
+read-only, at the currently-stored offset
+
+Before running the full loop, `_live_afe_measure` was called once, in
+isolation, at the offset already installed in `calibration/README.json`
+(`(0, -6, 2)` — not a novel value), after `pakon_scan.py stop` had been run
+immediately beforehand to force the motor and lamp off ahead of time. This
+exercises the one genuinely new piece of code — the in-process
+read-back-and-decode of a live `EP 0x86` stream with the transport
+stationary — for real, without exercising the multi-round search logic
+already covered by §44.2's synthetic tests.
+
+Real, measured result on this unit, right now: channel means (raw wire
+domain) **R 1357.2, G 1375.0, B 1447.6**, not floored, not clipped. `pakon
+_scan.safe_stop` afterward reported motor/lamp/acquire all off with no
+errors. No transport movement occurred at any point; the lamp control path
+was never called by this code (only read out of an already-off state).
+
+### 44.4 — Real hardware, run two: the full loop, and the caveat that
+matters
+
+`converge_afe_offsets` was then run for real (motor and lamp forced off
+again first, same as §44.3), starting at the vendor's own seed
+`(10, 10, 10)`. It converged — technically — on the **first** round, in
+0.9 s, at offsets `(10, 10, 10)`, measuring black `[1860.6, 2175.0,
+1864.9]`. `safe_stop` afterward again reported a clean motor/lamp/acquire
+off with no errors.
+
+**The honest reading of that number, not the flattering one:**
+`build_calibration.BLACK_TARGET_WIRE` is `1300.0`, and
+`BLACK_MIN_WIRE`/`BLACK_MAX_WIRE` (`400.0`/`4000.0`) are a wide safety
+band, not a tight target-matching tolerance — the same acceptance test
+`calib_wizard.step_black` already uses on this same register, not a new
+threshold invented for this loop. The vendor's own un-converged seed
+landed *inside that wide band* on round one and the search stopped there,
+never refining toward the numeric target the way docs/55's own captured
+trace (four real register-write rounds) did. Meanwhile the **already-
+stored** calibration offset, measured directly in §44.3, sits at
+`[1357.2, 1375.0, 1447.6]` — markedly *closer* to the 1300 target than the
+"converged" `(10, 10, 10)` result is. Read plainly: this run gives no
+evidence that the stored calibration has drifted or needs replacing. If
+anything it points the other way — the stored value looks better-tuned
+against the target than the vendor's own un-refined starting guess does on
+this unit, today.
+
+This is reported as measured, not stretched into either "the stored
+calibration is confirmed stale" or "the stored calibration is confirmed
+correct" — a single real round that happened to land inside a wide
+acceptance band on the first try is weak evidence either way, and a
+genuine apples-to-apples comparison would need the search to actually
+exercise its multi-round solve against real hardware (as §44.2's synthetic
+run did, but real hardware has not yet forced that path — the two real
+runs above both happened to land immediately). That is future work, not
+done here.
+
+### 44.5 — Relationship to §31-43's ~88-89 code brightness gap: not
+confirmed, and not tested against the render
+
+Per the standing rule for this section of the doc: a converged-vs-stored
+offset difference is not claimed to explain or fix the gap unless it has
+also been checked against an actual render of the real reference pair
+(`test123.bin` frame 0 vs `AA001.tif`). That check was **not** performed —
+the real hardware run above did not produce an offset differing from the
+stored value in a way that would motivate installing it (§44.4), so there
+was no candidate value worth taking through a render comparison tonight.
+**Nothing in this section moves §31-43's gap.** The live-convergence
+mechanism itself is real, implemented, and verified in the ways described
+above; whether it would find something different from a real,
+multi-round, genuinely-converged search (as opposed to the first-round
+landings both real runs happened to hit) is still open.
+
+### 44.6 — Safety assessment, for whoever runs `--live-afe-converge` next
+
+Every primitive `converge_afe_offsets` calls (`ccd_configure`,
+`reset_fifos`, `acquire`, `link.read_image`, `pakon_gate.find_phase`/
+`split_lines`, `build_calibration.solve_offset`, `pc.afe_offset_word`/
+`afe_offset_value`) was already relied on elsewhere in this project before
+tonight. What is new is the loop that calls them in sequence, in-process,
+repeatedly. Confidence in it:
+
+- **No transport movement, ever.** Neither `converge_afe_offsets` nor
+  `_live_afe_measure` calls anything that moves the motor.
+- **No lamp control, ever.** Neither calls `lamp_on`/`lamp_off`/any
+  lamp-register write. Correctness (not safety) depends on the lamp
+  actually being off when it is called — `run_scan`'s wiring places the
+  call before `lamp_on` is ever reached, and both real runs tonight forced
+  it off explicitly first with `pakon_scan.py stop`.
+- **Bounded runtime.** 15 s per round, `LIVE_AFE_MAX_ROUNDS = 5` rounds —
+  worst case roughly 75 s, not unbounded. Both real runs finished in under
+  a second because they landed on round one.
+- **Bounded register range.** Every write goes through `pc.afe_offset_word`,
+  which refuses (not wraps) anything at or below −255 and clamps at +255 —
+  unchanged from the already-verified encoder.
+- **Failure leaves a defined state, not a dangling one.** A search that
+  does not converge writes the AFE register to the best real measurement
+  seen, then raises `ScanRefused` — it does not silently continue a scan
+  on an unconfirmed guess.
+
+**What is not yet proven:** the multi-round solve path (blind step -> two-
+point slope -> exact solve) has been exercised against real hardware
+**zero times** — both real runs converged on round one. Before trusting
+this unattended on a real scan, run it once more deliberately starting
+from an offset far enough from the target that it is forced through at
+least one real `solve_offset` round (for example, an explicit `--live-afe-
+target` far from 1300, or a seed moved well outside the current band), and
+watch that it (a) actually solves rather than blind-stepping to the round
+cap, and (b) leaves the register at a value that, independently
+re-measured, is inside `BLACK_MIN_WIRE`/`BLACK_MAX_WIRE`. That is real,
+supervised verification this session did not reach, stated plainly rather
+than implied to have happened.

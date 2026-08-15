@@ -107,7 +107,7 @@ extern "C" {
  * fixed slots 0..N for its own small synthetic table. Never grow this
  * without adding matching Thunk_NN stubs in hookstub.S.
  * --------------------------------------------------------------------- */
-#define HOOKCORE_MAX_HOOKS 23
+#define HOOKCORE_MAX_HOOKS 24
 
 /* Must exactly match the PUSHAD+PUSHFD+index+retaddr stack layout that
  * hookstub.S's SharedEntryHandler builds -- see that file's header

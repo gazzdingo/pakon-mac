@@ -179,6 +179,36 @@ export const GATE = {
   unknown: { label: '—', tone: '', note: '' },
 };
 
+/** What the backend's `job.phase` means, for the scan screen's headline.
+ *
+ *  The child process (`pakon_scan.py run`) walks a real sequence —
+ *  `starting -> connecting -> lamp -> sensor -> acquire -> transport ->
+ *  scanning` — that mirrors the vendor's own light-board/CCD bring-up
+ *  (docs/59, docs/55): lamp thresholds, lamp on at the dim open-gate duty, a
+ *  real ~5 s settle (`LAMP_WARMUP_S`, hive-confirmed `WaitForLamp`), CCD
+ *  geometry/AFE, then the transport. `scanning` is only reached once actual
+ *  image data is flowing — see the `window` event in pakon_app.py's `_pump`.
+ *
+ *  Collapsed here to the three stages the real hardware visibly shows: the
+ *  lamp warming up (dim), everything else that has to happen before film
+ *  moves, and the scan itself (bright). An unrecognised or empty phase falls
+ *  back to `scanning` rather than something alarming, since by far the most
+ *  common way to see one is a job whose phase has not reported yet. */
+export const SCAN_PHASE = {
+  starting: { label: 'Starting', stage: 'init' },
+  connecting: { label: 'Connecting', stage: 'init' },
+  lamp: { label: 'Warming up lamp', stage: 'warmup' },
+  sensor: { label: 'Initializing scan', stage: 'init' },
+  acquire: { label: 'Initializing scan', stage: 'init' },
+  transport: { label: 'Initializing scan', stage: 'init' },
+  scanning: { label: 'Scanning', stage: 'scan' },
+  cancelling: { label: 'Stopping…', stage: 'scan' },
+};
+
+export function scanPhaseInfo(phase) {
+  return SCAN_PHASE[phase] || SCAN_PHASE.scanning;
+}
+
 /** Why the scanner cannot run right now, in the order a user would hit them.
  *  `fix: 'recheck'` means pressing Recheck can change the answer; `fix: null`
  *  means nothing this window offers will. One line, no further explanation —

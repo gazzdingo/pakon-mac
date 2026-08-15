@@ -205,6 +205,20 @@ const HOOKS = [
     cite: 'docs/74 §11',
   },
   {
+    dll: 'PakonIMAu.dll', va: 0x100fd190, id: 'analyze_scp_lut_balance',
+    role: 'stage', pixelBuffer: false,
+    desc: 'ColorNegativePath::analyzeScpLutBalance -- the analyze-time ' +
+          'path that casts to the same AnsSCPLutCapability type ' +
+          'balanceAreaImage\'s miss-path composes with at apply time ' +
+          '(docs/74 §37/§39). Added specifically to settle the one open ' +
+          'question §39 flagged: whether the [cast_result+0xc] gate ' +
+          'controlling that whole compose block is actually non-zero on ' +
+          'a real scan -- if this hook never fires, the SCPLut compose ' +
+          'is dead on the real render path regardless of its data being ' +
+          'confirmed correct.',
+    cite: 'docs/74 §37.4, §39.2-39.3',
+  },
+  {
     dll: 'PakonIMAu.dll', va: 0x100e16d0, id: 'analyze_area',
     role: 'stage', pixelBuffer: true,
     desc: 'analyzeArea entry (732-function capability, 0% ported). docs/74 ' +

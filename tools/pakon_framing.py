@@ -208,6 +208,24 @@ class Frame:
     start: int
     stop: int
     phase: Phase
+    #: Fraction of this frame's own [start, stop) that the cascade's own
+    #: "ones" (image-density) classification marked as real photographic
+    #: content, rather than interframe gap/leader. ``None`` until
+    #: ``frame_cascade`` fills it in (every real caller does).
+    #:
+    #: Exists because ``confidence``/``framing_risk`` (docs/74 §43) only say
+    #: how a boundary was *placed* (which phase, how odd its width is) and
+    #: say nothing about what is actually *inside* it. A phase-3/4
+    #: (``LookAtEnd``/``LookAtBeginning``) placement snaps its start to a
+    #: real detected run but then pads the far end out to the nominal frame
+    #: width regardless of where that run actually ends -- when the real run
+    #: is much shorter than nominal (a short/faint frame, or one crowding the
+    #: roll's own end), the padded tail runs past it into brighter gap
+    #: material, and this fraction drops well below 1.0 even though nothing
+    #: downstream is told. Confirmed on two independent real captures (docs/74
+    #: §43): a clean ``LookForNicePictures``/``LookAtBeginning`` frame reads
+    #: 0.997-1.000; a diluted ``LookAtEnd`` frame reads 0.52-0.82.
+    content_fraction: float | None = None
 
     @property
     def lines(self) -> int:
@@ -216,6 +234,7 @@ class Frame:
     def as_dict(self) -> dict:
         return {"start": self.start, "stop": self.stop, "lines": self.lines,
                 "phase": self.phase.vendor_name,
+                "content_fraction": self.content_fraction,
                 "scan_warning": int(self.phase),
                 "framing_risk": self.phase.risk}
 
@@ -640,6 +659,16 @@ def frame_cascade(trace: np.ndarray,
         if a.stop > b.start:
             a.stop = b.start
     frames = [f for f in frames if f.lines > 0]
+
+    # docs/74 §43: how much of each FINAL window (after the overlap trim
+    # above, which can shorten a padded tail) is real "ones" content, not
+    # gap. Cheap -- `ones` is already in hand -- and the only place that can
+    # see the true per-frame answer, since a frame's own window is not known
+    # until the whole cascade (including phases 2-4's snapping and the trim)
+    # has run.
+    for f in frames:
+        f.content_fraction = (float(ones[f.start:f.stop].mean())
+                              if f.lines > 0 else 0.0)
 
     counts = {p.vendor_name: sum(1 for f in frames if f.phase is p) for p in Phase}
     report = {

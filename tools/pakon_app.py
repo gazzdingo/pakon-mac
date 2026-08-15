@@ -1329,7 +1329,8 @@ class ScanSupervisor:
         S.job_set(jid, kind="scan", status="running", phase="starting",
                   progress=0.0, message="starting the scan process",
                   path=str(out), base=base, max_seconds=seconds,
-                  started=time.time(), lamp={}, window={}, run={},
+                  started=time.time(), lamp={}, lamp_duty=None,
+                  window={}, run={},
                   bytes=0, lines=0, windows=0, sync_breaks=0,
                   stopped={}, cancellable=True, speed=speed,
                   open_with=open_with,
@@ -1359,8 +1360,35 @@ class ScanSupervisor:
                 if kind == "phase":
                     S.job_set(jid, phase=ev.get("phase") or "",
                               message=ev.get("message") or "")
+                    if ev.get("phase") == "lamp":
+                        # lamp_on() runs at the open-gate (dim) duty (docs/59);
+                        # this is the real "warming up" moment. Advanced to
+                        # "with-film" by the lamp_duty_switch event below, the
+                        # instant the film sensors report film present.
+                        S.job_set(jid, lamp_duty="open-gate")
                 elif kind == "lamp":
-                    S.job_set(jid, lamp=ev, phase="scanning")
+                    # A lamp health poll: one right after the warm-up settle,
+                    # before anything else has happened, and then one every
+                    # LAMP_POLL_S for the rest of the run. This USED TO stamp
+                    # the job "scanning" unconditionally -- which fired on the
+                    # very first poll, seconds before the CCD was configured,
+                    # the transport speed was set, or the motor had moved at
+                    # all. That is why the UI jumped straight from "starting"
+                    # to "Scanning" with no visible lamp warm-up/init lead-in:
+                    # the real phase events below were being overwritten
+                    # before the browser ever polled the job. `kind ==
+                    # "window"` is the real "scanning" signal -- it only fires
+                    # once actual image data is flowing.
+                    S.job_set(jid, lamp=ev)
+                elif kind == "lamp_duty_switch":
+                    # docs/59: FN_bBeforeScan switches the lamp from the
+                    # open-gate duty to the with-film duty the instant film is
+                    # sensed in the gate -- the real "bright for the scan"
+                    # transition. Surfaced so the UI can show it rather than
+                    # silently drop it, which is what happened before this
+                    # `elif` existed (the event has no other handler above).
+                    S.job_set(jid, lamp_duty=ev.get("to") or "with-film",
+                              lamp_duty_switch=ev)
                 elif kind == "dx":
                     # One record, at the end of the scan. Carries the whole DX
                     # summary including product/specifier, which are null

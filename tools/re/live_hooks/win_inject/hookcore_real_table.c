@@ -208,6 +208,17 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "ruled out the find(\"area\") HIT path as a live data-consumption "
           "channel, but never read the miss-path body itself).",
           "docs/74 SS11", 0, 1, 0, 0, 0 },
+        { "PakonIMAu.dll", 0x100fd190, "analyze_scp_lut_balance",
+          "ColorNegativePath::analyzeScpLutBalance -- the analyze-time "
+          "path that casts to the same AnsSCPLutCapability type "
+          "balanceAreaImage's miss-path composes with at apply time "
+          "(docs/74 SS37/SS39). Added specifically to settle the one "
+          "open question SS39 flagged: whether the [cast_result+0xc] "
+          "gate controlling that whole compose block is actually "
+          "non-zero on a real scan -- if this hook never fires, the "
+          "SCPLut compose is dead on the real render path regardless "
+          "of its data being confirmed correct.",
+          "docs/74 SS37.4, SS39.2-39.3", 0, 1, 0, 0, 0 },
         { "PakonIMAu.dll", 0x100e16d0, "analyze_area",
           "analyzeArea entry (732-function capability, 0% ported). docs/74 "
           "SS11-12 calls the four unreplicated stages -- this one included -- "

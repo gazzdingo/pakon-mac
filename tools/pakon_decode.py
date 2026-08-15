@@ -584,6 +584,77 @@ def rpd12_to_u16(rpd12: np.ndarray) -> np.ndarray:
 # is the vendor's; the arrangement is ours. Rendered F-135 colour is provisional.
 F135_INVERT_PORTED = False
 
+def film_base_code_from_hist(counts, n_pixels: int, n_bins: int = 4096,
+                             exclude_ceiling: bool = False) -> int:
+    """The shared FindDmin-from-histogram step (docs/74 §41).
+
+    Both the single-shot (``_film_base_code``) and the roll-wide, chunked
+    accumulation (``pakon_render.open_capture``) reduce to this: a histogram,
+    a total pixel count, the vendor's own walk. Factored out so the two
+    callers cannot drift — before docs/74 §41 they computed the same thing
+    with independently-written code.
+
+    ``exclude_ceiling`` zeroes the exact ``n_bins - 1`` bin before the walk,
+    with ``thr`` still computed from the *true* ``n_pixels`` (informative +
+    ceiling). See ``film_base_combine`` for why this exists at all.
+    """
+    counts = list(counts)
+    if exclude_ceiling:
+        counts[n_bins - 1] = 0
+    thr = scene_ctx.find_dmin_thr_n_pixels(n_pixels)
+    return scene_ctx.find_dmin_code_from_hist(counts, thr, n_bins=n_bins)
+
+
+def film_base_combine(kept_code: int, excl_counts, excl_pixels: int,
+                      n_bins: int = 4096) -> int:
+    """Extend a kept-population FindDmin code with the excluded/leader one.
+
+    docs/74 §41. ``film_base_line_mask`` keeps two populations, not one: the
+    "kept" side (film — every frame plus every inter-frame gap, all
+    genuinely clear-film-based) and the excluded side (whatever saturates
+    across a whole line — clear leader and the empty gate). Until now only
+    the kept side ever reached FindDmin, on the assumption that it always
+    holds enough near-Dmin population by itself (docs/58, docs/66). docs/74
+    §31.2 found a roll, under the post-2026-08-12 lamp duty, where that
+    assumption fails: genuine clear leader saturates the polynomial matrix's
+    own 4095 ceiling so hard that its excluded population is nearly all
+    that's left of "actually clear film" on the roll, and the kept side's
+    FindDmin walk lands on the roll's own real photographic highlights
+    instead (measured, not inferred — docs/74 §31.2's histogram-shape and
+    whole-film-region checks).
+
+    FindDmin's own definition is "the code above which 0.1% of the walked
+    population lies" — i.e. maximum transmission, i.e. the clearest film in
+    view. Nothing about that definition requires the population to be the
+    kept side specifically; it is only ever the kept side because that is
+    what has been fed to it. So: walk the excluded/leader population too
+    (``exclude_ceiling=True``, because the ceiling bin says only ">= 4095",
+    not a code, and would otherwise either swamp the walk or trip the
+    vendor's own "all clipped" sentinel on a population that in fact has
+    real information just below the ceiling — docs/74 §31.2's own leader
+    unsaturated-p99.9 measurements, ~4070-4090, are exactly that
+    information), and take whichever of the two candidates is HIGHER —
+    closer to genuine maximum transmission, per FindDmin's own definition.
+
+    This never makes a working roll worse: if the kept side is already
+    correct (pre-recalibration rolls, where gaps genuinely supply a clean
+    near-Dmin reading), the excluded/leader side reads the same base film
+    stock and lands at essentially the same code, so the max is a near
+    no-op; if leader happens to be noisier or lower, ``max`` simply prefers
+    the unaffected kept value. And a kept-side refusal (FindDmin's own 0
+    sentinel, meaning the FILM ITSELF has clipped, docs/66 ``check_film_base``)
+    is never overridden — that is a stronger, more specific signal ("this
+    exposure is bad") than "leader also happened to be informative", so it
+    is returned as-is, unchanged, for ``check_film_base`` to refuse on
+    exactly as before.
+    """
+    if kept_code <= 0 or excl_pixels <= 0:
+        return int(kept_code)
+    leader_code = film_base_code_from_hist(
+        excl_counts, excl_pixels, n_bins=n_bins, exclude_ceiling=True)
+    return max(int(kept_code), int(leader_code))
+
+
 def _film_base_code(plane: np.ndarray, n_bins: int = 4096) -> int:
     """FindDmin on one plane, histogrammed with numpy for strip-sized data.
 
@@ -594,8 +665,7 @@ def _film_base_code(plane: np.ndarray, n_bins: int = 4096) -> int:
     """
     v = np.clip(plane, 0, n_bins - 1).astype(np.int64).ravel()
     counts = np.bincount(v, minlength=n_bins).tolist()
-    thr = scene_ctx.find_dmin_thr_n_pixels(v.size)
-    return scene_ctx.find_dmin_code_from_hist(counts, thr, n_bins=n_bins)
+    return film_base_code_from_hist(counts, v.size, n_bins=n_bins)
 
 
 # --------------------------------------------------------------------------
@@ -626,6 +696,11 @@ def _film_base_code(plane: np.ndarray, n_bins: int = 4096) -> int:
 #   [OURS]  Everything below: the idea of a window as a named thing, the
 #       saturated-line test, its threshold, and the minimum-film guard. No
 #       vendor call site computes any of it. See FILM_BASE_WINDOW_PORTED.
+#   [OURS]  film_base_combine (docs/74 §41): the excluded (leader) side of
+#       the same saturated-line test is a second candidate clear-film
+#       population, walked with the exact ceiling bin discounted and
+#       combined with the kept side by ``max`` — not vendor logic, ours on
+#       top of the vendor's own unmodified walk.
 #
 # Measured over captures/:
 #
@@ -760,6 +835,20 @@ def film_base_codes(lin12: np.ndarray,
     sub = lin[win["mask"]][:, win["col0"]:]
     base = np.array([_film_base_code(sub[:, :, c], n_bins=n_bins)
                      for c in range(3)], dtype=np.float64)
+    # docs/74 §41: the excluded side of the same window is genuine leader
+    # (that's what the line-saturation test is for), and on a roll where
+    # leader itself saturates the poly ceiling, it is frequently the only
+    # population with real clear-film information left. Extend, never
+    # override — see film_base_combine.
+    excl = lin[~win["mask"]][:, win["col0"]:]
+    if excl.shape[0] * excl.shape[1] > 0:
+        excl_n = int(excl.shape[0]) * int(excl.shape[1])
+        for c in range(3):
+            excl_counts = np.bincount(
+                np.clip(excl[:, :, c], 0, n_bins - 1).astype(np.int64)
+                .ravel(), minlength=n_bins).tolist()
+            base[c] = float(film_base_combine(
+                base[c], excl_counts, excl_n, n_bins=n_bins))
     return base, win
 
 

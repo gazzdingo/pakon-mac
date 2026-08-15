@@ -922,6 +922,133 @@ def test_dark_floor_refusal() -> None:
     check(bcal.check_dark_floor(_Cap()) == [], "and produces no warning")
 
 
+def test_live_afe_converge_logic() -> None:
+    """``pakon_scan.converge_afe_offsets`` against a synthetic dark-level
+    model -- no scanner, no USB, no real measurement. docs/74 SS44.
+
+    This is the logic-only check the live AFE convergence loop got before any
+    real hardware: it monkeypatches the one function that actually touches
+    the sensor (``_live_afe_measure``) with a fake linear dark-level response
+    and checks the SEARCH converges to a value that lands the (synthetic)
+    black level in range, within the iteration cap, using the real
+    ``build_calibration.solve_offset`` algebra and the real
+    ``pakon_commands.afe_offset_word``/``afe_offset_value`` encode/decode
+    path (exercised for real through every ``ccd_configure`` call the loop
+    makes, via a ``dry_run`` ``Link`` that records packets instead of sending
+    them).
+
+    The synthetic slope (~-20 wire counts per offset count, pedestal rising
+    as the register goes more negative) is chosen to have the SAME SIGN docs/
+    55's own captured trace shows, not to reproduce any specific scanner's
+    real numbers -- this checks the loop's logic, not this unit's
+    calibration.
+    """
+    import numpy as np
+
+    import build_calibration as bcal
+    import pakon_scan as ps
+
+    section("live AFE dark-offset convergence -- synthetic measurement (docs/74)")
+
+    check(ps.LIVE_AFE_SEED == (10, 10, 10),
+          "the search starts at the vendor's own captured guess (docs/55 "
+          "steps 22-24)")
+    check(1 <= ps.LIVE_AFE_MAX_ROUNDS <= 8,
+          "the round cap is a small bounded number, not unbounded",
+          str(ps.LIVE_AFE_MAX_ROUNDS))
+
+    # Deliberately far from the target at the seed offset (10, 10, 10): the
+    # first round cannot land, so this also exercises the "not solvable from
+    # one point -> blind step -> solvable from two -> exact solve" path, not
+    # just a search that gets lucky on round 1.
+    true_base = np.array([4600.0, 5200.0, 4550.0])
+    true_slope = np.array([-22.0, -19.0, -21.0])  # wire counts / offset count
+    rounds_made = []
+
+    def fake_measure(link, cfg, offsets, probe_bytes, log):
+        rounds_made.append(tuple(offsets))
+        off = np.asarray(offsets, dtype=float)
+        black = true_base + true_slope * off
+        planes = np.empty((8, 2000, 3), dtype=float)
+        planes[:, :, :] = black
+        return ps._ProbeCapture(bcal, offsets, planes,
+                                label=f"synthetic-{offsets}")
+
+    orig = ps._live_afe_measure
+    ps._live_afe_measure = fake_measure
+    try:
+        link = ps.Link.open(dry_run=True)
+        cfg = ps.ScanConfig()
+        converged = ps.converge_afe_offsets(link, cfg,
+                                            log=lambda *a, **k: None)
+    finally:
+        ps._live_afe_measure = orig
+
+    check(len(rounds_made) <= ps.LIVE_AFE_MAX_ROUNDS,
+          f"converged within the round cap ({ps.LIVE_AFE_MAX_ROUNDS}); took "
+          f"{len(rounds_made)} rounds", str(rounds_made))
+    final_black = true_base + true_slope * np.asarray(converged, dtype=float)
+    check(all(bcal.BLACK_MIN_WIRE <= v <= bcal.BLACK_MAX_WIRE
+             for v in final_black),
+          f"the converged offsets {converged} land the synthetic black "
+          f"level inside BLACK_MIN_WIRE..BLACK_MAX_WIRE",
+          str(final_black.tolist()))
+    check(all(-254 <= v <= 254 for v in converged),
+          "the converged offsets are inside the AD9826's legal range",
+          str(converged))
+    # afe_offset_word/value actually ran, for real, inside every
+    # ccd_configure call the loop made (dry_run only skips the USB write,
+    # not the encode) -- round-trip it here explicitly as a second witness.
+    import pakon_commands as pc
+    check(all(pc.afe_offset_value(pc.afe_offset_word(v)) == v
+             for v in converged),
+          "the converged offsets round-trip through the real AD9826 encoder")
+
+
+def test_live_afe_converge_bounded_refusal() -> None:
+    """A register with no measurable effect on the black level must be
+    refused, not guessed at, and the search must still terminate. docs/74 SS44.
+    """
+    import numpy as np
+
+    import build_calibration as bcal
+    import pakon_scan as ps
+
+    section("live AFE convergence refuses a dead register instead of "
+           "spinning or guessing")
+
+    calls = []
+
+    def dead_measure(link, cfg, offsets, probe_bytes, log):
+        calls.append(tuple(offsets))
+        # The register moves nothing: every probe reads the same level,
+        # deliberately far from any plausible target.
+        planes = np.full((8, 2000, 3), 50.0, dtype=float)
+        return ps._ProbeCapture(bcal, offsets, planes,
+                                label=f"dead-{offsets}")
+
+    orig = ps._live_afe_measure
+    ps._live_afe_measure = dead_measure
+    try:
+        link = ps.Link.open(dry_run=True)
+        cfg = ps.ScanConfig()
+        refused = False
+        try:
+            ps.converge_afe_offsets(link, cfg, max_rounds=5,
+                                    log=lambda *a, **k: None)
+        except ps.ScanRefused as e:
+            refused = True
+            check("did not settle" in str(e),
+                  "the refusal names what happened, not just that it failed")
+    finally:
+        ps._live_afe_measure = orig
+
+    check(refused, "a dead register is refused rather than silently trusted")
+    check(len(calls) == 5,
+          f"exactly max_rounds (5) probes were made, not fewer (gave up "
+          f"early) or more (unbounded) -- got {len(calls)}", str(calls))
+
+
 def test_vendor_target_is_a_maximum() -> None:
     """docs/15: the vendor compares the MAXIMUM pixel of an averaged line."""
     import numpy as np
@@ -1156,6 +1283,8 @@ def main() -> int:
     test_lookup_cannot_reach_a_device()
     test_afe_offset_encoding()
     test_dark_floor_refusal()
+    test_live_afe_converge_logic()
+    test_live_afe_converge_bounded_refusal()
     test_vendor_target_is_a_maximum()
     test_flatfield_store_is_append_only()
     test_wizard_states()

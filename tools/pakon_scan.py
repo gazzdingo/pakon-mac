@@ -9,6 +9,8 @@ is written to stop rather than to finish.
     python3 tools/pakon_scan.py run out.bin     # a scan, with every guard armed
     python3 tools/pakon_scan.py run --dry-run   # print the sequence, send nothing
     python3 tools/pakon_scan.py sensors         # DX photodiodes + film sense, no writes
+    python3 tools/pakon_scan.py run --live-afe-converge  # EXPERIMENTAL, see
+                                                 # converge_afe_offsets() -- run once, watched
 
 
 WHAT THIS IS GUARDING AGAINST
@@ -103,7 +105,7 @@ import signal
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 _TOOLS = Path(__file__).resolve().parent
@@ -1664,6 +1666,313 @@ def reset_fifos(link: Link) -> None:
 
 
 # --------------------------------------------------------------------------
+# live AFE dark-offset convergence -- NOT wired into the default scan path
+# --------------------------------------------------------------------------
+#
+# docs/55-vendor-ccd-bringup-captured.md steps 19-34 caught the real PSI.exe
+# running a live dark-offset re-calibration at the START OF EVERY SCAN: it
+# starts at a fixed +10,+10,+10 guess, writes it, measures the resulting
+# black level by some internal means the capture cannot see (only the
+# register writes are on the wire), and converges by successive
+# approximation -- +10/+10/+10 -> -29/-38/-30 -> -21/-30/-22 -> -19/-25/-19 ->
+# G settles at -26 -- before the real scan begins. `ccd_configure` above has
+# never done this: it writes the single FIXED, STORED `cfg.afe_offsets` from
+# `calibration/README.json` and nothing measures whether that stored value is
+# still right. Everything below is the missing loop -- not wired into
+# `ccd_configure` or the default `run_scan` path, and only reachable through
+# the explicit `--live-afe-converge` flag on `pakon_scan.py run`, exactly so
+# a scan run without that flag behaves byte-for-byte as it always has.
+#
+# THE MEASUREMENT PRIMITIVE IS NOT INVENTED HERE. `tools/calib_wizard.py`'s
+# own `step_black` already runs a live black-level search on real hardware,
+# the same shape as this: a short, stationary (`--no-motor`), lamp-off
+# capture at a candidate `afe_offsets`, decoded with
+# `build_calibration.Capture`, solved with `build_calibration.solve_offset`.
+# The only thing new here is running that same measurement IN-PROCESS, off an
+# already-open `Link`, mid-scan-startup, instead of by shelling out to a
+# fresh `pakon_scan.py run` subprocess per round the way the wizard does. The
+# decode primitive (`pakon_gate.find_phase` / `split_lines`) is the identical
+# one `run_scan`'s own capture loop already uses on every real scan; the
+# solve algebra is `build_calibration.solve_offset`, called for real (not
+# reimplemented) through the `_ProbeCapture` shim below, which duck-types
+# just enough of `build_calibration.Capture` to feed it an in-memory probe
+# round instead of a file on disk.
+
+#: The vendor's own starting guess, captured verbatim at docs/55 steps 22-24
+#: (offset words 0x000A = +10 on all three channels, before any measurement).
+LIVE_AFE_SEED = (10, 10, 10)
+
+#: Bound on convergence rounds. The vendor's own captured trace (docs/55)
+#: converged R/B in 3 written rounds and G in 4 (steps 25-34). This project's
+#: own `calib_wizard.MAX_BLACK_ROUNDS` search, which solves the identical
+#: register with the identical algebra, uses 4. One more than either gives
+#: margin without making this an unbounded search.
+LIVE_AFE_MAX_ROUNDS = 5
+
+#: Bytes read per probe round -- `calib_wizard.PROBE_BYTES`'s own figure
+#: (~2,000 lines), enough to average down read noise without turning every
+#: round into a multi-second operation.
+LIVE_AFE_PROBE_BYTES = 24_000_000
+
+#: Per-round hard stop. A probe that has not filled `LIVE_AFE_PROBE_BYTES` in
+#: this long is not going to; better to fail loudly than hang the scan start.
+LIVE_AFE_PROBE_TIMEOUT_S = 15.0
+
+#: How long with no image data at all before a probe round gives up rather
+#: than waiting out its full timeout.
+LIVE_AFE_STALL_S = 3.0
+
+
+class _ProbeCapture:
+    """Duck-types just enough of ``build_calibration.Capture`` to let
+    ``build_calibration.solve_offset`` run against one in-memory probe round.
+
+    Real measured planes, real ``afe_offsets`` -- only the storage differs
+    from a scan file's ``Capture``: this one was never written to disk, so
+    there is no sidecar to read and no file to re-open. ``solve_offset`` only
+    ever calls ``.config`` (a dict), ``.channel_means()``, ``.is_clipped()``
+    and, on the most recent capture, ``.floor_stats()`` -- reproduced here
+    against the exact same constants (``build_calibration.CLIP_WIRE`` /
+    ``CLIP_FRACTION_MAX`` / ``FLOOR_WIRE`` / ``FLOOR_FRACTION_MAX``) the file-
+    backed ``Capture`` uses, not new thresholds.
+    """
+
+    def __init__(self, bcal, offsets: tuple, planes, label: str) -> None:
+        self._bcal = bcal
+        self.config = {"afe_offsets": [int(v) for v in offsets]}
+        self.planes = planes
+        self.path = Path(label)
+
+    def channel_means(self):
+        return self.planes.astype(float).mean(axis=(0, 1))
+
+    def clip_stats(self):
+        import numpy as np
+        frac = (self.planes >= self._bcal.CLIP_WIRE).mean(axis=(0, 1))
+        peak = self.planes.max(axis=(0, 1))
+        return np.asarray(frac, dtype=float), np.asarray(peak)
+
+    def is_clipped(self) -> bool:
+        return bool((self.clip_stats()[0] > self._bcal.CLIP_FRACTION_MAX).any())
+
+    def floor_stats(self):
+        import numpy as np
+        frac = (self.planes <= self._bcal.FLOOR_WIRE).mean(axis=(0, 1))
+        low = self.planes.min(axis=(0, 1))
+        return np.asarray(frac, dtype=float), np.asarray(low)
+
+    def is_floored(self) -> bool:
+        return bool((self.floor_stats()[0] > self._bcal.FLOOR_FRACTION_MAX).any())
+
+
+def _live_afe_measure(link: "Link", cfg: "ScanConfig", offsets: tuple,
+                      probe_bytes: int, log) -> "_ProbeCapture":
+    """One probe round: write ``offsets``, take a short stationary, lamp-off
+    read-back, return it decoded as a :class:`_ProbeCapture`.
+
+    Never sends TRANSPORT FORWARD and never touches the lamp -- the caller is
+    responsible for both being in the right state (lamp off) before this is
+    called at all. Uses ``ccd_configure`` to write the probe, exactly the
+    registers an ordinary scan writes, so nothing here is a new write path;
+    only the offsets vary between rounds. Decodes with the same
+    ``pakon_gate.find_phase``/``split_lines`` primitive ``run_scan``'s own
+    capture loop uses on every real scan.
+    """
+    import numpy as np
+    probe_cfg = replace(cfg, afe_offsets=tuple(int(v) for v in offsets))
+    ccd_configure(link, probe_cfg)
+    reset_fifos(link)
+    reset_fifos(link)
+    acquire(link, True)
+    try:
+        buf = bytearray()
+        phase = None
+        collected = []
+        n_lines = 0
+        want_lines = max(1, probe_bytes // gate.BYTES_PER_LINE)
+        deadline = time.time() + LIVE_AFE_PROBE_TIMEOUT_S
+        last_data = time.time()
+        while n_lines < want_lines:
+            now = time.time()
+            if now > deadline:
+                log("warn", message=f"live AFE probe at {offsets}: hit the "
+                                    f"{LIVE_AFE_PROBE_TIMEOUT_S:.0f}s round "
+                                    f"timeout with {n_lines} of {want_lines} "
+                                    f"lines")
+                break
+            data = link.read_image(CHUNK)
+            if not data:
+                if now - last_data > LIVE_AFE_STALL_S:
+                    log("warn", message=f"live AFE probe at {offsets}: no "
+                                        f"image data for "
+                                        f"{LIVE_AFE_STALL_S:.0f}s, stopping "
+                                        f"this round with {n_lines} lines")
+                    break
+                continue
+            last_data = now
+            buf += data
+            if phase is None and len(buf) >= 4 * gate.BYTES_PER_LINE:
+                phase = gate.find_phase(buf[: 8 * gate.BYTES_PER_LINE])
+            if phase is None:
+                continue
+            lines, consumed, n, _brk = gate.split_lines(buf, phase)
+            if consumed:
+                del buf[:consumed]
+                phase = 0
+            if n:
+                collected.append(lines)
+                n_lines += n
+    finally:
+        acquire(link, False)
+    if not collected:
+        raise ScanRefused(
+            f"live AFE convergence: no image data came back from a "
+            f"stationary, lamp-off probe at offsets {offsets}. Refusing to "
+            f"guess a dark level from nothing -- check the lamp is actually "
+            f"off and the sensor is acquiring.")
+    all_lines = np.concatenate(collected, axis=0)
+    planes = all_lines.reshape(all_lines.shape[0], gate.PIXELS_PER_LINE,
+                               gate.CHANNELS)
+    import build_calibration as bcal  # noqa: E402  (opt-in only, see module note)
+    return _ProbeCapture(bcal, offsets, planes,
+                         label=f"live-afe-probe-{offsets}")
+
+
+def converge_afe_offsets(link: "Link", cfg: "ScanConfig", *,
+                         target: float | None = None,
+                         seed: tuple = LIVE_AFE_SEED,
+                         max_rounds: int = LIVE_AFE_MAX_ROUNDS,
+                         probe_bytes: int = LIVE_AFE_PROBE_BYTES,
+                         log=None) -> tuple:
+    """Live per-scan AFE dark-offset calibration -- the loop docs/55 caught
+    the vendor actually running (steps 19-34) and this project has never
+    reproduced. See the module comment above this function for the full
+    background and what is/is not reused from ``calib_wizard``/
+    ``build_calibration``.
+
+    ***REQUIRES THE LAMP OFF WHEN CALLED.*** This measures the sensor's own
+    dark level; with the lamp on it would converge the offset register to
+    whatever level reaches the sensor with the lamp lit, not a true black
+    point. The caller is responsible for this -- ``run_scan``'s
+    ``--live-afe-converge`` wiring calls it immediately after
+    ``link.clear_fault()`` and before ``lamp_on`` is ever reached, which is
+    the only place in this module that is known to satisfy it.
+
+    ***NOT WIRED INTO ``ccd_configure`` OR THE DEFAULT SCAN PATH.*** A scan
+    run without ``--live-afe-converge`` behaves exactly as it always has:
+    ``ccd_configure`` still writes the single stored ``cfg.afe_offsets``.
+
+    ***THIS HAS NOT YET BEEN EXERCISED END TO END AGAINST REAL HARDWARE.***
+    Every primitive it calls (``ccd_configure``, ``reset_fifos``,
+    ``acquire``, ``link.read_image``, ``pakon_gate.find_phase``/
+    ``split_lines``, ``build_calibration.solve_offset``) is one this project
+    already relies on elsewhere; the LOOP -- write probe, read back, decide,
+    repeat -- is new and has only been checked with synthetic measurement
+    data (see the logic-only test alongside this change). Run it once,
+    supervised, watching the printed per-round black levels, before trusting
+    it unattended on a real scan. See docs/74 for the write-up.
+
+    Method, modelled on docs/55's own captured shape:
+      1. Start at ``seed`` -- the vendor's own +10, +10, +10.
+      2. Take a short, stationary (transport never moves), lamp-off probe at
+         the current guess (:func:`_live_afe_measure`).
+      3. If the measured black level lands inside
+         ``build_calibration.BLACK_MIN_WIRE``/``BLACK_MAX_WIRE`` of
+         ``target`` and is not floored, stop.
+      4. Otherwise hand every probe measured so far to
+         ``build_calibration.solve_offset`` -- the exact function
+         ``calib_wizard.step_black`` already trusts on real hardware for
+         this same register -- and take its answer if it is solvable.
+      5. If it is not solvable yet (fewer than two distinct offsets measured,
+         or a channel whose slope could not be measured), nudge every
+         channel by a fixed step, the same blind first move
+         ``calib_wizard.step_black`` makes.
+      6. Bail out after ``max_rounds``. On the way out, leave the AFE
+         register at the BEST measurement actually seen -- highest,
+         least-floored, closest to target -- not at whatever the last blind
+         guess happened to be, then raise :class:`ScanRefused` so a caller
+         cannot mistake "gave up" for "converged". Nothing here silently
+         proceeds with an offset it could not confirm.
+
+    Returns the converged ``(R, G, B)`` offsets. Acquire is off on every
+    return path (each probe round turns it off again in its own
+    ``finally``), and the last register write this function makes is always
+    a full ``ccd_configure`` at the value it is returning (or, on the
+    ``ScanRefused`` path, at the best value seen) -- so the sensor is never
+    left mid-search.
+    """
+    import build_calibration as bcal  # noqa: E402  (opt-in only)
+    log = log or (lambda *a, **k: None)
+    tgt = float(bcal.BLACK_TARGET_WIRE if target is None else target)
+
+    probe = tuple(int(v) for v in seed)
+    caps: list[_ProbeCapture] = []
+    best: _ProbeCapture | None = None
+    best_err = None
+
+    def _score(cap: "_ProbeCapture") -> float:
+        # Lower is better: distance from target, with a floored capture
+        # penalised hard so a non-floored-but-off-target round always beats
+        # a floored one.
+        black = cap.channel_means()
+        err = float(abs(black.mean() - tgt))
+        return err + (1e6 if cap.is_floored() else 0.0)
+
+    for rnd in range(1, max_rounds + 1):
+        cap = _live_afe_measure(link, cfg, probe, probe_bytes, log)
+        caps.append(cap)
+        black = cap.channel_means()
+        err = _score(cap)
+        if best is None or err < best_err:
+            best, best_err = cap, err
+        log("live_afe_round", round=rnd, afe_offsets=list(probe),
+            black=[round(float(v), 1) for v in black],
+            floored=cap.is_floored(), target=tgt)
+
+        landed = (not cap.is_floored()
+                 and all(bcal.BLACK_MIN_WIRE <= v <= bcal.BLACK_MAX_WIRE
+                        for v in black))
+        if landed:
+            final = tuple(int(v) for v in probe)
+            ccd_configure(link, replace(cfg, afe_offsets=final))
+            log("live_afe_converged", afe_offsets=list(final),
+               black=[round(float(v), 1) for v in black], rounds=rnd)
+            return final
+
+        s = bcal.solve_offset(caps, tgt)
+        if s["solvable"]:
+            probe = tuple(int(v) for v in s["offsets_new"])
+            continue
+        # Not solvable yet -- the same blind first move
+        # calib_wizard.step_black makes: step every channel by a fixed
+        # amount in the direction that would raise a low black level or
+        # lower a high one.
+        import numpy as np
+        low = float(np.mean(black)) < tgt
+        step = 6 if low else -6
+        probe = tuple(int(v) + step for v in probe)
+
+    # Did not land in max_rounds. Leave the hardware at the best real
+    # measurement seen (never the raw last guess) and refuse rather than
+    # claim convergence that did not happen.
+    assert best is not None
+    best_offsets = tuple(int(v) for v in best.config["afe_offsets"])
+    ccd_configure(link, replace(cfg, afe_offsets=best_offsets))
+    history = "; ".join(
+        f"{list(c.config['afe_offsets'])} -> "
+        f"{[round(float(v), 1) for v in c.channel_means()]}"
+        for c in caps)
+    raise ScanRefused(
+        f"live AFE convergence did not settle in {max_rounds} rounds. "
+        f"History: {history}. The AFE register has been left at the best "
+        f"measurement seen ({list(best_offsets)}, black level "
+        f"{[round(float(v), 1) for v in best.channel_means()]}), not the "
+        f"stored calibration value and not the last blind guess -- but this "
+        f"is a REFUSAL, not a converged result. docs/74 has the write-up; "
+        f"docs/55 has what the vendor's own converged trace looked like.")
+
+
+# --------------------------------------------------------------------------
 # the stop, which is the only part that absolutely must work
 # --------------------------------------------------------------------------
 
@@ -2205,8 +2514,18 @@ def run_scan(out_path: str | Path,
              lamp_refresh_s: float = LAMP_REFRESH_S,
              lamp_refresh_mode: str = "full",
              lamp_watchdog: str = LAMP_WATCHDOG_DEFAULT,
-             motor: bool = True) -> ScanResult:
+             motor: bool = True,
+             live_afe_converge: bool = False,
+             live_afe_target: float | None = None) -> ScanResult:
     """One scan, start to finish, with every guard armed.
+
+    ``live_afe_converge`` runs :func:`converge_afe_offsets` immediately after
+    ``link.clear_fault()``, before the lamp is ever turned on, and replaces
+    ``cfg.afe_offsets`` with its result for the rest of this scan (including
+    the sidecar). Default ``False`` — the stored ``cfg.afe_offsets`` is used
+    exactly as before. THIS HAS NOT YET BEEN RUN AGAINST REAL HARDWARE END TO
+    END; see :func:`converge_afe_offsets`'s own docstring before opting in on
+    an unattended scan.
 
     ``read_dx`` adds the DX poll to the capture loop: pure reads of light-board
     registers 0x02 and 0x90, logged raw beside the capture as ``.dx.jsonl``.
@@ -2312,6 +2631,25 @@ def run_scan(out_path: str | Path,
                 message="stub sidecar written before the transport starts")
         log("phase", phase="connecting", message="clearing FX2 fault state")
         link.clear_fault()
+
+        if live_afe_converge:
+            if dry_run or _simulating():
+                log("warn", message="--live-afe-converge has no effect under "
+                                    "--dry-run or PAKON_SCAN_SIMULATE: there "
+                                    "is no real dark level to measure, so the "
+                                    "stored afe_offsets are used unchanged.")
+            else:
+                log("phase", phase="live_afe_converge",
+                    message="live AFE dark-offset convergence "
+                            "(--live-afe-converge, docs/55 steps 19-34, "
+                            "UNATTENDED-SCAN-UNPROVEN -- see "
+                            "converge_afe_offsets docstring)")
+                converged = converge_afe_offsets(link, cfg,
+                                                 target=live_afe_target,
+                                                 log=log)
+                log("live_afe_converge", afe_offsets_before=list(cfg.afe_offsets),
+                    afe_offsets_after=list(converged))
+                cfg = replace(cfg, afe_offsets=converged)
 
         if not lamp:
             log("warn", message="LAMP OFF: this is the DX-without-the-lamp "
@@ -2860,7 +3198,9 @@ def cmd_run(a) -> int:
                        lamp_refresh_s=a.lamp_refresh,
                        lamp_refresh_mode=a.lamp_refresh_mode,
                        lamp_watchdog=a.lamp_watchdog,
-                       motor=not a.no_motor)
+                       motor=not a.no_motor,
+                       live_afe_converge=a.live_afe_converge,
+                       live_afe_target=a.live_afe_target)
     except ScanRefused as e:
         _emit("error", message=str(e))
         print(f"refused: {e}", file=sys.stderr)
@@ -4000,6 +4340,21 @@ def main() -> int:
                         "probes) that don't need film to move -- refuses "
                         "nothing about roll-end/film-sense, those checks "
                         "just never fire since nothing moves.")
+    r.add_argument("--live-afe-converge", action="store_true",
+                   help="EXPERIMENTAL, UNPROVEN ON REAL HARDWARE END TO END. "
+                        "Run a live AFE dark-offset convergence loop "
+                        "(docs/55 steps 19-34 -- what the real vendor "
+                        "software does at the start of every scan and this "
+                        "port never has) before the lamp is turned on, and "
+                        "use the converged offsets for this scan instead of "
+                        "the stored calibration/README.json value. See "
+                        "converge_afe_offsets()'s docstring in this file "
+                        "before using it unattended; run it once, watched, "
+                        "first.")
+    r.add_argument("--live-afe-target", type=float, default=None,
+                   help="target black level in raw wire counts for "
+                        "--live-afe-converge (default: "
+                        "build_calibration.BLACK_TARGET_WIRE)")
 
     a = ap.parse_args()
     return {"status": cmd_status, "stop": cmd_stop, "run": cmd_run,

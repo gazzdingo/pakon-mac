@@ -427,6 +427,13 @@ class Frame:
     phase: str = ""                 # LookForNicePictures | ... | "" | manual
     framing_risk: int = 0           # TLXLib.FRAMING_RISK_000: 0 ok, 1 fair, 4 blind
     scan_warning: int = 0           # TLXLib.SCAN_WARNINGS_000 for this frame
+    #: docs/74 §43 — pakon_framing.Frame.content_fraction, carried through:
+    #: the share of [a, b) the cascade's own binarisation calls real
+    #: photographic content rather than interframe gap. None when the
+    #: cascade did not fill it in (the exception fallback path, or a roll
+    #: opened before this field existed). Purely a diagnostic -- nothing
+    #: reads it to change a boundary, an export, or a render.
+    content_fraction: float | None = None
 
 
 @dataclass
@@ -823,6 +830,15 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
     # stays roll-level.
     lin_hist = (np.zeros((3, 4096), dtype=np.int64)
                 if roll.model == "f135" else None)
+    # docs/74 §41: the excluded (leader) side of the same per-line
+    # saturation test, accumulated the same way as lin_hist. On a roll where
+    # genuine clear leader saturates the poly ceiling hard enough that the
+    # kept side no longer holds a usable near-Dmin population (docs/74
+    # §31.2), this is frequently the only population left with real
+    # clear-film information — see dec.film_base_combine.
+    lin_hist_excl = (np.zeros((3, 4096), dtype=np.int64)
+                     if roll.model == "f135" else None)
+    lin_px_excl = 0
     lin_col0 = dec.film_base_col0(roll.capture)
     lin_px = 0
     lin_lines = 0
@@ -852,7 +868,13 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
                 h16 = np.bincount(win[:, :, c].ravel(), minlength=65536)
                 lin_hist[c] += np.bincount(
                     fold, weights=h16, minlength=4096).astype(np.int64)
-            del r16, win
+            excl = r16[~keep][:, lin_col0:]
+            lin_px_excl += int(excl.shape[0]) * int(excl.shape[1])
+            for c in range(3):
+                h16e = np.bincount(excl[:, :, c].ravel(), minlength=65536)
+                lin_hist_excl[c] += np.bincount(
+                    fold, weights=h16e, minlength=4096).astype(np.int64)
+            del r16, win, excl
         trace_1d[a0:b0] = blk.mean(axis=(1, 2))
         green_1d[a0:b0] = blk[:, :, 1].mean(axis=1)
         progress("analysing", 0.55 + 0.12 * (b0 / n), f"line {b0} of {n}")
@@ -872,6 +894,16 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
                 lin_hist[c].tolist(), thr, n_bins=4096))
             for c in range(3)
         ] if enough else [0.0, 0.0, 0.0]
+        if enough:
+            # docs/74 §41 — extend with the excluded/leader population; never
+            # overrides a film-side refusal (dec.film_base_combine returns
+            # the kept code unchanged whenever it is already <= 0).
+            roll.film_base = [
+                float(dec.film_base_combine(
+                    roll.film_base[c], lin_hist_excl[c].tolist(),
+                    lin_px_excl, n_bins=4096))
+                for c in range(3)
+            ]
         if any(v <= 0 for v in roll.film_base):
             # 0 is FindDmin's "no valid Dmin" sentinel. Say so here, where the
             # clipped fractions are still to hand; dec.check_film_base is what
@@ -892,7 +924,7 @@ def open_capture(path: str | Path, workspace: str | Path, roll_id: str,
                      f"WARNING: FindDmin found no film base "
                      f"{[int(v) for v in roll.film_base]} — {why}. Re-scan at "
                      f"a lower gain. Colour frames will refuse to render.")
-        del lin_hist
+        del lin_hist, lin_hist_excl
 
     progress("frames", 0.70, "framing (five-phase cascade)")
     _frame_roll(roll, trace_1d, green_1d, src, present=present)
@@ -980,7 +1012,8 @@ def _frame_roll(roll: Roll, trace: np.ndarray, green: np.ndarray,
     roll.frames = [Frame(index=i, a=int(f.start), b=int(f.stop),
                          phase=f.phase.vendor_name,
                          framing_risk=f.phase.risk,
-                         scan_warning=int(f.phase))
+                         scan_warning=int(f.phase),
+                         content_fraction=f.content_fraction)
                    for i, f in enumerate(frames)]
     report["detector"] = "pakon_framing five-phase cascade"
     # The binarisation level is the one part of the cascade that is not the

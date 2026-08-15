@@ -5508,7 +5508,275 @@ identity-patch in §37.6 and the instrumentation wrappers in §37.5 were
 runtime monkeypatches in uncommitted scratch scripts, the same pattern
 §24/§36 already established for this doc, not edits to any file on disk.
 
+## 38 — §37.4's `SCPLut` composition, implemented and directly tested
+against `AA001.tif`: it does not close the gap. It makes every channel
+worse, at every percentile from p0.1 through p95, using the only
+shaped-identical `SCPLut` data this codebase has loaded.
+
+§37.7 named this explicitly as "a real, concrete, well-scoped next
+question — not something this pass tested." This pass tests it, on the
+same real matched frame every section since §31 has used, and reports the
+result plainly: negative, not a guess forced into a positive.
+
+### 38.1 — Re-confirmed §37.4's own citations before implementing anything,
+not re-derived and not taken on trust
+
+Re-read §37.4 (`docs/74` lines ~5264-5366) directly. The load-bearing
+citations, checked against that section's own text rather than a summary
+of it:
+
+* The compose loop, address-by-address: `0x10103107 movsx ecx, word
+  [ebx+eax*2]` (`ecx = shiftLUT_R[i]`) → `0x1010310b mov edx, [ebp-0x54]`
+  (SCPLut band-R base) → `0x1010310e mov cx, word [edx+ecx*2]`
+  (`cx = SCPLut_R[shiftLUT_R[i]]`) → `0x10103112 mov word [ebx+eax*2], cx`
+  (`combined[i] = cx`) — i.e. `combined[i] = SCPLut[clamp(i+shift,0,4095)]`,
+  exactly the formula this task's own brief states, traced to real
+  instructions, not paraphrase.
+* The shift-LUT build immediately precedes the compose in program order:
+  `0x10102fbb mov ecx, 0x106b5f74; 0x10102fc0 call 0x1006c4f0` — the same
+  real singleton and the same real primitive §36.2 Unicorn-verified
+  bit-exact — runs first, and its *output* (`ebx`, the temporary shift-only
+  LUT) is what the compose loop reads at `0x10103107`. **Order confirmed
+  from the disassembly itself**: shift-LUT apply, then `SCPLut` compose —
+  not the reverse, not simultaneous.
+* The shift triple's real source, also re-checked: `eax = [ebp+0x14]+0xa`
+  (`ctx+0xa`), matching §37.4's own "a new, more precise fact than
+  anything §35.2 itself established."
+
+Nothing in this re-check contradicts §37.4's own prose; it is a direct
+confirmation, not a re-derivation, per this task's own instruction.
+
+### 38.2 — `pakon_scp_lut.py`'s already-loaded data, checked directly: it
+is structurally usable as `SCPLut[]`, but it is *not* fetched via the
+mechanism the real apply-time compose uses
+
+`scp_lut.load_3band_lut_ascii` (`pakon_scp_lut.py:415-459`) produces a
+`ThreeBandLut(name, num_lut=4096, num_bands=3, planar)` — a flat,
+band-major array (`planar[i + band*num_lut]`), which is exactly the layout
+the disassembly's `SCPLut band-R base` / index-by-`i` access pattern
+requires: `SCPLut_R[j] = planar[j]`, `SCPLut_G[j] = planar[j+4096]`,
+`SCPLut_B[j] = planar[j+2*4096]`. Structurally usable as `SCPLut[]`
+as-is, no reshaping needed — confirmed by loading it (`eng.band3_lut`,
+populated at `AnselEngine.open()` time, `pakon_ansel.py:748-759`) and
+indexing it directly.
+
+**But this is the wrong provenance question to skip, and §37.4 already
+said so — re-confirmed, not re-litigated, this pass.** `pakon_scp_lut.py`'s
+own module docstring (lines 8-20) documents a *completely different* real
+call chain — `ColorNegativePath::analyzeScpLutBalance` (`0x100fd190`) →
+Cap `"scpLut"` (string-keyed, `AnsSceneContext::find`) →
+`AnsSCPLutCapabilityImpl::analyze` (`0x102128f0`) — an **analyze-time**
+path this project has never ported end-to-end
+(`SCP_LUT_BALANCE_PORTED = False`), distinct from `balanceAreaImage`'s own
+**apply-time** fetch, which §37.4 already found uses a different, second
+accessor (`0x104ffdd6`, type/GUID-keyed, not string-keyed) with different
+immediates (`0x10692518`/`0x106927d4`/`0x106927f8`). `eng.band3_lut` is
+real, shaped identically, and genuinely loaded for this roll — but it is
+the `Ans3BandLutParams` table `setShifts(1,2)` indexes (a chroma-pivoted
+table, `0x60e − x` axis, per `pakon_sba_apply.setshifts_12`), not
+independently confirmed to be the same object `balanceAreaImage`'s
+apply-time compose reads. This test proceeds with it anyway, because it is
+the only shaped-identical `SCPLut`-family data this codebase has actually
+loaded for this roll, per this task's own explicit instruction — not
+because the provenance question is resolved.
+
+**A real, new data point on that data itself, checked this pass, aggregate
+statistics only (this is shipped calibration-file content, not capture
+pixel content — the project's captures-description rule does not apply
+here):** `eng.band3_lut`'s three bands are **byte-identical** across R, G,
+and B (`np.array_equal(R,G)` and `np.array_equal(G,B)` both `True`,
+12,237/12,288 nonzero entries) — consistent with the shipped file's own
+name, `luts6_postROMM_equalRGBshort.lut` ("equal RGB"): a single achromatic
+curve applied identically to all three channels, not a per-channel colour
+correction. Sampled: `R[0]=R[1]=R[2]=0` (a flat toe), `R[2048]=2284` (a
+real, non-identity midpoint — input 2048 maps to a materially higher
+output, not a wash), `R[4093]=R[4094]=R[4095]=4095` (an early shoulder
+clamp). This is a real, non-trivial, non-identity curve, exactly as §37.4
+already characterized it ("mean absolute deviation from identity ≈227")
+— re-confirmed per-band this pass, not merely on the flattened array.
+
+### 38.3 — Where the composition slots into the current pipeline, confirmed
+from the code, not assumed
+
+`pakon_ansel.AnselEngine.render_scene` (`pakon_ansel.py:839-849`) calls
+`sba_apply.apply_balance_shifts(x.astype(np.int32), self.setshifts_out)`
+as its very first pipeline step — before FUGC's `apply_lut`, before
+`shasta_stand_in`'s autoTone chain, before `to_srgb`. Per §38.1's
+disassembly re-check, the real DLL's own order at this exact point (inside
+`balanceAreaImage`, after the shift-LUT build) is shift-LUT-apply-then-
+`SCPLut`-compose, both folded into a single LUT before any pixel is
+touched — so the correct insertion point for a composed apply is a drop-in
+replacement for the existing `sba_apply.apply_balance_shifts` call, not a
+separate stage inserted elsewhere in `render_scene`. This test replaces
+exactly that one call, via runtime monkeypatch, and touches nothing else
+in the function.
+
+### 38.4 — Implementation: new, isolated function, reusing the
+already-verified shift math, wired into a scratch render pipeline
+
+New, additive, uncommitted scratch script,
+`/Users/guy/.claude-account-1/jobs/5e3f6f65/tmp/scp_compose_test.py` (not
+`pakon_sba_apply.py` or any file on disk in this repo — the same
+uncommitted-scratch convention §37.5/§37.6 already used for their own
+empirical tests). Defines one new, isolated function:
+
+```python
+def apply_balance_shifts_scp_composed(rpd12, shifts, band3_lut):
+    """combined[i] = SCPLut[clamp(i+shift,0,4095)] -- SS37.4/SS38.1."""
+    x = np.ascontiguousarray(rpd12, dtype=np.int32)
+    out = np.empty_like(x)
+    idx = np.arange(4096, dtype=np.int64)
+    n = band3_lut.num_lut
+    planar = np.asarray(band3_lut.planar, dtype=np.int64)
+    for c, s in enumerate(shifts):
+        shift_lut = np.clip(idx + int(s), 0, sba_apply.MASTER_MAX)  # SS36.2
+        scp_band = planar[c * n:(c + 1) * n]
+        combined = scp_band[shift_lut]
+        pix = np.clip(x[:, :, c], 0, sba_apply.MASTER_MAX)
+        out[:, :, c] = combined[pix]
+    return out.astype(rpd12.dtype, copy=False)
+```
+
+The `shift_lut` line is the identical `clamp(i+shift,0,4095)` formula
+`pakon_sba_apply.apply_balance_shifts` already implements and §36.2
+Unicorn-verified bit-exact against `0x1006c4f0` — reused, not
+reimplemented, per this task's own instruction. `combined[i]` is then
+looked up in `band3_lut`'s own planar layout, per §38.2. Wired into the
+production render path via the same runtime-monkeypatch pattern §37.6
+used: `pr.Roll.from_json` loads the exact already-opened workspace §31-37
+all used (`~/Library/Caches/PakonScan/workspace/f4c91b62/roll.json`,
+`test123.bin`, real `film_base=[3107,2490,2414]`,
+`setshifts_out=(683,297,151)`), `sba_apply.apply_balance_shifts` is
+monkeypatched to call the new function with `eng.band3_lut`, then the
+same unmodified `tools.pakon_render.render_frame` entry point (frame 0,
+`scale="preview"`, `PAKON_COLOUR_ENGINE=python`) renders through the
+rest of the unmodified chain (FUGC, autoTone, `to_srgb`) exactly as
+before.
+
+### 38.5 — Result, measured against `AA001.tif`, same percentile
+methodology every section since §31 has used
+
+Baseline first, as a sanity check that this pass's own harness reproduces
+prior sections' own numbers, not new ones:
+
+```
+              p0.1   p1    p5    p50   p95   p99   p99.9
+R  AA001.tif:   0.0  10.0  17.0   90.0 235.0 252.0 255.0
+R  baseline:    0.0  20.0  62.0  178.0 249.0 254.0 254.0
+G  AA001.tif:   8.0  11.0  17.0  103.0 239.0 251.0 255.0
+G  baseline:   41.0  51.0  71.0  192.0 250.0 254.0 254.0
+B  AA001.tif:   7.0  10.0  18.0  139.0 246.0 255.0 255.0
+B  baseline:   25.0  41.0  58.0  217.0 254.0 254.0 254.0
+```
+
+Identical to §31's and §37.6's own baseline numbers, to the decimal —
+confirms this pass's own harness before trusting its own hypothesis
+result. The `SCPLut`-composed render, same frame, same reference:
+
+```
+              p0.1   p1    p5    p50   p95   p99   p99.9
+R  composed:    0.0  27.0  80.0  201.0 253.0 254.0 254.0
+G  composed:   51.0  65.0  87.0  213.0 253.0 254.0 254.0
+B  composed:   39.0  56.0  78.0  236.0 254.0 254.0 254.0
+```
+
+Delta vs `AA001.tif`, baseline vs composed, at every percentile this doc's
+own methodology tracks:
+
+```
+ pct    R_base  R_comp    G_base  G_comp    B_base  B_comp
+ 0.1     +0.0    +0.0     +33.0   +43.0     +18.0   +32.0
+ 1.0    +10.0   +17.0     +40.0   +54.0     +31.0   +46.0
+ 5.0    +45.0   +63.0     +54.0   +70.0     +40.0   +60.0
+50.0    +88.0  +111.0     +89.0  +110.0     +78.0   +97.0
+95.0    +14.0   +18.0     +11.0   +14.0      +8.0    +8.0
+99.0     +2.0    +2.0      +3.0    +3.0      -1.0    -1.0
+99.9     -1.0    -1.0      -1.0   -1.0       -1.0    -1.0
+```
+
+**Uniformly worse, every channel, every percentile from p0.1 through p95.**
+The composed variant is never closer to `AA001.tif` than the baseline at
+any of the 15 (channel, percentile) cells where the two differ; at p99/p99.9
+both are already saturated against the reference and the composition has
+no further room to move either way. The median gap — the headline number
+§31 established (~88-89 codes) — widens to ~97-111 codes, roughly 10-23
+codes worse per channel, not an improvement of any size in any channel.
+
+### 38.6 — Why, read against §38.2's own new finding, not surprising in
+hindsight
+
+`eng.band3_lut`'s real shape — an achromatic curve with `R[2048]=2284`,
+i.e. mid-tone codes pushed *upward*, not down, before the shoulder clamps
+near the ceiling — composed on top of a chain this doc has already shown
+(§31) sits ~2× too bright in the mid-tones, can only make an
+already-too-bright mid-tone brighter still. This is not a coincidental
+failure mode; it is the mechanical consequence of composing a real,
+upward-biased curve onto values that were already on the high side. It
+does not, on its own, prove `eng.band3_lut` is the *wrong* object for this
+call site (a genuinely correct `SCPLut` could just as easily push the
+wrong direction if fed through the wrong pivot, the wrong domain, or the
+wrong shift-order) — but it is a real, concrete, empirical data point
+consistent with §37.4's own already-stated uncertainty that this loaded
+table (fetched via the string-keyed `"scpLut"`/`setShifts(1,2)` path) may
+not be the same object the real DLL's type-keyed `0x104ffdd6` accessor
+reads at apply time inside `balanceAreaImage`. Composing the *wrong*
+`SCPLut` object should be expected to move the result in some direction
+uncorrelated with the target; composing it and getting uniformly, sharply
+*worse* on every channel is at least as consistent with "wrong table" as
+with "right mechanism, wrong direction" — this pass's own data cannot
+distinguish those two explanations, and does not claim to.
+
+### 38.7 — Verdict: a third hypothesis raised by §37, tested directly, and
+refuted — same honest standard as §37.5/§37.6
+
+**This closes no part of the §31 gap.** Composing the real, disassembly-
+confirmed `combined[i]=SCPLut[clamp(i+shift,0,4095)]` mechanism with the
+only shaped-identical `SCPLut` data this codebase has loaded
+(`eng.band3_lut`, the shipped `luts6_postROMM_equalRGBshort.lut`) makes
+every channel's match against `AA001.tif` worse, not better, at every
+percentile below saturation — joining §37.5 (double-application via FUGC,
+refuted) and §37.6 (simply not applying the shift, refuted) as the third
+concrete hypothesis this investigation has tested and closed since §37
+opened the `SCPLut` question. **What remains open, stated as precisely as
+§37.7 left it and not resolved further by this pass:** whether the *real*
+apply-time `SCPLut` object — fetched via `0x104ffdd6`'s type-keyed
+registry, not the string-keyed `"scpLut"`/`setShifts(1,2)` path this
+codebase already ports — would behave differently once correctly sourced.
+This pass tested the mechanism with the best available data, per this
+task's own instruction, and reports that specific, concrete result
+honestly; it does not, and cannot, rule out that a correctly-sourced
+`SCPLut` object would compose differently. Locating that real object (the
+`0x104ffdd6` accessor, §37.7's own item (b)) remains the concrete,
+disassembly-reachable next step this doc has already named, now with one
+more reason to prioritize it: the only data currently in hand for this
+mechanism has been tried, honestly, and did not help.
+
+**No production code was changed.** `pakon_sba_apply.py`, `pakon_ansel.py`,
+and `pakon_scp_lut.py` were read-only throughout this pass. The new
+`apply_balance_shifts_scp_composed` function and the render/compare
+harness both live only in the uncommitted scratch script cited in §38.4,
+not in any tracked file — per this task's own instruction not to ship an
+unverified fix, and this pass's own result is a clean, repeated negative,
+not a partial win worth landing behind a flag.
+
 ## What this changes about the open item list
+
+**§38 update.** Directly implements and directly tests §37's own named
+next question — the `SCPLut` composition inside `balanceAreaImage`,
+`combined[i]=SCPLut[clamp(i+shift,0,4095)]` — using the only shaped-
+identical `SCPLut` data this codebase has loaded (`eng.band3_lut`).
+Result: refuted, cleanly and repeatedly, at every percentile from p0.1
+through p95 on all three channels. Closes no item on the open list.
+**Item 1 remains the sole standing software lead.** Sharpens §37.7's own
+item (b) — locating the real apply-time `SCPLut` object via the
+type-keyed `0x104ffdd6` accessor, as opposed to the string-keyed
+`"scpLut"`/`setShifts(1,2)` object this project already ports — from "a
+well-scoped next question" to "the one piece of missing data this
+specific, now-implemented mechanism needs before it can be honestly
+retested," since the mechanism itself is now coded and wired, and the
+only untested variable left in it is which object actually gets composed.
+No production code was changed; the new function and its test harness
+live in an uncommitted scratch script only (§38.4).
 
 **§37 update.** Runs §36.4's own open question to ground with real
 evidence on both sides, and adds a second, independent finding neither
@@ -6191,3 +6459,35 @@ additive, committed for review. Only aggregate count/percentile statistics
 from `test123.bin` are reported anywhere in §36, consistent with this
 project's rule against describing `captures/`/cache contents; no pixel data
 or image content is reproduced.
+
+§38's own baseline render was checked against §31's and §37.6's own
+published numbers before any new number was trusted — all seven
+percentiles, all three channels, matched to the decimal
+(`0.0/20.0/62.0/178.0/249.0/254.0/254.0` for R, etc.), confirming this
+pass's own harness (`pr.Roll.from_json` against the same already-opened
+`~/Library/Caches/PakonScan/workspace/f4c91b62/roll.json`) reproduces the
+exact same real roll, frame, `film_base`, and `setshifts_out` every prior
+section since §31 used, not a different or drifted state. `eng.band3_lut`'s
+identity across R/G/B (`np.array_equal`, not eyeballed) and its non-trivial
+shape (`R[0..2]=0`, `R[2048]=2284`, `R[4093..4095]=4095`) were read
+directly off the loaded `ThreeBandLut.planar` array, not assumed from the
+shipped file's own name. The `SCPLut`-composed function reuses
+`sba_apply.MASTER_MAX` and the identical `clamp(i+shift,0,4095)`
+construction `pakon_sba_apply.apply_balance_shifts` already implements and
+§36.2 Unicorn-verified bit-exact, rather than reimplementing that half of
+the formula from scratch. `AA001.tif` was read directly from this
+session's own already-cached copy
+(`/Users/guy/.claude-account-1/jobs/5e3f6f65/tmp/vendor-tiffs/AA001.tif`,
+found before attempting a re-download, per this task's own fallback
+instruction) — the same file §31/§37.6 used. **No production code was
+changed by this pass** — `pakon_sba_apply.py`, `pakon_ansel.py`, and
+`pakon_scp_lut.py` were read-only throughout (confirmed via `git status`);
+the new function and its render/compare harness live only in an
+uncommitted scratch script
+(`/Users/guy/.claude-account-1/jobs/5e3f6f65/tmp/scp_compose_test.py`),
+per this doc's own established convention for a tested-and-refuted
+hypothesis. Only aggregate percentile statistics from `test123.bin` and
+aggregate curve statistics from the shipped, non-capture
+`luts6_postROMM_equalRGBshort.lut` calibration file are reported anywhere
+in §38, consistent with this project's rule against describing
+`captures/`/cache contents; no pixel data or image content is reproduced.

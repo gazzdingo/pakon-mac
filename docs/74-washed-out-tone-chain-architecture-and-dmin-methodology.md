@@ -4149,7 +4149,316 @@ against the vendor DLL during an actual scan, not another static or
 Unicorn-isolated check, since this pass is the point at which those two
 methods run out of untried single-parameter leverage on this symptom.
 
+## 34 — The per-channel asymmetry checked directly: lamp duty and AFE gain,
+both current relative to the matrix's own staleness in §33, and neither
+closes the gap even when a real, documented, unpromoted duty/level
+discrepancy is tested at its own real magnitude
+
+§31's ~88-89 code excess was measured in aggregate; re-measuring it
+per-channel raises a real, distinct-looking shape: blue has the *smallest*
+median ratio of the three channels but is the one already sitting closest to
+the sRGB ceiling. Checked directly whether this points at the one lever §33
+didn't check — lamp duty cycle and AFE gain, both per-channel by
+construction on this hardware — rather than the polynomial matrix. It does
+not: gain is confirmed uniform and structurally inert as a per-channel
+lever on this unit; duty is confirmed *current* (unlike the matrix) for the
+production calibration this capture actually used, but a second, real,
+dated, unpromoted duty/level snapshot exists that is fresher still — and
+even substituting its own real numbers into the real formula, both stages
+tested together the way an actual duty change would move them, closes the
+gap by at most a handful of codes, in the wrong direction for two of three
+channels. The asymmetric shape itself survives as real, but is better
+explained by each channel's own already-cited `c9` magnitude relative to
+its own `film_base` than by anything in the light board.
+
+### 34.1 — Re-measured the per-channel shape directly, not taken on trust
+
+Re-ran the identical production chain §31/§33 use
+(`pr.Roll.from_json` on workspace `f4c91b62`'s own `roll.json`,
+`PAKON_COLOUR_ENGINE=python`, `pr.render_frame(roll, 0)`, real
+`film_base=[3107,2490,2414]`) and re-measured `AA001.tif` directly with
+`PIL`/`numpy`, both independently of the task's own transcribed numbers:
+
+```
+        p0.1  p1   p5   p50   p95   p99  p99.9    median ratio (ours/AA001)
+R ours:   0   20   62   178   249   254   254
+R AA001:  0   10   17    90   235   252   255            1.98x
+G ours:  41   51   71   192   250   254   254
+G AA001:  8   11   17   103   239   251   255            1.86x
+B ours:  25   41   58   217   254   254   254
+B AA001:  7   10   18   139   246   255   255            1.56x
+```
+
+This matches §31.1's own baseline numbers exactly (unchanged code path, same
+frame) and confirms the task's own framing to within normal
+percentile-interpolation rounding: the median ratio genuinely shrinks
+R→G→B (1.98→1.86→1.56) while headroom to the ceiling genuinely shrinks the
+same direction (p95 249→250→254, closest to 255 for blue). One correction
+to the task's own transcription: at this render's own p95, blue sits at
+254/255, not literally saturated at 255 — the fraction of pixels *at* 255
+(`≥254.5`) is 0.00% for all three channels at p95 on this frame at preview
+scale. The qualitative shape — blue closest to the ceiling despite the
+smallest ratio — is real and reproduced; "already fully clipped" is not,
+on this specific frame/scale, and is stated here rather than silently
+carried forward.
+
+### 34.2 — What actually lit the lamp for `test123.bin`, read from the
+capture's own sidecar, not assumed
+
+`test123.scan.json` (`/Users/guy/Library/Caches/PakonScan/captures/`, written
+by `tools/pakon_scan.py` at capture time, not reconstructed) records two
+distinct on-count triples for this exact roll:
+
+```
+on_counts_R_G_B:            [643, 580, 508]   <- used for the actual scan
+open_gate_on_counts_R_G_B:  [462, 231, 98]    <- used for the leader
+calibration_source:  ".../calibration/README.json"
+```
+
+This is `docs/59`'s own two-duty-set mechanism (`lamp_switch_to_scan_duty`,
+`tools/pakon_scan.py:1021-1048`), confirmed live-exercised on this exact
+capture, not just present in code. The ratio between the two is exact
+against `docs/59`'s own registry-derived `10^D` figures
+(`R=1.393157, G=2.511891, B=5.188016`, the colour-negative base-density
+compensation `FN_bBeforeScan` applies in the real DLL):
+
+```
+R: 643/462 = 1.3918   (vs 1.393157)
+G: 580/231 = 2.5108   (vs 2.511891)
+B: 508/98  = 5.1837   (vs 5.188016)
+```
+
+`calibration/README.json`'s own `duty_note` states this explicitly: *"the
+vendor stored duties for this unit ([702,371,158] open-gate) clipped 97
+percent of an empty gate on this hardware... so the vendor METHOD was
+applied rather than its stored numbers."* This is a real, correctly
+implemented, per-channel duty mechanism — the vendor's own — genuinely
+exercised for this genuine capture, not a stand-in or a guess.
+
+### 34.3 — AFE gain: uniform across every calibration snapshot on this
+machine, and never the vendor's own per-channel lever either
+
+`ADC_IDX_GAIN_R/G/B` (`tools/pakon_commands.py:1108-1110`,
+`ADC_GAIN_MAX=0x3F`) are written once per capture, from `cfg.afe_gains`
+(`tools/pakon_scan.py:1606-1610`, `ccd_configure`). Read directly across
+every `README.json`/`README.pre-*.json` calibration snapshot on this
+checkout (8 files, spanning both the 2026-08-12 recalibration chain and the
+newer, separate self-cal family described below):
+
+```
+afe_gains  [13,13,13]  — 7 of 8 snapshots, including the one this capture
+                          used (calibration/README.json) and the freshest
+                          one that exists (calibration-fresh-scan/README.json)
+afe_gains  [15,13,13]  — 1 of 8 (README.pre-recapture-20260812-070345.json,
+                          an intermediate step mid-search, superseded within
+                          the same session by the uniform value above)
+```
+
+Gain sits at 13 of a possible 63 on every snapshot that was ever actually
+used — a fifth of the register's own range, real headroom, unused. This
+matches `docs/59`'s own independent finding from the captured vendor wire
+trace (§3, this doc's own citation): *"G is taken from the registry verbatim
+in both drive sets. R and B are not... the natural reading is that green is
+the reference channel and R/B are trimmed live against the CCD
+response... via duty, not gain."* Every piece of evidence on this machine —
+this project's own calibration history and the real vendor's own captured
+register writes — agrees gain is not, and has never been, this hardware's
+per-channel balancing lever; duty is. This closes item 3 of the task's own
+list as a lead: gain is current, uniform, and structurally not a per-channel
+control on this unit.
+
+### 34.4 — A real staleness finding, the same shape as §33's, this time in
+duty and lamp level: a fresher, same-unit, same-day self-calibration exists
+and was never promoted into what this capture used
+
+Two untracked calibration directories on this checkout — `calibration-
+fresh-scan/` (`generated_at: 2026-08-14T06:50:06`, `generated_by:
+tools/calib_wizard.py`, `wizard_stamp: 2026-08-14T13-48-47Z`, this exact
+unit's serial `16275`) and `calibration-vendor-duty-test/` — hold a real,
+dated, live self-calibration run, distinct from and later than the
+`calibration/README.json` snapshot `test123.bin` actually used
+(`generated_at: 2026-08-12T08:21:09`). `calibration-fresh-scan/README.json`'s
+own `search_note` states plainly: *"The AFE offsets and the lamp on-counts
+in config were SEARCHED against this scanner's own response, not
+copied."* — real hardware, not a synthetic replay. Its `wizard_stamp`
+(13:48:47 UTC = 06:48 PDT) lands **3h43m before** `test123.bin`'s own
+capture timestamp (`test123.scan.json`'s `"created": "2026-08-14T10:33:50"`,
+local, matching the file's own `Aug 14 10:33` mtime) — the fresher
+calibration genuinely existed, on this exact unit, before this exact roll
+was scanned, and was not used:
+
+```
+                         levels_R_G_B  on_counts(with-film)  afe_offsets
+calibration/README.json    4,20,11         643,580,508       -18,-26,-20
+  (used by test123.bin, generated 2026-08-12T08:21:09)
+
+calibration-fresh-scan/     3,11,7         912,938,804          0, -6,  2
+  (exists, unused, wizard_stamp 2026-08-14T13:48:47Z /
+   generated_at 2026-08-14T06:50:06 — same day, same unit, before capture)
+```
+
+This is not a single-parameter drift: level dropped (R 4→3, G 20→11, B
+11→7) at the same time on-counts rose, and `afe_offsets` moved from a large
+negative pedestal to near-zero. `DEFAULT_CALIBRATION_DIR` (`pakon_decode.py:
+85`, `pakon_scan.py:596/2678`) resolves to `calibration/` unconditionally;
+nothing globs or auto-discovers `calibration-*` staging directories
+(`docs/71-rebuilding-calibration.md §9`: *"a calibration is never deleted,
+only timestamped"* — installing one is a manual, explicit `cp`, never
+implicit). `calibration-fresh-scan/` is exactly this project's own live
+self-cal wizard run — the same one §33.3 already found and cited via its
+`units/16275/flatfield/2026-08-14T13-48-47Z/` record — reaching a "not yet
+promoted" state, the same shape of finding §33 made for the EEPROM matrix,
+now found independently for duty and level.
+
+### 34.5 — Tested directly: does this real discrepancy explain the gap? No
+— it extends §31.3/§33.4/§33.5's own cancellation argument to this specific,
+real, per-channel case, on the real matched frame
+
+Two ways to turn "level 4/20/11 + on-counts 643/580/508" into "level
+3/11/7 + on-counts 912/938/804" into a single per-channel light-delivery
+ratio, both tried:
+
+```
+naive (on-counts only):        R×1.418   G×1.617   B×1.583
+corrected (level × duty_frac): R×1.064   G×0.890   B×1.007
+```
+
+The corrected figure is the physically meaningful one (level sets LED
+current, on-count/N sets duty fraction; total light is their product) and
+shows the two snapshots are much closer in real delivered light than the
+on-counts alone suggest — R and B nearly unchanged, G actually *lower*, not
+higher. Both were tested anyway, applied the only physically consistent
+way: **jointly to the calibrated 14-bit input and to `film_base` together**
+(what an actual re-scan under the fresher duty/level would do to both the
+pixel content and the clear-film reference alike, extending §31.3's own
+"pure rescale cancels" argument and §33.4's matrix-diagonal test to this
+specific lever), through the same unmodified
+`pr.scene_rpd12`/`render_scene`/`to_srgb` chain:
+
+```
+                        sRGB p50 [R, G, B]           sRGB p95 [R, G, B]
+baseline (unmodified):     [178, 192, 217]              [249, 250, 254]
+naive ratio (×1.42/1.62/1.58, joint):
+                            [175, 195, 224]              [249, 250, 254]
+level-corrected ratio (×1.06/0.89/1.01, joint):
+                            [179, 189, 218]              [250, 249, 254]
+target (AA001.tif):         [ 90, 103, 139]              [235, 239, 246]
+```
+
+Both tests move the render by at most 7 codes at the median, and in the
+*wrong* direction (away from target) for G and B under the naive ratio.
+This is not a sensitivity-to-choice-of-ratio problem — the larger of the
+two candidate ratios already fails, so the smaller, more physically correct
+one fails by a wider margin. The mechanism is the one §31.3 already proved
+analytically: a duty/level change moves the calibrated raw signal and the
+roll's own `film_base` together (both are read through the same channel,
+under the same lamp state), and `f135_rom12_to_rpd12`'s log-difference
+cancels that shared factor except for the small, already-bounded
+contribution of the fixed pedestal `c9` (§33.4: at most 18 codes, from the
+matrix; the same structural limit applies here). **A real, documented,
+same-unit, same-day duty/level staleness exists — and, tested at its own
+real magnitude on the real matched frame, does not explain the gap**, for
+the identical reason the matrix's own staleness didn't in §33.
+
+### 34.6 — Then what produces blue's specific "smaller ratio, harder
+clip" shape? A structural consequence of the already-open gap, not a new
+lever — offered as the most likely explanation, not proven exhaustively
+
+`f135_rom12_to_rpd12`'s own pedestal `c9` (§33.1's own citation) is wildly
+different in *proportion to its own channel's* `film_base` on this roll:
+
+```
+        c9       film_base    c9 / film_base
+R      159.6        3107          5.1%
+G      444.7        2490         17.9%
+B      635.5        2414         26.3%
+```
+
+Blue's pedestal is more than five times larger, as a fraction of its own
+base, than red's. Since `dens = 1000·(log10(base−c9) − log10(poly−c9))`,
+the same *absolute* upstream discrepancy (whatever is actually producing
+§31's ~88-89 code gap) lands on a channel-specific slope: subtracting a
+pedestal that is a much bigger fraction of the base makes the surviving
+`(base−c9)`/`(poly−c9)` terms smaller and the log correspondingly more
+sensitive per unit of upstream error, for blue specifically. This is
+offered as the most likely explanation for the shape in §34.1 — consistent
+with, not contradicted by, every other finding in §31-33 — but it was not
+isolated and confirmed as *the* mechanism this pass (that would mean
+re-deriving the exact non-linear sensitivity and checking it reproduces
+the specific 1.98/1.86/1.56 ratios quantitatively, not just the direction),
+so it is stated as the leading candidate, not a closed finding.
+
+### 34.7 — Verdict
+
+1. **Gain is closed as a lead.** Uniform (13 of 63) on every calibration
+   snapshot on this machine, including the one this capture used and the
+   freshest one that exists; never the vendor's own per-channel control
+   either, per `docs/59`'s own independent finding from the captured wire
+   trace. Not stale, not a lever, not investigated further.
+2. **Duty is current for the calibration this capture actually used** —
+   `calibration/README.json`, exercised live via `test123.scan.json`'s own
+   two on-count triples, exact to six figures against `docs/59`'s
+   `10^D` figures. But **a real, dated, unpromoted, fresher self-calibration
+   of duty *and* lamp level exists on this exact unit** (`calibration-
+   fresh-scan/`, `docs/71`'s own "never auto-discovered, install is manual"
+   convention explaining why it wasn't picked up), the same shape of
+   finding §33 made for the colour matrix, now independently true for the
+   light board too.
+3. **That staleness does not explain the gap.** Tested directly, at its own
+   real magnitude, applied the only physically consistent way (jointly to
+   the raw signal and to `film_base`): moves the render by at most 7 codes,
+   the wrong direction for two of three channels. The same structural
+   reason §31.3/§33.4 already established — the shared factor cancels in
+   the log-difference — applies here without modification.
+4. **The specific per-channel asymmetry is real** (re-confirmed directly,
+   §34.1) but is most plausibly a consequence of each channel's own
+   `c9`-to-`film_base` ratio amplifying the *same*, still-unexplained
+   upstream gap differently per channel, not evidence of an independent
+   duty/gain defect. Flagged as the leading explanation, not a proven one.
+
+**This closes the same way §33 did.** A real, worth-flagging staleness was
+found (duty/level, not just the matrix) — genuinely worth promoting
+`calibration-fresh-scan/` through this project's own documented install
+procedure (`docs/71 §9`) on its own merits, as a hardware/calibration
+hygiene action item for the project owner, independent of this symptom —
+but it is not, on direct empirical test against the real matched frame, the
+explanation for the brightness gap. **No production code was changed by
+this pass.** `pakon_scan.py`, `pakon_commands.py`, `pakon_decode.py`, and
+`pakon_render.py` were read and called, not edited; `calibration/`,
+`calibration-fresh-scan/`, and `calibration-vendor-duty-test/` were read,
+not modified or promoted. Every render in this section used the real,
+unmodified `pr.scene_rpd12`/`render_scene`/`to_srgb` chain against the real
+`test123.bin`/`f4c91b62` roll and the real `AA001.tif`; the joint
+raw-plus-film_base scaling was built and run in scratch scripts under
+`/tmp`, never written into a port file. Only aggregate percentile
+statistics are reported above, consistent with this project's rule against
+describing `captures/` contents.
+
 ## What this changes about the open item list
+
+**§34 update.** The task's own per-channel framing — raised as a candidate
+*new* mechanism, not a restatement of §31-33 — is checked and closed the
+same way §33 was: AFE gain is confirmed uniform and structurally inert as a
+lever (closes item 3's gain half outright); lamp duty is confirmed current
+for the calibration this capture actually used, but a second, real,
+dated, unpromoted self-calibration of duty *and* level exists on this same
+unit from earlier the same day, worth promoting on its own merits
+(`docs/71 §9`'s documented install procedure) but, tested directly at its
+own real magnitude against the real matched frame, moving the render by at
+most 7 codes — an order of magnitude short of the gap, and in the wrong
+direction for two of three channels. The specific asymmetric shape (blue's
+smaller ratio but harder near-ceiling clip) is real but is most plausibly a
+consequence of each channel's own `c9`/`film_base` ratio amplifying the
+same still-open gap differently, not a new independent mechanism. **Item 1
+(the four unreplicated stages) remains the sole standing software lead**;
+nothing in §34 changes that ranking. §34 does add one new, real, concrete
+action item to the "worth fixing/flagging regardless of this symptom" pile
+(same category as §31.2's film_base bug): promote or discard
+`calibration-fresh-scan/` through `docs/71`'s own documented procedure,
+since a live, real, unpromoted self-calibration silently sitting unused is
+exactly the failure mode `calib_wizard.py`'s own module docstring already
+warns about (quoted in §33.3), now found a second time, in a second
+subsystem.
 
 **§33 update.** Item 6 below's second half (the polynomial colour-matrix's
 own calibration currency) is now **closed, not open** — the last item on
@@ -4674,3 +4983,44 @@ read and their real coefficients/paths used, not edited. Only aggregate
 percentile statistics from `test123.bin` are reported above, consistent
 with this project's rule against describing `captures/` contents; no pixel
 data or image content is reproduced.
+
+§34's per-channel percentiles and ratios were computed directly with
+`numpy`/`PIL` against the real `AA001.tif`
+(`/Users/guy/.claude-account-1/jobs/5e3f6f65/tmp/vendor-tiffs/AA001.tif`,
+the same file §31 used, re-measured this pass, not transcribed from the
+task's own numbers or from §31's) and against a fresh, direct call to
+`pr.render_frame(roll, 0)` on the real `f4c91b62` workspace (`pr.Roll.
+from_json` on its own `roll.json`, `PAKON_COLOUR_ENGINE=python`), which
+reproduced §31.1's own baseline sRGB percentiles exactly before anything
+else in this section ran, as a harness sanity check. §34.2's duty figures
+were read directly from `test123.scan.json` (the app's own real capture
+sidecar, `~/Library/Caches/PakonScan/captures/`) and cross-checked against
+`docs/59-lamp-sequence-captured.md`'s own registry-derived `10^D` figures
+(that doc lives on the private remote's `finding/f235-and-vendor-shadows`
+branch, per §13's own citation convention — fetched read-only via `git show
+remotes/private/finding/f235-and-vendor-shadows:docs/59-lamp-sequence-
+captured.md`, not merged into this branch). §34.3's gain figures were read
+directly from every `calibration/README*.json` and `calibration-*/
+README.json` file on this checkout (8 files, `python3`/`json`, not
+eyeballed), cross-referenced against `tools/pakon_commands.py`'s own
+`ADC_IDX_GAIN_R/G/B`/`ADC_GAIN_MAX` constants and `tools/pakon_scan.py`'s
+own `ccd_configure` (`:1606-1610`, the real write site). §34.4's timeline
+used each file's own `generated_at`/`wizard_stamp` fields plus a live
+`stat`/`ls -la` of `calibration/README.json`'s own mtime and
+`test123.scan.json`'s own `created` field and file mtime — not assumed or
+estimated. §34.5's joint scaling ran the real, unmodified
+`pr.scene_rpd12`/`eng.render_scene`/`pr.apply_correction`/`eng.to_srgb`
+chain, called directly (not through `render_frame`, so the calibrated
+14-bit segment and `film_base` could be scaled together before the first
+call) against the real `roll.slice14(f.a, f.b, step)` output for frame 0 of
+`test123.bin` — the same segment `_render_colour_python` itself would
+produce, confirmed by the harness-sanity-check baseline matching §31.1
+exactly. All scratch scripts (`/tmp/sec34/repro34.py`, `aa001.py`,
+`sweep34.py`, `sweep34b.py`, `sweep34c.py`, `sweep34d.py`, `sweep34e.py`,
+`gains_check.py`) are disposable, not committed, consistent with this
+doc's own established practice. No port file was changed; no calibration
+directory was modified, promoted, or installed. Only aggregate percentile
+and ratio statistics from `test123.bin`/`AA001.tif` are reported above,
+consistent with this project's rule against describing `captures/`
+contents; no pixel data or image content is reproduced anywhere in this
+section.

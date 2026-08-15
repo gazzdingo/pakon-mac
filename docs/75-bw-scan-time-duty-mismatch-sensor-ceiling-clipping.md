@@ -48,6 +48,16 @@ fix this for *future* B&W rolls is a B&W-specific with-film duty, which
 does not exist anywhere in this codebase yet and would need real
 measurement against actual B&W film in the gate (§8).
 
+**§9 update, later session.** §8's wiring is now implemented and verified
+(`ScanConfig.bw_on_counts`/`film_on_counts`, docs/75 §9.2) — ColNeg/POSITIVE
+scans confirmed unchanged. §8's real measurement is still NOT done: no B&W
+film was confirmed loaded (checked first, §9.1), so `bw_on_counts_R_G_B` is
+currently `[643, 580, 508]` — the open-gate candidate §8 itself named as
+the best guess in hand, explicitly labelled NOT MEASURED in
+`calibration/README.json`, not a result. A real duty-search command,
+`calib_wizard.py duty-bw`, was built for the next time real B&W film is
+available (§9.5) but has itself never been run against real hardware.
+
 ## 1 — Where the UI's own per-frame Dmin panel comes from: a completely
 different measurement from the roll-wide `FindDmin` that's failing
 
@@ -426,3 +436,254 @@ expose future B&W rolls instead of refusing loudly the way this pipeline
 does today. The refusal in the bug report, per §6, is the pipeline doing
 its job correctly on genuinely bad input; the real fix is upstream, at the
 light board, for the next B&W scan, not in this codebase's render path.
+
+## 9 — §8's wiring implemented and verified; §8's real B&W measurement
+still not possible tonight — no B&W film confirmed in the gate, checked
+before touching the lamp, not assumed
+
+A later session picked up exactly the two action items §8 named. One is
+done and verified against real hardware (read-only) and this project's own
+test suites. The other could not be done honestly tonight, for the same
+reason §8 itself declined to fake it: no real B&W film was confirmed
+loaded.
+
+### 9.1 — Checked FIRST, before anything else: is real B&W film actually in
+the gate right now?
+
+`calib_wizard.film_precheck` (`tools/calib_wizard.py:359-401`) is the
+project's own no-motion, register-only DX poll — no motor, no lamp, no
+acquire, the same pre-check `calib_wizard.py run` does before calibrating.
+Run standalone against this unit, read-only, before any hardware-touching
+code was written:
+
+```
+present: null, sensors_available: false, status_reports: 0
+detail: "the film sensors said nothing in 2 s. That is the ordinary
+reading for an empty gate ... so it is undetermined here, not 'clear'."
+```
+
+Undetermined is, by this exact function's own docstring, *the normal
+reading for an empty gate* — it is not evidence either way on its own.
+But even a positive film-sensor reading would only prove *something* is in
+the transport, not that it is real B&W stock rather than a colour negative
+or a leader: the DX sensors report presence, not film type, and nothing in
+this codebase can read stock type off the hardware. There is no way to
+confirm "real B&W film is in the gate" from software alone — only a human
+physically loading it and saying so is real assurance. Per the task's own
+explicit contingency for this exact situation, this was therefore treated
+as B&W film NOT confirmed available, and no duty search was run against
+whatever was or was not in the gate. `python3 tools/pakon_scan.py status`
+(read-only, no writes) was also run and confirms the unit is present,
+answering, and running its existing ColNeg duty `[912, 938, 804]`
+unchanged — see 9.3.
+
+### 9.2 — §8 item 2: `film_path` wired through to real duty selection
+
+Four new/changed pieces, all in `tools/pakon_scan.py`, following the exact
+pattern `open_gate_on_counts` established earlier this session (docs/59):
+
+- **`ScanConfig.bw_on_counts: tuple | None`** (`:553`) — the with-film duty
+  for a BnW roll, parallel to `on_counts` (ColNeg) and `open_gate_on_counts`.
+  `None` means nothing has been calibrated for B&W yet.
+- **`ScanConfig.film_on_counts`** (`:584`, a property) — the one thing every
+  duty-writing call site now reads instead of the bare `on_counts`:
+  `bw_on_counts` when `film_path == "BnW"` and a value is calibrated,
+  `on_counts` in every other case (ColNeg, POSITIVE, IMPORTED, unset, or
+  BnW with nothing calibrated). This is the whole fix, in one property.
+- **`ScanConfig.from_calibration`** (`:728`) reads `bw_on_counts_R_G_B` (and
+  a `bw_on_counts_note` for provenance) off the calibration's `config`
+  block, the same way `open_gate_on_counts` already reads
+  `flat_field_on_counts_R_G_B`. A BnW roll with **no** `bw_on_counts_R_G_B`
+  at all gets a `warnings` entry that gates the scan behind `--force`
+  (`cmd_run`'s pre-existing "does not match the committed calibration"
+  refusal, `tools/pakon_scan.py:3274-3276` before this session, unchanged
+  logic) — a real configuration gap, so it is treated the same as every
+  other warning that already gates a scan this way. A **present**
+  `bw_on_counts_R_G_B` — placeholder or fully measured — does NOT add a
+  warning and does NOT require `--force`: its provenance note is carried
+  separately, in `ScanConfig.bw_on_counts_note`, straight into the capture
+  sidecar's `exposure` block, informational only.
+- **Every consumer of the with-film duty switched from `cfg.on_counts` to
+  `cfg.film_on_counts`**: `lamp_on`'s fallback (`:1023-1044`, when no
+  open-gate duty is calibrated), `lamp_switch_to_scan_duty` (`:1094-1136`,
+  the function that actually flips the light board's duty the instant film
+  sensors report film present), and `lamp_refresh` (`:1310-1376`, the
+  ~20 s keep-alive re-assertion mid-scan) — this last one matters as much
+  as the switch itself: before this fix, a periodic refresh mid-scan would
+  have re-written the bare `cfg.on_counts` (the ColNeg duty) every interval
+  regardless of which film was actually loaded, silently reverting a BnW
+  scan back to the wrong exposure a few seconds after
+  `lamp_switch_to_scan_duty` had just fixed it. `capture_metadata`
+  (`:2266+`) records both `on_counts_R_G_B` (the raw ColNeg-tuned
+  calibration value, unchanged field) and a new `on_counts_applied_R_G_B`
+  (what this roll actually ran at) plus `bw_on_counts_R_G_B` /
+  `bw_on_counts_note`, so a capture's own sidecar states which duty it was
+  actually taken under without requiring cross-referencing `film_path`
+  against a separate calibration file.
+
+**Not touched**: `ccd_configure` (`tools/pakon_scan.py:1582+`) — checked
+directly, and confirmed it never reads `on_counts`/`bw_on_counts` at all;
+it is geometry, integration timing and A/D gain/offset only. The task
+description's framing that `ccd_configure` "applies `cfg.on_counts`
+unconditionally" does not hold up against the function body — the lamp
+duty is written exclusively by `lamp_on`/`lamp_switch_to_scan_duty`/
+`lamp_refresh`, all three of which are covered above.
+
+**Not touched, confirmed by `git diff` grep**: `converge_afe_offsets`,
+`_live_afe_measure`, `--live-afe-converge` — the live AFE dark-offset work
+landed the same session (docs/74 §44) in the same file. Zero lines of that
+code appear in this change.
+
+### 9.3 — Verified: ColNeg/POSITIVE scans are byte-for-byte unchanged
+
+Four independent checks, not just a read of the property logic:
+
+1. **Offline, every branch of `film_on_counts` and `from_calibration`'s new
+   warning gate**, added to `tools/pakon_scan.py`'s own
+   `_selftest_logic()` (`:3571+`, run via `python3 tools/pakon_scan.py
+   selftest` and directly): ColNeg, POSITIVE, and no-`film_path`-chosen all
+   read back `on_counts` unchanged; BnW with a calibrated `bw_on_counts`
+   reads that back and it differs from the ColNeg duty; BnW with **no**
+   `bw_on_counts` falls back to `on_counts` unchanged (no crash, no silent
+   wrong-but-different value); a **present** `bw_on_counts` (placeholder or
+   not) produces `cfg.warnings == []` — confirming the `--force` gate fires
+   only for the genuine gap, not for every BnW scan.
+2. **Real hardware, read-only**: `python3 tools/pakon_scan.py status`
+   before and after every code change in this session reports the
+   unchanged `exposure ... on=[912, 938, 804]` — this unit's committed
+   ColNeg duty, exactly as before this session, because `status` reflects
+   the default (no-`film_path`) configuration.
+3. **A full simulated scan** (`PAKON_SCAN_SIMULATE` replaying
+   `captures/roll.bin`, `--film-path ColNeg`) produced `"warnings": []` and
+   a sidecar with `on_counts_R_G_B == on_counts_applied_R_G_B ==
+   [912, 938, 804]` — the new `bw_on_counts_R_G_B` field is present in the
+   sidecar (informational) but changes nothing about what was driven.
+4. **The same simulated scan with `--film-path BnW`** produced a sidecar
+   with `on_counts_applied_R_G_B == [643, 580, 508]` (the placeholder B&W
+   duty, §9.4) while `on_counts_R_G_B` still reads `[912, 938, 804]` — the
+   two diverge exactly where they should and nowhere else.
+
+**A real regression was found and fixed during this verification, not
+after it.** The first version of the `from_calibration` change added a
+`cfg.warnings` entry whenever a BnW roll had a `bw_on_counts_note` at all
+(including the placeholder's), which tripped `cmd_run`'s pre-existing
+"configuration does not match the committed calibration, `--force` to
+override" refusal (`tools/pakon_scan.py:3274-3276`) for *every* BnW scan —
+this broke the pre-existing `sigterm` case in `pakon_scan.py selftest`
+(`--film-path BnW`, no `--force`, expects the scan to run and be
+cancelled), which failed with `exit=2` and the refusal message instead of
+running. Caught by running that selftest, not by inspection. Fixed by
+separating "a real configuration gap" (missing `bw_on_counts` entirely —
+still gates behind `--force`) from "provenance/documentation attached to a
+value that IS present" (`bw_on_counts_note` — carried through informatively,
+gates nothing). `python3 tools/pakon_scan.py selftest --capture
+captures/roll.bin` (12 cases, simulated scanner, real subprocess kills and
+recoveries) passes in full after the fix.
+
+### 9.4 — §8 item 1: the placeholder duty installed, explicitly labelled
+NOT MEASURED — not the real measurement §8 asked for, because §9.1 found
+no B&W film to measure against
+
+`calibration/README.json`'s `config` block now carries:
+
+```json
+"bw_on_counts_R_G_B": [643, 580, 508],
+"bw_on_counts_note": "PLACEHOLDER, NOT MEASURED AGAINST REAL B&W FILM. ..."
+```
+
+`[643, 580, 508]` is `flat_field_on_counts_R_G_B` — this unit's own real,
+freshly-searched **open-gate** duty (§8 item 1's own reasoning: zero base
+density is closer to a real B&W base than a colour negative's orange mask
+is, so it is the best candidate already in hand) — copied in verbatim, not
+re-derived, not scaled, not guessed at beyond what §8 already said. The
+note field states in as many words that this is a candidate, not a
+measurement, and names the exact command to replace it (§9.5). This
+matches the task's own explicit instruction for this contingency: label it
+BEST-AVAILABLE-CANDIDATE, wire it in as the initial value, and do not call
+it measured.
+
+**Nothing about this value has been verified against real B&W film.** It
+has not clipped anything, because it has not been run against film at all
+— it is untested, not passing.
+
+### 9.5 — §8 item 1's other half: a real duty-search mechanism built,
+reusing `step_duty`'s own primitives, ready for the next time real B&W
+film is loaded — itself untested against real hardware, for the same
+reason
+
+`tools/calib_wizard.py` gained `Wizard.step_duty_film` (`:979+`) and a new
+`duty-bw` subcommand, `cmd_duty_bw` (`:1357+`). This is the film-present
+mirror of the wizard's own `step_duty` (`:880-977`, unchanged): `step_duty`
+requires an **empty** gate and raises `FilmInGate` the instant it sees
+film; `step_duty_film` requires film **already present** (via
+`verdict_from_run(..., trust_classifier=False)`, the same call `step_duty`
+itself uses for the same "borrowed reference is not valid mid-search"
+reason) and refuses the instant the film sensors report empty instead. The
+round loop's numerical core — `build_calibration.solve_duty`,
+`Capture.channel_metric`, `Capture.clip_stats`, `Capture._reprobe_on_counts`,
+the per-channel clipped/unclipped blend — is `step_duty`'s own body,
+called against a film-present capture instead of an open-gate one, not
+reimplemented: the solver has no idea and no need to know what produced
+the counts it is solving from. It targets the same `bcal.VENDOR_TARGET_
+LEVEL` (64000, docs/15's "maximum pixel of an averaged CCD line") and the
+same `DUTY_TOLERANCE` every other duty search in this project already uses
+— not a new number invented for B&W.
+
+Safety properties, checked, not assumed:
+
+- **The transport never moves.** `Wizard.capture` (`tools/calib_wizard.py
+  :632+`) always passes `--no-motor` for every wizard step, `step_duty_film`
+  included — confirmed by reading the one `capture()` call both `step_duty`
+  and `step_duty_film` share. A human has to physically park a clear,
+  unexposed area of the real B&W film's base under the gate window first;
+  nothing in this command advances the film to find one.
+- **It refuses without `--confirm-real-bw-film-loaded`.** Checked directly:
+  `python3 tools/calib_wizard.py duty-bw` (no flag) exits 2 and touches no
+  hardware. The flag exists because this command, like the pre-check in
+  §9.1, cannot verify film *type* from software — only a human's explicit
+  confirmation is real assurance, and the help text says so.
+- **A definite empty-gate reading refuses regardless of the flag.**
+  `film_precheck` is run first; `present is False` refuses before the
+  round loop starts.
+- **It writes nothing to `calibration/README.json`.** The result is
+  printed for human review with the exact JSON to add, matching the rest
+  of this wizard's "measured, not applied" separation between a search and
+  an install (`tools/calib_wizard.py`'s own module docstring, "NOTHING
+  HERE WRITES INTO calibration/").
+- **Bounded rounds**, the same `MAX_DUTY_ROUNDS` cap `step_duty` already
+  uses — not a new, unbounded search.
+
+**What is NOT yet true of this code, stated plainly**: `step_duty_film` and
+`cmd_duty_bw` have been read, imported, argument-parsed
+(`python3 tools/calib_wizard.py duty-bw --help` succeeds), and exercised
+through their pre-flight refusal path (no confirmation flag → clean exit
+2, no hardware touched) — but the round loop itself, the part that
+actually writes lamp duty and reads back a capture, has run **zero times**
+against real hardware, because §9.1 found no B&W film to run it against.
+This is new code on a real, irreplaceable scanner. Per this project's own
+standing practice tonight: run it once, supervised, watching every round's
+printed on-counts and clip fraction, the first time real B&W film is
+loaded — do not trust it unattended before that.
+
+### 9.6 — What a human needs to do next
+
+1. Load a real black-and-white negative (base/leader area, not a frame,
+   not a colour negative) and physically position its clear base under the
+   gate window.
+2. Run `python3 tools/calib_wizard.py duty-bw
+   --confirm-real-bw-film-loaded`, supervised, watching each round.
+3. If it settles: review the printed `on_counts_R_G_B`, then manually
+   replace `calibration/README.json`'s `bw_on_counts_R_G_B` and
+   `bw_on_counts_note` with the real measurement and today's date (the
+   command prints the exact JSON to paste in — nothing is written
+   automatically).
+4. Re-run `tools/test_calib.py` and `tools/test_render_f135.py`.
+5. Scan a short real B&W test strip under the new duty and confirm the
+   frame's own histogram/Dmin panel (§1) shows no channel at or near the
+   16383 sensor ceiling before trusting it on a real roll.
+
+Until that happens, a BnW-flagged scan on this unit runs at
+`[643, 580, 508]` — a real, fresh, this-unit open-gate measurement used as
+a candidate, plausibly much closer to correct than the ColNeg duty it
+replaces (§8), but explicitly not verified against real B&W film and not
+to be reported as such.

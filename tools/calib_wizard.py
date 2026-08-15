@@ -630,7 +630,8 @@ class Wizard:
 
     # ---- capture ----
     def capture(self, label: str, config: dict, *, lamp: bool,
-                max_bytes: int, check_film: bool = True) -> dict:
+                max_bytes: int, check_film: bool = True,
+                film_path: str | None = None) -> dict:
         """One ``pakon_scan.py run``. Returns its ``done`` record.
 
         ``check_film=False`` skips the LIVE per-window abort below (not the
@@ -662,6 +663,16 @@ class Wizard:
         are covered by the lamp-on ones on either side of them: the gate is
         judged before the black-level search starts and again on the bright
         reference, and nothing moves in between.
+
+        ``film_path``: recorded in the capture's own sidecar (``ScanConfig
+        .film_path``) purely for the record -- it does not change what duty
+        this probe is driven at. The candidate ``config`` written by
+        :meth:`write_candidate` sets ``on_counts_R_G_B`` directly, and a
+        candidate with no ``bw_on_counts_R_G_B`` of its own makes
+        ``ScanConfig.film_on_counts`` fall back to exactly that value
+        regardless of ``film_path`` (docs/75) -- so passing ``"BnW"`` here
+        (:meth:`step_duty_film`) labels the probe correctly without
+        double-applying any duty selection.
         """
         d = self.write_candidate(label, config)
         out = self.workdir / f"{label}.bin"
@@ -679,6 +690,8 @@ class Wizard:
                 # transport actually moving" -- with the motor off, its DX
                 # polling still runs, just against a stationary gate.
                 "--no-motor"]
+        if film_path:
+            argv += ["--film-path", str(film_path)]
         if not lamp:
             argv.append("--no-lamp")
         if self.dry_run:
@@ -963,6 +976,122 @@ class Wizard:
             f"the lamp did not settle on the {self.target:.0f} target in "
             f"{MAX_DUTY_ROUNDS} rounds. Nothing has been stored.")
 
+    def step_duty_film(self, config: dict, dark_cap: bcal.Capture,
+                       film_path: str = "BnW") -> dict:
+        """Search the with-film lamp duty against REAL film already loaded.
+
+        The mirror image of :meth:`step_duty` immediately above: that search
+        requires an EMPTY gate and raises :class:`FilmInGate` the instant it
+        sees film (see its own docstring and ``capture()``'s). This one
+        requires film to already be present and refuses the instant the
+        film sensors say the gate is empty instead -- same
+        ``verdict_from_run`` call, same ``trust_classifier=False`` reasoning
+        (mid-search on-counts sweep, the classifier's borrowed reference is
+        not valid yet), sense of the check reversed. Every numerical step
+        below -- ``bcal.solve_duty``, ``Capture.channel_metric``,
+        ``Capture.clip_stats``, ``bcal._reprobe_on_counts``, the clipped/
+        unclipped per-channel blend -- is :meth:`step_duty`'s own round
+        body, unchanged: the solver does not know or care whether the
+        counts it is solving from came from an open gate or real film.
+
+        docs/75: real B&W negative has no orange mask, so the colour-
+        negative with-film duty (this unit's ``on_counts_R_G_B``) drives
+        green and blue toward the sensor's own 16383 ceiling on it. This
+        searches a DISTINCT duty, to the SAME target and tolerance the
+        vendor's own calibration already uses on this hardware
+        (``self.target`` defaults to ``bcal.VENDOR_TARGET_LEVEL`` = 64000
+        on the ``max`` metric, docs/15's "maximum pixel of an averaged CCD
+        line") -- not a new number invented for B&W.
+
+        THE TRANSPORT DOES NOT MOVE. ``capture()`` always passes
+        ``--no-motor`` (every wizard step does, see its own docstring) --
+        whatever is under the sensor when this is called is what every
+        round measures. Park a clear, UNEXPOSED area of the real B&W
+        film's base (leader or edge, not a frame) under the gate window
+        first, the same way the vendor's own duty calibration measures one
+        stationary field of view, not a moving strip.
+
+        docs/75 s8/s2: NOT RUN AGAINST REAL HARDWARE as of this method's
+        introduction -- there was no real B&W film loaded in the gate that
+        session, only the architecture and this search were wired through
+        and reviewed. Run it once, supervised, watching every round's
+        printed on-counts and clip fraction, before trusting its output
+        unattended -- the same posture this project already takes with any
+        newly-wired search against real film.
+        """
+        self.emit(STEP_DUTY, fraction=0.32)
+        cfg = dict(config)
+        dark_level = dark_cap.channel_means()
+        dark_pixels = dark_cap.pixel_mean()
+        for rnd in range(1, MAX_DUTY_ROUNDS + 1):
+            self.p.round = rnd
+            label = f"dutybw{rnd}"
+            # check_film=False for the same reason step_duty uses it: a
+            # candidate exposure mid-search has not converged, so the LIVE
+            # per-window abort's borrowed reference is not valid here
+            # either. verdict_from_run below, on the COMPLETED capture, is
+            # the real safety check -- see this method's own docstring.
+            done = self.capture(label, cfg, lamp=True, max_bytes=PROBE_BYTES,
+                                check_film=False, film_path=film_path)
+
+            v = verdict_from_run(done, trust_classifier=False)
+            if v.present is False:
+                raise WizardRefused(
+                    f"the film sensors report the gate EMPTY on round "
+                    f"{rnd} ({v.detail}). This search only measures real "
+                    f"film -- refusing rather than silently treating an "
+                    f"open-gate reading as a B&W film measurement. Load "
+                    f"real B&W film (base or leader, not a frame, not a "
+                    f"colour negative) under the gate window and try "
+                    f"again.")
+
+            cap = self.load(label, "bright")
+            got = cap.channel_metric(self.metric)
+            self.measured("lamp-bw", round=rnd,
+                          on_counts=list(cfg.get("on_counts_R_G_B") or []),
+                          measured=[round(float(x), 1) for x in got],
+                          metric=self.metric, clipped=cap.is_clipped(),
+                          film_sense=v.to_json())
+            self.emit(detail=f"BnW {self.metric} "
+                             f"{[round(float(x)) for x in got]} at on-counts "
+                             f"{cfg.get('on_counts_R_G_B')}")
+
+            s = bcal.solve_duty(cap, dark_level, self.target, self.metric,
+                                dark_pixels)
+            if not s["clipped"]:
+                err = max(abs(float(x) - self.target) for x in got) / self.target
+                if err <= DUTY_TOLERANCE:
+                    self.emit(detail=f"BnW lamp settled: {self.metric} "
+                                     f"{[round(float(x)) for x in got]} "
+                                     f"against a target of {self.target:.0f}")
+                    return cfg
+                if s["clamped"]:
+                    raise Unreachable(self._unreachable(s, got, cfg))
+                cfg = dict(cfg, on_counts_R_G_B=list(s["on_new"]))
+                continue
+            # Same per-channel clipped/unclipped blend as step_duty -- see
+            # its own comment for why a clipped channel is bisected while
+            # an unclipped one keeps solving toward target normally.
+            clip_frac, _ = cap.clip_stats()
+            clipped_mask = clip_frac > bcal.CLIP_FRACTION_MAX
+            if s["clamped"] and any(not clipped_mask[i] for i in s["clamped"]):
+                raise Unreachable(self._unreachable(s, got, cfg))
+            back = bcal._reprobe_on_counts(s, s.get("dark_at", dark_level))
+            mixed = [back[i] if clipped_mask[i] else s["on_new"][i]
+                     for i in range(len(back))]
+            names = "RGB"[:len(clipped_mask)]
+            self.warn(
+                f"BnW round {rnd}: channel(s) "
+                f"{''.join(names[i] for i in range(len(clipped_mask)) if clipped_mask[i])} "
+                f"clipped (bisecting -- a saturated reading carries almost "
+                f"no scale information), channel(s) "
+                f"{''.join(names[i] for i in range(len(clipped_mask)) if not clipped_mask[i]) or '(none)'} "
+                f"solved normally -> on-counts {mixed}")
+            cfg = dict(cfg, on_counts_R_G_B=mixed)
+        raise WizardRefused(
+            f"the BnW lamp duty did not settle on the {self.target:.0f} "
+            f"target in {MAX_DUTY_ROUNDS} rounds. Nothing has been stored.")
+
     def _unreachable(self, s: dict, got, cfg: dict) -> dict:
         names = "".join("RGB"[i] for i in s["clamped"])
         levels = list(cfg.get("levels_R_G_B_Ir") or [])
@@ -1225,6 +1354,144 @@ def cmd_run(args) -> int:
     return 0 if rep["state"] == DONE else 1
 
 
+def cmd_duty_bw(args) -> int:
+    """Search a real B&W with-film lamp duty against film ALREADY LOADED.
+
+    docs/75: this unit's with-film duty (``on_counts_R_G_B`` in
+    ``calibration/README.json``) is the colour-negative orange-mask
+    compensation, and overexposes real panchromatic B&W stock (no orange
+    mask to compensate for). This command is the real measurement docs/75
+    s8 called for and did not have real film to run: :meth:`Wizard.
+    step_duty_film`, the film-present mirror of the wizard's own open-gate
+    duty search, reusing the exact same solve (``build_calibration.
+    solve_duty`` and friends) this scanner's colour-negative duty was
+    itself found with.
+
+    SAFETY. This never moves the transport (``Wizard.capture`` always
+    passes ``--no-motor``) and never exceeds the same PWM/level clamps
+    every other duty search in this project is bound by
+    (``ScanConfig``'s own ``ScanRefused`` checks, still in force through
+    ``pakon_scan.py run``). What it CANNOT do is confirm the film
+    physically in the gate is real B&W stock -- the DX sensors report
+    presence, not type -- so ``--confirm-real-bw-film-loaded`` is required
+    and a definite EMPTY reading from the film sensors refuses regardless
+    of that flag.
+
+    NOTHING IS WRITTEN TO calibration/README.json BY THIS COMMAND. The
+    result is printed for review, the same "measured, not applied"
+    separation the rest of the wizard keeps between a search and an
+    install -- installing a per-unit exposure value without a human
+    looking at the round-by-round measurements first is exactly the kind
+    of silent guess docs/75 explicitly refused to make.
+    """
+    if not args.confirm_real_bw_film_loaded:
+        print(
+            "refusing: pass --confirm-real-bw-film-loaded once real "
+            "black-and-white negative film (its clear base or leader, NOT "
+            "a colour negative, NOT a frame -- the transport does not "
+            "move) is physically parked under the gate window.\n\n"
+            "This command cannot verify film TYPE itself: the DX film "
+            "sensors report presence, not stock, so your confirmation is "
+            "the only real assurance available. docs/75 has the full "
+            "reasoning for why this is a separate, real measurement and "
+            "not a value this project is willing to guess.",
+            file=sys.stderr)
+        return 2
+
+    cal_path = (Path(args.cal_dir) if args.cal_dir
+               else HERE.parent / "calibration" / "README.json")
+    if not cal_path.is_file():
+        print(f"no calibration record at {cal_path}", file=sys.stderr)
+        return 2
+    meta = json.loads(cal_path.read_text())
+    base_cfg = dict(meta.get("config") or {})
+    if not base_cfg:
+        print(f"{cal_path} has no \"config\" block to search from",
+              file=sys.stderr)
+        return 2
+
+    # Starting point: this unit's own fresh open-gate duty if it has one --
+    # docs/75 s8's own reasoning for the best candidate already in hand
+    # (zero base density is closer to a B&W base than a colour negative's
+    # orange mask is), not a guess invented for this command. Falls back to
+    # the installed with-film duty only if no open-gate figure exists.
+    start_on = (base_cfg.get("flat_field_on_counts_R_G_B")
+               or base_cfg.get("on_counts_R_G_B"))
+    if not start_on:
+        print(f"{cal_path} has neither flat_field_on_counts_R_G_B nor "
+              f"on_counts_R_G_B to start the search from", file=sys.stderr)
+        return 2
+    seed_cfg = dict(base_cfg, on_counts_R_G_B=list(start_on))
+
+    link = None
+    try:
+        from pakon_scan import Link
+        link = Link.open()
+        v = film_precheck(link, seconds=args.precheck_seconds)
+    except Exception as e:                                  # noqa: BLE001
+        print(f"note: no film-sense pre-check ({e}); the probe capture "
+              f"will settle the gate instead")
+        v = None
+    finally:
+        if link is not None:
+            link.close()
+    if v is not None and v.present is False:
+        print(f"refusing: the film sensors report the gate EMPTY "
+              f"({v.detail}). Load real B&W film and try again.",
+              file=sys.stderr)
+        return 2
+    if v is not None and v.present is True:
+        print(f"film-sense pre-check: {v.detail}")
+    else:
+        print("film-sense pre-check: undetermined (the normal reading for "
+              "a stationary gate, per calib_wizard's own docstring) -- "
+              "proceeding on --confirm-real-bw-film-loaded alone")
+
+    def show(p: Progress) -> None:
+        print(f"  [{p.fraction * 100:5.1f}%] {p.text}"
+              + (f" -- {p.detail}" if p.detail else ""), flush=True)
+
+    w = Wizard(cs.CalibrationStore(args.store), base=args.base,
+               target=args.target, metric=args.metric, progress=show,
+               dry_run=args.dry_run)
+    try:
+        w.emit(STEP_DUTY, fraction=0.05,
+              detail="dark probe (lamp off); leave the film in place")
+        w.capture("dutybw_dark", seed_cfg, lamp=False,
+                 max_bytes=PROBE_BYTES, check_film=False,
+                 film_path="BnW")
+        dark_cap = w.load("dutybw_dark", "dark")
+        result_cfg = w.step_duty_film(seed_cfg, dark_cap)
+    except (WizardRefused, FilmInGate) as e:
+        print(f"\nBnW duty search did not complete: {e}", file=sys.stderr)
+        return 1
+    except Unreachable as e:
+        print(f"\nBnW duty search did not complete: {e}", file=sys.stderr)
+        print("\n" + json.dumps(e.info, indent=2, default=str))
+        return 1
+
+    on = result_cfg["on_counts_R_G_B"]
+    print(f"\nBnW with-film duty settled: on_counts_R_G_B = {on}")
+    print(
+        "\nThis is a REAL measurement against film physically in the gate "
+        "this run -- nothing has been written to calibration/README.json. "
+        "To use it:\n"
+        "  1. Review the round-by-round measurements printed above.\n"
+        "  2. Add to calibration/README.json's \"config\" block:\n"
+        f"       \"bw_on_counts_R_G_B\": {on},\n"
+        "       \"bw_on_counts_note\": \"measured against real B&W film "
+        "in the gate, <date>, tools/calib_wizard.py duty-bw\",\n"
+        "  3. Re-run tools/test_calib.py and tools/test_render_f135.py.\n"
+        "  4. Scan a short real B&W test strip and confirm the frame's "
+        "own histogram/Dmin panel (docs/75 s1) is not clipped before "
+        "trusting this on a real roll.")
+    if args.json:
+        print("\n" + json.dumps(
+            {"on_counts_R_G_B": on, "measurements": w.p.measurements,
+             "warnings": w.p.warnings}, indent=2, default=str))
+    return 0
+
+
 def cmd_selftest(_a) -> int:
     import test_calib
     return test_calib.main()
@@ -1257,11 +1524,36 @@ def main() -> int:
                    help="skip the no-motion film-sense poll")
     r.add_argument("--json", action="store_true")
 
+    b = sub.add_parser(
+        "duty-bw",
+        help="search the B&W with-film lamp duty against real B&W film "
+             "ALREADY LOADED in the gate (HARDWARE, docs/75)")
+    b.add_argument("--base", type=int, default=DEFAULT_BASE,
+                   choices=(4, 8, 16))
+    b.add_argument("--target", type=float, default=bcal.VENDOR_TARGET_LEVEL)
+    b.add_argument("--metric", choices=bcal.METRICS,
+                   default=bcal.DEFAULT_METRIC)
+    b.add_argument("--cal-dir", default=None,
+                   help="calibration/README.json to seed the starting "
+                        "on-counts from (default: this repo's own)")
+    b.add_argument("--confirm-real-bw-film-loaded", action="store_true",
+                   help="REQUIRED. Confirms real B&W negative film (its "
+                        "clear base or leader, not a colour negative, not "
+                        "a frame) is physically parked under the gate "
+                        "window. This command cannot verify film type "
+                        "itself.")
+    b.add_argument("--precheck-seconds", type=float,
+                   default=FILM_PRECHECK_S)
+    b.add_argument("--dry-run", action="store_true",
+                   help="build every capture command and send nothing")
+    b.add_argument("--json", action="store_true")
+
     sub.add_parser("selftest", help="the state machine, no hardware")
 
     a = ap.parse_args()
     try:
         return {"status": cmd_status, "plan": cmd_plan, "run": cmd_run,
+                "duty-bw": cmd_duty_bw,
                 "selftest": cmd_selftest}[a.cmd](a)
     except WizardRefused as e:
         print(f"\nREFUSED: {e}", file=sys.stderr)

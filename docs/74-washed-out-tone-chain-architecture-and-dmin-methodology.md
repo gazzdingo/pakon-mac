@@ -4434,7 +4434,381 @@ raw-plus-film_base scaling was built and run in scratch scripts under
 statistics are reported above, consistent with this project's rule against
 describing `captures/` contents.
 
+## 35 — The first complete live hook capture of a real scan, read in full:
+the call-order/shared-holder finding confirmed live for all six frames (not
+just statically), `analyzeAutoTone`'s `edx=1` resolved by direct disassembly
+to be compiler cleanup bookkeeping (not a status code), and
+`tlb_afe_offset_write`'s real stack-argument layout finally resolved —
+9 real per-channel AFE offset writes decoded, converging to within 1 code of
+the calibration this exact roll used
+
+**Provenance.** `live_hooks_20260815-085356.jsonl`, downloaded from the
+project owner's XP box (`http://192.168.86.67:8000/`, confirmed reachable
+before use) — the first capture in this project's history to run the live
+hook harness (`tools/re/live_hooks/win_inject/`) through a complete real
+scan without crashing, after the six non-call-reachable hook addresses were
+disabled the same night. Status lines confirm a clean install: `"install
+pass complete: 15/15 enabled hook(s) installed after 0 attempt(s)"`
+(tick 29720171). 229 JSON lines total: 4 status, 15 `hook_installed`, 210
+real `call` events (105 enter/leave pairs, `call_id` 1-105). The capture
+ends cleanly on a matched enter/leave pair (`icc_xform_apply`/`icc_effect_op`
+`call_id=104/105`, tick 29804000) — no truncated line, no mid-loop cutoff,
+unlike the partial capture §29 worked from.
+
+All analysis below re-derives everything from the raw JSONL directly (a
+one-off Python script, not committed, matching this doc's own established
+practice for scratch analysis) plus fresh `radare2 6.1.8` disassembly of the
+real, MD5-verified DLLs already sitting on this checkout's host at
+`/Users/guy/pakon-windows-repair/COM-SERVER/`: `PakonIMAu.dll` hashes
+`eea9dcf78ee21d4f7c515a6c2512242d` (matches every prior citation in this
+doc) and `TLB.dll` hashes `193d9b2ce0a4b77ae9b78262bd06c0fc` (matches §32.2's
+own citation of `docs/70`). Both re-verified directly before use, not
+assumed.
+
+### 35.1 — Six frames processed, the documented call order holds with zero
+deviation across all of them — verified in true log order, not by
+`GetTickCount()` value
+
+`cn_enhanced_driver` (`0x10069490`) fires exactly **6** times on the
+capture's main thread (`tid=3192`): enter/leave pairs at `call_id`
+46/46, 54/54, 62/62, 70/70, 78/78, 86/86. Each of the six wraps the exact
+seven-hook nested sequence §11 documented from static disassembly —
+`fugc_analyze → balance_area_image → analyze_area → analyze_attributes →
+analyze_falloff → analyze_auto_tone` — with **zero exceptions, zero
+reordering, zero missing or extra calls**, checked call-by-call across the
+whole capture, not spot-checked on one frame. (One correction to how to
+read this file: `GetTickCount()`'s ~15-16ms granularity means several
+events in a frame share an identical `tick` value, so a naive sort by
+`(tick, call_id)` can misorder same-tick events — e.g. it makes frame 4's
+`cn_enhanced_driver` LEAVE, `call_id=70`, appear to precede its own nested
+`analyze_falloff`/`analyze_auto_tone` calls, `call_id=76/77`. This is a
+sorting artifact, not a real anomaly: `call_id` is assigned by a
+thread-safe `InterlockedIncrement` at the moment each hook fires
+(`hookcore.c:469`) and the log line is written synchronously under a lock
+immediately after, so **the file's own line order is the authoritative
+chronological order**, and in that order every one of the six frames nests
+perfectly: `cn_enhanced_driver` ENTER, its six subsystems each fully
+enter-then-leave in the documented sequence, then `cn_enhanced_driver`
+LEAVE — confirmed by direct inspection of `call_id` 45-95 in raw file
+order.)
+
+A genuinely new, live-only detail two of the seven hooks reveal: `fugc_analyze`
+itself nests a call to `fugc_set_lut_info` (`call_id` 48, 56, 64, 72, 80, 88 —
+one per frame, always with constant `eax=0x00000000`/`edx=0x0939fbe4` at
+ENTER and `eax=0x0939fbe4`/`edx=0x00000000` at LEAVE, a fixed slot in
+`cn_enhanced_driver`'s own stack frame, unchanging across all six frames).
+This wasn't part of §11's own eleven-address chain (built from a different,
+non-`fugc`-internal disassembly pass) — live evidence adds it as a genuine,
+minor, structurally unsurprising refinement.
+
+### 35.2 — The shared-pointer finding, precisely re-characterized: `esi` is
+`ctx` (`[ebp+0x14]`), not `holder` (`[ebp+0xc]`) — and live evidence shows
+**both** are independently shared across all six subsystem calls, not one
+
+The initial look (this task's own framing) found `esi` identical across all
+six inner calls per frame, changing between frames, and called it "the
+shared holder pointer." Decoding `analyze_auto_tone`'s own `stack_dwords`
+against `pakon_autotone.py:1394-1396`'s already-established argument layout
+(`sret=[ebp+8]`, `holder=[ebp+0xc]`, `arg2=[ebp+0x10]`, `ctx=[ebp+0x14]`) —
+using `tools/re/live_hooks/win_inject/hookstub.S`'s own documented capture
+contract (`argsPtr = ESP_after_call + 4`, i.e. `stack_dwords[0]` is the
+callee's first real stack argument, matching `[ebp+8]` post-prologue) —
+shows this is imprecise in a real, checkable way. Frame 1's
+`analyze_auto_tone` ENTER (`call_id=53`):
+
+```
+stack_dwords[0] = 0x0939fd38   (sret,   [ebp+8])
+stack_dwords[1] = 0x087e5278   (holder, [ebp+0xc])
+stack_dwords[2] = 0x08fb05ac   (arg2,   [ebp+0x10])
+stack_dwords[3] = 0x08fb05a8   (ctx,    [ebp+0x14])
+esi (register)  = 0x08fb05a8
+```
+
+`esi` equals `stack_dwords[3]` — **`ctx`**, not `holder` (`stack_dwords[1]`,
+a completely different address, `0x087e5278`). Checked across all six
+frames of `analyze_auto_tone`'s own `stack_dwords[1]` (holder) and `esi`/
+`stack_dwords[3]` (ctx):
+
+```
+frame   holder (sd[1])   ctx (sd[3] == esi)
+1       0x087e5278       0x08fb05a8
+2       0x08ddc280       0x08fb6a84
+3       0x08e037a8       0x08fbcf60
+4       0x08e8c7b8       0x08fc343c
+5       0x08ebefa0       0x08fc9918
+6       0x08f09118       0x08fcfdf4
+```
+
+Both columns are **identical across all six inner calls within a frame**
+(re-checked directly for `fugc_analyze`, `balance_area_image`,
+`analyze_area`, `analyze_attributes`, `analyze_falloff`, and
+`analyze_auto_tone`'s own `stack_dwords[1]`/`esi` at every one of the 36
+relevant enter events — not just `analyze_auto_tone`'s), and both **change
+between frames**. This is a genuine strengthening of §11/§22, in two
+directions at once: (1) §11's own static citation named only four of the
+six subsystems (`balanceAreaImage`, `analyzeArea`, `analyzeFalloff`,
+`analyzeAutoTone`) as sharing the identical `&[ebp+0xc]` argument, having no
+disassembly evidence for `fugc_analyze`/`analyzeAttributes` at the time —
+live evidence now shows `holder` is identical across **all six**, closing
+that gap; (2) there is a **second**, independently-shared pointer (`ctx`)
+riding alongside `holder` into the same six calls, which no prior static or
+Unicorn pass in this doc distinguished from `holder` — the "one shared
+holder" framing understates the real mechanism by one object.
+
+`ctx`'s own per-frame addresses step by a suspiciously regular
+**`0x64DC` bytes** every frame (`0x08fb6a84-0x08fb05a8 = 0x64DC`, same delta
+for every consecutive pair above) — a fixed-stride, arena-like allocation
+pattern, in the same order of magnitude as (but not exactly equal to) §22's
+own already-established `ctx` size of `0x6600` bytes (a 292-byte
+discrepancy, plausibly allocator padding/header overhead, not independently
+resolved this pass). `holder`'s own per-frame addresses have no such regular
+stride (deltas of `0x65F008`, `0x27528`, `0x89010`, `0x327E8`, `0x2178`) —
+consistent with `holder` (§22: 0x100 bytes) coming from a general-purpose
+heap with unrelated allocation traffic between frames, unlike `ctx`'s own
+apparently-dedicated per-frame arena.
+
+### 35.3 — `analyzeAutoTone`'s `edx=1` at every real LEAVE resolved by
+direct disassembly: it is MSVC cleanup-epilogue bookkeeping, not a status
+code, and does not bear on `pakon_autotone.py`'s own `AnsStatus` modeling
+
+All six real `analyze_auto_tone` LEAVE events (`call_id` 53, 61, 69, 77, 85,
+93) show `edx=0x00000001`, no exceptions. `eax` at LEAVE is also constant
+across all six: `0x0939fd38` — the exact address of the `sret` argument
+(`stack_dwords[0]` at ENTER, `[ebp+8]`), a fixed slot inside
+`cn_enhanced_driver`'s own reused stack frame (`ebp=0x0939fd98` at every one
+of the six `cn_enhanced_driver` ENTER events too — the driver re-enters at
+the identical stack depth for all six frames, consistent with a simple
+per-frame loop one level up, not recursion).
+
+Disassembling `analyzeAutoTone`'s own tail directly (`0x100fb730`-
+`0x100fcd6e`, `PakonIMAu.dll`, `af`-confirmed 5,311-byte body matching
+`pakon_autotone.py`'s own cited size) finds the actual return sequence at
+`0x100fcd60`: `mov eax, esi` — `esi` is the function's own cached copy of
+the `sret` pointer, echoed into `eax` right before `ret`, exactly matching
+`pakon_autotone.py:1395-1396`'s own citation that *"the hidden `AnsStatus&`
+sret (`[ebp+8]`) is the return value"* — `eax` **is** the documented return
+value, and it is a pointer, not a status code. `edx` is never assigned in
+this epilogue as part of any documented return convention. Tracing
+backward from `ret`, the last place `edx` is touched on the path every one
+of these six real calls actually took is:
+
+```
+0x100fcd0f   mov edx, dword [var_1ch]
+0x100fcd12   or  edx, 1          ; unconditionally forces bit 0
+0x100fcd17   mov dword [var_1ch], edx
+```
+
+— followed by conditional C++ RAII-style cleanup blocks (guarded
+`test`/`je` around vtable-dispatched destructor calls, `push 1` /
+`call [eax]`, the classic MSVC "scalar deleting destructor" shape) that,
+on the branch actually taken in every one of these six live calls, do
+**not** touch `edx` again before `ret` at `0x100fcd6e`. `or edx, 1`
+unconditionally sets `edx`'s low bit; if `var_1ch` was already `0` (the
+common case — an unthrown-exception/no-extra-cleanup local, consistent with
+every one of these six real calls succeeding cleanly), the result is
+exactly `1`, matching every observed value precisely.
+
+**This is not a status code.** It is not part of `analyzeAutoTone`'s
+documented ABI at all (only `eax` is), it has no relationship to
+`AnsStatus`/`STATUS_OK_GLOBAL` (`pakon_autotone.py:807-835`, whose own
+`__bool__`/comparison logic operates on the object at the `sret` address,
+not on `edx`), and its constant value of `1` is a coincidence of this
+capture's own no-exception execution path through a generic compiler
+cleanup idiom, not a designed "success" signal. **This resolves the task's
+own question precisely, just not in the direction it hoped**:
+`pakon_autotone.py`'s `AnsStatus` modeling is neither confirmed nor
+contradicted by this register, because `edx` was never a real channel for
+it to begin with. One corroborating data point: `cn_enhanced_driver`'s own
+LEAVE `edx` is *also* `1` on every one of its six calls (`0x00000000` only
+on its very first ENTER, `0x00000001` on every ENTER/LEAVE thereafter) —
+consistent with, not independent evidence for, the same mechanism:
+`analyzeAutoTone` is the last of the six subsystems `cn_enhanced_driver`
+calls each frame, and if `cn_enhanced_driver`'s own epilogue doesn't touch
+`edx` between that call and its own `ret`, its LEAVE `edx` simply inherits
+`analyzeAutoTone`'s.
+
+### 35.4 — `tlb_afe_offset_write`'s real stack-argument layout, resolved by
+direct disassembly of `0x100299c0`: the `arg_1ch`/`arg_1ch_2` collision was
+r2's own naive per-instruction naming, not a real ambiguity in the function
+
+Fresh `radare2` disassembly of `TLB.dll:0x100299c0` (`FN_bDrvPutCcdAtoDOffsets`,
+already cited at `docs/72 §1.3`) confirms the earlier session's finding:
+`r2`'s automatic variable naming produces a genuine collision —
+`fcn.100299c0(arg_8h, arg_18h, arg_1ch_2, arg_20h, arg_1ch)` — because two
+*different* real argument slots are each read by an instruction whose raw
+encoding literally reads `[esp+0x1c]`, but at two different actual stack
+depths (one dword-push deep, another four dwords-push deep), which r2's
+default naming (keyed off the literal text offset, not the true depth from
+the function's real entry ESP) cannot tell apart. Manually tracking ESP
+push-by-push from the function's true entry (before any of its own four
+prologue `push`es) resolves it cleanly. This is a **thiscall** (`ecx` =
+`this`, cached in `esi`) with five real stack arguments beyond `this`, at
+true offsets `[entry_esp+4]` through `[entry_esp+0x14]`:
+
+```
+arg1 (entry_esp+4)   -- ebx-sourced, shared across all 3 channel writes
+arg2 (entry_esp+8)   -- raw value for channel index 5, cached at [this+0x34c]
+arg3 (entry_esp+0xc) -- raw value for channel index 6, cached at [this+0x350]
+arg4 (entry_esp+0x10)-- raw value for channel index 7, cached at [this+0x354]
+arg5 (entry_esp+0x14)-- ebp-sourced, shared across all 3 channel writes
+```
+
+Each of the three blocks (channel-index 5/6/7, pushed as a literal constant
+into the real encode-and-write call `0x1000a5d0`) first compares the new
+raw value against the cached one at `[this+0x34c/0x350/0x354]` and skips
+the actual hardware write on a match — explaining why real captures show
+runs of identical consecutive values (the DLL itself is deduplicating). Per
+`hookstub.S`'s own documented capture contract (`argsPtr` points at exactly
+`entry_esp+4`), the hook's `stack_dwords[0..4]` map directly onto
+`arg1..arg5` above — letting the raw capture be decoded without guessing.
+Using this project's own already-established R/G/B ordering convention for
+these triples (inherited, not re-derived this pass, same caveat §29 already
+flagged for its own `fpo` decode): `arg2`=R, `arg3`=G, `arg4`=B.
+
+**All 9 real calls, decoded:**
+
+```
+call_id  retaddr(TLB VA)   R      G      B     leave(eax,edx)
+   1     (n/a, first)     10     10     10     eax=1 edx=0x078700c8
+   2     0x1001e2cf      -29    -38    -30     eax=1 edx=0x078700c8
+   3     0x1001e2cf      -21    -30    -22     eax=1 edx=0x078700c8
+   4     0x1001e2cf      -19    -25    -19     eax=1 edx=0x078700c8
+   5     0x1001e2cf      -19    -26    -19     eax=1 edx=0x7c90e514
+   6     0x1001e2cf      -19    -26    -19     eax=1 edx=0xffffffed
+   7     0x1001e2cf      -19    -26    -19     eax=1 edx=0xffffffed
+   8     0x1001e2cf      -19    -26    -19     eax=1 edx=0xffffffed
+   9     0x1002df73      -19    -26    -19     eax=1 edx=0xffffffe6
+```
+
+(`retaddr` reverse-mapped to a documented TLB.dll VA via the hook-installed
+table's own inferred module base, `rt_address - (va_documented-0x10000000)
+= 0x070d0000`; both call-site addresses independently confirmed by
+disassembly to be genuine `call 0x100299c0` instructions inside TLB.dll
+itself — `0x1001e2ca` and `0x1002df6e` respectively — i.e. **this entire
+search runs inside the vendor's own low-level device driver code**, not in
+this project's own Python `calib_wizard.py` self-cal tool, a distinct
+mechanism from §34.4's finding and not to be conflated with it.)
+
+This is a live, converging **auto-calibration search**: an initial uniform
+seed (`10,10,10`), three refinement steps, settling at `(-19,-26,-19)` for
+four consecutive reads (calls 5-8, same call site, a tight loop inside
+TLB.dll), then one more call from a *different* call site (`call_id=9`,
+`0x1002df73`) confirming the identical settled value — read as "apply the
+converged result," though this pass did not trace that second call site's
+own enclosing function to confirm that reading independently. `eax=1` at
+LEAVE is constant across all 9 calls (plausibly a real `BOOL`-style
+success/complete flag, unlike `edx`, which is *not* constant here —
+`0x078700c8`, `0x7c90e514`, `0xffffffed`, `0xffffffe6` — reinforcing §35.3's
+point that `edx`-at-leave is not generically trustworthy across this hook
+framework without independently checking each function's own epilogue).
+
+**Cross-check against this project's own stored calibration.** §34.4
+already cites `calibration/README.json` (the calibration this exact roll's
+capture actually used) `afe_offsets = (-18, -26, -20)`. The converged live
+values found here, `(-19, -26, -19)`, match **G exactly** and are within
+**1 code** of R and B. Given `docs/72`'s own already-cited two's-complement/
+sign-magnitude encoding bug in this exact function (fixed 2026-08-12), a
+small, symmetric (R and B both off by exactly 1, G exact) discrepancy this
+size is at least as consistent with ordinary live-search convergence noise
+as with any remaining encoding issue — **not independently adjudicated
+either way this pass**, stated plainly rather than picked. Either way, this
+is the first time this project has decoded genuine, per-channel,
+disassembly-verified AFE offset values from a live capture, and they land
+within a code of the project's own already-trusted, independently-sourced
+number.
+
+### 35.5 — `sba_preference`/`fpo` re-confirmed on a complete capture: same
+generic stock value, 12/12 calls
+
+All 12 real `sba_preference` calls in this capture (`call_id` 10, 12, 14,
+16, 18, 20, 22, 26, 30, 34, 38, 42) decode, via the same
+`stack_dwords[8:10]` packed-RGB convention `pakon_sba_preference.py`
+documents and §29 already used, to the identical triple in every case:
+
+```
+stack_dwords[8]=0x04e2036f, stack_dwords[9]=0xffba056a -> (879, 1250, 1386)
+```
+
+— exactly §29's already-established generic stock `fpo` value from
+`sba-CN-default.dpi`, and exactly what §29 itself found on the earlier,
+explicitly-partial `live_hooks_20260814-102329.jsonl` (7/7 calls there).
+This capture is the "clean, complete capture covering a full successful
+scan" §29's own caveat asked for to close the question more finally: it
+ends on a clean matched enter/leave pair (§35 intro), not mid-loop, and
+covers all six frames of the roll. All 12 calls happen in two setup batches
+of six (`call_id` 10-21, each paired with `sba_get_shifts`; `call_id`
+22-45, each paired with `sba_set_shifts` + two `sba_get_shifts`), both
+**before** the six-frame `cn_enhanced_driver` loop begins (first
+`cn_enhanced_driver` ENTER at `call_id=46`) — i.e. this looks like a
+complete per-scene SBA setup pass covering all six frames at once, then the
+six-frame tone-analysis loop runs separately afterward. §29's finding is
+now confirmed structurally, not just per-call.
+
+### 35.6 — Other live-only observations, checked and reported plainly (no
+forced finding on the §31-34 brightness gap)
+
+- **ICC colour management runs on a separate thread, as a distinct batch
+  pass after all six frames' tone analysis, not interleaved per-frame.**
+  `icc_effect_op`/`icc_xform_apply` (6 enter/leave pairs each, `call_id`
+  94-105; the raw per-hook-id count of 13 each includes one
+  `hook_installed` status line, not a 13th call) all run on `tid=2912`, a
+  different thread than the main pipeline's `tid=3192`. The first ICC event
+  (`call_id=94`, tick 29803703) fires only after the *last*
+  `cn_enhanced_driver` LEAVE (`call_id=86`, tick 29802671) — roughly a
+  one-second gap — meaning colour management for the whole roll happens as
+  one later batch, not per-frame inside the tone-analysis loop. Not
+  something any prior capture in this doc lived long enough to show.
+- **`sba_apply_balance_shifts` is installed but never fires** (0 of 210
+  call events) despite `sba_set_shifts`/`sba_get_shifts` firing normally —
+  reported as a raw fact; this doc has no established basis for what
+  triggers it, so no interpretation is offered.
+- **Timeline structure**: the 9 `tlb_afe_offset_write` calls (ticks
+  29745031-29759234) happen roughly 43 seconds before the SBA setup phase
+  (starting tick 29802484), consistent with a one-time hardware
+  init/calibration step at scan start, well separated from per-frame
+  processing — not interleaved with it.
+- **Relevance to the still-open ~88-89 sRGB code brightness gap
+  (§31-34): none found.** The AFE offset values decoded in §35.4 are a
+  genuinely new, precise, disassembly-verified data point, but they concern
+  the AD9826 offset *register* — a CCD-readout-time pedestal correction
+  applied before any of this doc's own already-modeled stages — not
+  `f135_rom12_to_rpd12`'s own `c9` polynomial pedestal (§33-34's own
+  subject) or any of §31.4's two remaining candidate loci (the inversion
+  formula's own construction; the polynomial matrix's calibration
+  currency). Checked for a live surprise per this task's own instruction
+  and none was found: every value decoded this pass either matches an
+  already-established static/Unicorn finding more precisely (§35.2's
+  holder/ctx split, §35.5's `fpo`) or resolves a previously-open
+  methodological question without touching the brightness gap itself
+  (§35.3's `edx`, §35.4's AFE offsets). **Item 1 (the four unreplicated
+  stages) remains the sole standing lead**, unchanged by this pass.
+
+**No production code was changed.** Every number above comes from directly
+reading the raw capture JSONL and from read-only `radare2` disassembly of
+the same two already-MD5-verified DLLs this doc has cited throughout; no
+port file, golden file, or capture file was modified.
+
 ## What this changes about the open item list
+
+**§35 update.** The first complete live hook capture of a real scan (six
+frames, zero deviations from §11's documented call order) is a genuinely
+new *category* of evidence — live dynamic confirmation, not static
+disassembly or Unicorn emulation — but closes no new item on this list and
+opens none. It strengthens §11/§22's shared-pointer finding (splitting it
+into two independently-shared objects, `holder` and `ctx`, and extending
+`holder`'s sharing from four to all six subsystems), resolves what
+`analyzeAutoTone`'s `edx` register holds at return (compiler cleanup
+bookkeeping, not a status code — a question this doc had never actually
+asked before), reconfirms §29's `fpo` finding on a complete rather than
+partial capture, and — as a genuine bonus, resolving a stack-offset
+ambiguity `r2`'s own default analysis left open — decodes real, per-channel
+`tlb_afe_offset_write` values for the first time, landing within one code
+of this project's own already-trusted `calibration/README.json`. None of
+this bears on the ~88-89 code brightness gap (§31-34): the AFE offsets
+decoded are a CCD-readout-time pedestal, structurally upstream of and
+distinct from `c9`/the inversion formula/the polynomial matrix, the three
+loci §31-34 already checked. **Item 1 (the four unreplicated stages)
+remains the sole standing lead**, exactly as §34 left it.
 
 **§34 update.** The task's own per-channel framing — raised as a candidate
 *new* mechanism, not a restatement of §31-33 — is checked and closed the

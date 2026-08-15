@@ -6119,7 +6119,372 @@ in `/tmp/pakon_re/`-equivalent scratch (`/tmp/balanceAreaImage_full.txt`,
 `/tmp/scp_0x10212ba0.txt`, `/tmp/scp_impl_analyze.txt`, `/tmp/e8scan.py`),
 not committed to the repo.
 
+## 40 — §39's own remaining gap addressed with a real live capture and full
+disassembly of `analyzeScpLutBalance` itself: it never writes
+`[cast_result+0xc]` anywhere in its body, so the hook's clean 6/6 firing is
+real but indirect evidence for the compose block running, not direct proof
+— the flag's actual write site is architecturally elsewhere and was not
+located this pass
+
+§39.5 named one honest, scoped gap: whether `[cast_result+0xc]` —
+`balanceAreaImage`'s own gate on whether its `SCPLut` 3-band-fetch-and-compose
+block runs at all — is non-zero on a real scan. A new hook,
+`analyze_scp_lut_balance` (`0x100fd190`), was added specifically to help
+answer this, and a real capture (`live_hooks_20260815-092427.jsonl`) came
+back. This pass re-verifies that capture directly, disassembles
+`analyzeScpLutBalance` in full for the first time, and traces its own call
+chain (`AnsSCPLutCapability::analyze` @ `0x101226c0`, and re-checks the
+`AnsSCPLutCapabilityImpl` constructor `0x10213123` §39.4 already
+disassembled) — and finds a real, decisive, but partial answer: the hooked
+function itself never touches the byte in question.
+
+### 40.1 — Raw capture re-verified directly, not trusted from the task's own
+summary
+
+Server reachable (`curl -s http://192.168.86.67:8000/` → HTTP 200); fresh
+download MD5-matches the pre-existing local copy
+(`/Users/guy/.claude-account-1/jobs/5e3f6f65/tmp/live_hooks_v4/live_hooks_20260815-092427.jsonl`,
+both `3b0004df6a86de67a59d123e30081c1a`) — the file used below is the real
+one, not a stale copy. Re-parsed all 345 lines directly (not via the task's
+own summary): 5 `status`, 15 `hook_installed`, 204 `call` (102 real
+enter/leave pairs), 121 `hook_failed` — every one of the 121 failures is
+`tlb_afe_offset_write` (`MH_ERROR_NOT_EXECUTABLE`, a separate, unrelated
+hook install problem on a different DLL), consistent with the capture's own
+status line, `"install pass complete: 15/16 enabled hook(s) installed after
+120 attempt(s)"`. Capture ends cleanly: `"shutting down: disabling all
+hooks"`, no truncation.
+
+`analyze_scp_lut_balance` fires exactly 12 real `call` events — 6 ENTER + 6
+LEAVE, `call_id` 13/13, 14/14, 15/15, 16/16, 17/17, 18/18 — confirming the
+task's own "6 times" tally exactly. Register values, re-extracted directly
+from the raw JSON (not copied from the task's summary): every one of the 6
+ENTER events shows `eax=0x08d9c324`, `ecx=0x08d9c324` (identical, matching
+the summary), and — **two values the task's own summary did not
+mention, checked this pass** — `ebx=0x08d9c320` (constant across all six)
+and `ebp=0x0939fd28` (also constant across all six). `edx=0x0939fd10` and
+`esi=0x00000000` are constant across all six, exactly as summarized;
+`edi` varies per call (`0x08fb04e0`, `0x08fb69bc`, `0x08fbce98`,
+`0x08fc3374`, `0x08fc9850`, `0x08fcfd2c`). Every one of the 6 LEAVE events
+shows `eax=0x0939fd10`, `edx=0x00000000`, `duration_ticks=0` — exactly as
+summarized. **The task's own summary is accurate**, re-verified against the
+raw file, not merely trusted.
+
+**A genuinely new finding this re-parse surfaces, not in the task's own
+summary.** All 18 calls that precede `analyze_scp_lut_balance` in this
+capture (`call_id` 1-12: `sba_preference`/`sba_get_shifts`, alternating,
+one pair per frame ×6) and `analyze_scp_lut_balance`'s own six calls
+(`call_id` 13-18) all occur at the **identical tick** (`31609296`), in an
+unbroken, gap-free block — and this entire block runs **before**
+`cn_enhanced_driver`'s own first ENTER in this same capture (`call_id=43`;
+`balance_area_image`'s own first ENTER is `call_id=46`). This is real,
+direct call-order evidence — not previously available from any prior
+section, which only had `pakon_scp_lut.py`'s own docstring assertion
+("OrderWide stage between the two `analyzeBalanceOrder` calls") to go on —
+that `analyzeScpLutBalance` runs as part of a separate, **earlier**,
+per-roll analyze pre-pass that iterates all six frames' `"sba"`-adjacent
+setup and SCPLut balance analysis to completion **before** the per-frame
+`cn_enhanced_driver`/`balanceAreaImage` render pipeline begins at all, not
+interleaved frame-by-frame with it. `pakon_scp_lut.py`'s own citation is
+now independently confirmed by real call order, for the first time.
+
+**A second new finding.** `analyzeScpLutBalance`'s own per-frame `edi`
+(ENTER) and `balanceAreaImage`'s own per-frame `ctx`
+(`stack_dwords[3]` at ENTER, per §35.2's already-established layout) differ
+by an **identical constant, `0x4AC`**, across all six frame-matched pairs
+(`call_id` 13↔46: `0x08fb098c − 0x08fb04e0 = 0x4AC`; 14↔54, 15↔62, 16↔70,
+17↔78, 18↔86: same delta, exactly, every time). This confirms — not merely
+assumes by ordinal position — that `analyzeScpLutBalance`'s frame-1 call
+really does correspond to the same per-frame arena as `balanceAreaImage`'s
+own later frame-1 call, and likewise for all six frames: the two,
+temporally-separated calls are tied to the same real per-frame allocation,
+not just the same loop-iteration count by coincidence.
+
+### 40.2 — `analyzeScpLutBalance` (`0x100fd190`) disassembled in full for
+the first time: 2,734 bytes, 734 instructions, 117 basic blocks, one real
+exit — and an exhaustive search finds **zero** writes to `[X+0xc]` anywhere
+in its body
+
+`PakonIMAu.dll` re-verified, MD5 `eea9dcf78ee21d4f7c515a6c2512242d`, same
+copy every prior section cites. `af`+`pdf` at `0x100fd190` (this project's
+own established convention, never a raw `pD` range): a clean, single
+function, `0x100fd190`-`0x100fdc3e` (`af`'s own `maxaddr`), `end-bbs: 1` —
+one real exit block, one `ret` (`0x100fdc3d`).
+
+Confirmed the real find→cast sequence for `"scpLut"` matches §39.1's own
+citation for `balanceAreaImage`'s equivalent fetch, address for address, in
+this function too: `push str.scpLut` (`0x100fd203`) → `call 0x10020a40`
+(`0x100fd233`, `find("scpLut")`) → `call 0x104ffdd6` (`0x100fd31d`,
+`__RTDynamicCast`, same `TargetType=0x106927d4`
+(`.?AVAnsSCPLutCapability@@`) / `SrcType=0x10692518` immediates §39.2
+already read directly out of `.rdata`) → `cmp eax, ebp; jne 0x100fd379`
+(`0x100fd325`-`0x100fd32b`, null check; the `else` branch throws `"SCPLut
+capability not found."` via `0x1001ed90`, the same throw shape used
+throughout this doc). On the success path, the function goes on to look up
+`"sba"`/`"fos"` capabilities, then calls `AnsSCPLutCapability::analyze`
+(`0x101226c0`) at `0x100fd93e` — matching `pakon_scp_lut.py`'s own
+pre-existing, already-verified citation of this exact chain
+(`"Cap AnsSCPLutCapability::analyze @ 0x101226c0 (path E8 @ 0x100fd93e)"`),
+independently re-confirmed by this pass's own disassembly, not merely
+trusted from the docstring.
+
+**The decisive search.** Every `[reg+0xc]`-shaped memory access anywhere in
+this 734-instruction function, found by direct text search of the full
+`pdf` output (not a name-based/variable-based search, which this project's
+own prior sections have already shown to be unreliable in this exact
+function — see §40.5 below — but a search over the *decoded displacement
+byte itself*, immune to that problem):
+
+```
+0x100fd854   8a430c     mov al, byte [ebx + 0xc]     -- READ
+0x100fd875   8a430c     mov al, byte [ebx + 0xc]     -- READ
+0x100fd8eb   668b460c   mov ax, word [esi + 0xc]      -- READ (16-bit, unrelated field)
+```
+
+**Three occurrences total. All three are reads. None is a write.** The two
+byte-reads gate the `"SBA disabled with SCPLut enabled"` /
+`"FOS disabled with SCPLut enabled"` diagnostic log strings
+`pakon_scp_lut.py`'s own docstring already documents (step 4 of its own
+"Path sequence inside `analyzeScpLutBalance`" list) — checks of the
+separately-found `"sba"`/`"fos"` capability objects' own flag bytes, not the
+`"scpLut"` object's own `+0xc`. The word-read at `0x100fd8eb` is a
+different-width, different-purpose field entirely (part of a six-word
+struct copy, `[esi+0xc]` through `[esi+0x18]`, unrelated to any boolean
+gate). **`analyzeScpLutBalance` does not write `[X+0xc]` — on the
+`"scpLut"` cast result or on anything else — anywhere in its own 2,734-byte
+body.** This is a direct, disassembly-level answer to the task's own
+literal framing: this function does not "set" the flag; it never touches
+that offset as a destination at all.
+
+### 40.3 — Followed the chain forward: `AnsSCPLutCapability::analyze`
+(`0x101226c0`), the one real analyze call `analyzeScpLutBalance` makes,
+also never writes `[X+0xc]` — it writes `+0xd` and `+0xf` instead, matching
+(and extending) `pakon_scp_lut.py`'s own pre-existing citation
+
+`af`+`pdf @ 0x101226c0`: 943 bytes (565 `realsz`), 183 instructions, 36
+basic blocks, `thiscall` (`ecx`→`ebx` at entry, `mov ebx, ecx` @
+`0x101226e4`). The same exhaustive displacement search, applied to this
+function's full disassembly, finds exactly two `[ebx+N]`-shaped byte writes
+near offset `0xc`:
+
+```
+0x10122861   c6430d00   mov byte [ebx + 0xd], 0    -- one branch
+0x1012286b   c6430f01   mov byte [ebx + 0xf], 1    -- the other branch
+```
+
+The `+0xf=1` write matches `pakon_scp_lut.py`'s own pre-existing citation
+exactly (`"sets Cap +0xf = 1 @ 0x1012286b"`), independently re-confirmed
+this pass by full-function disassembly rather than the single cited
+instruction. The `+0xd=0` write on the sibling branch is a genuinely new
+citation this pass adds — not previously in `pakon_scp_lut.py`'s own
+docstring. **Neither branch, nor anything else in this function's 183
+instructions, writes `+0xc`** — confirmed by the same exhaustive
+`"0xc]"` text search used in §40.2, zero hits in this function at all.
+
+Also re-disassembled the `AnsSCPLutCapabilityImpl`-owning constructor
+(`0x10213123`-`0x10213411`, 750 bytes, 231 instructions) §39.4 already
+fully read for a different purpose (the DPI-selector/shipped-file chain).
+Re-checked this pass, independently, for `+0xc` specifically: **zero
+occurrences of `"0xc]"` anywhere in its 231 instructions either.**
+
+**Net: of the three real functions on the `"scpLut"` analyze-time path this
+project has now fully disassembled — `analyzeScpLutBalance` itself, the one
+analyze call it makes (`0x101226c0`), and the object's own constructor
+(`0x10213123`) — none writes `[X+0xc]` anywhere.**
+
+### 40.4 — Re-verified, directly and independently, exactly which
+instruction and register `balanceAreaImage` itself reads at its own
+`"scpLut"` gate — not trusted from §39's own prose paraphrase
+
+Re-disassembled `balanceAreaImage` (`0x10102b20`, same 4,020-byte function
+§37.4/§38.1/§39.1 already function-boundary-confirmed) and located the exact
+gate this task's own question is about:
+
+```
+0x10102ef2   call 0x104ffdd6        ; __RTDynamicCast("scpLut" result)
+0x10102ef7   add esp, 0x14
+0x10102efa   cmp eax, edi           ; edi = 0 (established earlier as the
+                                     ;   function's zero-constant register)
+0x10102efc   jne 0x10102f16         ; non-null -> continue; null -> throw
+   ...      [throw "SCPLut capability not found." on the null path]
+0x10102f16   mov cl, byte [eax + 0xc]   ; <-- THE gate
+0x10102f19   test cl, cl
+0x10102f1b   je 0x10102f6e              ; flag==0 -> SKIP the 3-band fetch
+```
+
+**`eax` at `0x10102f16` is the raw, unstored `__RTDynamicCast` return
+value** — not reloaded from any named local between the call at `0x10102ef2`
+and the read at `0x10102f16` (the only intervening instructions touch
+`esp`/`edi`/`ecx`, never `eax`) — confirmed by direct instruction-by-
+instruction trace, not assumed from variable naming. When `cl==0`
+(`je 0x10102f6e`), execution skips the entire `call 0x10122150`
+(`SCP_GET_3BAND_PARAMS`, §39.3's own cited accessor) and its
+`"SCP LUT is not 3 bands by 4096 bins"` validation, landing directly at the
+shift-LUT-build sequence — i.e. **the flag genuinely, directly controls
+whether the 3-band fetch (and, downstream, the compose loop §37.4/§38.1
+already traced) runs at all**, exactly as §39 already described, now
+independently re-confirmed address-by-address rather than trusted from
+paraphrase. The analogous `filmLut` gate, re-checked the same way:
+`0x10102da7  mov cl, byte [eax + 0xc]` — same idiom, same offset,
+independently re-verified, matching §37.4's own citation of that address.
+
+### 40.5 — Searched for where `+0xc` is actually written; found a strong,
+named lead but could not resolve its real function entry this pass — an
+honest gap, not closed
+
+Given the same `+0xc` idiom gates three structurally unrelated capability
+types at their respective cast sites — `orderOrientation` (§25:
+`*(iVar3+0xc) != 0`), `filmLut` (§40.4, `0x10102da7`), and `scpLut` (§40.4,
+`0x10102f16`) — and none of the three `scpLut`-specific functions this pass
+fully read (§40.2-40.3) ever write it, the most disassembly-consistent
+explanation is a shared `AnsCapability` base-class field set once at
+capability construction/registration, independent of any capability's own
+type-specific `analyze()` logic. This is **inference from a converging
+pattern, not a direct read of the write site** — stated as such, not
+overclaimed.
+
+One concrete, self-naming candidate was found and pursued:
+`AnsCapabilityStorage::registerCapability`, identified by its own embedded
+strings (`"AnsCapabilityStorage::registerCapability"` @ `0x10577314`,
+`"\Atc\ansel\src\libStub.ansel\AnsCapabilityStorage.cpp"` @ `0x105772ac`,
+alongside a generic `"Got '%s' error in Standard Template Library."` catch
+string @ `0x105772e4`). A raw byte scan for the `push`-immediate encoding of
+the name string (`68 14 73 57 10`) finds two references, `0x1002982c` and
+`0x10029092`. **Neither address is a real function entry**: both `r2`'s
+fast (`aa`) and full (`aaa`) auto-analysis passes were re-run against the
+same MD5-verified DLL, and neither recognizes a function boundary
+containing either address — the nearest recognized functions below them
+(`fcn.100296b0`, ending `0x10029803`; `fcn.10028f70`, ending `0x10029069`)
+both end *before* the target addresses, with an unanalyzed gap in between.
+Direct disassembly at `0x1002982c` confirms why: the code there is an
+already-in-progress STL-exception catch-block tail (`sprintf` into a
+message buffer, then `call 0x1001ed90`), not a function's own opening
+prologue — i.e. this is the *exception-reporting stanza inside*
+`registerCapability`, reached only via an SEH catch dispatch, not its real
+entry point. Per this project's own established convention (never
+disassemble from a guessed/unconfirmed entry address, the same discipline
+§25/§39 both already applied), this pass did **not** fabricate an entry
+address for `registerCapability` and did **not** claim to have checked it
+for a `+0xc` write. **This is a real, named, still-open lead — not a
+guess, and not a closed citation either.**
+
+### 40.6 — Register semantics cross-checked against the real epilogue,
+mirroring §35.3's own method for `analyzeAutoTone`'s `edx=1` — `edx=0` here
+is consistent with the same "compiler bookkeeping, not a status code"
+pattern, though this function's own size makes the trace bounded, not
+exhaustive
+
+`analyzeScpLutBalance` has a single real exit (`end-bbs: 1`). Immediately
+before the shared cleanup block that reaches `ret` (`0x100fdc23`):
+`mov eax, esi` — `eax`, this function's own real, documented return
+channel (matching `pakon_scp_lut.py`'s own citation that `esi` traces back
+to `*(arg_b8h)`, the function's single real stack argument, dereferenced
+early in the body at `0x100fd1e0`). **`edx` is not assigned anywhere in
+this final shared-exit block** (`0x100fdc06`-`0x100fdc3d`) — it is not part
+of this function's own return-value contract (only `eax` is, and this
+function, unlike `analyzeAutoTone`, has no `sret` parameter to echo either).
+Given LEAVE `edx=0x00000000` is constant across all six real calls and
+`edx` is untouched on the immediate path to `ret`, this is consistent with
+§35.3's own precedent (`analyzeAutoTone`'s constant `edx=1`, resolved there
+as MSVC cleanup-epilogue bookkeeping, not a status code) — **but stated
+honestly as a bounded trace, not an exhaustive one**: this function is six
+times larger by instruction count and has vastly higher cyclomatic
+complexity (68 vs. `analyzeAutoTone`'s own tail-only trace in §35.3), so
+this pass traced the one shared exit block actually reached by all six real
+calls, not all 117 basic blocks' own individual last `edx` write. ENTER
+`esi=0x00000000` is similarly not part of this function's own signature —
+`esi` is callee-saved here (`push esi` @ `0x100fd1ad`, `pop esi` @
+`0x100fdc2d`), so its ENTER value is whatever the caller left there before
+the `call`, not anything `analyzeScpLutBalance` reads before first
+overwriting it.
+
+### 40.7 — Verdict, honest per this task's own instruction: real progress,
+not a forced yes or no
+
+**What this pass closes, with real disassembly evidence.** The task's own
+literal question — does `analyzeScpLutBalance` "actually set
+`[cast_result+0xc]` to non-zero" — is answered directly: **no, it does
+not set it at all.** Neither `analyzeScpLutBalance` itself, nor the one
+real analyze call it makes (`AnsSCPLutCapability::analyze`, `0x101226c0`),
+nor the capability object's own constructor (`0x10213123`, already
+disassembled in §39.4 for a different purpose and re-checked here for this
+one) ever writes to offset `+0xc` on any object, confirmed by an exhaustive
+displacement-level search of all three functions' full bodies, not a
+name-based or partial read.
+
+**What this means for the hook's own live data.** Because the hooked
+function never touches that byte, `analyze_scp_lut_balance`'s clean 6/6
+firing — re-verified directly from the raw JSONL in §40.1, register-for-
+register — is **not direct proof** that `[cast_result+0xc]` is non-zero on
+this real scan. It is, however, real (if indirect) evidence for something
+adjacent and still valuable: the `"scpLut"` capability object genuinely
+**exists** and its `find`+`__RTDynamicCast` genuinely **succeeds**, for
+every one of the six real frames on this roll — because a cast failure at
+this exact call site throws `"SCPLut capability not found."` via a real
+C++ throw (`0x1001ed90`), a path whose SEH unwind would very plausibly
+bypass the hookstub's own normal-return LEAVE instrumentation (anchored at
+the function's single, ordinary `ret`), yet all six LEAVEs are clean,
+identically-shaped, zero-duration returns through that exact instruction.
+This reinforces §39's own already-closed object-identity finding from a
+second, independent, *dynamic* angle (not just the static
+constructor/DPI-file trace §39.4 already did).
+
+**What remains genuinely open, stated honestly.** Whether `+0xc` is in fact
+non-zero the moment such an object exists at all (the "shared base-class
+field, set unconditionally at construction" hypothesis §40.5 raises but
+does not confirm) or whether it is conditional on something this pass did
+not trace, is not settled by this pass. The most promising concrete lead —
+`AnsCapabilityStorage::registerCapability`'s real constructor/registration
+logic — was named and located by string, but its real entry point could
+not be resolved with this project's own no-guessing discipline intact.
+**The question is now much more narrowly scoped than before this pass**: it
+is no longer "is `analyzeScpLutBalance` even live" (yes, definitively,
+re-verified 6/6) nor "does `analyzeScpLutBalance` set the flag" (no,
+definitively, by exhaustive disassembly) — it is specifically "does
+capability registration set `AnsCapability+0xc` unconditionally for every
+successfully-found capability, or is it conditional on something this pass
+didn't reach." Two concrete next steps, either of which would close it:
+(a) resolve `registerCapability`'s real function boundary (it exists, is
+self-naming, and is reachable — just not yet walked back to its own
+prologue) and read its own `+0xc` writes directly; or (b) the most direct
+possible resolution — a live memory-read/write watch (this doc's own
+already-established Unicorn methodology, §22) on the specific byte at
+`balanceAreaImage`'s own `0x10102f16` during a real or replayed apply-time
+call, which observes the exact byte the compose block itself branches on,
+sidestepping the provenance question entirely.
+
+**No production code was changed.** All disassembly this pass used lives in
+scratch files (`/tmp/scp_analyze_full_plain.txt`, `/tmp/scp_cap_analyze.txt`,
+`/tmp/scp_impl_ctor.txt`, `/tmp/balanceAreaImage_full2.txt`,
+`/tmp/aaa_funcs.txt`), not committed to the repo; the live-capture re-parse
+was a one-off Python script, matching this doc's own established practice.
+
 ## What this changes about the open item list
+
+**§40 update.** Directly answers §39.5's own named gap — does
+`analyzeScpLutBalance` set the `[cast_result+0xc]` flag gating
+`balanceAreaImage`'s `SCPLut`-compose block — with full disassembly of
+`analyzeScpLutBalance` (`0x100fd190`) and its own real analyze call
+(`AnsSCPLutCapability::analyze`, `0x101226c0`), plus a re-check of the
+`AnsSCPLutCapabilityImpl` constructor §39.4 already read. **Answer: no —
+none of the three writes `+0xc` anywhere.** This means the new live hook's
+clean 6/6 firing (re-verified directly from the raw JSONL, register-for-
+register) is real but *indirect* evidence — it shows the `"scpLut"`
+capability object genuinely exists and casts successfully on this real
+scan (reinforcing §39's own object-identity finding from a second,
+dynamic angle), but does not directly observe the flag itself, since the
+hooked function never touches that byte. A strong candidate for the real
+write site (`AnsCapabilityStorage::registerCapability`, self-named, found
+by string) could not be resolved to its own real function entry this pass
+(only an exception-handler tail is reachable at the known reference
+addresses) — an honest, narrowly-scoped gap, not closed. Two concrete
+next steps named: resolve that constructor's real boundary, or add a
+direct memory watch on `balanceAreaImage`'s own `0x10102f16` gate byte.
+Two genuinely new, unrelated findings surfaced along the way: real call-
+order evidence (not previously available) that `analyzeScpLutBalance` runs
+in an earlier, per-roll pre-pass entirely before `cn_enhanced_driver`'s own
+per-frame pipeline begins; and a constant `0x4AC`-byte offset tying each
+frame's `analyzeScpLutBalance` call to its later `balanceAreaImage` call
+via the same per-frame arena. No production code was changed.
 
 **§39 update.** Closes the specific provenance question §37.7/§38.7 both
 left open: whether the real, apply-time `SCPLut` object `balanceAreaImage`

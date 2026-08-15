@@ -6458,6 +6458,222 @@ scratch files (`/tmp/scp_analyze_full_plain.txt`, `/tmp/scp_cap_analyze.txt`,
 `/tmp/aaa_funcs.txt`), not committed to the repo; the live-capture re-parse
 was a one-off Python script, matching this doc's own established practice.
 
+## 41 — §31.2's film_base contamination bug fixed and verified directly on
+real data; still not the brightness-gap root cause (§31.3 stands)
+
+§31.2 diagnosed, but explicitly did not fix, a real bug: `film_base_codes`'s
+roll-wide `FindDmin` walk (`pakon_render.py`'s own chunked accumulation,
+`open_capture`'s pass A, mirrored by `pakon_decode.film_base_codes` for the
+single-shot case) measures the roll's own real photographic highlights
+instead of clear film, because under the current (post-2026-08-12) lamp
+calibration genuine clear leader saturates the polynomial colour-matrix's
+own 4095 ceiling too heavily for the existing per-line saturation test
+(`film_base_line_mask`) to leave a usable near-Dmin population in the "kept"
+side of its own split. This pass fixes that bug on its own merits, per
+§31.4's own instruction to a future pass, and verifies the fix directly
+against the same real roll §31 used.
+
+### 41.1 — The fix: measure the excluded (leader) population too, not just
+the kept one, and take the higher (= clearer) of the two
+
+`film_base_line_mask` already splits every capture into two populations,
+not one: "kept" (< 50% saturated per line — every frame plus every
+inter-frame gap) and excluded (≥ 50% saturated per line — clear leader and
+the empty gate). Before this pass, only the kept side ever reached
+FindDmin, on the working assumption — true until the lamp duty this doc's
+earlier sections describe — that the kept side always holds enough
+near-Dmin population on its own. §31.2 showed a real roll where that
+assumption fails, and where the excluded side, despite being mostly at the
+ceiling, still has a real, measurable sub-ceiling population that is
+genuine clear film — exactly the same phenomenon §31.2's own unsaturated-
+p99.9 measurements characterized.
+
+FindDmin's own definition (walked from the high side, "maximum
+transmission") does not require the population fed to it to be the kept
+side specifically. So: walk the excluded side too, with the literal ceiling
+bin (`n_bins - 1`) discounted before the walk (its count says only ">=
+ceiling", not a code, and would otherwise either swamp a correct reading or
+spuriously trip the vendor's own "all clipped" sentinel on a population
+that in fact has real information just below the ceiling) — but with `thr`
+still computed from the population's *true*, undiscounted pixel count, so
+the vendor's own 0.1%-of-total-population standard for "enough support to
+trust a code" is preserved unchanged. Take whichever of the two candidate
+codes (kept, excluded-with-ceiling-discounted) is HIGHER, per channel —
+higher code = more transmission = closer to genuine maximum transmission,
+which is what FindDmin is defined to return. A kept-side refusal (FindDmin's
+own 0 sentinel, meaning the film itself has clipped, `check_film_base`) is
+never overridden by this — `film_base_combine` returns the kept code
+unchanged whenever it is already `<= 0`, because "the film itself is bad"
+is a stronger, more specific signal than "leader happened to be
+informative", and has to keep refusing exactly as before.
+
+Landed as three new functions in `pakon_decode.py`
+(`film_base_code_from_hist`, `film_base_combine`, and a small extension to
+`film_base_codes` itself) and the mirrored chunked accumulation in
+`pakon_render.open_capture` (a second histogram, `lin_hist_excl`, built
+the same way `lin_hist` already was, over `~keep` instead of `keep`,
+combined once at the end via the same `dec.film_base_combine`). The walk
+itself — `find_dmin_code_from_hist` — is untouched; only what population
+and total is fed to it is new, consistent with this file's own [OURS] /
+[VERIFIED, vendor] split for this mechanism (`pakon_decode.py`'s own
+"WHAT IS THE VENDOR'S AND WHAT IS OURS" block, extended with this pass's
+own entry).
+
+### 41.2 — Verified directly against the same real roll §31 used, both
+before and after
+
+Reproduced live, not assumed: `pr.Roll.from_json` against the same already-
+opened `~/Library/Caches/PakonScan/workspace/f4c91b62/roll.json` (`test123.bin`,
+the exact roll §31 diagnosed), replaying `open_capture`'s own pass-A
+accumulation loop directly against the roll's already-deskewed cache with
+the now-fixed `pakon_decode`/`pakon_render` — i.e. the real production
+functions, not a reimplementation, on the real capture.
+
+```
+                     R        G        B
+kept-only (old):   3092.0   2442.0   2365.0
+combined (fixed):  4094.0   2442.0   4067.0
+```
+
+R and B move from the same contaminated range §31.2 measured (roll-wide
+`film_base` was `[3107, 2490, 2414]` at diagnosis time; this pass's own
+re-measurement, taken later in the same live session with calibration that
+had continued to move under it — see caveat below — lands at
+`[3092, 2442, 2365]`, the same contaminated shape) up to 4094 / 4067 —
+within single digits to a few dozen codes of §31.2's own directly-measured
+genuine-leader range (**~4070-4090**), not the ~99.9th-percentile-of-
+content value the unfixed code produces. Independently re-measured this
+pass's own way, over the roll's own known `film_start`/`film_stop`
+boundaries (`framing.film_start=2048`, `framing.film_stop=21248`, straight
+from the same `roll.json`, not re-detected) exactly as §31.2 did:
+
+```
+                          R        G        B
+HEAD leader unsat p99.9  4005     4069     4085
+HEAD leader sat%         0.37%    98.77%   0.51%
+TAIL leader unsat p99.9  4094     n/a      4080
+TAIL leader sat%         98.83%   100.00%  99.81%
+```
+
+— reproduces §31.2's own head/tail shape closely (its own cited HEAD G
+sat% was 98.78%, this pass's independent re-measurement is 98.77%; its
+TAIL G was 100.00% saturated with 0 unsaturated survivors, this pass's is
+identical) and confirms the fixed `film_base_combine` output (R 4094, B
+4067) is not an artifact of the pooled walk — it sits inside the real range
+these boundary-restricted measurements independently support (R's TAIL
+edge alone already reaches 4094; B sits between its own HEAD 4085 and TAIL
+4080 reading).
+
+**G is not fixed by this pass, and said so plainly rather than papered
+over.** G's excluded population has only ~0.05% of its pixels below the
+literal ceiling (6,411 of 12,407,060 pixels this pass's own accumulation
+found) — even summed across every one of those informative codes, the
+total (6,411) does not clear FindDmin's own 0.1% threshold for this
+population's size (thr ≈ 12,407) so the ceiling-discounted G walk correctly
+returns FindDmin's own 0 ("no confident code"), and `film_base_combine`
+correctly falls back to the (still-contaminated) kept value unchanged. This
+is the vendor's own threshold doing exactly its job — refusing to report a
+code with too little support behind it — not a bug in this pass's own
+combine logic; it is a real, honest limitation: under this specific lamp
+calibration, there is not enough surviving sub-ceiling G information
+anywhere in the roll (kept or excluded) for FindDmin's own standard to
+trust a channel-G reading. §31.2's own hand-measurement flagged the same
+thing from a different angle ("G=4069, only 0.40% informative... a small,
+unstable sample, not a confident measurement") — this pass's own automated,
+whole-roll-pooled measurement finds an even thinner population (0.05%,
+against 0.40% for a boundary-restricted, film_start/film_stop-only
+population), most likely because the per-line saturation mask's excluded
+set is not exactly the boundary-restricted leader §31.2 measured by hand
+(it is close — §31.2 already confirmed the line-level split lands within a
+few dozen lines of `film_start`/`film_stop`) and dilutes the total
+population slightly relative to informative-pixel count. Either way, both
+measurements agree G cannot be confidently recovered from this roll's own
+leader under this calibration, by the vendor's own definition of
+"confident".
+
+**A second real roll, independently checked, shows the identical shape**
+(`~/Library/Caches/PakonScan/workspace/47a1acf4/roll.json`,
+`scan-20260815-082703.bin`, unrelated capture, same live session): kept-only
+`[3067.0, 2460.0, 2367.0]` → combined `[4094.0, 2460.0, 4043.0]`. R lands on
+the identical 4094 ceiling-adjacent code, B lands at 4043 (same range), G is
+unchanged at 2460 for the identical reason. Not a one-frame fluke.
+
+**Caveat, stated plainly: calibration was live and moving under this
+measurement.** `calibration/README.json`/`dark_2000x3.npy`/`gain_2000x3.npy`
+all changed on disk between this pass's own two consecutive re-runs of the
+identical script against the identical roll (confirmed via `-newer`
+filesystem comparison, not assumed) — a `README.pre-freshscan-promotion-
+20260815.json` snapshot dated today exists alongside them, this project's
+own "never delete a calibration" convention making the comparison possible
+at all. `apply_unit_calibration` reads `calibration/` live, not anything
+frozen in the capture's own sidecar, so re-running this exact measurement
+tomorrow against the same `test123.bin` will not reproduce today's exact
+digits — this pass's own kept-only re-measurement (`[3092,2442,2365]`,
+stable across two consecutive re-runs of the identical script) already does
+not match `[3107,2490,2414]`, the value recorded in `roll.json` at §31.2's
+own diagnosis time, even though nothing about the roll or the code path
+changed between them — only the live calibration tables did. Both values
+are within the same contaminated shape (a few hundred codes below genuine
+Dmin, on the order of the roll's own real highlights), so this drift does
+not change §41's own finding, but it does mean none of this section's own
+digits should be read as a fixed constant of this roll — they are a
+snapshot, reproducible only against the exact calibration state in place
+when they were taken. The qualitative finding — R/B recover to within a few
+dozen codes of genuine leader, G does not, on two independent rolls — held
+across every re-run regardless.
+
+### 41.3 — Regression: the existing suite, unchanged, still passes; the
+"old calibration" case has deterministic coverage
+
+`python3 tools/test_render_f135.py` — all six checks pass unchanged,
+including `test_film_base_window_is_the_film`, which is the one direct
+regression test for exactly the population `film_base_combine` now also
+reads: its own fixture puts an explicit, fully-saturated (4095, zero
+sub-ceiling population) 40-line leader ahead of 360 lines of genuinely
+clean film at a fixed code (2500) and asserts the returned base is exactly
+that code, unaffected by the leader. It still is
+(`base=[2500.0,2500.0,2500.0]`, printed by the test's own run) — this
+pass's own leader-side walk correctly finds zero informative sub-ceiling
+population in that fixture (all 4095, by construction) and
+`film_base_combine` correctly falls back to the kept value untouched. The
+same file's clipped-film and mostly-saturated-capture refusal assertions
+also still fire unchanged, because a kept-side refusal is never overridden
+by this pass's own change (§41.1). `tools/test_calib.py` (191/191,
+unrelated to `film_base`) and `tools/test_extcode.py` (no scanner attached,
+exits clean) both still pass; `tools/test_gold400_parity.py` and
+`tools/test_perms.py` both require `captures/gold400.bin`, which is not
+present in this checkout (`captures/` is gitignored, consistent with this
+project's own rule), so neither ran — this is a pre-existing, unrelated gap
+in this environment, not a result of this pass.
+
+A genuine pre-recalibration raw capture does exist on this machine
+(`scan-20260812-082437.bin`, captured 2026-08-12 08:28, 17 minutes before
+the lamp-duty/AD9826-offset fix landed at 08:45 the same morning — commit
+timestamps, not filenames, are what dates this) but replaying it through
+`open_capture` today would not actually exercise "old calibration"
+behaviour: `apply_unit_calibration` reads `calibration/` live (§41.2's own
+caveat), and that directory has already moved on, irreversibly, to today's
+tables. There is no way to make today's code see 2026-08-12's dark/gain
+tables short of restoring a preserved snapshot and is not attempted here.
+The deterministic fixture in `test_film_base_window_is_the_film` — fully-
+saturated leader, genuinely clean film — is what "old calibration, leader
+saturates, film doesn't" looks like in miniature, calibration-state-
+independent by construction, and it is exactly the case this pass's own
+change is required not to disturb. It doesn't.
+
+**Production code changed**: `tools/pakon_decode.py` (`film_base_codes`,
+plus the two new functions above) and `tools/pakon_render.py`
+(`open_capture`'s pass-A accumulation loop). No new file, no new dependency,
+no vendor constant introduced or altered — `find_dmin_code_from_hist` and
+`find_dmin_thr_n_pixels` are called exactly as before, just twice per
+channel instead of once, over a population this file already computes
+(`~keep` is the complement of a mask `film_base_line_mask` already builds).
+The verification script above lives only at `/tmp/verify_film_base_fix.py`,
+uncommitted scratch, per this doc's own established convention; only
+aggregate pixel counts, percentages, and percentiles are reported anywhere
+in this section, consistent with this project's rule against describing
+`captures/` contents.
+
 ## What this changes about the open item list
 
 **§40 update.** Directly answers §39.5's own named gap — does
@@ -7244,7 +7460,7 @@ aggregate curve statistics from the shipped, non-capture
 in §38, consistent with this project's rule against describing
 `captures/`/cache contents; no pixel data or image content is reproduced.
 
-## 41 — §34's flagged action item resolved: `calibration-fresh-scan/`
+## 42 — §34's flagged action item resolved: `calibration-fresh-scan/`
 promoted into `calibration/`, per `docs/71`'s own documented
 never-overwrite procedure.
 

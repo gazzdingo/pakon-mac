@@ -55,10 +55,10 @@ static int TestFastcall(int a, int b, int c) {
 
 static void BuildSelftestTable(HookEngine *eng) {
     static const HookDef defs[4] = {
-        { NULL, 0, "test_cdecl",    "synthetic cdecl target",    "selftest.c", 0, 1, NULL },
-        { NULL, 0, "test_stdcall",  "synthetic stdcall target",  "selftest.c", 0, 1, NULL },
-        { NULL, 0, "test_thiscall", "synthetic thiscall target", "selftest.c", 0, 1, NULL },
-        { NULL, 0, "test_fastcall", "synthetic fastcall target", "selftest.c", 0, 1, NULL },
+        { NULL, 0, "test_cdecl",    "synthetic cdecl target",    "selftest.c", 0, 1, 0, 0, NULL },
+        { NULL, 0, "test_stdcall",  "synthetic stdcall target",  "selftest.c", 0, 1, 0, 0, NULL },
+        { NULL, 0, "test_thiscall", "synthetic thiscall target", "selftest.c", 0, 1, 0, 0, NULL },
+        { NULL, 0, "test_fastcall", "synthetic fastcall target", "selftest.c", 0, 1, 0, 0, NULL },
     };
     void *thunks[4] = { (void *)&Thunk_00, (void *)&Thunk_01,
                          (void *)&Thunk_02, (void *)&Thunk_03 };
@@ -93,6 +93,115 @@ static void Check(const char *name, int expected, int actual) {
     } else {
         printf("  FAIL  %-28s expected=%d actual=%d  <-- MISMATCH\n", name, expected, actual);
         g_failures++;
+    }
+}
+
+/* ---------------------------------------------------------------------
+ * EXTREME concurrency stress (added 2026-08-15, investigating the
+ * "stops mid-loop under real load, no shutdown message" failures seen on
+ * the real XP box even after the FlushFileBuffers fix). The ORIGINAL
+ * concurrency test above (one extra thread, 50 iterations) proved the
+ * mechanism works under SOME concurrency, but real per-pixel/per-block
+ * vendor hot paths are called far more densely, from more worker threads,
+ * than that. This section specifically targets the question raised while
+ * investigating: does the TLS-based per-thread shadow stack actually
+ * guarantee correctness when the SAME hooked function is entered from
+ * MANY different threads, some of which have NOT yet returned, at once --
+ * or is there a shared, non-TLS piece of state (the global callCounter,
+ * the shared SharedEntryHandler/OnReturnThunk codepath itself, MinHook's
+ * own trampoline) that could be raced?
+ *
+ * Design: STRESS_THREAD_COUNT threads are all created BEFORE any of them
+ * is allowed to call the hooked function, then held at a manual-reset
+ * event (g_stressStartGate) so they all pile up waiting simultaneously;
+ * releasing the gate lets every thread begin hammering the SAME hook
+ * (test_fastcall) genuinely at once, rather than the earlier test's
+ * naturally-staggered thread startup. Each thread computes its own
+ * expected value independently (same "reference implementation, not the
+ * hooked call itself" discipline as every other check in this file) using
+ * inputs that are unique per-thread-per-iteration (so a value mismatch
+ * can only mean real cross-call corruption, never coincidentally-equal
+ * inputs masking a bug). On top of per-call correctness, this also checks
+ * the engine's shared, non-TLS `callCounter` (protected only by
+ * InterlockedIncrement, not the log lock) ends up EXACTLY right after
+ * every thread joins -- a lost or duplicated increment would be direct,
+ * unambiguous evidence of a race in that shared piece of state.
+ */
+#define STRESS_THREAD_COUNT      8
+#define STRESS_ITERS_PER_THREAD  4000
+
+static volatile LONG g_stressFailures = 0;
+static HANDLE g_stressStartGate;
+
+static DWORD WINAPI StressThreadProc(LPVOID param) {
+    int tid = (int)(DWORD_PTR)param;
+    int i;
+    WaitForSingleObject(g_stressStartGate, INFINITE); /* pile up, then all go at once */
+    for (i = 0; i < STRESS_ITERS_PER_THREAD; i++) {
+        /* Unique-per-thread-per-iteration inputs -- a corrupted register
+         * or stack slot from ANOTHER thread's concurrent call would very
+         * likely produce a value that doesn't match THIS thread's own
+         * independently-computed expectation. */
+        int a = tid * 1000000 + i;
+        int b = (tid * 37 + i) & 0xfff;
+        int c = tid;
+        int expected = TestFastcall_ref(a, b, c);
+        int actual = TestFastcall(a, b, c);
+        if (expected != actual) {
+            InterlockedIncrement((LONG *)&g_stressFailures);
+        }
+    }
+    return 0;
+}
+
+static void RunExtremeConcurrencyStress(HookEngine *eng) {
+    HANDLE threads[STRESS_THREAD_COUNT];
+    LONG callsBefore, callsAfter, actualNewCalls, expectedCalls;
+    int t;
+
+    printf("\n-- EXTREME concurrency stress: %d threads x %d iters/thread, "
+           "SAME hook (test_fastcall), all released simultaneously --\n",
+           STRESS_THREAD_COUNT, STRESS_ITERS_PER_THREAD);
+
+    callsBefore = eng->callCounter;
+    g_stressStartGate = CreateEvent(NULL, TRUE, FALSE, NULL); /* manual-reset, initially non-signaled */
+
+    for (t = 0; t < STRESS_THREAD_COUNT; t++) {
+        threads[t] = CreateThread(NULL, 0, StressThreadProc, (LPVOID)(DWORD_PTR)t, 0, NULL);
+    }
+    Sleep(100); /* give every thread time to reach WaitForSingleObject on the
+                   gate before releasing it -- maximizes genuine simultaneity
+                   rather than a staggered start */
+    SetEvent(g_stressStartGate);
+    WaitForMultipleObjects(STRESS_THREAD_COUNT, threads, TRUE, INFINITE);
+    for (t = 0; t < STRESS_THREAD_COUNT; t++) CloseHandle(threads[t]);
+    CloseHandle(g_stressStartGate);
+
+    callsAfter = eng->callCounter;
+    actualNewCalls = callsAfter - callsBefore;
+    expectedCalls = (LONG)(STRESS_THREAD_COUNT * STRESS_ITERS_PER_THREAD);
+
+    if (g_stressFailures != 0) {
+        g_failures += (int)g_stressFailures;
+        printf("  FAIL  stress test: %ld/%ld concurrent calls returned WRONG "
+               "values -- real cross-thread corruption under load\n",
+               (long)g_stressFailures, (long)expectedCalls);
+    } else {
+        printf("  PASS  stress test: all %ld concurrent calls across %d "
+               "threads (SAME hook, released simultaneously) returned "
+               "correct values\n", (long)expectedCalls, STRESS_THREAD_COUNT);
+    }
+
+    if (actualNewCalls != expectedCalls) {
+        g_failures++;
+        printf("  FAIL  callCounter mismatch: expected exactly %ld new "
+               "InterlockedIncrement'd calls, engine recorded %ld -- "
+               "evidence of a race in shared (non-TLS) engine state\n",
+               (long)expectedCalls, (long)actualNewCalls);
+    } else {
+        printf("  PASS  callCounter exactly matches expected count (%ld) -- "
+               "no lost/duplicated updates to shared engine state under "
+               "max concurrency\n", (long)expectedCalls);
     }
 }
 
@@ -173,6 +282,8 @@ int main(void) {
     }
     WaitForSingleObject(th, INFINITE);
     CloseHandle(th);
+
+    RunExtremeConcurrencyStress(eng);
 
     HookCore_Shutdown(eng);
 

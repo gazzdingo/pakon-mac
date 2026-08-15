@@ -152,6 +152,88 @@ typedef struct HookDef {
     int         wantExitDefault; /* 1 = attempt entry+exit by default,
                                      0 = entry-only by default (still
                                      overridable per-hook via hooks.cfg) */
+    int         hotPathDisabled; /* 1 = the address IS a confirmed, real
+                                     function entry (unlike `approximate`,
+                                     this says nothing about the citation's
+                                     confidence) but is disabled BY DEFAULT
+                                     anyway, because it is a demonstrated
+                                     per-pixel/per-scanline hot path AND its
+                                     original diagnostic purpose has since
+                                     been fully resolved by static
+                                     disassembly, leaving no remaining
+                                     live-capture value to justify tracing
+                                     it at full volume by default -- see
+                                     hookcore_real_table.c's citation for
+                                     the specific hook this applies to.
+                                     Still just an `enabled` default: turn
+                                     it back on any time via hooks.cfg
+                                     exactly like any other hook. */
+    int         notCallReachable; /* 1 = a real, targeted r2 `af`+`axt`
+                                     cross-reference pass against the
+                                     MD5/sha256-verified vendor DLL (done
+                                     2026-08-15, after two real XP-box
+                                     captures kept showing the same
+                                     "stops mid-loop, no shutdown message"
+                                     failure the FlushFileBuffers fix did
+                                     NOT resolve) found this documented VA
+                                     is NOT the entry point of its own,
+                                     independently call-reachable function
+                                     -- it is either (a) an internal
+                                     branch/fallthrough target reached only
+                                     via a jmp/jcc from WITHIN a different,
+                                     larger enclosing function (confirmed by
+                                     `af` walking back to an earlier, real
+                                     entry address when analysis starts from
+                                     the documented VA, and by `axt` finding
+                                     only CODE-type, not CALL-type, xrefs),
+                                     or (b) in one case worse still, the
+                                     literal address of a `call` opcode
+                                     inside another function, not any kind
+                                     of function boundary at all. THIS
+                                     MATTERS SPECIFICALLY because of how
+                                     hookstub.S's return-address-swap
+                                     technique works (see this header's own
+                                     top comment): it assumes the DWORD
+                                     sitting at [esp] the instant a hooked
+                                     address is reached is always a genuine
+                                     return address pushed by a real `call`
+                                     instruction, and unconditionally
+                                     overwrites that stack slot with
+                                     `OnReturnThunk`'s address if exit-
+                                     hooking is enabled. When a hooked
+                                     address is reached via anything other
+                                     than `call` -- straight-line
+                                     fallthrough or an internal jmp/jcc --
+                                     that assumption is false: [esp] holds
+                                     whatever real local variable or spilled
+                                     register the ACTUAL enclosing function
+                                     put there, and swapping it corrupts
+                                     live data belonging to a function this
+                                     harness never intended to touch at all.
+                                     Live evidence for exactly this failure
+                                     mode exists for at least one of these
+                                     (`sba_set_shifts_12`, see its own
+                                     citation) in both new 2026-08-14
+                                     captures. Disabled BY DEFAULT regardless
+                                     of `approximate`/`hotPathDisabled` --
+                                     unlike those two fields, there is
+                                     nothing to "verify live" here to turn
+                                     this back on: the underlying subsystem
+                                     this hook wanted to observe still has
+                                     no independently call-reachable entry
+                                     address documented anywhere, so
+                                     re-enabling THIS specific VA is never
+                                     correct; a genuinely new address would
+                                     need to be re-derived first. See
+                                     hookcore_real_table.c's own citation for
+                                     the specific evidence per affected
+                                     hook, and hookcore.c's `HookEntryC` for
+                                     the separate, general runtime guard
+                                     added at the same time (a `VirtualQuery`
+                                     sanity check before ever committing to
+                                     the swap) so a hook not yet known to
+                                     have this problem can't cause the same
+                                     corruption either. */
     void       *entryThunk;   /* Thunk_NN function pointer, assigned by
                                   the table-builder in hookcore.c */
 } HookDef;
@@ -176,6 +258,9 @@ typedef struct HookEngine {
     CRITICAL_SECTION logLock;
     volatile LONG callCounter;
     DWORD        tlsShadowStack; /* TLS slot index */
+    int          unflushedLines; /* protected by logLock; see LogLine in
+                                     hookcore.c for why the hot per-call
+                                     path no longer flushes every line */
 } HookEngine;
 
 /* The single global engine instance -- one per process, defined in

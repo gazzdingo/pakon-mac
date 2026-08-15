@@ -257,7 +257,12 @@ CNA_PEAK_SEARCH_PORTED = True
 CNA_HIST_RESAMPLE_PORTED = True
 
 #: ``0x1022c520`` / ``0x1022c630`` — the descending and ascending halves of the
-#: tone curve.  One mirrored routine; verified bit-exact in both directions.
+#: tone curve.  One mirrored routine; verified bit-exact on every synthetic
+#: and real-crop case tested through docs/74 §24. docs/74 §30 (2026-08-14)
+#: found and fixed one real, narrow divergence this coverage never exercised:
+#: the low-clamp test's NaN handling (see ``_contrast_map``'s own docstring,
+#: "THE LOW-CLAMP TEST'S NaN BEHAVIOUR") -- fixed, and reverified bit-exact
+#: against the real DLL on the real full-frame photo that exposed it.
 CNA_CONTRAST_MAP_PORTED = True
 
 #: ``0x1022c740`` — bucket curve to the int16 ToneScaleLut, including both
@@ -1279,6 +1284,73 @@ def _contrast_map(params: CnaParams, src: Sequence[float],
 
     ``out[pivot]`` is seeded with ``(float)pivot`` before either walk
     (``0x1022c539`` / ``0x1022c648``) -- that is what joins the two halves.
+
+    THE LOW-CLAMP TEST'S NaN BEHAVIOUR -- real, found on real full-frame photo
+    content, fixed here (docs/74 §30)
+    ------------------------------------------------------------------------
+    Step 1's LOW-side compare is ``fcom [lo]; fnstsw ax; test ah,5; jp`` at
+    BOTH real addresses (``0x1022c57b``/``0x1022c68d`` for descending/
+    ascending -- confirmed byte-identical idiom in both, fresh disassembly,
+    docs/74 §30).  For an ORDERED compare ``test ah,5; jp`` jumps (skips the
+    clamp) exactly when ``ratio >= lo`` -- ``ratio < lo`` and ``not (ratio >=
+    lo)`` agree, so the previous ``if not (ratio >= lo): ratio = lo`` here was
+    fine for every case this project had exercised before.  They stop
+    agreeing for one input: an UNORDERED compare (``ratio`` is NaN).  x87
+    FCOM sets C3=C2=C0=1 on unordered, so ``ah & 5 == 0x05`` -- POPCOUNT 2,
+    i.e. EVEN parity, i.e. PF=1 -- the SAME parity ``ratio >= lo`` produces,
+    so the real DLL's ``jp`` ALSO fires for NaN and skips the clamp, leaving
+    ``ratio`` as NaN.  Python's ``not (NaN >= lo)`` is ``True`` (IEEE754: a
+    NaN compare is always False, so ``not False`` is True) -- the OPPOSITE
+    branch -- so this port used to clamp NaN to ``lo``, silently laundering
+    it into a normal, finite ratio.
+
+    ``ratio`` starts genuinely NaN whenever ``ratio_den[idx]`` is a real
+    ``0.0/0.0`` -- which happens on a real, non-degenerate PHOTO whenever a
+    half's own resampled histogram (``hist_resample``'s ``r.out``) is
+    entirely empty, an already-documented, live-DLL-confirmed "NaN cascade"
+    this same file already describes at length in ``analyze_image``'s
+    ``_half()`` closure (search "NaN cascade").  Once ``ratio`` is genuinely
+    NaN and never gets clamped, ``acc`` is poisoned to NaN on the very FIRST
+    loop iteration; ``round_half_up(NaN)`` reproduces x86's own
+    ``__ftol``-on-NaN "integer indefinite" outcome (a large negative
+    sentinel), which the very next line's ``if k < 0: k = 0`` pins to
+    ``k = 0`` -- and because ``ratio_den[0]`` is the SAME NaN in this
+    degenerate scenario, ``ratio`` stays NaN and ``k`` stays pinned at 0 for
+    every remaining step, so ``out[i] = clamp(0 - delta, ...)`` is a
+    CONSTANT for the rest of that half's walk.  The old, laundering port
+    instead let ``ratio`` settle to the finite ``lo`` and kept walking
+    normally.
+
+    Confirmed directly, not just reasoned: on a real photo capture
+    (``test123.bin`` frame 1) where BOTH halves' ``hist_resample`` genuinely
+    produce an all-zero ``r.out`` (independently Unicorn-verified against
+    the real ``0x1022ca80`` for both the dark and light scale/gain, 0
+    mismatches), a scratch patch of exactly this one line reproduced the
+    real DLL's own observed ``ToneScaleLut`` -- a CONSTANT run of 3,280
+    consecutive bin values (indices 1720..4999 of 5000) -- with **zero**
+    mismatches against the real DLL's own isolated (``pakon_cna_golden.
+    dll_analyze_image``, cna-only, not the six-subsystem assembled harness)
+    Unicorn output, where the un-patched port instead kept extrapolating a
+    smoothly increasing curve through that whole range.  The DESCENDING
+    (dark) half is ALSO pinned at ``k=0`` in the real DLL for this frame,
+    but that pin is numerically INVISIBLE here: ``idx=cross_dark=0`` is
+    already the boundary the walk's own ``k<0 -> k=0`` clamp pins to almost
+    immediately regardless of whether ``ratio`` is genuinely stuck at NaN or
+    merely clamped-then-decaying toward it (dark walks pivot-1 DOWN to 0
+    with ``acc`` starting at ``idx=0`` and immediately going negative either
+    way) -- so the old, wrong clamp and the real DLL's own NaN-preserving
+    behaviour happened to coincide on this half, which is exactly why every
+    prior real-image golden run (crops and full frames alike, docs/74 §17/
+    §24) never caught this: none of them had a light-half NaN cascade AND a
+    far-from-pivot ``cross`` on the SAME frame at the SAME time. See
+    ``docs/74`` §30 for the full derivation and verification, including why
+    this explains ``pakon_dra.py``'s own ``lumMax``/``edgeMax``/``effMax``
+    divergence on the same frame (``dra.remap_hist`` redistributes a huge
+    span of the small-bin histogram into the single bin this constant tone
+    LUT maps everything to) without any bug in ``pakon_dra.py`` itself --
+    that file's own ``cum_bounds``/``eff_bounds`` were independently
+    confirmed byte-for-byte against fresh disassembly of ``0x10228bc0``
+    during the same investigation and are not implicated.
     """
     if not CNA_CONTRAST_MAP_PORTED:
         _unported("CNA_CONTRAST_MAP_PORTED",
@@ -1291,7 +1363,7 @@ def _contrast_map(params: CnaParams, src: Sequence[float],
     lo, hi = params.lowClamp, params.highClamp
     order = range(pivot + 1, limit) if ascending else range(pivot - 1, -1, -1)
     for i in order:
-        if not (ratio >= lo):                   # 0x1022c57b / 0x1022c68d
+        if ratio < lo:                          # 0x1022c57b / 0x1022c68d
             ratio = lo
         elif ratio > hi:
             ratio = hi

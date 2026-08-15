@@ -3847,7 +3847,329 @@ only confirms it's now the sharpest remaining item, since §32.2-32.4 close
 out (for TLB.dll) or substantially narrow (for PakonIMAu.dll) the inversion-
 formula lead without finding the bug.
 
+## 33 — `load_unit_matrix`'s own calibration currency, checked directly: the
+data genuinely predates every 2026-08-12 hardware fix, no fresher read
+exists anywhere on this machine, and the mechanism through which a
+duty-driven matrix mismatch *could* produce a non-cancelling brightness
+shift is shown — both analytically and empirically, on the exact same
+matched frame §31/§32 used — to be real but three orders of magnitude too
+small to be this gap. Last item on §31.4's own list; it closes the same
+way §32 did.
+
+§31.4 named the polynomial colour-matrix (`load_unit_matrix`, EEPROM-
+sourced) as the last concrete lead standing after film_base/c9 (§31.3) and
+the inversion formula itself (§32) were both checked and found wanting.
+This section runs that check directly: where the coefficients actually come
+from, exactly when that data was captured relative to this session's own
+hardware fixes, whether a fresher read exists anywhere on this machine, and
+— the part no prior section in this thread has done — whether a matrix
+error can even survive the inversion's own log-difference arithmetic the
+way a `film_base`/`c9` error does not (§31.3).
+
+### 33.1 — Where the coefficients actually come from, read directly, both
+render paths
+
+`pakon_color.load_unit_matrix` (`tools/pakon_color.py:580-598`) tries
+`REGISTRY_PATH` first under `source="auto"`, falling back to `EEPROM_PATH`
+if the registry dump isn't present. On this checkout (and on `main` —
+checked via `git log --all -- research/windows-registry/pakon_registry_full.txt`,
+which shows that file was only ever added on a different, unmerged branch,
+`finding/f235-and-vendor-shadows`) the registry file does not exist, so
+every render in this repo's history has resolved to:
+
+```
+EEPROM_PATH = REPO/backups/eeprom-i2c/eeprom_52.bin
+```
+
+a single, static, committed file — confirmed live by importing `pakon_color`
+and calling `load_unit_matrix("auto", film_class=1)` directly: it reads
+that path, and only that path. The Go production engine
+(`tools/ansel/pipeline/main.go:686`, `DefaultCoeffRelPath =
+"backups/eeprom-i2c/eeprom_52.bin"`) resolves to the **identical** file —
+both render paths this project has ever shipped read the same static bytes.
+Neither path consults `calib_store`/`calib_resolve` (the machinery this
+session's own self-calibration wizard, `tools/calib_wizard.py`, uses for
+duty/dark/gain) at all; `grep -n "calib_store\|calib_resolve" tools/pakon_color.py
+tools/pakon_decode.py tools/pakon_render.py` returns nothing. The matrix and
+the wizard are two entirely disconnected subsystems in this codebase today.
+
+The coefficients themselves, read directly from that file (`film_class=1`,
+NegMatrix, the one every ColNeg/BnW/IMPORTED render uses):
+
+```
+row  diagonal   pedestal (c9)   cross/quadratic terms (c3-c8, excl. diagonal)
+R    0.28920    159.594         -1.4e-6 .. +3.6e-6
+G    0.27583    444.750         -4.2e-6 .. +7.8e-6
+B    0.27824    635.535         -1.8e-5 .. +7.6e-6
+```
+
+matching §31.3's own citation of `c9=(159.6,444.7,635.5)` exactly (same
+matrix, same read). The diagonal terms are ~0.28; the cross/quadratic terms
+are three to four orders of magnitude smaller (~1e-3 to ~1e-6).
+
+### 33.2 — The timeline, precisely: the matrix data is real, verified, and
+genuinely predates every fix this session made
+
+```
+backups/eeprom-i2c/eeprom_52.bin — content dated, per its own README.md:
+    "VERIFIED 2026-08-05" (two independent power-cycle reads, byte-identical)
+git commit 4e0dbf4, 2026-08-10 09:27:54 -0700
+    "hardware: Restore system EEPROM and PIC firmware backups"  <- committed
+
+calibration/README.json (lamp-duty recalibration, §6/§9's own citation)
+    generated_at: 2026-08-12T08:21:09                            <- AFTER
+
+commit 77e2a71, 2026-08-12 08:42:20 -0700
+    "Finish the autoTone port; recalibrate by the vendor's own method"
+commit a193f35, 2026-08-12 08:45:05 -0700
+    "Self-calibration on plug-in; fix the AD9826 offset encoding" <- AFTER
+```
+
+The EEPROM backup's own content is five days older than the lamp-duty
+recalibration and seven days older than the AD9826 offset fix — this part
+of the task's hypothesis is simply true, not a matter of interpretation.
+
+### 33.3 — Is there a fresher read anywhere on this machine? Checked
+directly against the live calibration store, not assumed
+
+`tools/calib_wizard.py`'s own `STEP_EEPROM` docstring
+(`:180-185`) says plainly: *"The colour matrices and the serial number are
+on the scanner's EEPROM... it is read exactly once and never re-read to
+'check'."* So the live question is whether that one read, for this unit's
+serial, is fresher than the 2026-08-05 backup. Checked directly against the
+real local store (`~/Library/Application Support/PakonScan/calibration`,
+`calib_resolve.resolve(calib_store.CalibrationStore())`, called live, not
+inferred from code reading):
+
+```
+reads/2026-08-08T15-27-44Z   source: "calib_read --simulate"   state: good
+    0x52 sha256 675cf1c...   <- IDENTICAL to backups/eeprom-i2c/eeprom_52.bin
+reads/2026-08-08T15-28-52Z   source: "calib_read"               state: erased
+    0x52: 256/256 bytes 0xFF — a genuine hardware read attempt, corrupted
+```
+
+Two things this settles. **First**: the *only* record `calib_resolve`
+currently treats as this unit's good calibration (`serial=16275`,
+`state=good`) is a `--simulate` **rehearsal** run, not a real hardware read
+— and `calib_read.py`'s own `_sim_transport()` (`:62-75`) fills its fake
+device content directly from `backups/eeprom-i2c/eeprom_52.bin`, so this
+"good" record is a verbatim echo of the same 2026-08-05 backup, confirmed
+by the byte-identical sha256, not independent evidence. This is exactly the
+failure mode `calib_wizard.py`'s own module docstring warns about by name
+(*"A rehearsal record in the real store is not a cosmetic mistake... That
+happened on 2026-08-08 on the owner's machine"*) — a real, previously-
+undocumented instance of it, still sitting in the live store today.
+**Second**: the one **genuine** hardware read attempt on this unit's serial
+(the very next timestamp, four minutes later, same power cycle) came back
+completely erased — the documented "second read in a power cycle destroys
+the data" trap (`backups/eeprom-i2c/README.md`), not usable for anything.
+There is, right now, no good, independently-sourced EEPROM read of this
+unit's colour matrix anywhere on this machine newer than 2026-08-05.
+
+**Did tonight's self-calibration actually try to get one?** Checked
+directly, not assumed: `calib_wizard.step_eeprom()` (`:776-809`) calls
+`cres.resolve(self.store)` first and returns immediately without touching
+hardware if a good, attributed record already exists. Live evidence this
+happened for real, not just in theory: `units/16275/flatfield/2026-08-14T13-48-47Z/`
+and `units/16275/overlay/2026-08-14T13-50-06Z.json` are real, dated,
+`source: "calib_wizard"` records of a **live black-level/duty/dark/gain**
+run on this exact unit (the overlay's `on_counts_R_G_B: [643,580,508]`
+matches `calibration/README.json`'s own post-recalibration numbers exactly)
+— so the wizard genuinely ran against real hardware, recently. But its own
+`provenance` field only speaks to AFE offsets and lamp on-counts; there is
+no accompanying new `reads/` entry, confirming `step_eeprom()` did exactly
+what its own docstring says and reused the existing (simulate-derived)
+record rather than re-reading the EEPROM. **The matrix has never been
+re-read since 2026-08-05, including at the one concrete moment this session
+had the opportunity to.**
+
+### 33.4 — Does a matrix error even survive the inversion's own arithmetic?
+Extending §31.3's cancellation argument to the matrix itself, then testing
+it directly on the same matched frame
+
+§31.3 proved a pure rescaling of `film_base` cancels in
+`f135_rom12_to_rpd12`'s log-difference because `base` and `poly` are both
+divided by the same factor before the subtraction. The same algebra applies
+one level up, and this had not been checked before: `film_base` **is
+itself** a poly-domain value — `film_base_codes` walks a histogram of
+`poly_hwc`'s own output (§31.2), using the identical matrix and the
+identical per-channel `c9` as every ordinary pixel. Writing the matrix's
+affine part as `poly ≈ A·raw + c9` (A = diagonal, ignoring the much smaller
+cross/quadratic terms for a moment):
+
+```
+poly - c9 ≈ A·raw_pixel        base - c9 ≈ A·raw_dmin
+dens = 1000·(log10(base-c9) - log10(poly-c9))
+     ≈ 1000·(log10(A·raw_dmin) - log10(A·raw_pixel))
+     =  1000·(log10(raw_dmin) - log10(raw_pixel))        <- A cancels
+```
+
+So a uniformly wrong diagonal scale `A` — precisely the shape a duty-driven
+matrix mismatch would most plausibly take — **cancels out of the formula
+for the same structural reason `film_base` alone does**, regardless of
+whether `A` is "right" for the current lamp duty or not. What does **not**
+cancel this way is the off-diagonal cross-channel terms and the quadratic
+terms (`c3`-`c8`), because they don't factor out of `raw_dmin` and
+`raw_pixel` identically when the two have different R:G:B ratios or
+magnitudes — this is the one part of the matrix hypothesis that could,
+structurally, produce a genuine non-cancelling shift, exactly per the
+task's own framing.
+
+**Tested directly, not just argued**, on the real matched frame (`test123.bin`
+frame 0, same roll/workspace §31 used, same production call chain
+— `Roll.slice14` → `pakon_render.scene_rpd12` → `AnselEngine.render_scene`
+→ `.to_srgb`, `PAKON_COLOUR_ENGINE=python`, real `film_base=[3107,2490,2414]`,
+real `fpo`/`setshifts_out`). Built an "affine-only" matrix from the real one
+by zeroing every cross-channel and quadratic term (`c3`-`c8`) in all three
+rows, keeping only the diagonal and `c9`, and re-ran the identical pipeline:
+
+```
+                        sRGB [p1, p50, p99] per channel
+                   R                  G                  B
+REAL matrix:    [20,178,254]      [51,192,254]      [41,217,254]
+AFFINE-ONLY:    [ 7,170,254]      [50,186,254]      [35,216,254]
+target (AA001.tif p50): R=90  G=103  B=139
+
+delta (real − affine-only), all three channels:
+  R: [0, 6, 18]   G: [-2, 3, 7]   B: [-3, 1, 10]     (p1, p50, p99)
+```
+
+Zeroing the *entire* non-cancelling part of the matrix — not a plausible
+"slightly wrong" version of it, the complete removal of every term that
+could survive the log-difference — moves the median by **6, 3, and 1**
+codes (R/G/B) and the full percentile range by no more than **18 codes**
+anywhere. This is a direct, empirical upper bound on how much this specific
+mechanism can move this frame's render, on the real matched data: nowhere
+near the 88-89 code gap, for exactly the reason §33.1's own coefficient
+table predicts — the terms capable of not cancelling are individually
+three to four orders of magnitude smaller than the diagonal, and their
+aggregate effect on a real image is correspondingly small.
+
+### 33.5 — A direct duty-scale sensitivity probe: the formula's real
+failure mode is a cliff, not a uniform shift — a different symptom shape,
+for a different, already-known reason
+
+A second, cruder test, run for completeness rather than as the main
+evidence: rather than touching the matrix, scaled the frame's own
+calibrated 14-bit input by the ratio of the old to the new open-gate lamp
+duty (§6's own figures, `R=492/643≈0.765`, `G=239/580≈0.412`,
+`B=104/508≈0.205`) — a first-order stand-in for "what would this frame's
+raw signal have looked like under the pre-recalibration duty" — scaling
+`film_base` by the same per-channel ratio, and re-ran the same real matrix
+and formula unmodified:
+
+```
+                        sRGB [p1, p50, p99] per channel
+                   R                  G                  B
+current duty:   [20,178,254]      [51,192,254]      [41,217,254]
+sim. old duty:  [121,240,254]     [65,173,192]       [0,  0,  0]
+```
+
+This is not a uniform shift either — R moves brighter, G moves darker, and
+B collapses entirely to 0 across its whole percentile range once its scaled
+raw signal approaches the matrix's own fixed pedestal `c9=635.5` closely
+enough that `poly - c9` goes near-zero/negative and the log clamps. This
+confirms mechanically why `c9` **does not** scale with duty the way the
+raw signal does (it's a matrix constant, not a per-capture quantity) and
+that a large enough duty mismatch produces a **cliff** — a channel-specific
+collapse — not the smooth, same-direction-at-every-percentile ~88-89 code
+excess this investigation is chasing. Flagged plainly as a cruder probe
+than §33.4 (it scales raw values directly rather than modelling the real
+dark/gain recalibration that actually accompanies a duty change, so its
+absolute numbers are illustrative of the formula's shape, not a claim about
+what the pre-recalibration renders actually looked like), but the shape
+mismatch is real and adds an independent reason not to expect this
+mechanism to produce §31's specific symptom.
+
+### 33.6 — Verdict
+
+1. **The timeline claim in the task's own hypothesis is correct**: the
+   polynomial colour-matrix data this project's only two render paths both
+   use (`backups/eeprom-i2c/eeprom_52.bin`, read identically by
+   `pakon_color.load_unit_matrix` and `tools/ansel/pipeline/main.go`) is
+   real, verified, per-unit data — but it was captured 2026-08-05 and
+   committed 2026-08-10, genuinely predating both the lamp-duty
+   recalibration and the AD9826 offset fix (both 2026-08-12). It has never
+   been re-read since, including at the one point this session's own
+   self-calibration wizard had a live opportunity to (§33.3) — and the one
+   real (non-rehearsal) hardware read attempt on this unit's serial that
+   does exist came back corrupted, unusable, per this hardware's own
+   documented single-read-per-power-cycle constraint. There is currently no
+   way to get a fresher, independently-verified read without a new power
+   cycle at the physical scanner.
+2. **That staleness does not explain §31's ~88-89 code uniform gap.**
+   Extending §31.3's own cancellation argument one level up (§33.4) shows a
+   uniformly wrong matrix diagonal — the shape a duty mismatch would most
+   plausibly produce — cancels out of `f135_rom12_to_rpd12`'s log-difference
+   for the same structural reason a `film_base` rescaling does, because
+   `film_base` is itself measured through the same matrix. The only part of
+   the matrix that could survive that cancellation (cross-channel and
+   quadratic terms) is empirically shown, on the exact same matched frame
+   §31/§32 used, to move the render by at most 18 codes at any percentile —
+   an order of magnitude short of the gap — because those terms are three
+   to four orders of magnitude smaller than the diagonal in this unit's own
+   real coefficients. A separate, cruder duty-scale probe (§33.5) shows the
+   formula's actual failure mode under a large duty mismatch is a
+   per-channel collapse, not a uniform excess — a different symptom shape
+   from the one being chased, for an identifiable reason (the fixed
+   pedestal `c9` doesn't scale with duty the way raw signal does).
+
+**This was the last concrete lead on §31.4's own list, and it closes the
+same way §32 did: real, evidenced, checked directly against live hardware
+state and real matched data — and not the explanation.** Combined with
+§31.3 (film_base/c9 rescaling ruled out) and §32 (the inversion formula's
+own construction checked against the real DLL, no discrepancy found), every
+single-parameter lever inside the currently-known formula and its two
+per-unit calibration inputs (`film_base`, the polynomial matrix) has now
+been checked and found insufficient, on the same real matched frame, using
+the same production code path, against the same real vendor TIFF. **No
+production code was changed by this pass** — §33.4/§33.5's alternate
+matrices and scaled inputs were constructed and rendered in scratch scripts
+outside the repo, never written back into `pakon_color.py` or
+`tools/ansel/pipeline/main.go`; `pakon_color.load_unit_matrix` and
+`f135_rom12_to_rpd12` were read and called, not edited.
+
+**What this leaves.** Every static and Unicorn-based avenue this doc's own
+priority list has raised for the ~88-89 code brightness gap specifically —
+the tone chain's architecture (§1), the Dmin methodology (§2-4, §31.2-31.3),
+`fpo`'s provenance and per-unit value (§5, §29), FUGC (§10, §27-28),
+`analyzeAutoTone` itself (§24), the inversion formula's own construction
+(§32), and now the polynomial matrix's calibration currency (§33) — has
+been checked and closed without finding it. What remains open and
+unreplicated is the four `analyzeArea`/`analyzeAttributes`/`analyzeNoise`/
+`analyzeFalloff` stages (§11, still the sole standing software lead) and
+PakonIMAu.dll's own untriaged log-instruction sites (§32.4, ~50 `fyl2x` +
+64 `f2xm1`, a properly scoped follow-up via `tools/re/reachability.py`
+rather than more of this doc's own static reasoning). Beyond those two,
+closing this specific symptom now most plausibly needs either a fresh
+investigative idea this list hasn't raised, or the live hook harness on the
+real XP box (per this doc's own citation of `tools/re/live_hooks/`,
+still not yet run through a complete real scan) — genuinely live execution
+against the vendor DLL during an actual scan, not another static or
+Unicorn-isolated check, since this pass is the point at which those two
+methods run out of untried single-parameter leverage on this symptom.
+
 ## What this changes about the open item list
+
+**§33 update.** Item 6 below's second half (the polynomial colour-matrix's
+own calibration currency) is now **closed, not open** — the last item on
+§31.4's own list. §33 confirms the matrix data genuinely predates every
+2026-08-12 hardware fix (captured 2026-08-05, committed 2026-08-10) and
+that no fresher read exists anywhere on this machine, including one live
+opportunity this session's own self-calibration wizard had to get one and
+didn't (it correctly reused an existing stored record rather than
+re-reading, per this hardware's own no-recheck constraint) — so the
+staleness half of the hypothesis is real. But extending §31.3's own
+cancellation argument to the matrix itself, and testing it directly on the
+same matched frame, shows the part of a matrix error that could survive
+the inversion's log-difference (cross-channel/quadratic terms) moves the
+render by at most 18 codes at any percentile on real data — an order of
+magnitude short of the 88-89 code gap — while the part large enough to
+matter (the diagonal scale) provably cancels, structurally, for the same
+reason a `film_base` rescaling does. Item 6 is fully closed as a lead for
+this specific symptom; item 1 (the four unreplicated stages) is now the
+sole standing software lead, alongside PakonIMAu.dll's own untriaged
+log-instruction sites from §32.4.
 
 **§32 update.** Item 6 below (added by §31: the inversion formula's own
 construction) is now **narrowed, not closed**. §32 checked the two specific
@@ -3974,18 +4296,34 @@ defect, not vendor-intended behaviour. Updated priority order:
    highlights too. Worth fixing on its own merits, same as this item
    always was — but §31.3 shows it will not, by itself, close the
    brightness gap.
-6. **New, from §31**: the inversion formula's own construction
+6. ~~New, from §31: the inversion formula's own construction
    (`f135_rom12_to_rpd12`, `F135_INVERT_PORTED=False`) and the polynomial
    colour-matrix's own calibration currency (`load_unit_matrix`,
    EEPROM-sourced, unrelated to the lamp-duty fix — §31.2's own finding
    that clear film clips the poly domain without clipping the raw sensor
    is at least suggestive) are now the sharpest concrete leads for the
-   brightness gap specifically, ahead of the four unreplicated stages
-   (item 1), since every stage between the inversion and the final image
-   is now independently verified correct (analyzeAutoTone bit-exact at
+   brightness gap specifically~~ **Both halves now checked and closed, not
+   the cause.** §32 checked the inversion formula's own construction
+   against the real, hash-verified DLLs directly: the two named candidate
+   addresses are resolved as PolyPixel-family, not the inversion; TLB.dll's
+   own log-instruction sites are exhaustively traced with no per-pixel
+   colour formula found; PakonIMAu.dll's much larger space is narrowed but
+   not exhaustively triaged (§32.4, real remaining work, not a dead end).
+   §33 checked the polynomial matrix's own calibration currency directly:
+   the data genuinely predates every 2026-08-12 hardware fix and no fresher
+   read exists anywhere on this machine, but a matrix-diagonal error
+   provably cancels in the inversion's log-difference for the same
+   structural reason a `film_base` rescaling does (§31.3), and the one part
+   that could survive that cancellation (cross-channel/quadratic terms) is
+   empirically bounded, on the real matched frame, to at most 18 codes at
+   any percentile — an order of magnitude short of the 88-89 code gap.
+   **Item 1 (the four unreplicated stages) is now the sole standing
+   software lead**, since every stage between the inversion and the final
+   image is independently verified correct (analyzeAutoTone bit-exact at
    full-frame scale, §24; FUGC and SBA-apply verified; `fpo` live-verified,
-   §29) and §31.3 rules out simple single-parameter fixes to the inversion
-   formula's existing inputs.
+   §29), and every single-parameter lever inside the inversion formula and
+   its two per-unit inputs has now been checked and closed (§31.3, §32,
+   §33).
 
 ## Verification
 
@@ -4312,3 +4650,27 @@ No production code was changed by this pass; `pakon_decode.py`'s
 `f135_rom12_to_rpd12` and `check_film_class` were read, not edited, and the
 disassembly work happened entirely against external DLL copies outside this
 repo, read-only throughout.
+
+§33's timeline claims were checked against live filesystem state, not
+assumed from prior citations: `backups/eeprom-i2c/eeprom_52.bin`'s git
+history (`git log -- backups/eeprom-i2c/eeprom_52.bin`), the real local
+calibration store at `~/Library/Application Support/PakonScan/calibration`
+(`calib_resolve.resolve()` called live against the real
+`CalibrationStore`, not read from source alone), and a live `shasum -a 256`
+comparison confirming the store's "good" 0x52 record is byte-identical to
+the committed backup. `load_unit_matrix`'s actual resolution (registry
+absent, falls to EEPROM) was confirmed by importing `pakon_color` and
+calling it directly, not by reading the `if`/`elif` alone. §33.4 and §33.5's
+renders both ran the real, unmodified production call chain
+(`Roll.slice14` → `pakon_render.scene_rpd12` → `AnselEngine.render_scene` →
+`.to_srgb`) against the exact same `test123.bin`/workspace `f4c91b62` roll
+§31 used, and reproduced §31.1's own stage-1/stage-2/final-sRGB numbers
+before changing anything, as a harness sanity check (matched to within
+normal percentile-interpolation rounding). The alternate matrices (§33.4's
+affine-only ablation) and the duty-scaled input (§33.5) were constructed
+and rendered in scratch scripts under `/tmp`, never written into
+`tools/pakon_color.py` or `tools/ansel/pipeline/main.go`; both files were
+read and their real coefficients/paths used, not edited. Only aggregate
+percentile statistics from `test123.bin` are reported above, consistent
+with this project's rule against describing `captures/` contents; no pixel
+data or image content is reproduced.

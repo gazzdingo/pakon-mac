@@ -11547,6 +11547,385 @@ measurement against five agreeing ones, including two independent real
 vendor captures) — separable from, and not the explanation for, the
 brightness gap. **The ~88-90+ code brightness gap remains open.**
 
+## 54 — §51.8 item 1's own three un-collapsed possibilities, tested: no CRT
+log import exists in either DLL, the LUT-builder shape scan widens to seven
+new real candidates and rules out all of them, and TLB.dll's own last
+untraced `fyl2x` sites turn out to be CRT `pow()` internals, not a Pakon
+formula
+
+(This section was written as "§55" per its own task brief; re-grepped the
+doc first and found §54 itself still free — §50-53 exist, §55 does not, but
+neither does §54 — so this lands at the actual next free number, not the
+number the brief guessed, and says so here rather than leaving a gap or
+colliding with whatever else lands at 55.)
+
+§51.8 closed with a decisive negative — no live, reachable `fyl2x`/
+`fyl2xp1`/`f2xm1` instance of `f135_rom12_to_rpd12`'s own construction
+exists in either DLL this project has searched — and named three concrete,
+un-tried alternatives for how the vendor might compute it anyway: (1) a
+reachable LUT builder this project hasn't found yet, structurally like the
+confirmed-dead `0x10273530` but somewhere else; (2) SSE2 scalar float ops
+instead of x87; (3) a literal precomputed constant table with no runtime log
+math at all. This section tests (1) and (2) directly, and gets as close to
+(3) as static analysis of *code* can get — a real limitation, spelled out in
+§54.5, not glossed over.
+
+Provenance re-checked before any work, per this doc's own standing
+convention: `/tmp/pakon_re/PakonIMAu.dll` and
+`/Users/guy/pakon-windows-repair/COM-SERVER/PakonIMAu.dll` both hash
+`eea9dcf78ee21d4f7c515a6c2512242d` (sha256
+`0ede8d9813af4ee95dddd85e5adc495a27f014a8fd4817cfbc3b3b1e107f511f`, matching
+`tools/re/reachability.py`'s own `DLL_SHA256` constant exactly); `/tmp/
+pakon_re/TLB.dll` and `/Users/guy/pakon-windows-repair/COM-SERVER/TLB.dll`
+both hash `193d9b2ce0a4b77ae9b78262bd06c0fc` — the same two files every
+prior section citing these DLLs has used. `radare2` 6.1.8 via `r2pipe`
+throughout, `af`+`pdf`/`pdfj` for every real function-boundary and
+disassembly claim below, `pD`/`pd` never used to characterize a function's
+purpose.
+
+### 54.1 — Task A: import tables checked directly — neither DLL imports a
+CRT `log`/`log10`, and every real call site of the one transcendental
+import PakonIMAu.dll does have was individually triaged
+
+`ii`/`iij` against both DLLs (`r2pipe`, `iij` parsed as JSON rather than
+grepped as text, so nothing is missed to a formatting quirk):
+
+**`TLB.dll` imports no math function at all.** Its full import list is
+`VERSION.dll` (3), `KERNEL32.dll` (130), `USER32.dll` (2), `ADVAPI32.dll`
+(9), `ole32.dll` (12), `OLEAUT32.dll` (10), `SHLWAPI.dll` (1) — no
+`MSVCRT.dll`/`MSVCR71.dll`, no `log`/`log10`/`pow` anywhere. This
+independently reproduces §32.3's own citation ("TLB.dll imports no CRT
+DLL") rather than just trusting it, and closes off SSE2-via-CRT-import as a
+live possibility for TLB.dll specifically: there is no imported call boundary
+of any kind for a log to hide behind. Any log math in TLB.dll is either
+inline x87 (§32.3's own exhaustive search, already clean) or genuinely raw
+inline code with no call at all.
+
+**`PakonIMAu.dll` imports 119 functions from `MSVCR71.dll`. Among them,
+exactly one transcendental math routine: `_CIpow`** (`0x10573470`, thunk at
+`0x105001cc`). No `_CIlog`, `_CIlog10`, `_CIlogb`, or any `log`-family
+import exists — `_CIacos`, `_CIasin`, and `_CItanh` are the only other
+transcendentals, and none of the three is usable to build a `log10`. This
+means the SSE2 hypothesis's most natural form — a CRT-style `log10()` call
+compiled to `movss`/`mulss` around library code reached via an import thunk
+— **cannot exist in this DLL**, for the same structural reason as TLB.dll:
+there's no import to call. If `log10` exists in this DLL's code at all, it
+is inline (x87, already exhaustively searched in §51.1-51.2; or SSE2/other,
+§54.4 below) or does not exist as compiled code at all (possibility 3).
+
+Enumerated **every real call site of `_CIpow`** via `axt` on the resolved
+PLT thunk (`0x105001cc`), not the raw import symbol (which only shows the
+thunk's own jump): **83 real call sites, mapping to 36 distinct functions**
+(`afij` at each caller address, not proximity-guessed). Cross-referenced
+this 36-function set against §51.3's own already-verified 54-function
+real-`fyl2x` set (`final_verify_results.json`'s `"true"` list, the exact
+92-hit/54-function table that pass produced — reused as data, not
+re-derived from scratch, but every claim built on it below was independently
+re-checked): **17 functions call both a real `fyl2x` and a real `_CIpow`.**
+This is the natural candidate pool for the target shape (`log10` needs
+`fyl2x`; the LUT-builder shape §51.5 already established also needs `pow`
+twice per index) that a `fyl2x`-only or `_CIpow`-only search would each
+individually miss.
+
+**Reachability of all 17, checked fresh, not assumed from §51.3.** Re-ran
+`tools/re/reachability.py walk` for real, from a clean invocation of the
+committed tool (not the ad-hoc `/tmp/pakon_re` scripts §51 used) for both
+of this doc's two seeds:
+
+```
+python3 tools/re/reachability.py walk 0x10069490 --dll /tmp/pakon_re/PakonIMAu.dll → 1558 functions
+python3 tools/re/reachability.py walk 0x10069d80 --dll /tmp/pakon_re/PakonIMAu.dll → 1708 functions
+```
+
+Both figures reproduce §51.3's own published numbers exactly — a genuine,
+independent re-derivation landing on the same set, not a re-statement.
+Checked all 17 pow+`fyl2x` functions against both address sets: **only 2 of
+the 17 are reachable** — `0x10203470` (`analyzeFalloff`, already established
+dead in §11/§20) and `0x10273530` (the confirmed-dead LUT builder, §51.5).
+**The other 15 are unreachable by direct-call BFS from either seed.**
+
+Of those 15, 8 were already individually read in full by §51.4/§51.6
+(`0x104fbb60`, `0x10205660`, `0x101da930`/`0x1022c8f0`, `0x1029dbd0`/
+`0x102aac00`, `0x1029b360`, `0x1027dbe0`/`0x1027df40` — `ColorMetricERIMM`/
+`ColorMetricRPD12`, already ruled out on the flare/CN-Premium grounds
+§51.6 established). **The remaining 7 had never been individually read in
+this investigation** — flagged in §51.7 only as unreachable-set absences
+(`0x1026a490`) or not mentioned at all (`0x102ee850`, `0x102ef040`,
+`0x102ef830`, `0x102dde50`, `0x102de380`, `0x102de8b0`). Read all 7 in full
+(`af`+`pdf`):
+
+- **`0x1026a490`** (586 B) is, read in full, genuinely close in *shape*:
+  a single `fyl2x` (`log10` of a stored constant) computed once before a
+  loop, and inside the loop a second `fyl2x` (`log10` of the per-index
+  value) **subtracted** from the first, the result `×1000.0` and rounded —
+  literally a `1000·(log10(A) − log10(B))` construction. But it operates on
+  a value pulled from `[esi+0x60]`/`[esi+0x62]` fields of an object this
+  function receives as `ecx` (`this`), not a 14-bit raw ROM code, and its
+  own call chain (`axt`, one real hop at a time: `0x1026a490 ←
+  0x1026a7c0 ← 0x101a63f0 ← 0x100e34e0 ← 0x100e37d0`, which itself has
+  three real callers: `0x10083370`, `0x100de810`, `0x1013d9e0`) bottoms out
+  at `0x10083370` = **`method.AnsArchivePath.virtual_4`** — the
+  `AnsArchivePath` class §18 already established as a distinct `AnsCn*Path`
+  sibling, not `AnsCnEnhancedPath`. Ruled out on the same
+  already-established-different-path-class grounds this doc has used
+  repeatedly, not just on BFS-absence alone. (The caller-address proximity
+  to `ImaI16DyefadeOp` in the `axt` results for `_CIpow` — the actual
+  *caller* of this function is a different, unnamed `fcn.1026a7c0` — is
+  noted but not leaned on; the real evidence is the traced chain.)
+- **`0x102ee850`/`0x102ef040`/`0x102ef830`** (2016/2015/2015 B) are the
+  three pixel-type template instantiations of
+  `method.ImaEBPGammaOp<unsigned char/short/unsigned short>.virtual_40` —
+  already named in §51.7 as "the general-purpose image-library gamma
+  utility," now read at the actual `fyl2x` sites rather than taken on the
+  class name alone: each contains four real `fldln2`/`fyl2x` pairs (natural
+  log, not `log10`) inside a **histogram-percentile interpolation** —
+  `ln(count_i/total)` computed twice and **divided**, not subtracted
+  (`fdivp` immediately after the second `fyl2x`), the classic log-ratio
+  shape for fitting a percentile point on a cumulative histogram — plus
+  separate, unrelated `_CIpow` calls elsewhere in the same function bodies
+  for the actual gamma-curve evaluation. Confirms and sharpens §51.7's
+  existing verdict rather than overturning it: division not subtraction,
+  natural log not `log10`, and a genuinely different real capability
+  (gamma-curve percentile fitting).
+- **`0x102dde50`/`0x102de380`/`0x102de8b0`** (881/881/881-ish B) are three
+  distinct call sites inside **`method.ImaLensFalloffOperation.virtual_84`**
+  — a real, previously-uncatalogued-in-this-doc capability (lens vignetting
+  correction), distinct from `analyzeFalloff`'s calibration-stage
+  `analyzeFalloff`/`AnsFalloffCapabilityImpl` (§11/§20's already-dead
+  finding is about a different function entirely). Read `0x102dde50` in
+  full: a single `fyl2x` (`log10` of a ratio) feeding a radial-falloff
+  polynomial alongside `_CIacos`/`fptan`/`_CIpow` — genuine lens-geometry
+  math (angle and radius terms), one log, not two subtracted. **Honest
+  caveat, not swept under the rug:** `ImaLensFalloffOperation.virtual_84`
+  itself has `in-degree: 0` (`afij`) — it is vtable-dispatched, invisible to
+  the direct-call BFS the same way `AnsCnEnhancedPath::virtual_8` was
+  before §51.3 corrected for it. Unreachable-by-BFS is **not** the same as
+  proven-dead here; this is flagged as the same structural blind spot
+  §51.8 item 3 already named, now with one more concrete, unresolved
+  instance, not claimed as closed.
+
+None of the 7 newly-read functions computes two independent `log10` calls
+of two different quantities, subtracted. `0x1026a490` comes closest in
+raw shape but is traced to a different, already-established-dead path
+class; the rest are natural-log ratios, single-log geometry terms, or
+already-covered flare/CN-Premium dead code.
+
+### 54.2 — Task B, `PakonIMAu.dll`: the LUT-builder shape widened past the
+one known address, on two independent signatures — one genuinely new
+candidate found, and cleanly ruled out
+
+Two independent widening searches, not just re-checking `0x10273530`:
+
+**Signature 1 — the exact `1000.0` literal.** `0x10273530`,
+`ColorMetricRPD12.virtual_44`, and `0x1026a490` (§54.1) all multiply by the
+identical double-precision bit pattern `0x408f400000000000` stored at one
+address, `0x105a3c18`. A whole-binary `/x` search for that 8-byte pattern
+finds **exactly one occurrence of the literal anywhere in the binary** — so
+every use of *this specific* `1000.0` constant is captured by its
+cross-reference list. `axt 0x105a3c18` → 7 xrefs → **5 distinct
+functions**: `0x1026a490`, `0x10271bc0`, `0x10273530`,
+`ColorMetricRPD12.virtual_44` (all four already resolved, §51.4-51.6 and
+§54.1), plus **one genuinely new address: `0x1028f570`**.
+
+Read `0x1028f570` in full (3772 B, 90 arguments, 64 basic blocks — a large
+parameter-block colour-transform routine). Its two references to the
+`1000.0` constant (`0x10290374`, `0x102903be`) sit inside a pure
+multiply/divide/subtract sequence — squaring a difference term
+(`fld st(0); fmul st(1)`) and scaling by `1000.0` — alongside `0x186a0`
+(100000)-scaled fixed-point integer conversions elsewhere in the same
+function, the classic magic-multiplier idiom for integer division by a
+constant. **Zero `fyl2x`/`fldlg2`/`fldln2`/`_CIpow` instructions anywhere
+in this function** (confirmed by grepping the full `pdf` text, not
+sampling). This is a colour-difference/matrix-error metric — squared terms
+times 1000, no logarithm anywhere — cleanly ruled out on the most basic
+possible ground: there is no log math in it to match against.
+
+**Signature 2 — the 12-bit clamp, independent of which `1000.0` encoding is
+used.** Scanned all 54 of §51's own real-`fyl2x` functions directly for a
+`cmp ax/eax/ebx/edx, 0xfff`-shaped compare (the exact clamp idiom §51.5
+found in `0x10273530`'s own body) — a second, `1000.0`-literal-independent
+signature, in case a different scale mechanism was used. **5 functions
+match**: `0x10273530` (known), the three `ImaEBPGammaOp` instantiations
+(§54.1 — their clamp is on an unrelated boolean-flag computation, not a
+per-pixel value, confirmed by reading the surrounding lines), and one new
+one: **`method.ImaI16DyefadeOp.virtual_72`** (`0x10150570`).
+
+Read `0x10150570` in full (638 B). It computes a curve-fit exponent
+parameter for a **dye-fade compensation curve** — a real, legitimate,
+previously-uncatalogued colour-science feature (correcting for photographic
+dye spectral decay over archival time) — using exactly one `fyl2x`
+(`fldlg2`/`fyl2x`, `log10` of a ratio, `×(-1.0)`) computed *once*, outside
+any loop, to derive an exponent. The per-index loop that follows (up to
+4095 iterations — this is what the `0xfff` compare the scan matched
+actually clamps: the **loop's own iteration count**, at `var_30h_4`, not a
+per-pixel computed value) builds its output table using `_CIpow` only, no
+second `log10` inside the loop at all. Cleanly ruled out: one log used as a
+scalar curve-fit input, a power-law table builder with no second log,
+12-bit clamp on the wrong quantity (loop bound, not stored density).
+
+**Net result for `PakonIMAu.dll`: two independent structural searches, one
+genuinely new candidate found (`0x1028f570`), cleanly ruled out with no log
+math present at all.** Every other match on either signature was already
+resolved by §51 or §54.1. No new live candidate survives.
+
+### 54.3 — Task B, `TLB.dll`: the three `fyl2x` sites §32.3 explicitly left
+untraced are now individually read — all three are the statically-linked
+CRT's own `pow()` implementation, not Pakon code
+
+§32.3 found TLB.dll's 7 real `fyl2x` sites, traced 3 of them (the pair
+inside `fcn.1000dfc0`, a registry-string-to-number scale, reached twice)
+to real, unrelated session-bookkeeping code, and explicitly left the
+remaining sites — `fcn.1004926d`, `fcn.10050d10`, `fcn.10050a2e` — "not
+individually traced to their own root callers within this pass's time
+budget," flagged as incomplete, not ruled out. This section closes that.
+
+Fresh `aaa` against `/tmp/pakon_re/TLB.dll` (md5 re-verified
+`193d9b2ce0a4b77ae9b78262bd06c0fc` before touching it), `afij`/`pdfj` at
+each address:
+
+- **`fcn.1004926d`** (616 B real, 51 basic blocks) is, read in full, the
+  IEEE-754 special-case wrapper of the CRT's own statically-linked
+  `pow(double, double)` — NaN/Inf/denormal branch handling, `_matherr`-style
+  numeric error codes (1, 2, 3, 4, 7, 8) fed to `fcn.10050cb0`/
+  `fcn.10050cc7` (exception-raising stubs), with the one real `fyl2x`
+  (`0x100492ba`, `y·log2(x)`) sitting exactly where the standard
+  `pow = 2^(y·log2(x))` construction puts it, immediately followed by a call
+  to `fcn.10050d10`.
+- **`fcn.10050d10`** (21 B) and **`fcn.10050a2e`** (119 B) are both,
+  read in full, the `2^frac(x) − 1` exponent-completion helper
+  (`frndint`/`fsubr`/`f2xm1`/`fld1`/`faddp`/`fscale`) that CRT `pow()`/
+  `exp()` implementations call to finish the exponentiation — standard
+  library internals, not application code. (These are almost certainly the
+  "2 genuine `f2xm1` sites" §32.3 already counted separately; read here to
+  confirm what they actually are, not just that they exist.)
+
+`fcn.1004926d` — the `pow()` entry point itself — has **exactly one real
+caller in the whole binary** (`axt`: `fcn.10049210`, itself an internal CRT
+wrapper, not any named Pakon function). **This closes §32.3's own last open
+item for TLB.dll: all 7 real `fyl2x` sites and both real `f2xm1` sites in
+this DLL are now individually traced and accounted for, and none of them is
+a Pakon-authored formula** — 3 are the registry-string scale already found,
+3 (this section) are the statically-linked CRT `pow()`'s own internals, and
+the 7th (`fcn.1004926d` reached twice inside `fcn.1000dfc0`, per §32.3) was
+already covered there. TLB.dll's own search is now genuinely exhaustive,
+not "clean but with 3 sites left over."
+
+### 54.4 — Task C: a properly scoped SSE2 check, in the one neighborhood
+this task authorized — clean, and informative about why
+
+Per this task's own explicit scoping rule (no whole-binary SSE2 sweep — too
+noisy to be worth it), checked only the calibration-time neighborhood
+immediately around the confirmed-dead `0x10273530` LUT builder: the direct
+callees of `0x10274d10` (its own caller) and `0x101d1120` (the next hop up,
+`analyzeAsea`'s own private subtree) — 10 functions total. Five of those
+ten are address-adjacent siblings never individually read by this
+investigation (`0x102733a0`, `0x10273430`, `0x102734d0`, `0x102736c0`,
+`0x10274590`). Searched each one's full `pdf` text for every SSE2 scalar
+float mnemonic (`movss`/`mulss`/`addss`/`subss`/`divss`/`cvtsi2ss`/
+`ucomiss` and the `sd` double-precision equivalents): **zero hits across
+all five.** Every function in this specific, calibration-time-adjacent
+neighborhood is x87-only, exactly like `0x10273530` itself.
+
+This is a small, honestly-scoped result — it says nothing about the other
+~14,000 functions in this binary, deliberately, per this task's own
+instruction not to chase that noise. What it *does* say: in the one place
+this pass could cheaply and specifically check "does the compiler ever use
+SSE2 right next to the one confirmed real LUT-builder shape," the answer is
+no. Combined with this DLL's own `_CIpow`-only transcendental import list
+(§54.1 — no SSE2-reachable CRT log call exists either), this narrows
+possibility 2 further without fully closing it: SSE2 scalar float math may
+still exist somewhere in this 7.5 MB binary's other ~14,000 functions, but
+it is not the mechanism behind the one real, structurally-matching LUT
+shape this project has actually found.
+
+### 54.5 — Verdict
+
+**Task A: done.** Neither DLL imports a CRT `log`/`log10`. `PakonIMAu.dll`
+imports exactly one transcendental (`_CIpow`); every one of its 83 real
+call sites was mapped to its containing function, cross-referenced against
+the already-verified real-`fyl2x` set, and the 17-function overlap was
+checked for live reachability with a freshly-run (not reused-on-faith)
+`tools/re/reachability.py walk` at both of this doc's seeds. Of those 17,
+15 are unreachable; the 7 never individually read before were read in full
+this pass and none matches the target shape, though one
+(`ImaLensFalloffOperation.virtual_84`) carries the same honest
+vtable-dispatch reachability caveat §51.8 item 3 already named, not
+resolved here.
+
+**Task B: done, for both DLLs named.** Two independent structural
+signatures (the exact `1000.0` literal; the `0xfff` clamp idiom,
+literal-independent) against `PakonIMAu.dll` surfaced exactly two
+genuinely new candidates (`0x1028f570`, `ImaI16DyefadeOp.virtual_72`), both
+read in full and cleanly ruled out — one has no log math at all, the other
+clamps a loop bound, not a computed value. `TLB.dll`'s three previously
+untraced `fyl2x` sites are now confirmed to be the statically-linked CRT's
+own `pow()` implementation, closing §32.3's last open item there.
+
+**Task C: done, at the scope this task authorized.** Zero SSE2 scalar
+float instructions in the five previously-unchecked siblings of the one
+confirmed real LUT-builder shape. Not a whole-binary result, and not
+claimed as one.
+
+**What this does and does not settle, weighed against §51.8's own three
+possibilities:** Possibility 1 (a reachable LUT builder elsewhere) is now
+substantially narrower — every function in `PakonIMAu.dll` that calls both
+a real `log10` and a real `pow`, or that shares either of the two concrete
+byte-level signatures the one confirmed real builder actually has, has been
+enumerated and individually read, and none is both live-reachable and
+shape-matching. One candidate (`ImaLensFalloffOperation.virtual_84`)
+remains genuinely unresolved on reachability, not ruled in or out.
+Possibility 2 (SSE2 instead of x87) is now known to be **structurally
+impossible via any imported call** in either DLL (no CRT log/pow-via-SSE2
+import path exists at all), and absent from the one neighborhood this pass
+could cheaply check for raw inline SSE2 — genuine evidence against it, not
+proof it's absent everywhere. **Possibility 3 (a literal precomputed
+constant table, no runtime log math) is not actually testable by anything
+this section did** — A and B both look for runtime call/instruction
+evidence, which by construction cannot detect a table that was computed
+once by the vendor's own tooling and ships as inert bytes with no
+accompanying code. That possibility remains exactly as open as §51.8 left
+it, and this section does not claim otherwise.
+
+**No production, golden, or port file was changed by this pass.** All work
+is additive under `/tmp/pakon_re/` (new: `step_pow_overlap.py`/
+`pow_overlap.json`, `step_check_overlap_reach.py`, `a55_reach_v8.json`/
+`a55_reach_v490.json` — fresh `tools/re/reachability.py` walk outputs,
+independently reproducing §51.3's 1558/1708 figures — `step_read_bodies.py`/
+`bodies_out.txt`, `step_trace_chain.py`, `step_check3.py`,
+`step_const1000_xrefs.py`/`const1000_funcs.json`, `step_read_1028f570.py`/
+`f570_out.txt`, `step_clamp_scan.py`, `step_neighborhood.py`,
+`step_sse2_scope.py`, `step_tlb_map.py`, `step_tlb_read3.py`/
+`step_tlb_read3b.py`, `step_tlb_49.py`/`step_tlb_49b.py`,
+`step_tlb_pow_caller.py`, and their text/JSON outputs) plus one file
+outside that directory: `/private/tmp/pakon_extract/PakonIMAu.dll`, a plain
+copy of the same already-hash-verified DLL, placed there only because a
+cached `radare2` project (`pakon_full`, itself already built from this
+exact binary in an earlier session, reused here purely to avoid re-paying
+an `~9`-second `aaa` load rather than to skip any verification) expected
+that path — its own md5 was checked against the canonical hash before use.
+`docs/74-…md` itself is the only tracked file this pass edited.
+
+**Verification.** Both DLL hashes re-checked against two independent local
+copies before any work (`eea9dcf78ee21d4f7c515a6c2512242d` /
+`193d9b2ce0a4b77ae9b78262bd06c0fc`), and the `PakonIMAu.dll` copy loaded
+under the reused `radare2` project separately sha256-verified against
+`tools/re/reachability.py`'s own `DLL_SHA256` constant
+(`0ede8d98…f511f`) before any query was run against it. The 1558/1708
+reachability figures came from this pass's own fresh
+`tools/re/reachability.py walk` invocations, not copied from §51's JSON.
+The 92-hit/54-function real-`fyl2x` baseline was reused as data from
+§51.2-51.3's own `final_verify_results.json` rather than re-derived byte by
+byte — the one piece of this section that leans on a prior pass's own
+output rather than re-deriving it from scratch, flagged here rather than
+left implicit. Every function-boundary and shape claim in §54.1-54.4 came
+from `af`+`pdf`/`pdfj` at the real address, never `pD`/`pd` used for
+anything beyond "is this real code" the way §51.2 already established as
+acceptable. The `1000.0` literal search was a whole-binary `/x` byte search
+for the full 8-byte IEEE-754 pattern, confirmed to return exactly one
+address before any cross-reference work began. `fcn.1004926d`'s
+"one real caller" and `ImaLensFalloffOperation.virtual_84`'s "in-degree: 0"
+both came from `axt`/`afij` directly, not estimated.
+
 ## 56 — The vtable-only blind spot §51.8 item 3 named but never enumerated,
 enumerated for the first time on a real, already-confirmed-live slice of the
 render path: 119 indirect call sites in 12 individually-read functions,

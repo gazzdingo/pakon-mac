@@ -101,7 +101,8 @@ void HookCore_BuildRealTable(HookEngine *eng) {
         (void *)&Thunk_15, (void *)&Thunk_16, (void *)&Thunk_17,
         (void *)&Thunk_18, (void *)&Thunk_19, (void *)&Thunk_20,
         (void *)&Thunk_21, (void *)&Thunk_22, (void *)&Thunk_23,
-        (void *)&Thunk_24,
+        (void *)&Thunk_24, (void *)&Thunk_25, (void *)&Thunk_26,
+        (void *)&Thunk_27,
         /* Thunk_23 fixes a real, latent NULL-entryThunk bug left by the
          * prior commit (6d2e36a) that inserted analyze_scp_lut_balance
          * mid-array without adding a matching thunk -- see hookstub.S's
@@ -109,7 +110,16 @@ void HookCore_BuildRealTable(HookEngine *eng) {
          * new slot for this pass's own addition, area_image_apply_lut,
          * appended at the END of table[] below specifically so no
          * existing entry's index (and therefore no existing entry's
-         * thunk assignment) moves again. */
+         * thunk assignment) moves again.
+         *
+         * Thunk_25/26/27 (docs/74 §49, 2026-08-15): same append-only
+         * discipline, for the three new TLB.dll lamp/AFE-gain/CCD-
+         * acquire-control hooks (tlb_lamp_on, tlb_afe_gain_write,
+         * tlb_ccd_acquire_control) added at the very end of table[]
+         * below. HOOKCORE_MAX_HOOKS bumped 25->28 in hookcore.h and the
+         * matching DEFTHUNK 25/26/27 added to hookstub.S in the SAME
+         * commit -- double-checked specifically against the Thunk_23
+         * mistake this file's own comment above documents. */
     };
 
     static const HookDef table[HOOKCORE_MAX_HOOKS] = {
@@ -520,6 +530,136 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "docs/74 SS46; docs/62 SS2.5; docs/64; docs/58 SS16.5 (quoted "
           "in docs/62); docs/reports/autotone-scope-2026-08-10/"
           "{fugc,filmLut}.md", 0, 1, 0, 0, 0 },
+
+        /* ---- Lamp / AFE-gain / CCD-acquire-control (docs/74 SS49) ----
+         * Three new TLB.dll entries covering the real lamp warm-up + CCD
+         * dark-offset-calibration bring-up sequence docs/55 and docs/59
+         * captured on the wire, extending the existing tlb_afe_offset_write
+         * hook above (which only covers the AFE OFFSET register write) to
+         * the other two real, independently call-reachable driver
+         * functions in that same sequence. All three re-derived and
+         * confirmed fresh this pass against the hash-verified TLB.dll
+         * (md5 193d9b2ce0a4b77ae9b78262bd06c0fc, same file every other
+         * TLB.dll citation in this table traces to, extracted from
+         * research/sdk/PAKONF135.iso and independently re-hashed this
+         * pass) via `r2 -e bin.baddr=0x10000000 -c 'aaa; af @ <va>; axt @
+         * <va>; pdf @ <va>'` -- not carried over from agent.js (agent.js
+         * gained the same three entries, appended, in this same pass). */
+        { "TLB.dll", 0x1002c5f0, "tlb_lamp_on",
+          "FN_bDrvLampOn -- the real lamp enable+duty-write function: one "
+          "call writes light-board reg 0x80 (enable mask), 0x81 (5-byte "
+          "LED levels [B,Ir,R,0,G]) and 0x82 (12-byte PWM on-count sextet "
+          "+ period N), matching docs/59's captured steps 16-18/80-82/100/"
+          "114 and docs/40 SS3/SS12's own static derivation of this exact "
+          "address (`FN_bDrvLampOn = fcn.1002c5f0`). Re-confirmed fresh "
+          "this pass, independent of docs/40's citation: `af @ 0x1002c5f0` "
+          "resolves to itself (minaddr==maxaddr-2175==0x1002c5f0, "
+          "num-instrs=656), `axt` finds 8 genuine CALL-type xrefs from 6 "
+          "distinct caller functions (0x1001e7b0 x3, 0x1001ec90, "
+          "0x10020dc0, 0x1002d5c0, 0x1002d7f0 -- FN_bBeforeScan per docs/59's "
+          "own header note, 0x1002dbd0), zero CODE-type/internal-jump "
+          "xrefs -- the same axt-based safety check that found the 5 "
+          "notCallReachable entries above finds nothing wrong here. "
+          "Prologue is an entirely ordinary MSVC frame: `push ebp; mov "
+          "ebp,esp; and esp,0xfffffff8; sub esp,0x54` (stack realignment "
+          "for the function's own FPU/double-precision locals, per the "
+          "immediately-following `fld qword [0x10067008]` -- no relative "
+          "jump/call anywhere near the bytes MinHook needs to relocate). "
+          "This hook observes the SAME register writes docs/59's "
+          "`tools/lamp_replay_vendor.py` sends deliberately from the host "
+          "side -- it does not send anything itself, only logs entry/exit "
+          "when PSI's own code calls this function during a real scan.",
+          "docs/40 SS3 (\"FN_bDrvLampOn = fcn.1002c5f0\"), SS12 (write-order "
+          "correction: 0x80 first, then 0x81, then 0x82); docs/59 (captured "
+          "wire sequence this function produces); fresh r2 af/axt/pdf "
+          "2026-08-15 against TLB.dll md5 193d9b2ce0a4b77ae9b78262bd06c0fc",
+          0, 1, 0, 0, 0 },
+        { "TLB.dll", 0x100298b0, "tlb_afe_gain_write",
+          "The AFE GAIN register write function -- the address README.md's "
+          "\"AFE gain -- honestly unresolved\" section asked for, found "
+          "this pass. Self-naming string \"FN_bDrvPutCcdAtoDGains\" exists "
+          "in this exact binary at 0x10063b4c (found via `izz~AtoD`, "
+          "alongside \"FN_bDrvPutCcdAtoDOffsets\" at 0x10063b18 -- the "
+          "already-hooked tlb_afe_offset_write's own name), confirming the "
+          "vendor's own FN_bDrv... naming convention includes this "
+          "function; the string itself is referenced only from the shared "
+          "name-lookup/logging dispatcher (fcn.100170b0, a big "
+          "switch-on-command-id table that also references "
+          "\"FN_bDrvLampOn\"'s and \"FN_bDrvCcdAcquireControl\"'s own name "
+          "strings the same indirect way), NOT from inside 0x100298b0's "
+          "own body -- so the name<->address link here is by STRUCTURAL "
+          "match, not a literal in-body self-reference, same standard "
+          "already used to identify tlb_afe_offset_write in the first "
+          "place. That structural match is exact: 0x100298b0 sits "
+          "immediately before tlb_afe_offset_write (0x100299c0) in .text, "
+          "same shape (in-degree 8, cyclomatic-complexity 13 vs the "
+          "offset function's 19), and writes CCD board reg 0x84 with "
+          "indices 2, 3, 4 (`push 2/push 0x84`, `push 3/push 0x84`, "
+          "`push 4/push 0x84`, each followed by a call to the same "
+          "cache-check helper fcn.1000a5d0 then the same PutRegisterWord "
+          "primitive fcn.1001acd0 the offset function also calls) -- "
+          "exactly docs/55's captured steps 19-21 (`0x44 0x84 idx 2/3/4 "
+          "= gain R/G/B`, all value 0x000D=13), as opposed to the offset "
+          "function's idx 5/6/7. `axt` finds 8 genuine CALL-type xrefs "
+          "from 8 real call sites (0x1001e242, 0x1001ff3b, 0x1001ffaf, "
+          "0x100208f9, 0x10020fd0, 0x1002120a, 0x100213a9, 0x1002df92), "
+          "the same call-reachability bar tlb_afe_offset_write meets. "
+          "Prologue: `push ebx; mov ebx,[esp+8]` -- exactly 5 bytes, no "
+          "relative jump/call, a clean MinHook target.",
+          "README.md \"AFE gain -- honestly unresolved\" (the search "
+          "strategy this hook is the result of); docs/55 steps 19-21 "
+          "(captured 0x44/0x84 idx2/3/4 gain writes this function "
+          "produces); fresh r2 izz/af/axt/pdf 2026-08-15 against TLB.dll "
+          "md5 193d9b2ce0a4b77ae9b78262bd06c0fc",
+          0, 1, 0, 0, 0 },
+        { "TLB.dll", 0x1002c340, "tlb_ccd_acquire_control",
+          "The CCD acquire-on/off toggle function docs/40 SS11 names "
+          "\"FN_bDrvCcdAcquireControl\" (\"sets bit 0 of CCD register "
+          "0x82\"), matching docs/55's captured steps 2/18/35/40/43 (board "
+          "0x44 reg 0x82 idx 0: mask 0x0060 vs acquire-on 0x0061). LOWER "
+          "CONFIDENCE ON THE NAME SPECIFICALLY than the other two new "
+          "entries above: the self-naming string \"FN_bDrvCcdAcquireControl\" "
+          "(0x10064220, found via the same `izz~bDrv` scan) is, like the "
+          "other FN_bDrv* strings, referenced only from the shared "
+          "name-lookup dispatcher fcn.100170b0 -- never from inside "
+          "0x1002c340's own body -- so this address is identified by "
+          "BEHAVIOR AND POSITION, not a direct citation: it validates "
+          "exactly the CCD acquisition-window parameters this role "
+          "implies (four embedded assert-message strings at 0x10066f38, "
+          "0x10066efc, 0x10066e58, 0x10066e08, 0x10066ddc name "
+          "`uiCcdPixelHeight`, `uiCcdPixelOffset`, `uiCalibrationOffset`, "
+          "`uiCcdIntegrationTime` by name), then calls "
+          "fcn.10029770 -- a small (149-byte, in-degree 4, real CALL "
+          "xrefs only) shared primitive that merges a caller-supplied "
+          "value into a cached word at [this+0x358] and writes it to reg "
+          "0x82 idx 0 via the same fcn.1001acd0 PutRegisterWord primitive "
+          "the gain/offset functions use -- TWICE, at 0x1002c4c3 and "
+          "0x1002c518, consistent with one call setting the mask "
+          "(0x0060-shaped base) and a later one toggling the acquire bit "
+          "(0x0061). This function's own address range (0x1002c340-"
+          "0x1002c5f0) ends EXACTLY where tlb_lamp_on/FN_bDrvLampOn "
+          "begins -- the two are adjacent in the same translation unit, "
+          "consistent with docs/40's own description of these as "
+          "sibling FN_bDrv... driver functions. `axt` finds 8 genuine "
+          "CALL-type xrefs from 6 distinct callers (0x1001fe10 x3, "
+          "0x10020590, 0x10020dc0 x2, 0x1002d5c0, 0x1002dbd0 -- three of "
+          "which, 0x1001fe10/0x10020dc0/0x1002dbd0, are also callers of "
+          "tlb_lamp_on, i.e. the real driver dispatch layer calls both "
+          "from the same handful of higher-level functions), zero "
+          "CODE-type xrefs. Prologue: `push ecx; mov eax,[esp+0x1c]` -- "
+          "exactly 5 bytes, no relative jump/call, a clean MinHook "
+          "target. This is a real, confirmed, independently "
+          "call-reachable entry by every mechanical test this project's "
+          "own axt-based safety check applies -- flagged as "
+          "behavior-inferred rather than address-cited only so a future "
+          "reader knows the difference from tlb_lamp_on's docs/40-cited "
+          "address above.",
+          "docs/40 SS11 (\"FN_bDrvCcdAcquireControl sets bit 0 of CCD "
+          "register 0x82\"); docs/55 steps 2/18/35/40/43 (captured "
+          "0x44/0x82 idx0 mask/acquire writes this function produces); "
+          "fresh r2 izz/af/axt/pdf 2026-08-15 against TLB.dll md5 "
+          "193d9b2ce0a4b77ae9b78262bd06c0fc",
+          0, 1, 0, 0, 0 },
     };
 
     int i;

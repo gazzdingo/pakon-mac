@@ -102,16 +102,25 @@ extern "C" {
 
 /* ---------------------------------------------------------------------
  * Fixed slot count. The asm side (hookstub.S) hand-defines exactly this
- * many Thunk_NN entry stubs (Thunk_00 .. Thunk_24). hookdll.c's real table
- * uses all 25 for the documented PSI.exe hooks; selftest.c reuses the same
+ * many Thunk_NN entry stubs (Thunk_00 .. Thunk_27). hookdll.c's real table
+ * uses all 28 for the documented PSI.exe hooks; selftest.c reuses the same
  * fixed slots 0..N for its own small synthetic table. Never grow this
  * without adding matching Thunk_NN stubs in hookstub.S -- see hookstub.S's
  * own Thunk_23 comment (docs/74 §46) for what happens when this drifts:
  * a prior commit bumped this define and inserted a table[] entry
  * mid-array without adding a matching thunk, silently leaving one real
- * hook's entryThunk NULL.
+ * hook's entryThunk NULL. Bumped 25->28 (docs/74 §49, 2026-08-15): three
+ * new TLB.dll lamp/AFE/CCD-acquire hooks
+ * (tlb_lamp_on, tlb_afe_gain_write, tlb_ccd_acquire_control) appended at
+ * the END of table[] in hookcore_real_table.c, same reasoning as
+ * area_image_apply_lut's own append-only placement above -- so no
+ * existing entry's index (and therefore no existing entry's thunk
+ * assignment) moves again. Thunk_25/26/27 added to hookstub.S in the
+ * same pass, matching thunks[25..27] in hookcore_real_table.c -- the
+ * exact "forgot the matching thunk" mistake §46/§47 found and fixed is
+ * the one thing this bump was double-checked against.
  * --------------------------------------------------------------------- */
-#define HOOKCORE_MAX_HOOKS 25
+#define HOOKCORE_MAX_HOOKS 28
 
 /* Must exactly match the PUSHAD+PUSHFD+index+retaddr stack layout that
  * hookstub.S's SharedEntryHandler builds -- see that file's header
@@ -318,7 +327,8 @@ typedef struct HookEngine {
  * one of those two object files is ever linked into a given binary. */
 extern HookEngine g_engine;
 
-/* Populate g_engine.defs[]/count with the REAL 23-hook PSI.exe table
+/* Populate g_engine.defs[]/count with the REAL PSI.exe hook table (28
+ * entries as of docs/74 SS49; originally a 23-hook, then 25-hook table)
  * (verbatim transcription of agent.js's HOOKS array -- see
  * hookcore_real_table.c and its own header for the address-by-address
  * citations, and tools/re/live_hooks/win_inject/check_table_sync.py for
@@ -401,6 +411,7 @@ extern void Thunk_15(void); extern void Thunk_16(void); extern void Thunk_17(voi
 extern void Thunk_18(void); extern void Thunk_19(void); extern void Thunk_20(void);
 extern void Thunk_21(void); extern void Thunk_22(void);
 extern void Thunk_23(void); extern void Thunk_24(void);
+extern void Thunk_25(void); extern void Thunk_26(void); extern void Thunk_27(void);
 
 #ifdef __cplusplus
 }

@@ -154,11 +154,19 @@ _OnReturnThunk:
      * flags value instead of a known-correct one. */
 
 /* ---------------------------------------------------------------------
- * Thunk_00 .. Thunk_24 -- 25 fixed slots (HOOKCORE_MAX_HOOKS in
+ * Thunk_00 .. Thunk_27 -- 28 fixed slots (HOOKCORE_MAX_HOOKS in
  * hookcore.h). Each is just `push <its own index>; jmp SharedEntryHandler`
  * -- deliberately identical in shape so a bug in one is a bug in all of
- * them (uniform, mechanically-checkable, not 25 independently-hand-
+ * them (uniform, mechanically-checkable, not 28 independently-hand-
  * written variants that could each have their own typo).
+ *
+ * Thunk_25/26/27 (docs/74 §49, 2026-08-15): added alongside the three new
+ * TLB.dll lamp/AFE-gain/CCD-acquire-control hooks appended at the END of
+ * hookcore_real_table.c's table[] (tlb_lamp_on, tlb_afe_gain_write,
+ * tlb_ccd_acquire_control). Added in the SAME commit as the
+ * HOOKCORE_MAX_HOOKS 25->28 bump and the new thunks[25..27] entries in
+ * hookcore_real_table.c, specifically to not repeat the Thunk_23 bug
+ * described below (a table[] bump that landed without its matching thunk).
  *
  * Thunk_23 (added docs/74 §46, alongside Thunk_24): fixes a real, latent
  * bug this file did NOT introduce but that a prior commit (6d2e36a,
@@ -218,3 +226,6 @@ _Thunk_\sfx:
     DEFTHUNK 22, 22
     DEFTHUNK 23, 23
     DEFTHUNK 24, 24
+    DEFTHUNK 25, 25
+    DEFTHUNK 26, 26
+    DEFTHUNK 27, 27

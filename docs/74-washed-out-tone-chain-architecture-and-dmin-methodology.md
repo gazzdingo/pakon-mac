@@ -9736,3 +9736,303 @@ throughout — every number reported above is a LUT table value, a shift
 constant, a pointer address, or a percentile of a rendered/reference image
 array, none of it raw scanned pixel content from `captures/`.
 
+
+
+## 49 — Extending `win_inject` past the colour pipeline: three real, confirmed
+lamp/AFE/CCD-acquire hooks added to the live hook harness, and the honest
+limit of what any of this can capture without a change to the operational
+sequence, not the tooling
+
+The live hook harness (`tools/re/live_hooks/win_inject/`) has, since §46/§47,
+only ever hooked `PakonIMAu.dll` colour-pipeline functions — tone chain, SBA,
+FUGC, ICC, `analyzeArea`. `docs/55-vendor-ccd-bringup-captured.md` and
+`docs/59-lamp-sequence-captured.md` document a real, wire-captured lamp
+warm-up + CCD dark-offset-calibration sequence that happens entirely through
+a different mechanism: raw register writes (board `0x40` for light, `0x44`
+for CCD/motor) built by `TLB.dll` and sent via `DeviceIoControl` /
+`IOCTL_EZUSB_VENDOR_OR_CLASS_REQUEST` — invisible to a harness that only
+hooks `PakonIMAu.dll`. The one existing exception, `tlb_afe_offset_write`
+(`FN_bDrvPutCcdAtoDOffsets`, `TLB.dll:0x100299c0`), covers only the AFE
+*offset* write, one piece of that sequence.
+
+This section adds three new, independently confirmed `TLB.dll` hooks
+covering the rest of the sequence that has a real, call-reachable entry
+point, and is honest about the one piece that does not.
+
+### 49.1 — Method: the actual vendor DLLs, not assumed addresses
+
+Every address below was found and verified against the real, hash-verified
+`TLB.dll` extracted fresh this pass from `research/sdk/PAKONF135.iso`
+(md5 `193d9b2ce0a4b77ae9b78262bd06c0fc`, size 536,576 bytes — the exact file
+every other `TLB.dll` citation in `hookcore_real_table.c` already traces to;
+`TLA.dll` md5 `33f7a247d79286a31b192e83d3c37425` and `PakonIMAu.dll` sha256
+`0ede8d98…` were re-extracted and re-hashed the same pass and match too).
+This also independently resolves a caveat the harness's own README has
+carried since it was written ("not independently re-confirmed for
+TLA.dll/TLB.dll specifically"): `r2 -c 'i~baddr'` against the real PE headers
+of all three DLLs returns `0x10000000` for every one of them — the
+`0x10000000`-base convention this project's docs have used throughout is
+now independently confirmed for `TLA.dll`/`TLB.dll`, not just assumed by
+analogy with `PakonIMAu.dll`.
+
+Every candidate address was run through the same `af`/`axt` cross-reference
+safety check §46/§47 established (and that found the five `notCallReachable`
+addresses currently disabled in the table): `r2 -e bin.baddr=0x10000000 -c
+'aaa; af @ <va>; axt @ <va>; pdf @ <va>'`, checked for (a) `af` resolving to
+the address itself, not walking back to an earlier enclosing function, (b)
+`axt` finding genuine `CALL`-type xrefs, never only `CODE`-type (jmp/jcc)
+ones, and (c) the first 5+ bytes of the prologue being an ordinary,
+statically-decodable instruction sequence with no relative jump/call landing
+inside them — the one hard precondition `hookstub.S`'s return-address-swap
+technique depends on.
+
+### 49.2 — `tlb_lamp_on` (`TLB.dll:0x1002c5f0`) — the real lamp enable + duty
+write
+
+`docs/40-lamp-on-sequence.md` §3 already names this exact address
+(`FN_bDrvLampOn = fcn.1002c5f0`), derived statically before this project had
+a live hook harness at all. This pass re-confirms it independently, against
+the actual binary, rather than trusting the citation on faith: `af @
+0x1002c5f0` resolves to itself (`minaddr==maxaddr-2175==0x1002c5f0`,
+656 instructions), `axt` finds **8 genuine `CALL`-type xrefs** from 6
+distinct caller functions (`0x1001e7b0` ×3, `0x1001ec90`, `0x10020dc0`,
+`0x1002d5c0`, `0x1002d7f0` — `FN_bBeforeScan` per `docs/59`'s own header
+note — `0x1002dbd0`), zero `CODE`-type xrefs. The prologue is an entirely
+ordinary MSVC frame: `push ebp; mov ebp,esp; and esp,0xfffffff8; sub
+esp,0x54` — stack realignment for the function's own FPU/double-precision
+locals (the very next instruction is `fld qword [0x10067008]`) — no relative
+jump/call anywhere near the bytes MinHook needs to relocate.
+
+Functionally, this one call writes the light board's `0x80` (enable mask),
+`0x81` (5-byte LED levels `[B,Ir,R,0,G]`) and `0x82` (12-byte PWM on-count
+sextet + period `N`) registers — exactly the packets `docs/59` captured at
+steps 16-18/80-82/100/114. This hook observes the same writes
+`tools/lamp_replay_vendor.py` sends deliberately from the host side; it does
+not send anything itself — like every hook in this harness, it only logs
+entry/exit of a function PSI's own code calls.
+
+### 49.3 — `tlb_afe_gain_write` (`TLB.dll:0x100298b0`) — the address the
+harness's own README asked for, found
+
+The README's "AFE gain — honestly unresolved" section named a concrete
+search strategy: grep the string table for a self-naming assert/log string
+near `bDrvPutCcdAtoDOffsets`, per the RE playbook (`docs/67` §4). Run for
+real this pass:
+
+```
+r2 -q -e bin.baddr=0x10000000 -c 'izz~AtoD' TLB.dll
+6508  ...  EC_CcdAtoDGainLimit
+6780  ...  FN_bDrvPutCcdAtoDOffsets     ; 0x10063b18
+6781  ...  FN_bDrvPutCcdAtoDGains       ; 0x10063b4c
+```
+
+The string exists, confirming the vendor's own naming convention includes
+this function — but, like every other `FN_bDrv…` string in this binary
+(`izz~bDrv` finds ~60 of them, `FN_bDrvLampOn` and
+`FN_bDrvCcdAcquireControl`/`FN_bDrvCcdAquireControl` included), it is
+referenced only from a single shared name-lookup/logging dispatcher
+(`fcn.100170b0`, a big switch-on-command-id table that pushes a name string
+before calling a generic string-print helper for every case), never from
+inside the real function's own body. So the name↔address link here is by
+**structural match**, not a literal in-body self-reference — the same
+standard already used to identify `tlb_afe_offset_write` in the first
+place, applied fresh rather than assumed transferable.
+
+The structural match is exact. `0x100298b0` sits immediately *before*
+`tlb_afe_offset_write` (`0x100299c0`) in `.text` — same shape (in-degree 8,
+cyclomatic-complexity 13 vs. the offset function's 19, 268 bytes vs. 370),
+and writes CCD board register `0x84` with indices **2, 3, 4** (three blocks,
+each `push <idx>; push 0x84; push ebx; lea ecx,[esi+0x1c8]; call
+fcn.1000a5d0` [cache-check] `; call fcn.1001acd0` [the same
+`FN_bDrvPutRegisterWord` primitive the offset function also calls]) —
+exactly `docs/55`'s captured steps 19-21 (`0x44 0x84 idx 2/3/4 = 0x000D`,
+gain R/G/B = 13), as opposed to the offset function's idx 5/6/7. `axt` finds
+**8 genuine `CALL`-type xrefs** from 8 real call sites (`0x1001e242`,
+`0x1001ff3b`, `0x1001ffaf`, `0x100208f9`, `0x10020fd0`, `0x1002120a`,
+`0x100213a9`, `0x1002df92`) — the same call-reachability bar
+`tlb_afe_offset_write` meets. Prologue: `push ebx; mov ebx,[esp+8]` —
+exactly 5 bytes, no relative jump/call, a clean MinHook target.
+
+This closes the harness's own open TODO: the AFE **gain** register write now
+has a real, confirmed, hooked entry point, distinct from the offset one.
+
+### 49.4 — `tlb_ccd_acquire_control` (`TLB.dll:0x1002c340`) — real and
+call-reachable, but the name is inferred, not cited
+
+`docs/40` §11 names a function it calls `FN_bDrvCcdAcquireControl`, and
+describes its job as "sets bit 0 of CCD register 0x82" — matching
+`docs/55`'s captured steps 2/18/35/40/43 (board `0x44` reg `0x82` idx 0:
+mask `0x0060` vs. acquire-on `0x0061`). This is the weakest-confidence of
+the three new hooks specifically on the **name attribution** — worth
+stating plainly rather than presenting it with the same confidence as
+§49.2's docs-cited address.
+
+The self-naming string `FN_bDrvCcdAcquireControl` does exist in this binary
+(`0x10064220`, found the same `izz~bDrv` way), but — like `FN_bDrvLampOn`'s
+and `FN_bDrvPutCcdAtoDGains`'s own strings — it is referenced only from the
+shared dispatcher `fcn.100170b0`, never from inside `0x1002c340`'s own body.
+So this address is identified by **behavior and position**, not a direct
+citation:
+
+- It validates exactly the CCD acquisition-window parameters that role
+  implies — four embedded assert-message strings name them explicitly:
+  `"0 != (uiCcdPixelHeight % 4)"` (`0x10066efc`), `"(CALIBRATION_HEIGHT +
+  CALIBRATION_OFFSET) < (uiCcdPixelHeight + uiCcdPixelOffset)"`
+  (`0x10066e58`), `"((CALIBRATION_HEIGHT / 2) + CALIBRATION_OFFSET_BINNING)
+  < (uiCcdPixelHeight + uiCcdPixelOffset)"` (`0x10066f38`),
+  `"uiCcdPixelOffset < uiCalibrationOffset"` (`0x10066e08`), and
+  `"uiCcdIntegrationTime"` (`0x10066ddc`).
+- It then calls `fcn.10029770` — a small (149-byte, in-degree 4, `CALL`-only
+  xrefs), shared primitive that merges a caller-supplied value into a
+  cached word at `[this+0x358]` and writes it to reg `0x82` idx 0 via the
+  same `fcn.1001acd0` `PutRegisterWord` primitive the gain/offset functions
+  use — **twice**, at `0x1002c4c3` and `0x1002c518`, consistent with one
+  call setting the mask (`0x0060`-shaped base) and a later one toggling the
+  acquire bit (`0x0061`).
+- Its own address range (`0x1002c340`–`0x1002c5f0`) ends **exactly** where
+  `tlb_lamp_on`/`FN_bDrvLampOn` begins — adjacent in the same translation
+  unit, matching `docs/40`'s own description of these as sibling
+  `FN_bDrv…` driver functions.
+- `axt` finds **8 genuine `CALL`-type xrefs** from 6 distinct callers
+  (`0x1001fe10` ×3, `0x10020590`, `0x10020dc0` ×2, `0x1002d5c0`,
+  `0x1002dbd0`) — three of which (`0x1001fe10`, `0x10020dc0`, `0x1002d5c0`)
+  are also callers of `tlb_lamp_on`, i.e. the real driver-dispatch layer
+  calls both from the same handful of higher-level functions. Zero
+  `CODE`-type xrefs. Prologue: `push ecx; mov eax,[esp+0x1c]` — exactly 5
+  bytes, no relative jump/call.
+
+By every mechanical test this project's own `axt`-based safety check
+applies, this is a real, independently call-reachable function with a clean
+prologue — safe to hook by the same standard as the other two. The name is
+flagged as behavior-inferred, not address-cited, only so a future reader
+knows the difference from §49.2's docs-cited address, not because the
+evidence for the address itself is weaker.
+
+### 49.5 — What was NOT added, and why
+
+No fourth hook was added for anything upstream of these three (transport
+init, focus steppers, filter-wheel-adjacent functions `docs/40` §12 already
+showed do not exist on the F-135). Nothing in `docs/55`/`docs/59`'s own
+captured sequence pointed at a distinct, separately-callable entry beyond
+the three above that this pass could confirm — the register-level protocol
+itself (board `0x40`/`0x44`, the specific register numbers) is not, on its
+own, evidence of a fourth callable function; every other register write in
+`docs/55`'s table (the `0x82` idx 1/2/3/4/5/9/10/11 CCD setup writes, the
+`0x8B`/`0x8C`/`0x8D`/`0x8F`/`0xD0`/`0xD1` light-board thresholds) is built
+inline by the same handful of driver functions already covered — confirming
+that would need the same address-by-address `af`/`axt` treatment given to
+the three above, not assumed from the register table alone. Rather than
+force a fourth low-confidence hook into the table against real hardware,
+this is left as a known gap, the same honesty standard §46 applied to the
+five `notCallReachable` entries already in the table.
+
+### 49.6 — Build and verification
+
+Added following the exact established pattern, checked at every step
+against the real bug §46/§47 found and fixed (a `HOOKCORE_MAX_HOOKS` bump
+that landed without its matching `Thunk_NN`, silently leaving one hook's
+`entryThunk` NULL):
+
+- `hookcore_real_table.c`: three entries **appended** to the end of
+  `table[]` (never inserted mid-array — the exact discipline that would
+  have prevented the Thunk_23 bug in the first place), each with the full
+  `af`/`axt`/`pdf` citation above. `thunks[]` extended with `&Thunk_25,
+  &Thunk_26, &Thunk_27` in the same append-only order.
+- `agent.js`: the same three entries appended to `HOOKS`, same `(dll, va,
+  id)` triples, same order.
+- `hookcore.h`: `HOOKCORE_MAX_HOOKS` bumped `25` → `28`; `extern void
+  Thunk_25/26/27(void)` declarations added.
+- `hookstub.S`: `DEFTHUNK 25, 25` / `26, 26` / `27, 27` added immediately
+  after `DEFTHUNK 24, 24` — the matching thunks the bump above requires.
+- `python3 tools/re/live_hooks/win_inject/check_table_sync.py` →
+  `OK: 28 hooks, identical (dll, va, id) in identical order.`
+- `./build.sh` → clean build, `-Wall -Wextra` warnings only in
+  never-called `mincrt.h` helper functions (pre-existing, unrelated to this
+  change), import table re-verified as **KERNEL32.dll only**, subsystem
+  stamp re-verified as **5.1 (XP)**, both binaries confirmed genuine 32-bit
+  PE (`file`).
+- `./build.sh selftest` (under Wine) → **`ALL PASS (0 failure(s))`**,
+  including the 32,000-call extreme-concurrency stress section (8 threads
+  × 4,000 iterations each on the same hook, released simultaneously) —
+  unchanged behavior from before this pass, confirming the
+  `HOOKCORE_MAX_HOOKS` bump and new thunks did not disturb the shared
+  engine mechanism itself. (`selftest.c` uses its own separate 4-hook
+  synthetic table, per its own header comment, so this run does not
+  directly exercise `Thunk_25`/`26`/`27` or the new 28-entry real table —
+  it verifies the engine mechanism generally still works, the same
+  guarantee every prior selftest run has given for the real table's
+  correctness, which is checked by compilation + `check_table_sync.py`
+  instead.)
+- `README.md`'s hook table and "AFE gain" section updated to match (now
+  "AFE gain — resolved 2026-08-15 (docs/74 §49)").
+
+Local build artifacts (this pass, not yet copied to any XP box):
+
+```
+tools/re/live_hooks/win_inject/hookdll.dll   85,547 bytes  md5 f614aaaba0043db3c536314a60e5ca71
+tools/re/live_hooks/win_inject/injector.exe  14,053 bytes  md5 76626ad0a50f10a9c7aa6f505ab41cab
+```
+
+### 49.7 — Drop server: unreachable from this session
+
+`http://192.168.86.67:8000/` (a private-LAN address) did not respond from
+this session's environment (`curl -m 5` → connection failure, HTTP 000) —
+this sandbox has no route to that host. No upload was attempted, and no
+`hookdll_v7.dll`/`v8` naming decision was made, since there was no way to
+check whether a parallel `analyzeArea` pass had already claimed `v7`. The
+two build artifacts above are sitting at their ordinary local paths,
+unrenamed — copy them from there (or rebuild with `./build.sh` from a
+machine that can reach the drop server) when doing the actual upload.
+
+### 49.8 — The real constraint this does NOT solve: cold-power-on front-panel
+LED sequence still requires a different capture procedure, not more hooks
+
+Even with all three new hooks installed, **this harness still cannot see
+anything that happens before `injector.exe` attaches to a running
+`PSI.exe`.** That is a fundamental property of the injection technique
+(`OpenProcess`/`CreateRemoteThread`/`LoadLibraryA` into an already-running
+process), not a gap in hook coverage — no number of additional `TLB.dll`
+hooks changes it.
+
+This matters specifically for the separate, still-open question from
+earlier tonight: the single diagnostic LED already investigated in
+`analysis/led_decode.md` is one thing, but a distinct **multi-light
+front-panel status bank** has never been found in any capture so far. If
+that bank's behavior is driven by firmware state that is only set once, at
+power-on or at PSI's own startup/initialization (before any scan is ever
+triggered) — plausible for a "device is alive" status indicator, as opposed
+to per-scan lamp/LED registers this section's new hooks do cover — then
+every capture taken so far, including any future one using these three new
+hooks, structurally cannot see it: `injector.exe` was run, in every capture
+to date, against an *already-running* PSI process, well after both the
+scanner's own power-on and PSI's own startup sequence had already
+completed.
+
+**Operational guidance for the next real capture attempt, stated plainly so
+it is not repeated:**
+
+1. **Start `injector.exe` first** — but note it needs a running `PSI.exe`
+   process to attach to (`OpenProcess` needs a target PID), so in practice
+   this means: have `injector.exe` ready to run, and run it **the moment**
+   PSI's process appears, before manually interacting with PSI at all.
+2. **Then power-cycle the scanner, or restart PSI** (whichever one the
+   front-panel status bank's behavior is actually tied to — this is itself
+   unknown, and either variant is worth trying if the first doesn't show
+   it) — with the hook DLL already attached and logging.
+3. **Only then trigger a scan**, the same as every prior capture.
+
+This is a real change in procedure from every capture taken so far (which
+have all been "start PSI, then attach, then scan") — not a claim that these
+three new hooks, or any hook this harness could add, would see the
+front-panel bank on their own. If the bank's behavior turns out to be
+commanded by the same `TLB.dll` driver functions this section just hooked
+(plausible, since `tlb_lamp_on`/`tlb_ccd_acquire_control` are both called
+from `FN_bDrvInitCcd`-adjacent callers per §49.2/§49.4's own caller lists,
+and `docs/40` §12 notes `FN_bDrvInitCcd` lamps on before any FPGA
+programming), then attaching before PSI's own startup sequence runs, per
+the procedure above, is what would let the *already-added* hooks in this
+section see it — no fourth hook would be needed. If it turns out to be
+commanded some other way entirely (a separate board, a separate firmware
+path never captured in `docs/55`/`docs/59`), that would only be discoverable
+from what a capture taken this way actually shows — not something to guess
+at or solve in this pass.

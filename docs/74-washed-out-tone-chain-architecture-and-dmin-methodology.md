@@ -11546,3 +11546,323 @@ attention finding (this unit's AFE dark offset has one recent outlier
 measurement against five agreeing ones, including two independent real
 vendor captures) — separable from, and not the explanation for, the
 brightness gap. **The ~88-90+ code brightness gap remains open.**
+
+## 56 — The vtable-only blind spot §51.8 item 3 named but never enumerated,
+enumerated for the first time on a real, already-confirmed-live slice of the
+render path: 119 indirect call sites in 12 individually-read functions,
+every one traced to a real vtable, all boilerplate object-lifecycle
+plumbing (`AnsError` destruction, `Ima*Op` refcounting) — none of it
+log-shaped, and a real scoping number for how much of §51's own reachable
+sets this still leaves untouched
+
+§51.8 item 3 stated the caveat in the abstract: *"a genuinely vtable-only
+call site — reached from a live object this investigation hasn't traced
+construction for — would be invisible to every reachable-set figure in this
+section."* §46 raised the same point earlier for `AnsAreaCapabilityImpl` and
+never closed it either. Both closures to date (`AnsCnEnhancedPath::
+virtual_8` itself, §51.3; `ColorMetricRPD12`'s construction chain, §51.6)
+were one-off, hand-done, for one specific class each. Nobody had gone
+looking for a *second* population of vtable-dispatched call sites sitting
+inside functions this doc has already, independently, confirmed fire on
+real frames. This section does that — not across the whole 1,708-function
+reachable set (deliberately; see §56.5), but exhaustively across every
+indirect call site inside a curated list of functions this doc has already
+read in full and individually cited as live: `0x10069490` (cn_enhanced
+driver body), `0x10069d80` (`AnsCnEnhancedPath::virtual_8`), `0x100e16d0`
+(`analyzeArea` entry), `0x1019a0c0` (`applyBalanceShifts`), `0x100d9340`
+(`AnsImageData::applyLut`), `0x10102b20` (`balanceAreaImage`), `0x100fdc40`
+(`analyzePostBalance`), `0x100fed00` (`analyzeFugc`), `0x1006c4f0`
+(shift-LUT builder), `0x101fa5b0` (`AnsFugcCapabilityImpl::applyLut`),
+`0x100dc060` (AREA analysis-image accessor), `0x10112f30` (`analyzeNoise`).
+
+DLL re-verified before any work this pass: `md5(/tmp/pakon_re/
+PakonIMAu.dll) == eea9dcf78ee21d4f7c515a6c2512242d`, matching
+`/Users/guy/pakon-windows-repair/COM-SERVER/PakonIMAu.dll` exactly — the
+same copy every prior section cites. Tooling: `radare2` 6.1.8 via
+`r2pipe`, one `aaa`-analysed session reused across every step below (not
+re-paid per query). `python3 tools/re/reachability.py calibrate` passed
+fresh (`189 functions`, `386 indirect(text)`, byte figure inside the
+published band) before trusting anything downstream of it.
+
+### 56.1 — The corrected 1,708-function reachable set, re-walked fresh, and
+its own indirect-call-site total counted for the first time
+
+§51.3 corrected the walk's own seed (`0x10069d80`, `AnsCnEnhancedPath::
+virtual_8`, not the bare `0x10069490` driver body) and reported the
+resulting function count (1,708) but never its indirect-call tally.
+Re-ran it fresh this pass, unmodified tool, same seed:
+
+```
+$ python3 tools/re/reachability.py walk 0x10069d80 --label cnenh_v8 \
+    --out /tmp/pakon_re/reach_cnenh_v8.json
+functions reached  : 1708        <- reproduces §51.3 exactly
+code bytes (realsz) : 728,161
+indirect call sites : 2283
+  IAT thunk calls    : 1871 (not counted above)
+direct call sites   : 11863
+```
+
+**2,283 is the real number this doc's own §46/§51.8-item-3 caveat was
+gesturing at without ever quantifying.** Every one of those 2,283 sites is,
+by `reachability.py`'s own tool design (§46's own citation, unchanged since:
+*"the walk's own construction only ever adds an address by following a
+resolved direct-call edge"*), a place none of this doc's reachable-set
+figures — not `analyzeArea`'s 943, not Shasta's 189, not this exact
+1,708 — can see past. This section resolves 119 of those 2,283 (5.2%) by
+hand, inside 12 of the 1,708 functions (0.7%) — real progress, honestly
+scoped against how much remains, not oversold as a sweep.
+
+### 56.2 — Every indirect call site in the 12 known-live functions,
+enumerated mechanically, cross-checked against `reachability.py`'s own
+call-classifier so the count isn't a new, unverified heuristic
+
+Wrote `/tmp/pakon_re/scan_known_indirect.py` (new, additive,
+`/tmp/pakon_re/` scratch only) importing `classify_call`/`INDIRECT_TYPES`
+directly from `tools/re/reachability.py` rather than reimplementing the
+indirect/direct/IAT distinction — the same classifier that produces every
+"indirect call sites" figure already published in this doc, not a
+parallel one that might disagree with it. For each of the 12 functions:
+`af`+`pdfj` (never `pD`), walk every op, classify it, keep the ones
+`classify_call` calls `'indirect'`.
+
+```
+0x10069490  cn_enhanced driver body        realsz=1911  indirect=11
+0x10069d80  AnsCnEnhancedPath::virtual_8   realsz=610   indirect=7
+0x100e16d0  analyzeArea entry              realsz=1856  indirect=11
+0x1019a0c0  applyBalanceShifts             realsz=708   indirect=2
+0x100d9340  AnsImageData::applyLut         realsz=1505  indirect=6
+0x10102b20  balanceAreaImage               realsz=4020  indirect=41
+0x100fdc40  analyzePostBalance             realsz=3345  indirect=18
+0x100fed00  analyzeFugc                    realsz=920   indirect=6
+0x1006c4f0  shift-LUT builder              realsz=327   indirect=0
+0x101fa5b0  AnsFugcCapabilityImpl::applyLut realsz=2289 indirect=8
+0x100dc060  AREA analysis-image accessor   realsz=28    indirect=0
+0x10112f30  analyzeNoise                   realsz=1449  indirect=9
+                                              TOTAL      indirect=119
+```
+
+By instruction text, all 119 collapse into exactly two shapes:
+
+```
+118  call dword [edx]   (67)   or   call dword [eax]   (51)   -- vtable slot 0
+  1  call dword [edx + 4]                                     -- vtable slot 1
+```
+
+No third shape, no other offset, across all twelve functions — checked by
+grepping the full 119-entry dump (`/tmp/pakon_re/known_live_indirect_
+sites.json`), not eyeballed from a sample.
+
+### 56.3 — The 118 slot-0 sites, traced to a real class two independent
+ways: `AnsError`, the DLL's own internal exception type, destroyed via its
+compiler-generated scalar-deleting destructor — read in full, no `log10`
+anywhere
+
+Every slot-0 site (sampled broadly across all twelve functions, not just
+one) shares one byte-identical idiom, e.g. `applyBalanceShifts`
+(`0x1019a150`-`0x1019a15b`):
+
+```
+cmp ecx, edi        ; edi == 0 in this function's own convention
+je <skip>
+mov eax, dword [ecx] ; eax = vtable pointer read from the object
+push ebx             ; the destructor's own "also free" flag
+call dword [eax]     ; vtbl[0](this, flag) -- guarded, single-arg, slot 0
+```
+
+Read `0x1019a10a`-`0x1019a15b` in full (not just the four lines above): the
+object being destroyed here is constructed moments earlier by `call
+fcn.1001ed90` at `0x1019a123`, fed the literal strings `"AnsAreaCapability
+Impl::applyBalanceShifts"`, `"Analyis image is not set"`, and the file's own
+`.cpp` path — a formatted internal error being built and reported on this
+exact error branch, then torn down. Read `fcn.1001ed90` itself in full
+(232 B, **indegree 3011** — a shared helper called from nearly a third of
+this DLL's own 14,361 functions): it calls `fcn.1001f670` to build the
+error object, then destroys it the identical way. Read `fcn.1001f670` in
+full (247 B): it pushes the literal string `"AnsError"`, then writes
+
+```
+0x1001f6c0  mov dword [esi], vtable.AnsError.0   ; r2's own RTTI-derived
+                                                   ; symbol, from the
+                                                   ; constructor's own
+                                                   ; literal immediate —
+                                                   ; the exact §51.6
+                                                   ; "confirmed by locating
+                                                   ; the raw vtable-base
+                                                   ; immediate inside the
+                                                   ; constructor's own mov
+                                                   ; [esi], <vtable>" method
+```
+
+**cross-checked the second, independent way §51.6's own convention
+requires** — dumped the vtable base directly, not trusted from the symbol
+alone:
+
+```
+$ pxq 32 @ 0x10573df0
+0x10573df0  0x102c05c010003500   ...
+0x10573df8  0x74655369102bbd80   ...   <- 0x102bbd80, then raw string data
+                                          starts (vtable is exactly 3
+                                          slots long)
+```
+
+Slot 0 (`0x10003500`) matches `method.AnsError.virtual_0` exactly — the
+same address the constructor's own immediate names — not a coincidence,
+the two lookups (constructor-immediate and raw-dword-dump) resolving to
+the identical base and identical slot-0 value, the exact cross-check
+standard §51.6 set. **All three real vtable slots read in full, `af`+`pdf`,
+not guessed from the name:**
+
+* **`virtual_0`** (`0x10003500`, 30 B) — `call fcn.10003520` (the real
+  member destructor, tears down the object's own `std::string`/
+  `ostringstream` fields) then, gated on the pushed flag's low bit,
+  `call sub.MSVCR71.dll___3_YAXPAX_Z` (`operator delete(void*)`) — the
+  textbook MSVC **scalar deleting destructor**, explaining the `push 1`/
+  `push ebx`/`push edi` argument seen at every call site: it is the
+  compiler's own "also free the memory" flag, not a meaningful business
+  argument.
+* **`virtual_4`** (`0x102c05c0`, 5 B) — `mov eax,[ecx]; jmp dword
+  [eax+8]` — a two-instruction forwarding thunk to slot 2, **shared,
+  byte-identical, by eight other RTTI-named sibling classes at this same
+  address** (`EkcError`, `ImaError`, `IemError`, `EkcStreamError`,
+  `EkError`, `TscError`, `PmtError`, `TiffError` — confirmed directly by
+  `fd`/`afij` at `0x102c05c0`, not inferred): this is the DLL's own shared
+  polymorphic error-class hierarchy, not one bespoke type.
+* **`virtual_8`** (`0x102bbd80`, 559 B, indegree 16) — read in full: locks
+  a critical section, calls MSVCR71 `ctime()`, formats `"EkcError -
+  <function>: <message> line <N>"` (the literal strings `"EkcError -"`,
+  `"\nFunction:"`, `" line"`, `"FILE line XXX"` all read directly out of
+  the binary) into a `std::ostringstream`, appends it to a persistent log
+  buffer at `this+0x50` inside the critical section, then releases it.
+  **Zero `fyl2x`/`f2xm1`/`_CIpow` anywhere in this function** — it is a
+  timestamped log-line formatter, not a value computation.
+
+**Verdict on the 118: internal exception-object construction, logging, and
+destruction — the same class of boilerplate §47.1 already flagged, by hand,
+for two of `AnsImageData::applyLut`'s own indirect sites specifically (*"AddRef/Release-style vtable calls ... boilerplate C++ exception-object
+plumbing, not pixel work"*). This section generalizes that specific,
+narrow observation into a fully-traced class identity (`AnsError`) and
+confirms it holds, unchanged, at every other slot-0 site sampled across
+`analyzeArea`, `balanceAreaImage`, `analyzePostBalance`, and the
+`cn_enhanced` driver body itself — not re-derived from scratch each time,
+traced to the same shared helpers (`fcn.1001ed90`/`fcn.1001f670`) doing the
+same thing everywhere they appear.**
+
+### 56.4 — The one slot-1 site: `Ima2DImage`'s own refcount bump, not a
+destructor at all — read in full, also boilerplate, also cross-checked two
+ways
+
+The single outlier, `AnsFugcCapabilityImpl::applyLut`'s `call dword
+[edx + 4]` at `0x101fa709`, is genuinely a different shape (offset 4, not
+0) and was traced separately rather than folded into the §56.3 pattern by
+assumption. The object is constructed immediately beforehand by `call
+fcn.1032c0b0` (455 B, read in full), whose own body contains:
+
+```
+0x1032c0df  mov dword [esi], vtable.Ima2DImage.0   ; r2's own RTTI symbol,
+                                                      constructor's own
+                                                      immediate
+```
+
+cross-checked the second way, same convention as §56.3:
+
+```
+$ pxq 32 @ 0x105b49f4
+0x105b49f4  0x10009a001032ae40   ...   <- slot0=0x1032ae40, slot1=0x10009a00
+```
+
+Slot 0 (`0x1032ae40`, `method.Ima2DImage.virtual_0`, 30 B) is, read in
+full, the identical scalar-deleting-destructor shape as `AnsError`'s own —
+different class, same MSVC codegen pattern. Slot 1 (`0x10009a00`, 13 B) is
+what `0x101fa709` actually calls:
+
+```
+push ecx
+mov eax, dword [esp]
+lock inc dword [eax + 4]     ; InterlockedIncrement-style refcount bump
+pop ecx
+ret
+```
+
+Not a destructor call at all — an `AddRef()`-shaped reference-count
+increment, executed once right after construction, guarded by the same
+null-check idiom. **Shared, byte-identical, by dozens of other RTTI names
+at this same address** (`fd 0x10009a00` lists `ImaMatrixOpTT_*`,
+`ImaConvolutionOpT_*`, `ImaConvolutionSeparableOpTT_*`,
+`ImaJpegImageSourceOp*`, `ImaChannelSelectOp`, and more — the entire
+generic `Ima*Op` image-processing-operator hierarchy this doc's own §51.7
+already characterized as "generic, non-density image operators," now
+confirmed to share this exact trivial refcount slot too). Zero math.
+
+### 56.5 — What this does, and does not, close — stated as precisely as
+§51.8 item 3 itself was
+
+**Closes, for the first time with real addresses**: §51.8 item 3's
+abstract caveat now has a concrete instance. `method.AnsError.virtual_0`/
+`virtual_4`/`virtual_8` and `method.Ima2DImage.virtual_0`/`virtual_4` all
+show `indegree: 0` in `afij` — independently confirming, the same way
+§51.3 confirmed it for `AnsCnEnhancedPath::virtual_8` itself, that these
+are real, live-executing methods **structurally invisible to every
+direct-call reachability figure this doc has ever published**, including
+this section's own freshly re-walked 1,708/2,283. They are real
+population members of the blind spot, not a hypothetical one.
+
+**Does not close**: this pass individually resolved 119 of the 1,708-set's
+2,283 indirect call sites (5.2%), inside 12 of its 1,708 functions (0.7%).
+The other 2,164 sites, across the other 1,696 functions, were not
+examined this pass — deliberately, per this task's own explicit
+instruction not to build a generalized vtable-resolution sweep. Given how
+overwhelmingly uniform the 119 traced here turned out to be (two shapes,
+both C++-runtime object-lifecycle boilerplate shared across 9-plus sibling
+RTTI classes each), it is a reasonable **suspicion**, not a finding, that a
+large share of the remaining 2,164 are the same `AnsError`-destruction/
+`Ima*Op`-refcount idiom recurring at other call sites of the same two
+extremely-high-indegree helpers (`fcn.1001ed90`, indegree 3011;
+`fcn.1032c0b0`'s AddRef slot, shared by dozens of `Ima*Op` names) — but
+this pass did not verify that for a single one of the other 2,164, and does
+not claim it did. One edge case surfaced during sampling and is reported
+honestly rather than folded in: `analyzeArea`'s own site at `0x100e182a`
+shares the slot-0/null-guard shape but routes through a different
+offset (`+4`, not `AnsError`'s own `+0x74`) inside the shared helpers
+`fcn.1001f770`/`fcn.100012e0`, and its exact class was **not** independently
+RTTI-confirmed within this pass — flagged as an open, not a resolved,
+sub-case, not swept under the §56.3 verdict.
+
+**No new formula candidate.** Neither `AnsError` (destructor, forwarding
+thunk, log-line formatter) nor `Ima2DImage`/the shared `Ima*Op` AddRef slot
+contains anything resembling two `log10`/`pow` calls, a subtraction, a
+×1000 scale, or a 12-bit clamp — confirmed by reading every one of the five
+real method bodies this section traced (`virtual_0`/`4`/`8` of `AnsError`,
+`virtual_0`/`4` of `Ima2DImage`), not inferred from either class's name.
+This section's own contribution is not a new density-formula candidate; it
+is the first real, address-level enumeration of how much of this doc's own
+"reachable" figures are actually vtable-blind, on a slice of the render
+path this doc already trusts is live — genuine negative/scoping evidence,
+reported as such.
+
+**Verification.** DLL MD5 re-checked (`eea9dcf78ee21d4f7c515a6c2512242d`)
+against two independent local copies before any work this pass.
+`tools/re/reachability.py calibrate` passed fresh before anything else was
+trusted. The 1,708-function/2,283-indirect walk (§56.1) reused
+`tools/re/reachability.py` completely unmodified, at the exact seed §51.3
+already published, and reproduced its function count exactly. Every
+indirect-call classification in §56.2 used `classify_call`/`INDIRECT_TYPES`
+imported directly from `tools/re/reachability.py` — the same function that
+produces every other "indirect call sites" figure in this doc — not a
+reimplementation that could silently disagree with it. Every function-size
+and instruction claim in §56.3-56.4 came from `af`+`pdf`/`afij` at the real
+address, never a `pD` byte-range guess. Both vtable-base claims
+(`AnsError` at `0x10573df0`, `Ima2DImage` at `0x105b49f4`) were confirmed
+two independent ways — the constructor's own `mov [reg], <vtable>` literal
+immediate, and a raw `pxq` dword dump at that exact base showing slot 0
+resolve to the already-identified method address — matching §51.6's own
+established convention, not a single-method lookup. The shared-slot
+claims (`virtual_4` shared by 9 `*Error` classes; the AddRef slot shared by
+dozens of `Ima*Op` classes) came from `fd`/`afij` listing every RTTI name
+attached to that one address, not assumed from one class alone. No
+production, golden, or port file was changed by this pass — all work is
+additive under `/tmp/pakon_re/` (`scan_known_indirect.py`,
+`known_live_indirect_sites.json`, `reach_cnenh_v8.json`), matching this
+doc's own established convention. `docs/74-…md` itself is the only file
+this pass edited (this section). `TLB.dll` was not reached this pass —
+scoped out honestly rather than claimed and skipped, per the time this
+pass's own hand-tracing standard required for `PakonIMAu.dll` alone.

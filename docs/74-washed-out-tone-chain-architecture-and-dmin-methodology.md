@@ -10927,3 +10927,351 @@ specific seed; not previously published by this doc) and the corrected
 never-before-cited DLL names in §51.8 item 2 were confirmed present by
 directly listing `/Users/guy/pakon-windows-repair/COM-SERVER/`, not
 assumed from memory of the directory.
+
+## 52 — §49's three new `TLB.dll` hooks fired on real hardware for the first
+time: the real calling conventions decoded, the AFE gain honestly confirmed
+against `calibration/README.json`, and the vendor's own open-gate/with-film
+duty switch caught live, not just inferred from a registry
+
+§49 added three hooks (`tlb_lamp_on`, `tlb_afe_gain_write`,
+`tlb_ccd_acquire_control`) but had no live data — every claim in it about
+what these functions *do* came from static disassembly alone. This section
+has a real capture, `live_hooks_20260815-170808.jsonl` (372 lines, 20/20
+hooks installed, all three new ones among them, confirmed by grepping the
+capture's own `hook_installed` rows for `hook_id`/`va_documented` and
+finding `tlb_lamp_on`→`0x1002c5f0`, `tlb_afe_gain_write`→`0x100298b0`,
+`tlb_ccd_acquire_control`→`0x1002c340` — the exact three addresses §49
+cited, not new ones). `tlb_lamp_on` fired 4 times, `tlb_afe_gain_write` 4
+times, `tlb_ccd_acquire_control` 3 times, `tlb_afe_offset_write` (the
+pre-existing hook) 7 times, all on `tid 4072` in one contiguous burst, plus
+the already-known `cn_enhanced_driver`/`analyze_auto_tone` per-frame pair
+firing 6 times each roughly 44 seconds later.
+
+### 52.1 — Method
+
+`TLB.dll` re-hashed fresh before touching it: `md5 -q` on
+`/private/tmp/pakon_re/TLB.dll` (and three other on-disk copies —
+`/private/tmp/fldc_re/`, `/private/tmp/pakon-ice/`,
+`/Users/guy/pakon-windows-repair/COM-SERVER/`) all return
+`193d9b2ce0a4b77ae9b78262bd06c0fc`, matching §49.1's citation exactly.
+Disassembly this pass used `r2 -e bin.baddr=0x10000000` with **r2ghidra**
+(`pdg`, Ghidra's decompiler via the `core_ghidra.dylib`/`r2ghidra_sleigh`
+plugin, radare2 6.1.8) layered on top of the raw `pdf`/`axt` reads §49 used
+— Ghidra's own stack-frame SSA tracking resolves multi-argument x86 stdcall
+frames far faster and more reliably than hand-walking `esp` deltas across
+branches, but every parameter identity below was cross-checked against the
+raw instruction bytes (`pdf`) at the specific point of use, and — where the
+two disagreed — against the **real captured register/stack values**,
+which settle it: `TLB.dll`'s calling convention is `__thiscall` (the object
+pointer in `ecx`) plus plain stack arguments throughout, including in
+`tlb_afe_gain_write`, where two of the stack arguments end up cached in
+`ebx`/`ebp` early in the prologue and Ghidra's decompile mislabels them
+`unaff_EBX`/`unaff_EBP` (its own signal that it lost track of where they
+came from) — the raw prologue bytes (§52.2) show plainly that both are
+loaded directly from the stack, same as every other argument in this
+function.
+
+### 52.2 — `tlb_afe_gain_write` (`0x100298b0`) decoded: `this=ecx`, one
+stack-passed device handle, three stack-passed gain values, R/G/B in that
+order
+
+```
+0x100298b0  push ebx
+0x100298b1  mov ebx, [esp+8]        ; ebx = stack_dwords[0]  (device handle)
+0x100298b5  push ebp
+0x100298b6  mov ebp, [esp+0x1c]     ; ebp = stack_dwords[4]  (trailing shared arg)
+0x100298ba  push esi
+0x100298bb  mov esi, ecx            ; esi = this
+0x100298bd  mov eax, [esi+0x340]    ; cached gain R
+0x100298c3  push edi
+0x100298c4  mov edi, [esp+0x18]     ; edi = stack_dwords[1]  (gain R)
+0x100298c8  cmp eax, edi
+0x100298ca  je 0x10029910           ; skip write if unchanged
+0x100298cc  cmp edi, 0x3f           ; clamp: gain <= 63 (6-bit register field)
+...
+0x100298d6  push ebp; push edi; push 2; push 0x84; push ebx
+0x100298e0  lea ecx, [esi+0x1c8]
+0x100298e6  call fcn.1000a5d0       ; cache-check primitive (same one §49.3 cited)
+...
+0x1002990a  mov [esi+0x340], edi    ; update cache
+0x10029910  mov edi, [esp+0x1c]     ; edi = stack_dwords[2]  (gain G) -- idx 3 block, same shape
+...
+0x10029960  mov edi, [esp+0x20]     ; edi = stack_dwords[3]  (gain B) -- idx 4 block, same shape
+```
+
+Three structurally identical blocks, register `0x84` indices 2/3/4 — exactly
+§49.3's citation — each gated by its own cache check (`[esi+0x340/0x344/
+0x348]`), each clamped to `0x3f` (63) before the write, each ending in a call
+into `fcn.1000a5d0` (cache-check) → `fcn.1001acd0` (the same
+`PutRegisterWord` primitive `tlb_afe_offset_write` and
+`tlb_ccd_acquire_control` also call). `stack_dwords[0]` is a device/context
+handle threaded through to the helper, not a channel value; `stack_dwords[4]`
+(`ebp`, loaded from the stack despite Ghidra's `unaff_EBP` label) is a
+trailing argument shared by all three blocks — never observed to vary across
+any of the 4 real calls below, so its role is not pinned down further here.
+**Confirmed signature:** `tlb_afe_gain_write(this=ecx, deviceHandle=SD0,
+gainR=SD1, gainG=SD2, gainB=SD3, sharedArg=SD4)`.
+
+### 52.3 — `tlb_ccd_acquire_control` (`0x1002c340`) decoded: integration
+time confirmed at a fixed stack slot; the acquire-bit merge traced to a
+real discrepancy between the disassembly and the live-captured value
+
+`af`/`axt` re-run this pass reproduce §49.4's citation exactly: 8 `CALL`
+xrefs from `fcn.1001fe10` (×3), `fcn.10020590`, `fcn.10020dc0` (×2),
+`fcn.1002d5c0`, `fcn.1002dbd0` — the same six caller functions, zero
+`CODE`-type xrefs. `pdg` gives a clean decompile:
+
+```c
+uint __thiscall fcn.1002c340(int param_1 /*this*/, uint32_t param_2,
+    uint32_t param_3, uint32_t param_4, uint param_5, uint param_6,
+    int param_7, int param_8)
+{
+    ...
+    if (0xffd < param_2) {                       /* integration-time ceiling */
+        fcn.1001acd0(..., "uiCcdIntegrationTime", ...); return 0;
+    }
+    ...
+    if (*(param_1 + 0x364) == -1) {               /* first call ever */
+        iVar2 = fcn.10029770(param_2, 0x60, 1);   /* base mask, bits 5+6 */
+        ...
+    }
+    iVar2 = fcn.10029770(param_2, 2, in_stack_ffffffd4, 0);   /* every call */
+```
+
+`fcn.10029770` itself (149 bytes, in-degree 4) is a clean merge primitive:
+
+```c
+uint __thiscall fcn.10029770(int param_1, uint param_2, uint16_t param_3,
+    int param_4, uint param_5)
+{
+    uVar1 = *(param_1 + 0x358);         /* cached reg-0x82-idx0 word */
+    param_3 &= 0x3ff;
+    if (param_4 == 0) param_3 = uVar1 & ~param_3;   /* clear bits */
+    else               param_3 = uVar1 | param_3;   /* set bits */
+    ... fcn.1000a5d0(param_2, 0x82, 0, param_3, param_5); ...
+    *(param_1 + 0x358) = param_3;
+}
+```
+
+The first call (`0x1002c4be: push 0x60`, a literal, only on the
+`[this+0x364]==-1` first-ever-call path) is an unambiguous, hand-confirmed
+match to §49.4/`docs/55`'s captured `0x0060` base mask (bits 5,6). The
+**second** call, which runs on *every* invocation
+(`0x1002c50c`-`0x1002c518`), is where hand-tracing and the live capture
+disagree: the raw bytes at `0x1002c513` are `6a 02` — `push 2`, a literal —
+feeding `fcn.10029770`'s `param_3` (the bits to OR/AND), which would predict
+a merged value of `0x60 | 0x02 = 0x62` when the OR path is taken, not
+`docs/55`'s captured `0x0061`. **The real captured data below settles this
+in `docs/55`'s favour, not the hand-trace's** — call_id 2's raw EDX at
+return is `0x00000061` (§52.5) — so either the disassembly-only reading of
+which stack slot feeds `fcn.10029770`'s merge-vs-clear flag
+(`param_4`, read from `[esp+0x18]` at that exact point, itself only
+resolved by hand esp-arithmetic across several intervening self-cleaning
+calls) is wrong, or `fcn.10029770`'s cached word already carries a bit this
+trace didn't account for. Left open rather than forced to agree — the
+discrepancy is reported, not smoothed over, per this doc's own standard.
+`param_2` (`stack_dwords[3]` in the caller's frame, confirmed empirically
+in §52.5, not by hand-tracing `esp` this time) is the integration time,
+checked against the same `0xffd` (4093) ceiling `docs/40`/`docs/59` already
+established.
+
+### 52.4 — `tlb_lamp_on` (`0x1002c5f0`) decoded: LED levels and PWM duty
+fractions, both located precisely
+
+Register-write call sites, found by grepping the full `pdf` for
+`fcn.10009ae0` (the buffer-write primitive, distinct from the scalar
+`fcn.1001acd0` the other two hooks use):
+
+```
+0x1002cc1b  mov eax, [arg_8h]        ; eax = stack_dwords[0] (device handle)
+0x1002cc26  push 0x81
+...
+0x1002cc3c  call fcn.10009ae0        ; register 0x81, 5-byte LED-level buffer
+...
+0x1002cdf0  push 0x82
+0x1002ce08  call fcn.10009ae0        ; register 0x82, 12-byte PWM on-count buffer
+```
+
+The 5-byte `0x81` buffer is built from four cached fields
+(`[esi+0x2a0]`/`0x2a4`/`0x2a8`/`0x2ac`), each updated only when its incoming
+stack argument changes — confirmed against the real captures (§52.5) to be
+`stack_dwords[2..5]` = Ir, R, G, B respectively (in that argument order —
+the wire-level `B,Ir,R,–,G` byte order `docs/59` documented is a *repacking*
+this function does internally, not the order its own caller passes). The
+12-byte `0x82` buffer's four on-count channels are each computed as
+`scale * dutyFraction`, where the three duty fractions are **IEEE-754
+doubles** passed as three separate register-pushed `fld qword`/`fstp qword`
+pairs — consistent with the prologue's `and esp,0xfffffff8` (8-byte stack
+alignment for FPU locals) and `fld qword [0x10067008]` §49.2 already
+flagged but didn't explain. Mapped against the real captures, these doubles
+land at `stack_dwords[8:10]`, `[10:12]`, `[12:14]` for R, G, B — confirmed
+directly in §52.6, not asserted from the disassembly alone.
+**Confirmed signature (partial — two args, `stack_dwords[1]` and `[6]`,
+constant `1` in every real call and not otherwise pinned down):**
+`tlb_lamp_on(this=ecx, deviceHandle=SD0, SD1=1, levelIr=SD2, levelR=SD3,
+levelG=SD4, levelB=SD5, SD6=1, exposure=SD7, dutyR=SD8:9(double),
+dutyG=SD10:11(double), dutyB=SD12:13(double), SD14:15=0.5(double,
+undecoded))`.
+
+### 52.5 — The AFE gain, honestly confirmed: real hardware agrees with
+`calibration/README.json`, all four real calls, exactly
+
+```
+call_id  tick       stack_dwords[1..3] (gain R, G, B)
+   3     36654359   13, 13, 13
+  10     36655500   13, 13, 13
+  12     36658687   13, 13, 13
+  17     36659828   13, 13, 13
+```
+
+`calibration/README.json`'s `config.afe_gains` is `[13, 13, 13]`. **Every
+one of the 4 real, live-captured `tlb_afe_gain_write` calls on this unit
+writes exactly 13, 13, 13** — this is the first time this project has ever
+directly observed the AFE gain register write happen on real hardware, and
+it matches the stored value exactly, with zero deviation across four
+separate calls spanning the whole warm-up sequence (before, during, and
+after the dark-offset convergence loop, and again in the final
+before-scan cluster). This resolves the harness README's "AFE gain —
+honestly unresolved" gap with a clean, first-ever positive confirmation,
+not a contradiction: the port's stored gain value is not an assumption
+carried over from the registry recovery in `docs/37` — it is what this
+exact unit's own software writes to the AFE, observed directly.
+
+`tlb_ccd_acquire_control`'s `stack_dwords[3]` is `0x00000ffd` (4093) in
+all 3 real calls — an exact match to `calibration/README.json`'s
+`config.integration_0x82_idx6` (4093) and `docs/55`/`docs/59`'s own
+captured `0x0FFD` integration-time write, confirming the earlier
+identification of that stack slot (§52.3) empirically rather than by
+hand-tracing `esp` alone.
+
+*Incidental, not asked for but visible in the same capture:* the 6 real
+`tlb_afe_offset_write` calls in this burst (`call_id` 4-9) reproduce
+`docs/55`'s own captured dark-offset convergence sequence almost exactly —
+`+10,+10,+10` → `-29,-38,-30` → `-21,-30,-22` → `-19,-25,-19` →
+`-19,-26,-19` → **final converged `-19,-26,-20`** — the same
+successive-approximation shape, landing within 1 count of `docs/55`'s own
+captured convergence. `calibration/README.json`'s stored `config.afe_offsets`
+is `[0, -6, 2]` — nowhere near either. This is *not* what §49/this section
+was asked to check (that was gain, not offset, and `tlb_afe_offset_write`
+is a pre-existing hook, not one of the three new ones), so it is reported
+here only as an incidental finding worth a follow-up look, not investigated
+further — the port's offset search targets a different wire-count band
+than the vendor's own dark-reference convergence and the two need not
+agree, but a gap this large (0/-6/2 vs a vendor convergence that lands
+consistently near -19/-26/-20 across two independent real captures 2 days
+apart) is worth someone's attention given this whole document's dmin/floor
+theme.
+
+### 52.6 — The lamp warm-up, timed for real, and the open-gate/with-film
+duty switch caught live
+
+Every event's `tick` (`GetTickCount()`, milliseconds) laid out from the
+first hook fire (`t+0` = `tick 36654312`, the first `tlb_ccd_acquire_control`
+call):
+
+```
+t+   0ms  tlb_ccd_acquire_control  call 1   (setup)
+t+  47ms  tlb_ccd_acquire_control  call 2   (raw EDX at return: 0x00000061 -- see 52.3)
+t+  47ms  tlb_afe_gain_write       call 3   (13,13,13)
+t+  63ms  tlb_afe_offset_write     call 4   (+10,+10,+10)
+t+ 250ms  tlb_afe_offset_write     call 5   (-29,-38,-30)
+t+ 438ms  tlb_afe_offset_write     call 6   (-21,-30,-22)
+t+ 625ms  tlb_afe_offset_write     call 7   (-19,-25,-19)
+t+ 813ms  tlb_afe_offset_write     call 8   (-19,-26,-19)
+t+1000ms  tlb_afe_offset_write     call 9   (-19,-26,-20, converged)
+t+1188ms  tlb_afe_gain_write       call 10  (13,13,13, re-affirmed)
+t+1875ms  tlb_lamp_on              call 11  (duration 2500ms; duty R=.656 G=.380 B=.157)
+t+4375ms  tlb_afe_gain_write       call 12  (13,13,13)
+t+4531ms  tlb_lamp_on              call 13  (duration   16ms; duty R=.656 G=.380 B=.158)
+t+4922ms  tlb_lamp_on              call 14  (duration    0ms; duty R=.656 G=.380 B=.158)
+t+5516ms  tlb_ccd_acquire_control  call 15  \
+t+5516ms  tlb_afe_offset_write     call 16   |  all four fire on the SAME tick --
+t+5516ms  tlb_afe_gain_write       call 17   |  the BeforeScan transition
+t+5516ms  tlb_lamp_on              call 18  /   (duration 3343ms; duty R=.917 G=.955 B=.819)
+  ... 44,093 ms gap -- no hook fires at all ...
+t+49609ms cn_enhanced_driver + analyze_auto_tone start (6 frame-pairs, ~30-190ms apart)
+```
+
+Three things this settles, all against real elapsed time for the first time:
+
+1. **`tlb_lamp_on` first fires 1,875ms after the CCD/AFE setup begins, and
+   47,734ms before the first per-frame colour-pipeline hook.** The entire
+   `tlb_lamp_on`/`tlb_ccd_acquire_control`/`tlb_afe_gain_write`/
+   `tlb_afe_offset_write` burst is over by `t+8,859ms` (call 18's exit); the
+   first `cn_enhanced_driver` fires at `t+49,609ms` — a **40.75-second gap**
+   with zero hook activity, almost certainly the physical film-transport/
+   line-scan time (2000 CCD lines at this unit's line rate), not anything
+   this harness's hook coverage is missing. This is the real number a UI
+   warm-up-phase timer should be measured against, not an assumption.
+2. **`tlb_ccd_acquire_control` toggles entirely within the first 5.5
+   seconds**, all three calls done well before any per-frame processing —
+   consistent with `docs/40`'s claim that CCD acquire-arming is a one-time
+   setup step, not something re-armed per frame.
+3. **Calls 11 and 18 are the two `tlb_lamp_on` calls with real, multi-second
+   durations (2,500ms and 3,343ms)**; calls 13 and 14 (16ms and 0ms) are
+   near-instant. This lines up with `docs/59`'s own unresolved "20× poll
+   pair... almost certainly the calibration wait" note — the two slow calls
+   are very plausibly where that physical settle actually happens, gated
+   inside `tlb_lamp_on` itself rather than in a separate polling loop this
+   harness would see as a different call.
+
+The real duty-fraction doubles (§52.4) decode cleanly, and they resolve
+`docs/59`'s own withdrawn/corrected inference with fresh, independent data
+rather than more registry cross-referencing:
+
+```
+                R        G        B
+calls 11/13/14  0.656    0.380    0.157   (open-gate set)
+call 18         0.917    0.955    0.819   (with-film set)
+```
+
+`docs/59`'s own registry-derived open-gate values are `0.658333 / 0.380378
+/ 0.166885`; its with-film values are `0.917161 / 0.955468 / 0.865802`. The
+first three real `tlb_lamp_on` calls in this capture match the open-gate
+set (G exact to 3 figures, R within 0.3%, B within 6%); the fourth call —
+the one in the synchronized `BeforeScan` cluster at `t+5516ms` — matches
+the with-film set (R and G exact to 3 figures, B within 5%). The ratios:
+
+```
+R: 0.9166/0.6557 = 1.398   (docs/59's registry ratio: 1.393157)
+G: 0.9547/0.3801 = 2.512   (docs/59's registry ratio: 2.511891)
+B: 0.8191/0.1574 = 5.204   (docs/59's registry ratio: 5.188016)
+```
+
+All three within 0.4%. **This is the first live confirmation that the
+vendor's own software really does hold two separate duty sets and switches
+between them by passing different arguments into the same `tlb_lamp_on`
+call — not two different functions, not an internal branch inside
+`TLB.dll` — exactly as `docs/59`'s corrected framing already concluded from
+registry-plus-capture cross-referencing, now independently reproduced from
+a completely different capture two days later**, and it locates the switch
+precisely: it happens at the `t+5516ms` `BeforeScan` cluster, alongside a
+`tlb_ccd_acquire_control` call whose `stack_dwords[0]` changes from `2049`
+(during the calls at `t+0..47ms`) to `2000` — an exact match to
+`calibration/README.json`'s `config.pixel_height` — consistent with the
+calibration phase using a taller (including-overscan) CCD read window than
+the final committed scan height. What that extra 49 rows are is not
+resolved here — flagged `[UNKNOWN]`, in this doc's own convention, rather
+than guessed at.
+
+One honest mismatch against `docs/59`'s own table: `docs/59` describes the
+lamp's first drive as *zero* (step 17, "drive = 0 -> dark") before the real
+duty values appear at step 82. None of the 4 real `tlb_lamp_on` calls in
+this capture ever show a zero-duty call — call 11, the very first one, is
+already at the open-gate duty. Either that zero-drive pulse happens through
+a code path this hook doesn't cover (unlikely, since `tlb_lamp_on` is the
+only register-`0x81`/`0x82` writer found reachable in §49.5's own reachability
+sweep), or this session's lamp was already past that point when the harness
+attached, or PSI's real behavior has changed since `docs/59`'s 2026-08-13
+capture. Reported as a real discrepancy, not resolved.
+
+### 52.7 — Summary
+
+| Question asked | Answer |
+|---|---|
+| Real `tlb_afe_gain_write` calling convention | `this=ecx`, `SD0`=device handle, `SD1/SD2/SD3`=gain R/G/B, `SD4`=shared trailing arg — confirmed via `pdg` + raw `pdf`, both agreeing |
+| Real gain values vs. `calibration/README.json` | **Exact match, 13/13/13, all 4 real calls** — first-ever direct hardware confirmation |
+| Real `tlb_lamp_on` timing vs. per-frame hooks | First fires at `t+1,875ms`; first `cn_enhanced_driver`/`analyze_auto_tone` at `t+49,609ms` — a real 40.75s gap after lamp/CCD/AFE setup finishes |
+| `tlb_ccd_acquire_control` toggling window | Entirely within `t+0..5,516ms`, before any per-frame hook |
+| `tlb_ccd_acquire_control` vs. `docs/55`'s `0x0060`/`0x0061` pattern | Partially confirmed directly: call 2's raw return `EDX` is `0x00000061`, matching `docs/55` exactly; the disassembly-only trace of the second `fcn.10029770` merge call predicts `0x62`, a real, reported discrepancy between hand-tracing and live data |
+| Open-gate/with-film duty switch (`docs/59`) | **Confirmed live** — calls 11/13/14 carry the open-gate duty, call 18 (in the `BeforeScan` cluster) carries the with-film duty, both within ~0.4% of `docs/59`'s registry-derived ratios |

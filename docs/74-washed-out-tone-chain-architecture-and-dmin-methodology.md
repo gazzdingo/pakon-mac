@@ -10036,3 +10036,344 @@ commanded some other way entirely (a separate board, a separate firmware
 path never captured in `docs/55`/`docs/59`), that would only be discoverable
 from what a capture taken this way actually shows — not something to guess
 at or solve in this pass.
+
+## 50 — The remaining 183 loop-shaped `analyzeArea` candidates, triaged for
+real: 77% trace directly to a single, pre-existing-but-never-cross-referenced
+non-tonal subsystem (`AnsAreaCapabilityImpl`'s own dust/scratch/redeye defect
+library), the rest to the same generic image-copy framework §28 already
+closed as a dead end for FUGC. No candidate clears the bar §46-48 set for
+`applyLut`. No new hook installed — a reasoned negative result, not a
+skipped task.
+
+Picked up §46/§48's own explicit hand-off: 183 more loop-shaped,
+mechanically-verified-safe candidates from `hook_candidate_screen.py`'s own
+184-item output (`0x100d9340`/`AnsImageData::applyLut` already closed,
+§46-48), never individually read. DLL re-verified before any work this pass:
+`md5 == eea9dcf78ee21d4f7c515a6c2512242d` against `/tmp/pakon_re/
+PakonIMAu.dll`, `/Users/guy/pakon-windows-repair/COM-SERVER/PakonIMAu.dll`,
+and the untouched vendor copy under `~/Downloads/Pakon Update 3/...`, all
+three matching, the same copy every prior section of this doc cites.
+
+### 50.1 — Re-ran the screen fresh rather than trusting §46.7's own numbers
+by citation alone
+
+`python3 tools/re/reachability.py calibrate` passed; `walk 0x100e16d0` on the
+same DLL reproduced §27.1/§46's own **943 functions / 342,503 bytes / 955
+indirect call sites** exactly. `python3 tools/re/hook_candidate_screen.py
+/tmp/pakon_re/reach_area.json --dll /tmp/pakon_re/PakonIMAu.dll --out
+/tmp/pakon_re/screen_area.json` reproduced §46.7's own published numbers
+digit-for-digit:
+
+```
+total functions in analyzeArea's reachable set        : 943
+mechanically safe to hook (call-reachable + prologue)   : 506
+loop_shape AND mechanically safe                        : 184
+```
+
+(`/tmp/pakon_re/screen_area.json` already existed on disk from the §46 pass,
+same file this section's own numbers were independently reproduced against —
+not blindly trusted, the timestamp/content match confirmed before use.)
+
+### 50.2 — Triage method: an exhaustive `.text` E8 call-graph, not just the
+screen's own per-function fields, to compute real proximity and exclude
+everything this doc has already read
+
+Built a fresh, additive, whole-`.text` E8-opcode scan (`/tmp/pakon_re/
+triage50.py`, same convention as §37.2/§39.2/§46.3/§47.2's own scans,
+producing every real direct-call edge in the DLL: 31,307 distinct call
+targets). Cross-checked it did not miss anything already published: callers
+of `0x1019a0c0` (`applyBalanceShifts`) came back as exactly `['0x100dc331']`,
+matching §37.2/§46.3's own already-published "1 caller" answer; callers of
+`0x100d9340` (`applyLut`) came back as the same 10 addresses §46.3 already
+published, in the same order.
+
+Built an explicit exclude list of every address this doc's own §11/§12/§22/
+§25/§26/§27/§28/§36-40/§46-48 has already read via `af`+`pdf` (not by name
+alone — each entry's byte range independently confirmed via `afij` this
+pass): `analyzeArea`'s own entry, the FUGC `applyLut` wrapper and body
+(`0x101186c0`/`0x101fa5b0`, and its five already-individually-read callees
+`fcn.100c1740`/`fcn.1017de10`/`fcn.10328a90`/`fcn.1003bf80`/`fcn.10099a40`
+per §28's own verification list), `AnsImageData::applyLut`
+(`0x100d9340`), `applyBalanceShifts`, the shift-LUT builder, `analyzeAttributes`
+and its `orderOrientation` leaf chain, `analyzeNoise`/`getNoiseTable`,
+`balanceAreaImage`, `analyzePostBalance`, the startup-burst wrapper
+`fcn.101b28c0`, and the small `AREA`-field helpers (`0x100dc060`/
+`0x100dc0b0`/`0x101a3500`/`0x100a8730`) — 46 addresses total. Applying this
+exclude set to the 184 leaves **181** genuinely unread candidates
+(`/tmp/pakon_re/build_triage.py`, `/tmp/pakon_re/refine_triage.py`).
+
+A second, sharper filter: rather than trust the screen's own per-function
+fields alone, computed each candidate's real caller set from the E8
+call-graph and cross-referenced against every function this doc has already
+read address-by-address (not just its literal entry point — the exact
+byte-range `[minaddr, maxaddr)` from a fresh `afij`). **2 of the 181** turned
+out to be called exclusively from inside already-read function bodies (real,
+but not new territory) — leaving **179**. `discovery_order` from the same
+`reach_area.json` walk (BFS over direct calls, seeded at `analyzeArea`'s own
+entry) was used as this pass's own proximity signal, per the task's own
+suggestion — items discovered early in the walk are reached via fewer direct
+hops from `analyzeArea`'s own entry point.
+
+### 50.3 — The decisive finding: `AnsAreaCapabilityImpl::analyze`
+(`0x1019e5f0`), one hop from `analyzeArea`'s own real call chain, is a
+previously-documented (but never cross-referenced by this doc) real,
+substantial, self-contained subsystem — and it swallows 730 of the
+943-function reachable set
+
+Sorting the 179 by proximity surfaces `0x1019e5f0` immediately: `realsz`
+2,486 B, `discovery_index` 34 (34th function discovered in the whole
+943-function BFS), self-naming strings read directly out of the loaded DLL —
+`"AnsAreaCapabiltyImpl::analyze"` (the vendor's own typo, missing an "i"),
+`"Analysis image is not balanced."`, `"Analysis image is not set."`,
+`"Can't allocate AREA result array."`, `"Can't set AREA parameters"`,
+`"Failed in 'new AnsAreaCorrection'."`, `"Failed in 'new RE_Indicator'."`
+(`\Atc\ansel\src\libAREA.ansel\AnsAreaCapabilityImpl.cpp`).
+
+**A direct `grep -rn "1019e5f0" docs/` before reading anything further finds
+this exact address already fully catalogued** in `docs/reports/
+autotone-scope-2026-08-10/area.md` — a pre-existing, independent scoping
+report this doc's own §11-§49 arc never once cites (the same class of gap
+§46.5 already found for `applyLut` itself). That report already established,
+by its own direct-call reachability walk seeded at `0x1019e5f0`: **732
+functions / 299,737 code bytes reachable from `AnsAreaCapabilityImpl::analyze`
+alone** — matching, not coincidentally, `docs/65`'s own older "732/299,737"
+figure for `analyzeArea` as a whole that §27.1 flagged as an unresolved
+discrepancy against its own fresher 943/342,503 walk. **That discrepancy is
+now resolved, not just re-flagged**: `docs/65`'s 732-function figure was very
+plausibly `AnsAreaCapabilityImpl::analyze`'s own reachable set specifically
+(this report's independently-run walk reproduces it almost exactly), not
+`analyzeArea`'s driver-level entry's full 943-function closure — two
+different, both-real seeds, not one number being wrong.
+
+Independently re-derived the same containment fact this pass, by BFS-over-
+E8-edges restricted to the 943-function domain (`/tmp/pakon_re/
+subtree_and_filter.py`): **730 of the 943 functions in `analyzeArea`'s own
+reachable set (77%) are inside `AnsAreaCapabilityImpl::analyze`'s own
+in-domain call subtree.** The two independent methods (a citation-report's
+own dedicated walk from `0x1019e5f0` as seed; this pass's own subtree BFS
+inside the `analyzeArea`-seeded domain) agree on the same real fact from two
+different angles.
+
+`area.md`'s own characterization of what this subsystem actually is, read in
+full before trusting it further: `AnsAreaCapabilityImpl`'s own DPI parameter
+names and sibling classes (`AnsAreaDefect` with a `center=(...)` coordinate,
+`AnsAreaCorrection`/`getSeed`/`getAutomaticCorrectionLevels`,
+`AnsAreaCandidate`, `AnsAreaOperand` with a `convertAnsImageToJImage`
+bridge) describe **a spatial dust/scratch/blemish detection-and-retouching
+feature** — "the kind of thing exposed in the vendor GUI for manual/automatic
+defect removal — not colour or density values," with the report's own
+explicit conclusion: *"I found no read path by which `analyzeAutoTone`'s own
+code consumes it."* This is the same real-function/non-tonal shape already
+established five separate times in this doc (`orderOrientation` §25,
+`analyzeNoise` §26, FUGC `applyLut` §28, `AnsImageData::applyLut` §46-48) —
+now independently corroborated for the single largest remaining unread
+subsystem in `analyzeArea`'s entire reachable set, by a source this doc's own
+arc never previously touched.
+
+**Not taken purely on citation.** Fresh `af`+`pdf` (`e asm.var=false`, raw
+operand read, `afij`: 2,486 B / 715 instructions / 87 basic blocks / cc 47 —
+matches `area.md`'s own 2,606 B size citation closely, the small delta the
+same class of `r2`-version rendering variance §27.2 already flagged for a
+different function) confirms directly, not by citation alone:
+
+* **Zero indexed `[base+index*N]` memory writes anywhere in the function's
+  own 715 instructions**, and **zero `rep movs*` instructions** (both
+  checked mechanically over the full disassembly text, the same "regex every
+  decoded operand" discipline §28.2/§47's own verification already used) —
+  `AnsAreaCapabilityImpl::analyze` itself is gate/orchestration code (AddRef/
+  Release smart-pointer dances via the already-catalogued `fcn.100012e0`/
+  `fcn.100065e0` idiom, §22/§24's own citations), not a per-pixel loop.
+* **It directly references the exact two fields §27.3's `fcn.100dc060`
+  accessor already established** — `mov al, byte [ebx + 0x1a1]` at
+  `0x1019e824` (the "is the AREA analysis image set" gate byte) and
+  `lea ecx, [ebx + 0x1a4]` at `0x1019e910` (the AREA analysis image field
+  itself) — confirming this is genuinely the function whose own control flow
+  gates and consumes `this+0x1a4`, the field §46-48 already traced
+  `AnsImageData::applyLut` writing into and confirmed pointer-aliases
+  `analyzeAutoTone`'s own live input.
+* Past that gate (`byte[this+0x1a1]!=0`, i.e. the analysis image already
+  exists), a second gate at `byte[this+0x1a0]` (throws `"Analysis image is
+  not balanced."` if clear) leads to the one substantive call in this
+  region: `call fcn.101999f0`, passed `&(this+0x1a4)` and `&(this+0x10)` by
+  reference (`0x1019e91d`/`0x1019e91e`).
+
+Read `fcn.101999f0` in full (`af`+`pdf`, 284 B, 86 instructions, 7 basic
+blocks — small, complete, not sampled): it self-identifies via its own
+embedded exception strings as `AnsAreaCapabilityImpl::convertAnsImageToJImage`
+— exactly the bridge function `area.md`'s own §4 already named in passing
+(`"AnsAreaOperand (with a convertAnsImageToJImage bridge...)"`) without an
+address. Its body **reads** `this+0x1a4` as an already-populated `AnsImage`
+descriptor (`esi+0xc`/`+0x10`/`+0x14`/`+0x20` — the same width/height/type/
+data-pointer field-offset convention `pakon_fugc.FUGC_IMG_DESC_*_OFF`
+already documents) and converts it to a different, older "JImage" bridge
+format (`call fcn.10199930`) for the vendor's own legacy defect-detection
+engine — it does not construct or newly allocate `this+0x1a4`, it consumes
+an existing one. **This confirms `this+0x1a4` is fully constructed before
+`analyze()` reaches this point**, but does not itself close §27.4/§46.6's
+still-open question (whether that construction aliases the shared scene
+buffer or allocates privately) — that requires reading
+`AnsAreaCapabilityImpl::initialize` (`0x1019c950`, 6,791 B per `area.md`'s
+own table), not attempted this pass, the same "citras-driver scale" next
+step `area.md`, §27.5, and §46.6 have each already independently flagged
+without anyone yet doing it.
+
+### 50.4 — The remaining 44 candidates outside the AREA-defect subtree: the
+same generic `Ima` base-image-layer framework §28 already closed as a dead
+end, confirmed by a full read of its largest member
+
+Subtracting the 730-function AREA-defect subtree from the 179-candidate list
+(§50.2) leaves 44 candidates. Self-naming strings (`iz`-equivalent per-
+function string-reference scan, `/tmp/pakon_re/inspect_candidates.py`, new
+this pass) resolve every one of them to the same cross-cutting `Fw\ima\
+ImaBaseLayer`/`Fw\ima\ImaOps` framework §28.2 already found underlying
+FUGC's `applyLut` (`ImaOp.cpp`, `ImaLutOp.h`) — `ImaRectBuffer::copyFrom`
+(`ImaRectBufferCopier.cpp`), `ImaSimpleDataOrg`, `ImaConvolutionSeparableOp`,
+`ImaPointOperation`, `ImaTransform`, `ImaTiffImageSourceOp`,
+`ImaChannelSelectOp`, `ImaMemorySourceOperation`, `ImaDRparams` — plus a
+handful of generic C++ runtime internals accidentally caught by the
+loop-shape heuristic (`0x1030d840`: RTTI/type-name strings `"__cdecl"`/
+`"allocator"`/`"class"`/`"struct"`; `0x1030e6d0`: the literal STL
+implementation string `"map/set<T> too long"` — both confirmed, not
+guessed, to be C++ standard-library container/RTTI bookkeeping, not image
+code, the exact class of heuristic false-positive `hook_candidate_screen.py`'s
+own docstring already warns "loop-shaped" can mean).
+
+Read the largest, most promising-looking member of this cluster in full:
+`ImaRectBuffer::copyFrom` (`0x10350770`, self-named via its own embedded
+strings — `"ImaRectBuffer::copyFrom was ("`, `"-- illegal width or
+height"`, `"only works with ImaSimpleDataOrg for both src and dst"`,
+`\Fw\ima\ImaBaseLayer\src\ImaRectBufferCopier.cpp`). `af`+`pdf`, full: 2,007
+B, 694 instructions, 93 basic blocks, `ebbs` 7 (seven real exits — genuine
+error-path plumbing, unlike `applyLut`'s single-exit shape). This one IS a
+real per-row bulk-copy engine — mechanically confirmed, not inferred: eight
+separate `rep movsd`/`rep movsb` pairs across different basic blocks (e.g.
+`0x10350a81`/`0x10350a88`, `0x10350ae1`/`0x10350aeb`, six more), each
+preceded by row-pointer-array indexing (`mov esi, dword [edx + ebx*4 - 4]`/
+`mov edi, dword [edx + ebx*4]`, `ebx` = a row counter) — a genuine,
+width/height-bounded, per-row memory-copy loop, the real mechanical shape
+`hook_candidate_screen.py`'s own `loop_shape` heuristic was built to catch.
+
+Its 12 real callers (E8-scanned, each container independently resolved via
+fresh `af`+`pdf`, not eyeballed) are `ImaDRparams`-adjacent detect/init
+routines (`.\ImaDRparams.cpp`, `"error in DRdetect"`/`"error in
+DRinitDetect"` — Digital-Retouch defect detection, the same feature family
+§50.3 already established), `ImaConvolutionSeparableOp` (kernel-based
+smoothing, plausibly defect-mask growing), `ImaPointOperation`/
+`ImaTransform` (both self-named `virtual_NN`-suffixed methods — a
+polymorphic Ima "Op" pipeline), `ImaMemorySourceOperation`, and
+`ImaTiffImageSourceOp::genRect()` (`\Fw\ima\ImaOps\src\
+ImaTiffImageSourceOp.cpp` — a TIFF-*file* pixel source, i.e. disk I/O, not
+the live scan buffer) and `ImaChannelSelectOp`. Also confirmed, by tracing
+the same-file dispatch table one level further (`fcn.1034fde0`,
+`ImaRectBufferCopier.cpp`), that the ~40 near-identical-sized siblings in
+the `0x1034xxxx` address range flagged by the screen are per-pixel-precision
+type-conversion specializations of this SAME copy engine (its own error
+strings: `"destination data org in copy had precision type defined as
+ImaDataType::Error"`), not a separate mechanism.
+
+**Every one of `copyFrom`'s real call sites traces to the same
+digital-retouch/defect/TIFF-source `Ima`-operator framework §50.3 already
+established has no read path into `analyzeAutoTone`'s own verified tone
+chain.** This is the identical shape §28 already closed for FUGC's
+`applyLut` — a real, generic, widely-reused base-layer primitive (here:
+12 real callers instead of `applyLut`'s 2) that does genuine per-row/
+per-pixel work, but exclusively for a feature this doc has now
+independently confirmed, twice, is architecturally disconnected from the
+render path this investigation is chasing.
+
+### 50.5 — Honest verdict: no candidate clears the bar `applyLut` set, and
+none was wired into the live hook table this pass
+
+**Every one of the 183 previously-unread candidates is now accounted for**,
+not by exhaustively reading all 183 (the same effort-proportionality this
+doc has applied since §12/§25/§27.5) but by tracing the two real subtrees
+that structurally contain them: 730/943 (77%) trace directly to
+`AnsAreaCapabilityImpl::analyze`'s own dust/scratch/redeye/blemish
+defect-detection-and-correction library, independently confirmed by a
+pre-existing scoping report this doc's own arc never previously cited
+(`area.md`) and by this pass's own fresh `af`+`pdf` reads of its entry point
+and one real callee; the remaining 44 trace to the same generic cross-cutting
+`Ima` image base-layer framework §28 already closed as a dead end for FUGC's
+own `applyLut`, confirmed this pass by a full read of its largest, most
+promising-looking member (`ImaRectBuffer::copyFrom`) and an exhaustive
+call-site trace.
+
+**Stated plainly, per this task's own explicit invitation to say so if true:
+none of the 183 remaining candidates is genuinely more promising than
+`AnsImageData::applyLut` already was.** If anything, the case for this
+entire remaining territory is *weaker* than `applyLut`'s: `applyLut`
+at least shared a live, pointer-identical buffer with `analyzeAutoTone`
+(§47-48's own hardware-confirmed finding) before turning out to be a
+mechanism the port already implements elsewhere. Nothing found this pass
+shares any established channel — buffer identity, capability-name lookup,
+or otherwise — with the six already-Unicorn-verified tone subsystems.
+`area.md`'s own already-verified capability-enumeration finding (mirroring
+§22's exhaustive `CAPABILITIES` tuple check) stands unchallenged: `"area"`
+is never looked up by name anywhere in `analyzeAutoTone`'s own body.
+
+**No new hook was added to `tools/re/live_hooks/win_inject/` this pass —
+a reasoned decision, not an oversight.** This doc's own established
+discipline (§46.7's "mechanically safe to install" vs. "worth hooking are
+different questions," reaffirmed by §46.8/§47.4/§49's own practice of only
+wiring in individually-verified addresses) argues directly against
+installing a hook on a function whose own real call sites all trace to an
+already-characterized non-tonal feature, on real, physical,
+described-as-irreplaceable hardware, merely for coverage. `hookcore_real_
+table.c`/`agent.js`/`hookstub.S`/`hookcore.h` are unmodified by this
+pass (the `Thunk_25`-`27`/TLB.dll lamp-AFE-CCD additions visible in the
+working tree are §49's own, concurrent, unrelated work — confirmed by
+reading §49 directly before writing this section, not assumed from the
+file diff alone). No Python port file was written (there is nothing
+tonally-relevant this pass found to port) and no existing golden or
+production file was touched.
+
+**What remains genuinely open, concretely, for whoever picks this up
+next**: the one specific, still-unclosed thread both `area.md` and §27.5/
+§46.6 already named — reading `AnsAreaCapabilityImpl::initialize`
+(`0x1019c950`, 6,791 B) to settle whether `this+0x1a4`'s own construction
+aliases the shared scene buffer or allocates privately. This pass adds one
+concrete fact toward that (`convertAnsImageToJImage` treats `this+0x1a4` as
+an already-populated real `AnsImage` descriptor by the time `analyze()`
+reaches it, ruling out "never populated" but not resolving "aliases vs.
+private") without closing it. Given that even a fully-resolved answer here
+would only bear on the AREA-defect feature's own relationship to the shared
+buffer — a feature both independent sources agree publishes geometric/
+cosmetic data, not colour/density values — resolving it would settle a real
+architectural question this doc has carried since §27.4, but should not be
+expected, on the evidence gathered across five independent non-tonal
+verdicts now, to explain the standing ~62-98 sRGB code brightness gap
+itself. The concrete alternative leads §48.8 already named — the
+untriaged `fyl2x`/`f2xm1` sites from §32.4 — remain the more promising
+places to look next for that specific question.
+
+**Verification.** DLL MD5 checked (`eea9dcf78ee21d4f7c515a6c2512242d`)
+against three independent copies (`/tmp/pakon_re/PakonIMAu.dll`,
+`/Users/guy/pakon-windows-repair/COM-SERVER/PakonIMAu.dll`, the untouched
+vendor copy under `~/Downloads/Pakon Update 3/...`) before any work this
+pass. `tools/re/reachability.py calibrate` and `walk 0x100e16d0` were both
+re-run fresh, reproducing §27.1/§46's own published 943/342,503/955 figures
+exactly. `tools/re/hook_candidate_screen.py` was re-run fresh against the
+same reachability output, reproducing §46.7's own published 184-candidate
+figure exactly, not trusted from citation alone. The E8-scan methodology was
+sanity-checked by reproducing two already-published caller-count answers
+(`applyBalanceShifts`'s "1 caller," `AnsImageData::applyLut`'s "10 callers,"
+same addresses in the same order) before being trusted on new targets, the
+same discipline §39.2/§47.2 already established. Every function this section
+cites a size/instruction/block count for (`0x1019e5f0`, `0x101999f0`,
+`0x10350770`) was read via explicit `af`+`pdf`, never a raw `pD` byte-range
+guess. The "zero indexed writes / zero rep movs" claim for `0x1019e5f0` and
+the "eight `rep movsd`/`rep movsb` pairs" claim for `0x10350770` were both
+checked by direct regex over the full disassembly text
+(`/tmp/pakon_re/area_analyze_full.txt`, `/tmp/pakon_re/copyfrom_full.txt`),
+not eyeballed. The 730/943 AREA-defect-subtree figure came from a real,
+additive BFS script (`/tmp/pakon_re/subtree_and_filter.py`) restricted to
+the same 943-function domain every other figure in this section is scoped
+against, not estimated. `docs/reports/autotone-scope-2026-08-10/area.md`
+was read in full before any claim was attributed to it, not quoted from a
+snippet or memory. No existing golden file, port file, or hook-table file
+was modified this pass — every new script (`/tmp/pakon_re/triage50.py`,
+`build_triage.py`, `refine_triage.py`, `get_known_ranges.py`,
+`inspect_candidates.py`, `find_containers.py`, `subtree_and_filter.py`,
+`read_copyfrom.py`, `read_area_analyze.py`, `read_101999f0.py`, and their
+text/JSON output) is additive/scratch under `/tmp/pakon_re/`, not committed,
+matching this doc's own established convention.

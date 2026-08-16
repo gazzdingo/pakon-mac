@@ -1249,7 +1249,7 @@ class ScanSupervisor:
 
     # ---- start ----
     def start(self, jid: str, body: dict) -> dict:
-        # Two guards, because they answer different questions. This one is
+        # Three guards, because they answer different questions. This one is
         # "am I already scanning"; the next is "is anything, anywhere,
         # already scanning" — and only the second survives a force-quit.
         if self.running():
@@ -1258,6 +1258,26 @@ class ScanSupervisor:
         if other:
             raise RuntimeError("Refusing to start a scan: "
                                + foreign_scan_refusal(other))
+        # The third is the jog's own hazard in reverse. `motor_jog` already
+        # refuses to jog while a scan owns the interface (`jog_refusal`
+        # checks `running()`/`foreign_scan()` before it ever runs
+        # spin_motor.py); this is the other direction -- a jog's
+        # tools/spin_motor.py subprocess claims interface 0 for the length of
+        # its pulse (capped at JOG_MAX_SECONDS, or JOG_MAX_SECONDS_LONG with
+        # `long`), and a scan started mid-pulse would be a second process
+        # claiming the same interface out from under it. `_JOG["active"]` is
+        # this process's own record of that, the same way `self.proc` records
+        # a scan of its own -- it is set the instant spin_motor.py is about to
+        # be launched and cleared only in `motor_jog`'s `finally:`, so this
+        # check is accurate for as long as the pulse (plus its own bounded
+        # stop-and-verify) is actually running.
+        if _JOG["active"]:
+            d = _JOG["direction"] or "forward"
+            raise RuntimeError(
+                f"Refusing to start a scan: the transport is being jogged "
+                f"{d} right now. A pulse is capped at {JOG_MAX_SECONDS:.0f}s "
+                f"({JOG_MAX_SECONDS_LONG:.0f}s for a long one) and stops on "
+                f"its own -- try again in a moment.")
 
         base = int(body.get("base") or 16)
         seconds = scan.clamp_seconds(
@@ -1939,10 +1959,42 @@ def motor_jog(body: dict) -> dict:
             stop_jog()
         out.update(ok=False, error=f"{type(e).__name__}: {e}")
     finally:
-        _JOG.update(active=False, at=time.time(), direction=None, seconds=0.0,
-                    proc=None)
-        # The device was opened and closed by another process; whatever this
-        # one last cached about it is no longer a live answer.
+        # What the pulse actually accomplished, not just that a command was
+        # sent. spin_motor.py has exited by this point (proc.communicate()
+        # returned, or stop_jog()'s own wait did), so it no longer holds
+        # interface 0 -- this is a fresh, ordinary Link, exactly the one
+        # `calib_wizard.film_precheck` (the same DX-board pre-check
+        # `duty-bw`/the calibration wizard already rely on) expects. It reads
+        # the light-board's DX status nibble only: no motor, no lamp, no
+        # acquire, so it cannot itself move anything or step on a jog that
+        # somehow overran. Attempted whenever spin_motor.py was actually run
+        # (`proc is not None`) -- including a failed or timed-out jog, because
+        # knowing where the film ended up matters most exactly then. In a
+        # `finally:` of its own, alongside the state cleanup below, so a bug
+        # here can never leave `_JOG["active"]` stuck true.
+        if proc is not None and cwiz is not None:
+            link = None
+            try:
+                link = scan.Link.open()
+                out["film_sense"] = cwiz.film_precheck(link).to_json()
+            except Exception as e:                          # noqa: BLE001
+                out["film_sense"] = {
+                    "available": False,
+                    "error": f"could not read the film sensors after the "
+                             f"jog: {e}",
+                }
+            finally:
+                if link is not None:
+                    try:
+                        link.close()
+                    except Exception:                       # noqa: BLE001
+                        pass
+
+        _JOG.update(active=False, at=time.time(), direction=None,
+                   seconds=0.0, proc=None)
+        # The device was opened and closed by another process (and, just
+        # above, by this one too); whatever this one last cached about it is
+        # no longer a live answer.
         _HW_CACHE.update(at=0.0, value=None)
     return out
 

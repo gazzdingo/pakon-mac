@@ -139,10 +139,16 @@ close or open something real.
 
 ## Git
 
-- `origin` → `gazzdingo/pakon-mac` (public). `private` →
-  `gazzdingo/pakon-mac-private` (private). RE-heavy branches (containing
-  vendor DLL addresses, hook internals, live capture data) track the
-  **private** remote — check `git branch -vv` before pushing if unsure.
+- `origin` → `gazzdingo/pakon-mac` (**public**). `private` →
+  `gazzdingo/pakon-mac-private` (private). Both are in active use, on
+  different branches — **check `git branch -vv` before pushing, don't
+  assume.** Some branches (e.g. `calibration-and-tone-port` on the main
+  checkout) track `private` for RE-heavy work; this worktree's branch
+  (`worktree-tender-gliding-abelson`) tracks `origin` and has been pushing
+  full RE detail (DLL addresses, hook internals, live capture data) there
+  by explicit owner choice. If you're on a branch with no clear precedent,
+  ask before pushing anything containing vendor DLL specifics rather than
+  assuming either remote.
 - Never push to `main`/`master`. Never force-push. This repo's own
   convention throughout has been small, evidence-cited commits — one real
   finding or one real fix per commit, not batched.

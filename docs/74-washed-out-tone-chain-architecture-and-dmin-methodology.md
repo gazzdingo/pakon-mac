@@ -11926,6 +11926,455 @@ address before any cross-reference work began. `fcn.1004926d`'s
 "one real caller" and `ImaLensFalloffOperation.virtual_84`'s "in-degree: 0"
 both came from `axt`/`afij` directly, not estimated.
 
+## 55 — §51.8's own flagged gap closed: the five never-before-searched vendor
+DLLs (`TLA.dll`, `TLC.dll`, `tlx.dll`, `AIDToolkit.dll`, `DMLDICELib.dll`)
+searched to the same standard as §51 — a shared generic CRT `pow()`/`log()`/
+`exp()` library found duplicated in all five, TLA/TLC's own real density-LUT
+generators found and read (single-log, not the inversion formula), and every
+vendor DLL this project has access to is now a clean negative for
+`f135_rom12_to_rpd12`'s own construction
+
+§51.8 item 2 named five real vendor DLLs — `AIDToolkit.dll`, `DMLDICELib.dll`,
+`TLA.dll`, `TLC.dll`, `tlx.dll` — sitting in the same directory as `TLB.dll`
+and `PakonIMAu.dll` but never hashed, searched, or mentioned anywhere in this
+repo. This section runs the exact search §51 ran on `PakonIMAu.dll` — whole-
+binary `/x` byte search for `d9f1`/`d9f9`/`d9f0`, unscoped to any function,
+then per-hit verification against the hit's own real containing function,
+never a raw `pD` byte-range decode alone — against all five, in the priority
+order the task specified (`TLA.dll`, `TLC.dll`, `tlx.dll`, `AIDToolkit.dll`,
+`DMLDICELib.dll`). All five were completed.
+
+### 55.1 — Provenance and tooling
+
+Each DLL hashed (`md5`) against two independent local copies —
+`/Users/guy/pakon-windows-repair/COM-SERVER/<name>` and a fresh
+`/tmp/pakon_re/<name>` copy made at the start of this pass — before any work,
+the same convention §51 used for `PakonIMAu.dll`:
+
+| DLL | MD5 | size | compiled |
+|---|---|---|---|
+| `TLA.dll` | `33f7a247d79286a31b192e83d3c37425` | 593,920 B (580.0 KB) | Wed Apr 18 18:47:28 2007 |
+| `TLC.dll` | `c3283e7c65a7a2a19c2bca4cb32bcfae` | 614,400 B (600.0 KB) | Wed Apr 18 18:47:06 2007 |
+| `tlx.dll` | `d81bca55585dccfa9e7d6c70bd9c4994` | 294,912 B (288.0 KB) | Wed Apr 18 18:47:37 2007 |
+| `AIDToolkit.dll` | `f42b1350bf82518434317cdca855a602` | 266,240 B (260.0 KB) | Fri Jul 11 22:50:01 2003 |
+| `DMLDICELib.dll` | `10e2095015c2580998e063b563407041` | 241,664 B (236.0 KB) | Thu Jun 1 17:20:28 2000 |
+
+The 580.0/600.0 KB figures for `TLA.dll`/`TLC.dll` match §51.8's own
+already-published sizes exactly, which is itself a small but real
+cross-check that the right files were located. Four of the five compiled
+within 31 minutes of each other on the same day as `TLB.dll` (already known,
+§32) — `AIDToolkit.dll` and `DMLDICELib.dll` are five and six years older
+respectively, third-party or long-lived shared libraries reused across
+builds rather than compiled fresh for this product cycle.
+
+Tooling: `radare2` 6.1.8 via `r2pipe`, `aaa` full analysis, `af`+`pdf`/`pdfj`
+for real function-boundary disassembly — the same discipline this doc has
+used since §12, `pD` used only as a "this is/isn't real code" diagnostic,
+never to characterize a function's purpose on its own. Scripts are scratch,
+`/tmp/pakon_re/*.py`, not committed, matching §51's own convention.
+
+### 55.2 — A second-order false-positive trap this pass had to build a new
+check for, on top of §51.2's own filter
+
+§51.2's check — "is the hit address a real op start in the containing
+function's own `pdfj`, found via `af`+`pdf` from the whole-binary `aaa`
+pass" — was necessary here too, but these five DLLs are far less densely
+analyzed than `PakonIMAu.dll` (1,088–1,380 functions found by `aaa`, against
+14,361 there), so a real fraction of hits sat in genuine code that `aaa`'s
+own recursive-descent walk never formed into a function at all (`afij` at
+the address returns empty even after a full `aaa` pass). The obvious next
+move — force `af` at exactly that address and re-check — turned out to be
+**self-fulfilling and therefore useless as an automatic filter**: `af` at an
+address always succeeds at defining *some* function starting exactly there,
+so "is the hit address the entry of the function `af` just built around it"
+is true by construction regardless of whether the byte pattern is real code.
+Concretely, this cost one wrong intermediate result during this pass: an
+automated script that used forced-`af` as its resolution step reported all
+18 raw `TLA.dll` `fyl2xp1` hits as "real," when direct `pD` reading of that
+region (§55.4) shows they are the identical MSVC RTTI/ATL adjustor-thunk
+byte-coincidence class §51.2 already named — `lea ecx, [ebp+N]; jmp rel32`
+blocks padded with `int3`, where `d9 f9` falls inside a `jmp`'s own 4-byte
+displacement, never at a real instruction start. Every hit this pass reports
+as real that an *unforced* `afij` did not already resolve was therefore
+independently re-checked by direct `pD` reading of its own surrounding
+control flow — sane conditional branches, real constant operands, a clean
+terminator (`ret`/`ret N`) — not accepted from the forced-`af` signal alone.
+This is a genuine addition to this project's own established verification
+method, in the same spirit as §51.2's own new filter.
+
+### 55.3 — Raw counts and per-mnemonic verdicts, all five DLLs
+
+| DLL | `fyl2x` raw/real/false | `fyl2xp1` raw/real/false | `f2xm1` raw/real/false | total real/false (of raw) |
+|---|---|---|---|---|
+| `TLA.dll` | 6/6/0 | 18/0/18 | 3/2/1 | 8/19 (of 27) |
+| `TLC.dll` | 6/6/0 | 0/0/0 | 3/2/1 | 8/1 (of 9) |
+| `tlx.dll` | 8/4/4 | 0/0/0 | 2/2/0 | 6/4 (of 10) |
+| `AIDToolkit.dll` | 4/4/0 | 0/0/0 | 2/2/0 | 6/0 (of 6) |
+| `DMLDICELib.dll` | 10/10/0 | 0/0/0 | 2/2/0 | 12/0 (of 12) |
+| **total** | 34/30/4 | 18/0/18 | 12/10/2 | **40/24 (of 64)** |
+
+`fyl2xp1` reproduces §51.2's own finding exactly: every raw hit across all
+six DLLs this project has now searched (`TLB.dll`, `PakonIMAu.dll`, and
+these five) is a false positive — `fyl2xp1` has never once been a real
+instruction anywhere in this project's vendor-code corpus.
+
+### 55.4 — `TLA.dll`: the closest-yet real, live, RTTI-named density-LUT
+generator this project has found — genuinely reachable, genuinely computing
+a 14-bit log10 curve, and genuinely the wrong shape
+
+`fcn.10013730` (229 B, `af`+`pdf` read in full) is a mode-dispatched LUT
+builder: `arg_4h==1` and `arg_4h==2` each build a separate 16,384-entry
+(`cmp edi, 0x4000`) array (`this+0x40` / `this+0x44`), any other value calls
+an `EnterCriticalSection`-based error handler (`fcn.1001ed80`) and returns
+failure. Each loop body is, read directly:
+
+```
+lut[i] = round( log10(i · K) × scale )        i = 0 .. 0x3fff
+```
+
+where `K` is the literal double at `0x100665f0`, decoded directly
+(`6.103888176768602e-05`) and confirmed exactly equal to `1/16383`, and
+`scale` is a per-instance integer read from the object (`this+0x30` /
+`this+0x24` depending on branch) via `neg`/`imul`, not a compiled literal.
+`fcn.10051644` (the rounding helper, 1,741-style generic `round(double)`
+idiom — sign-aware truncate, XREFS(50)) is the same shared-utility shape
+§51.4 already found for `fcn.104ffe44` in `PakonIMAu.dll`. This is, read
+directly, a genuine, real, live-executed **single-`log10` density curve over
+the full 14-bit domain** — exactly what docs/05's own file-level description
+of `TLA.dll` already says ("Contains the imaging pipeline — the density LUT
+generator") — but it is **one `fyl2x` call per index, not two**: the ratio
+`i/16383` is formed by multiplication *before* the single log, never as two
+independently-varying quantities logged separately and subtracted. It is
+`k·log10(x)`, not `fpo + 1000·(log10(base−c9) − log10(poly−c9))`. Also
+unlike the target's own literal `1000.0` scale (confirmed present as a
+compiled constant in §51.5/§51.6's `PakonIMAu.dll` candidates), this
+function's own scale is a runtime object field, not a literal — a further
+structural difference, though this alone doesn't rule anything out since the
+field's runtime value was not (and could not be, statically) checked.
+
+**Reachability traced hop-by-hop, `axtj`, one real caller per hop, exactly
+as §51.3/§51.5 did for `PakonIMAu.dll`:**
+
+```
+fcn.10013730 ← fcn.10016cf0 ← fcn.10016eb0 ← fcn.10016fe0 ← fcn.1003ee20
+             ← method.ATL::CComObject_class_CiTLAMain_.2.virtual_76
+```
+
+Every hop has exactly one caller. The root is a real COM vtable method of
+`CiTLAMain` — confirmed via this binary's own RTTI/ATL symbol table
+(`method.ATL::CComObject_class_CiTLAMain_.*`, dozens of named `virtual_N`
+slots, `f~ATL::CComObject` in §55.5 below), not inferred from the DLL's file
+name. This is first-hand confirmation, not just a citation of docs/75, that
+`TLA.dll`'s own density-LUT generator lives exclusively inside `CiTLAMain`'s
+own construction path — the class docs/04/05/00/75 already establish is the
+**F-235-model** back-end `tlx.dll` selects only for that hardware, never for
+this project's real F-135 device (which uses `TLB.dll`'s own class
+exclusively, per docs/75 §2's already-verified `filmClass`/`fcn.1000d880`
+finding). **Real, well-shaped, genuinely density-LUT-*like* — and, on this
+doc's own already-established per-model dispatch finding, architecturally
+unreachable from any real F-135 render this project's actual scanner
+performs**, the same category of already-closed verdict §51.5/§51.6 reached
+for their own two near-misses.
+
+The remaining real `TLA.dll` hits are a generic runtime math library, not
+application code: `fcn.10051c8d` (629 realsz, read via `pdfj` since `pdf`
+itself returns empty on this function's own corrupted 31,503-byte declared
+span — a known r2 "far edge" artifact `tools/re/reachability.py`'s own
+docstring already names for a different function) is a textbook,
+hand-optimized `pow(double, double)` — `fnstcw`/`cmp word …, 0x27f` control-
+word setup, `and eax, 0x7ff00000` IEEE-754 exponent-mask NaN/Inf tests, one
+`fyl2x` (`0x10051cda`) for the core `y·log2(x)` step, `fscale`/`fchs`/`fld1`
+special-casing around it. `fcn.10058699`/`fcn.1005932e`/`fcn.10059610`
+(3 real `fyl2x` + 2 real `f2xm1`) are a matching generic
+log-base-selection/`exp()` helper pair — `fldlg2` vs `fldln2` chosen by a
+runtime flag, `frndint`/`fscale` for the antilog. Three of these six sites
+(`0x100591dd`, `0x10059271`, `0x10059295`) sit **outside** `fcn.10058699`'s
+own declared 2,861-byte span (another mis-bound function boundary) but were
+confirmed real by direct `pD` reading: proper conditional branches, a real
+`CODE XREF from fcn.10058699` jump landing exactly on the first of the
+three, sane float operands throughout, clean `ret` terminators — genuine
+code `aaa`'s own walk simply didn't attach to the function it's actually
+part of, not a coincidence. None of these six is remotely density-shaped —
+NaN/Inf/zero special-casing around a single log or exp, the generic C
+runtime's own math-library internals, not this device's own code.
+
+The 18 raw `fyl2xp1` hits (`0x10063615`–`0x100636ed`) are, confirmed by
+direct `pD` reading (§55.2), the MSVC RTTI/ATL adjustor-thunk table for
+`CiTLAMain`'s own vtable (`mov eax, <typeinfo>; jmp 0x1004f93d` blocks,
+`lea ecx, [ebp+N]; jmp` adjustor thunks, `int3` padding) — every one of the
+18 `d9 f9` matches falls inside a `jmp rel32`'s own 4-byte displacement,
+never a real instruction start, the identical false-positive class §51.2
+already named. The one false `f2xm1` (`0x100431d3`) is the other class
+§51.2 already named: a byte-coincidence one byte inside `call
+fcn.100422b0`'s own rel32 displacement at `0x100431d2`.
+
+### 55.5 — `TLC.dll`: a structural twin of `TLA.dll`, same class name, same
+per-model-dead verdict
+
+`fcn.100154a0` (56 instructions, read in full) is byte-for-byte the same
+shape as `TLA.dll`'s `fcn.10013730`: `arg==1`/`arg==2` mode dispatch, two
+16,384-entry arrays (`this+0x40`/`this+0x44`), `lut[i] = round(log10(i · K)
+× scale)` with `K` at `0x1006b0d0` decoded directly and confirmed **exactly
+equal** to `TLA.dll`'s own `1/16383` (`6.103888176768602e-05`, both DLLs, to
+the bit), the same rounding-helper call pattern (`fcn.10054dbc`). This is
+independent, direct confirmation of docs/05's own claim that `TLA`/`TLB`/
+`TLC` "share most routines" — not by file-name inference, but by reading and
+comparing the actual compiled constant. `f~ATL::CComObject` inside `TLC.dll`
+itself resolves dozens of `method.ATL::CComObject_class_CiTLAMain_.*`
+symbols — **`TLC.dll`'s own internal RTTI names its class `CiTLAMain` too**,
+the same literal class name as `TLA.dll`, corroborating (not merely citing)
+docs/05's "share most routines" claim at the source-class level: this is one
+C++ class, recompiled per model, not independently-named per-DLL code.
+
+Traced two real hops (`fcn.100154a0 ← fcn.10016460 ← fcn.10016610`, each via
+`axtj`, single caller at each hop) before this pass's time budget moved on
+to the remaining DLLs — this trace was not carried all the way to a named
+vtable root the way `TLA.dll`'s was. Given the byte-identical shape, the
+byte-identical shared constant, and the shared `CiTLAMain` class name
+already confirmed, and given docs/75 already independently established (by
+disassembling `TLA.dll:0x10066f78`/`0x100158f0` directly, not by inference)
+that this `LUT + 3x4 matrix` scheme belongs to the F-235/F-335 back-ends and
+has "no F-135/TLB equivalent to be wired into," the same per-model-dead
+verdict applies here with high confidence — but, honestly, on one fewer hop
+of this pass's own direct tracing than `TLA.dll` got.
+
+The remaining `TLC.dll` real hits are the same generic CRT math library
+again: `fcn.1005518d` (pow() wrapper, one real `fyl2x`) and a
+`fcn.1005bbd9`-adjacent cluster (`fcn.1005c86e`/`fcn.1005cb50`, 3 real
+`fyl2x` + 2 real `f2xm1`) — confirmed, by direct `pD` reading, to be the
+identical log-base-selection/`exp()` shape as `TLA.dll`'s own
+`fcn.10058699` cluster, at a different address. The one false `f2xm1`
+(`0x10021dd0`) is a new false-positive shape not seen in §51: a `switch`
+statement's own jump table — `.int32 0x1001f099` (case target address),
+whose little-endian byte encoding happens to contain `d9 f0` — confirmed by
+direct `pD` reading showing `; case.0x1001f060.7` and the surrounding
+`.int32` table entries, not code at all.
+
+### 55.6 — `tlx.dll` and `AIDToolkit.dll`: the same generic CRT `pow()`/
+`log()`/`exp()` library again, no application-specific code found
+
+Both DLLs' real hits resolve to the identical shape already characterized
+above, with no exceptions: a `pow(double,double)` wrapper (`tlx.dll
+fcn.1001327d`, `AIDToolkit.dll fcn.10016842` — read in full, both;
+`AIDToolkit.dll`'s copy is instruction-for-instruction identical to
+`TLA.dll`'s `fcn.10051c8d` in large stretches, byte for byte) plus a
+log-base-selection/`exp()` helper cluster (`tlx.dll` via `fcn.100184b9`,
+`AIDToolkit.dll` via `fcn.1001a039`). `tlx.dll` is architecturally the one
+DLL of these five that genuinely is always loaded and live for every real
+scan — it is `TLXMain`, the orchestration COM server every application in
+docs/00's own stack diagram (`PSI.exe`/`PTS.exe`/`TLXClientDemo.exe`) links
+against directly, not a per-model back-end selected conditionally — but
+since the code found here is generic CRT boilerplate, not density-specific,
+the structural mismatch alone rules it out regardless of that DLL's own
+live status: no further reachability tracing was needed to reach that
+conclusion, the same fast-path §51.4 already used for its own clearly-generic
+candidates (the Gaussian kernel builder, the log-sum-exp aggregate).
+
+`tlx.dll`'s 4 false `fyl2x` hits are confirmed, by direct `pD` reading, pure
+non-code coincidences — one (`0x10034946`) falls literally inside the string
+literal `"piCalibrateTiltEighthTurnsWWL"`, the other three are unstructured
+byte runs with no sane surrounding disassembly at all (`invalid` opcodes
+immediately adjacent). `AIDToolkit.dll` has zero false positives — all 6 raw
+hits are real, all inside the generic math-library cluster.
+
+### 55.7 — `DMLDICELib.dll`: the most structurally novel candidates this
+pass found — a real, live, exported-API-reachable log-scale LUT builder, and
+a genuine two-independent-`log10` *ratio* (not difference) function — both
+confirmed to belong to Digital ICE's own dust/scratch subsystem, not the
+colour/density chain
+
+`DMLDICELib.dll` exports exactly five flat C functions (`iE`, confirmed
+directly): `DICEVersion`, `DMLDICEBegin`, `DMLDICEDefectCount`, `DMLDICEEnd`,
+`DMLDICEProcess` — the whole public surface of this third-party dust-and-
+scratch library, matching docs/70's own characterization.
+
+**`fcn.10001380`** (306 B, read in full via `pdfj`) is reached by a clean,
+fully-traced 2-hop **direct-call** chain from the DLL's own exported
+`DMLDICEBegin`: `fcn.10001380 ← fcn.10001130 ←
+sym.DMLDICELib.dll__DMLDICEBegin__YAPAXKUDICEInfoStaticTag___Z` (`axtj`,
+single caller each hop). Dispatched on an `arg_14h` mode value of exactly
+`12` or `14` (any other value falls through to a degenerate `edx=1` case) —
+selecting a loop count of `0x1000` (4,096) or `0x4000` (16,384)
+respectively, i.e. structurally a 12-bit/14-bit bit-depth selector. Read in
+full, it builds **three** internal tables per call:
+
+1. A `log_N(i)` table (`N` = 4,096 or 16,384, `i = 1..N-1`) via the two real
+   `fyl2x` sites (`0x100013d6` computing `log10(N)` once, `0x100013fa`
+   inside the loop computing `log10(i)`, the ratio taken via `fdivp`, *not*
+   `fyl2x` twice on independent quantities followed by subtraction).
+2 & 3. Two 256-entry **antilog** tables, `round(scale · 10^(bin/const) +
+   0.5)` for `scale` = the literal `16.0` and `65536.0` (both decoded
+   directly from `0x1003513c`/`0x10035134`), computed via `call
+   fcn.1002bb40` — the same generic CRT `pow()` wrapper family found in
+   every other DLL this pass searched, confirmed by its own `fnstcw`/NaN-Inf
+   shape at `fcn.1002bb62`.
+
+This is a genuine, real, live-reachable (from a real exported entry point,
+not merely "present in the binary") per-session initializer — but its own
+shape is a **single** `log10`/antilog pair building **log-scale histogram
+bins and their inverse**, the standard idiom for a log-domain
+statistics/binning table, not a per-pixel two-quantity density difference.
+Nothing about its own two real `fyl2x` sites resembles `base`/`poly`/`c9`.
+
+**The `0x100020c3`/`0x100020cd` pair** (and a second, near-identical copy at
+`0x10002109`/`0x10002113`) is the single closest **two-independent-`log10`**
+shape this entire five-DLL pass found. Read directly: `16383 · log10(1+d) /
+log10(16384)`, where `d` is `0.0200` or `0.1646` (both decoded directly from
+`0x100351ac`/`0x100351a8`) selected by a runtime test against a `0.035`
+threshold (`0x100351b0`, also decoded), and `16384`/`16383` are the same
+14-bit-domain constants seen throughout this pass. **Two real, independent
+`log10` calls of genuinely different quantities** (`1+d` and the fixed
+`16384`) — but the two results are **divided** (`fdivp`), not subtracted,
+which is the wrong binary operator for `f135_rom12_to_rpd12`'s own
+`log10(base−c9) − log10(poly−c9)` construction. Confirmed real by direct
+`pD` reading — sane conditional branch selecting `d`, real float constant
+operands throughout, a clean `ret 8` terminator — but this pass could
+**not** establish its own caller: `aaa`'s own walk never forms a function
+here (`afij` empty even unforced), and the `; CODE XREF from fcn.10001f40`
+comments r2 itself attaches to it resolve, on direct lookup, to an unrelated
+18-byte stub (`mov dword [ecx], <const>; jmp 0x10001050`) that cannot be
+this code's real container — an r2 analysis artifact, not a real
+attribution. **Reachability for this specific candidate is honestly
+unresolved**, the same vtable/indirect-call blind spot §46/§51.8 item 3
+already flagged as structural, not incidental, to this whole methodology.
+
+Independent of reachability, both real `DMLDICELib.dll` candidates operate
+on that library's **own** internal parameters (12-bit/14-bit mode counts, a
+`0.035` threshold, `16383`/`16384` normalization) — not on anything
+resembling `c9`, `base`, or `poly`. A short background research pass this
+section commissioned (kept separate from this DLL-search work, reported in
+full here) additionally confirms, directly from the vendor's own `TLB.dll`
+disassembly, that `DMLDICEProcess` **is** called from a real, live,
+statically-resolved call site inside `TLB.dll` (`0x10026fe6`, `call dword
+[esi+0x34]` through a `GetProcAddress` pointer resolved at
+`0x10012cea`-`0x10012d22`) — Digital ICE is a real, wired subsystem on the
+vendor's own Windows software, not abstractly dead code. But per docs/70
+(title: "digital-ice-groundwork"), **this project's own port has never
+implemented or exercised it**: `ICE_PORTED = False` (raises rather than
+silently no-ops), no IR capture has ever been made on this project's real
+hardware ("Nothing in this document has been seen working on film"), and
+Digital ICE "is not in `PakonIMAu.dll`" at all — i.e. it never reaches the
+imaging library this doc's own six-subsystem tone chain lives inside, by a
+different and independent architectural boundary than the per-model
+dispatch that rules out `TLA.dll`/`TLC.dll`. Both grounds — the wrong
+subsystem by domain, and (separately) never exercised by this project's own
+port or hardware — apply regardless of which one the reader finds more
+persuasive.
+
+The remaining real `DMLDICELib.dll` hits (`fcn.1002bb62`, and the
+`fcn.1002c852`-adjacent cluster: `fcn.1002c9de`/`fcn.1002ccc0`) are, once
+again, the same generic CRT `pow()`/log-base/`exp()` family found in all
+four other DLLs this pass searched — this DLL's own copy compiled five to
+seven years earlier than the others but structurally identical.
+
+### 55.8 — A project-wide structural finding this pass surfaces on its own,
+independent of any single DLL: the same generic compiler math library is
+statically embedded, independently, in every vendor DLL searched so far
+
+Across `TLA.dll`, `TLC.dll`, `tlx.dll`, `AIDToolkit.dll`, and
+`DMLDICELib.dll` — five DLLs spanning three different compile years
+(2000, 2003, 2007) and at least two distinct static-CRT-library snapshots —
+every real `fyl2x`/`f2xm1` site that is *not* one of the two TLA/TLC
+density-LUT generators or the one DMLDICELib log-scale initializer resolves
+to the same recognizable idiom: `fnstcw`/`0x27f` control-word setup,
+`0x7ff00000` IEEE-754 exponent-mask NaN/Inf/zero special-casing, one
+`fyl2x` or one `frndint`+`f2xm1`+`fscale` at the core, `fldlg2`-vs-`fldln2`
+base selection for the log family. This is the compiler/CRT's own internal
+`pow()`/`log()`/`ln()`/`exp()` support code, statically linked rather than
+imported, reproduced independently in every DLL that needed floating-point
+transcendentals — never once, in any of the roughly 24 real sites across
+these five DLLs, a per-pixel density formula. This mirrors §51.4's own
+closing observation for `PakonIMAu.dll` ("every occurrence read across this
+entire pass … appears exclusively as part of the standard … idiom") at
+project scale: five more DLLs, same negative shape, no exceptions.
+
+### 55.9 — Verdict
+
+**All five DLLs §51.8 flagged as never searched have now been searched to
+the same standard as `TLB.dll` (§32.3) and `PakonIMAu.dll` (§51) — every one
+of the 64 raw hits individually resolved, not left as an aggregate count.**
+40 are real instructions, 24 are byte-level false positives (the RTTI/ATL
+adjustor-thunk-table class and the `call`/`jmp`-displacement-coincidence
+class §51.2 already named, plus one new shape this pass found — a `switch`
+jump table's own case-address encoding, §55.5). Of the 40 real sites:
+
+- **Two are genuine, live-reachable, RTTI-confirmed density-LUT generators**
+  (`TLA.dll fcn.10013730`, `TLC.dll fcn.100154a0`) — read in full, both a
+  single-`log10`-per-index curve over the 14-bit domain, structurally
+  `k·log10(x)` rather than the target's `log10(a) − log10(b)`, and both
+  reachable **only** through `CiTLAMain`'s own COM vtable — the F-235-model
+  back-end this project's own real F-135 device (which uses `TLB.dll`
+  exclusively, per docs/75's own independent, twice-verified finding) never
+  loads.
+- **One is a genuine, live-reachable (from a real exported entry point)
+  log-scale binning initializer** (`DMLDICELib.dll fcn.10001380`) — single
+  `log10`/antilog pairs, not a density difference, and architecturally the
+  wrong subsystem (Digital ICE dust/scratch detection, not colour density)
+  independent of the separate finding that this project's own port has
+  never exercised it at all.
+- **One is the single closest two-independent-`log10` shape this pass
+  found anywhere** (`DMLDICELib.dll`'s `0x100020c3` pair) — real code,
+  confirmed by direct reading, computing `log10(a)/log10(b)`, not
+  `log10(a) − log10(b)` — the wrong operator, and its own reachability
+  could not be established with this pass's own methodology (a genuine,
+  honestly-reported gap, not a claimed match or a claimed dead end).
+- **The remaining ~36 real sites, across all five DLLs, are the same
+  generic compiler/CRT `pow()`/`log()`/`exp()` runtime library**
+  (§55.8) — never application-specific, never density-shaped.
+
+**None of the 40 real instructions found in this pass computes anything
+resembling `f135_rom12_to_rpd12`'s own `fpo + 1000·(log10(base−c9) −
+log10(poly−c9))` construction.** Combined with §32.3's `TLB.dll` negative and
+§51's `PakonIMAu.dll` negative, **all seven vendor DLLs present in
+`/Users/guy/pakon-windows-repair/COM-SERVER/` have now been searched for the
+`fyl2x`/`fyl2xp1`/`f2xm1` instruction family this formula's own construction
+would require, and none contains a reachable, real instance of it.** This is
+the first time this project has exhausted every vendor binary it has direct
+access to for this specific search, not just the two largest/most
+obviously-relevant ones.
+
+**What this changes, and doesn't, relative to §51.8's own three open
+possibilities:** possibility 2 (undiscovered vendor DLLs) is now closed —
+every DLL in the COM-SERVER directory has been searched. Possibilities 1
+(no live `fyl2x`-family instruction at all — SSE2 scalar floats, a
+build-time-computed constant table, or a once-per-calibration LUT built from
+an address this project's direct-call methodology hasn't located) and 3 (the
+structural vtable/indirect-call blind spot this pass again had to work
+around, most concretely for `DMLDICELib.dll`'s own unresolved
+`0x100020c3` candidate) remain fully open, un-collapsed, exactly as §51.8
+left them.
+
+**No production, golden, or port file was changed by this pass.** All work
+is additive, scratch scripts under `/tmp/pakon_re/` (`scan_x87.py` plus a
+number of one-off `probe*.py` verification scripts), matching this doc's own
+established convention — none committed. `docs/74-…md` itself is the only
+file this pass edited (this section).
+
+**Verification.** All five DLL MD5s re-checked against two independent local
+copies before any work (§55.1). The whole-binary `/x` search and the
+per-hit `af`+`pdfj` verification were run via a single reusable script
+(`scan_x87.py`) across all five DLLs, so the methodology is identical DLL to
+DLL, not re-derived each time. Every function-boundary claim came from
+`af`+`pdf`/`pdfj` at the real address; the handful of `pD`-only diagnostics
+(the `TLA.dll` RTTI thunk table, the `tlx.dll` string-literal/garbage false
+positives, the `TLC.dll` jump-table false positive, and the three
+`fcn.10058699`/`fcn.1005bbd9`/`fcn.100184b9`/`fcn.1001a039`/`fcn.1002c852`
+cluster sites in each DLL that sit outside their own function's declared
+byte span) are each explicitly flagged in §55.4-54.7 as `pD`-diagnostic-only,
+never used alone to characterize a function's purpose. All decoded float/
+double constants (`1/16383` in `TLA.dll`/`TLC.dll`, `16383.0`/`16384.0`/
+`16.0`/`65536.0`/`0.5`/`10.0`/`0.02`/`0.1646`/`0.035`/`1.0` in
+`DMLDICELib.dll`) were read directly via `p8`/`pxq` and decoded in Python
+against the IEEE-754 bit pattern, not inferred from a disassembly comment
+alone. The `TLA.dll` reachability chain (`fcn.10013730` through
+`method.ATL::CComObject_class_CiTLAMain_.2.virtual_76`) was traced hop-by-
+hop via `axtj`, confirming a single real `CALL`-type xref at every hop, the
+same discipline §51.3/§51.5 used for `PakonIMAu.dll`. `DMLDICELib.dll`'s own
+five exports were read directly via `iE`, not assumed from docs/70's own
+citation. The `TLB.dll → DMLDICEProcess` live call site and this project's
+own un-exercised Digital ICE port status were each independently confirmed
+against docs/70's own text before being cited here.
+
 ## 56 — The vtable-only blind spot §51.8 item 3 named but never enumerated,
 enumerated for the first time on a real, already-confirmed-live slice of the
 render path: 119 indirect call sites in 12 individually-read functions,

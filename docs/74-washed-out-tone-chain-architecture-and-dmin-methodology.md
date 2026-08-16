@@ -10377,3 +10377,553 @@ was modified this pass — every new script (`/tmp/pakon_re/triage50.py`,
 `read_copyfrom.py`, `read_area_analyze.py`, `read_101999f0.py`, and their
 text/JSON output) is additive/scratch under `/tmp/pakon_re/`, not committed,
 matching this doc's own established convention.
+
+## 51 — §32.4's own explicitly-flagged-incomplete `PakonIMAu.dll` triage,
+finished properly: exact counts corrected (fyl2xp1 was never even counted),
+every raw hit verified against real instruction boundaries (not just "does
+it disassemble"), every survivor mapped to a real function and checked for
+live reachability from the real per-scene driver — and the inversion
+formula's own log instruction still isn't there
+
+§32.4 searched `PakonIMAu.dll` for the same `fyl2x`/`fyl2xp1`/`f2xm1` family
+§32.3 had just finished exhaustively tracing in `TLB.dll`, found "61
+`fyl2x` + 64 `f2xm1`" (an order of magnitude more than TLB.dll), spot-
+checked one dense cluster near `analyzeArea`, and explicitly closed the
+section as incomplete: *"this pass did not individually triage the
+remaining ~50 `fyl2x` and ~64 `f2xm1` sites... flagged as incomplete, not
+as a clean negative result."* §36.5 and §48's own closing paragraph both
+carried this forward as the standing next step. This section does that
+work — re-deriving the raw search from scratch rather than trusting the
+"~50/~64" figure, then adding two verification passes §32 itself never
+needed (TLB.dll's negative held up on a much smaller, cleaner search
+space) before drawing any conclusion.
+
+DLL provenance re-checked before any work: `/tmp/pakon_re/PakonIMAu.dll`
+and `/Users/guy/pakon-windows-repair/COM-SERVER/PakonIMAu.dll` both hash
+`eea9dcf78ee21d4f7c515a6c2512242d` — the same copy every prior section of
+this doc cites. Tooling: `radare2` 6.1.8, driven via `r2pipe` rather than
+one-shot `-c` strings, so intermediate state (the cached full-binary
+analysis, the reachability walk) could be reused across steps instead of
+re-paid for each one.
+
+### 51.1 — The raw counts, re-derived: §32.4's `fyl2x`/`f2xm1` figures hold
+up exactly; its `fyl2xp1` figure didn't exist
+
+A whole-binary `/x` byte search (`d9f1`/`d9f9`/`d9f0`, unscoped to any
+function, the same convention §32.3 established) against the freshly
+re-verified DLL: **61 `fyl2x`, 34 `fyl2xp1`, 64 `f2xm1` — 159 raw hits
+total.** The `fyl2x` and `f2xm1` counts match §32.4's own "61 `fyl2x` + 64
+`f2xm1`" exactly, letter for letter — a genuine, reassuring reproduction,
+not a coincidence of rounding. The `fyl2xp1` count is new: §32.4's own text
+never reports a `fyl2xp1` figure for `PakonIMAu.dll` at all (only for
+TLB.dll, where it was 0) — an honest gap in the prior pass, now closed. All
+34 of these turn out, per §51.2 below, to be false positives, which is
+itself a useful thing to know before anyone spends time chasing them.
+
+### 51.2 — A second filter this search needed that §32.3's smaller,
+cleaner TLB.dll pass got away without building explicitly: not every raw
+byte match is a real instruction, and "does it disassemble as expected"
+alone isn't enough to tell
+
+§32.3 found one false positive in TLB.dll's 7-site `fyl2x` search (a hit
+whose bytes sat inside the tail of an unrelated `jmp`, discarded because
+`pd` at that address produced garbage rather than a clean `fyl2x`). That
+check — "does `pd 1` at the hit address show the expected mnemonic" — is
+necessary but was shown, this pass, to be **not sufficient**: an `x86`
+instruction stream is byte-position-dependent, so a 2-byte pattern like
+`d9 f9` can land on the *first* byte of a genuine, unrelated multi-byte
+instruction's tail and still decode as a clean, mnemonic-correct `fyl2xp1`
+if you disassemble starting exactly there — the surrounding bytes just
+aren't validated by that check. The real test is whether the hit address
+is a genuine instruction **start** in the function's own real,
+control-flow-aware disassembly, not an independent one-off decode.
+
+Built that check directly: for every one of the 159 raw hits, mapped it to
+its real containing function (`aflj2.json`, a full `aflj` dump of this
+exact DLL state — 14,361 functions, cached from an already-run `aaa` pass
+this same investigation's own `/tmp/pakon_re/` scratch directory still had
+on disk from the `docs/74` §46-48 sessions, cross-checked fresh via a new
+`aa; aav; avrr` pass rather than trusted blind), then pulled that
+function's own `pdfj` (JSON, control-flow-aware disassembly) and checked
+whether the hit address appears as a real instruction's own `addr` field
+— not reconstructed from a raw byte range, the same `af`+`pdf` discipline
+this doc has used since §12.
+
+**Result: 92 of the 159 raw hits are real, standalone instructions; 67 are
+false positives.** By mnemonic: `fyl2x` 46 real / 15 false, `f2xm1` 46
+real / 18 false, **`fyl2xp1` 0 real / all 34 false — every single raw
+`fyl2xp1` hit in this DLL is a byte-coincidence, not a real instruction.**
+Concretely, three distinct false-positive shapes were found and confirmed
+by direct disassembly, not assumed from the count alone:
+
+1. **Two hits sit in `.rdata`, not `.text` at all** (`0x10643eac`,
+   `0x1064495c`) — pure data bytes that happen to contain `d9 f1`/`d9 f9`,
+   confirmed via `iS.` section lookup.
+2. **Eleven `fyl2xp1` hits cluster inside a genuine but unrelated code
+   region** (`0x105623ca`-`0x105624aa`, 224 bytes) that turns out, read
+   directly (`pD` used here only as a "is this real code or noise"
+   diagnostic, never to claim a function's *purpose* — the purpose-level
+   claims below all come from real `af`+`pdf`), to be a classic MSVC C++
+   exception-handling / RTTI adjustor-thunk table: repeating
+   `mov eax, <typeinfo>; jmp 0x104ffdc8` blocks padded with `int3` filler
+   and `lea ecx, [ebp+N]; jmp 0x10420230` adjustor thunks. The `d9 f9`
+   bytes the search matched are incidental — inside `int3` padding runs and
+   `mov`/`call` immediate operands, never a real instruction boundary; this
+   whole region falls **outside every function** `aflj2.json` catalogues,
+   which is itself consistent (r2's own function-boundary analysis
+   correctly never classified any of it as code).
+3. **The remaining false positives are byte-coincidences inside the
+   4-byte relative displacement of a nearby real `call rel32`
+   instruction** — e.g. `0x10068c1e: e8 bd d9 f9 ff` (`call
+   fcn.100065e0`) puts `d9 f9` at `0x10068c20`, which independently
+   decodes as a clean `fyl2xp1` if read from there, but is never reached
+   as an instruction start when the function is disassembled for real
+   from its own entry point. **This is not a minor effect**: it fully
+   accounts for `fcn.100e37d0` — the single largest cluster in §32.4's
+   own spot-check, the one it reasoned about at length as *"far too many,
+   and far too densely packed, to match the formula's own shape... much
+   more consistent with a statistical/entropy-style computation."* Every
+   one of its 10 `fyl2x` hits is one of these `call`-displacement
+   coincidences — confirmed two ways, by the `pdfj`-offset check and, to
+   be sure, by grepping the function's own real `pdf` text for the
+   literal mnemonic (`grep -c fyl2x` on the full disassembly: **0**).
+   §32.4's own statistical-computation *reasoning* about this cluster
+   was plausible on its face, but there was no real instruction there
+   for that reasoning to be about — worth a correction, not just a
+   reproduction, of that section's own spot-check. The same is true of
+   `fcn.10063730` (§32.4 never individually named this one, but it is the
+   `AnsCnLockbeamPath`-called function carrying 8 of the 34 raw `fyl2xp1`
+   hits) — all 8 are `call`-displacement coincidences too.
+
+This is the same false-positive *class* §32.3 already named for TLB.dll,
+just far more frequent here — unsurprising, since `fyl2xp1`'s own bytes
+(`d9 f9`) are a comparatively "generic-looking" 2-byte sequence relative to
+the density of real `call rel32` instructions in a 7.2 MB, heavily
+call-dense binary. **Practical conclusion: `fyl2xp1` can be dropped
+entirely from this DLL's own search space going forward** — it has never
+once been a real instruction here, in either this pass's 34-site check or
+§32.3's clean TLB.dll baseline.
+
+### 51.3 — The 92 real sites map to 54 distinct functions; reachability
+from the real per-scene driver — corrected, not just re-used — narrows
+that to 10
+
+Mapped the 92 verified-real hits to their containing functions (interval
+lookup against `aflj2.json`'s own `minaddr`/`maxaddr` per function,
+`af`+`pdf` boundaries, never a raw address-proximity guess): **54 distinct
+functions.** Because this DLL is genuinely **not stripped**
+(`i` reports `stripped: false`, `lsyms: true` — internal, non-exported
+C++ symbol/debug names survive, contradicting §32's own "this DLL has
+almost no exports" characterization only insofar as *exports* and
+*internal symbols* are different things; the export table is still thin,
+but the internal name table is not), a real majority of these 54 carry
+genuine RTTI/debug-derived class-and-method names — `ColorMetricRPD12`,
+`ColorMetricERIMM`, `AnsCnLockbeamPath`, `AnsArchivePath`,
+`AnsDcBalancePath`, `LilyImageData<short>`/`<float>`, `ImaEBPGammaOp<...>`,
+`ImaJpegDeblockOp`, `ImaColorShiftOpT<float>`, `ImaMetadataOperation`, and
+more — which is what made §51.7's fast ruling-out possible at all.
+
+**Reachability was checked against a corrected seed, not just
+`0x10069490` again.** Re-running `tools/re/reachability.py walk
+0x10069490` (the cn_enhanced per-scene driver, exactly as prior sections
+seed it) reproduces a 1,558-function direct-call set and includes none of
+the 54. But reading `method.AnsCnEnhancedPath.virtual_8` (`0x10069d80`,
+981 bytes) directly — found because §11's own citation already treats
+`0x10069490`-`0x10069d80` as one combined region ("already cited, but not
+fully disassembled") — shows it calls `fcn.10069490` itself, directly, at
+`0x10069e75` (confirmed by reading the real bytes, not inferred from
+proximity): **`virtual_8` is `AnsCnEnhancedPath`'s own analyze-time entry
+point, and `0x10069490` is what it calls into, not a free-standing root.**
+`virtual_8` itself has zero direct-call callers anywhere in the binary
+(`in-degree: 0`) — it is COM/vtable-dispatched, invisible to a direct-call
+BFS at its own root, exactly the same structural blind spot §46 already
+flagged for `AnsAreaCapabilityImpl`'s own methods. Re-seeding the walk at
+`0x10069d80` instead reaches **1,708 functions** (150 more than seeding at
+`0x10069490` alone) — a real, previously-uncounted gap in how this
+investigation's own reachability tooling has been seeded, closed here for
+the first time.
+
+Of the 54 real-hit functions, **10 fall inside this corrected,
+`AnsCnEnhancedPath`-rooted, direct-call reachable set.** Every one of
+those 10 was read in full below. The other 44 were triaged by
+class/caller name only, per this task's own "triage first, deep-read only
+real candidates" instruction — §51.7.
+
+### 51.4 — The 10 live-reachable real candidates, each read via `af`+`pdf`
+in full: none of them is the inversion formula
+
+**`0x10271bc0`** (755 B, sole caller `fcn.101c92c0`) — a Gaussian
+resampling-kernel builder. Computes a radius from `sqrt(-8·ln(x))`
+(`fldln2`/`fyl2x` then `×(-8.0)` then `fsqrt` — the standard
+support-radius idiom for a Gaussian blur kernel), then fills a 2-D array
+via the standard `exp()` idiom (`fldl2e`/`frndint`/`f2xm1`/`fscale`) into
+an `IemTPlane<short>` image-plane object (`vtable.IemTPlane_short_int_.0`
+referenced directly). Image-resampling/blur math, not density.
+
+**`0x104fbb60`** (104 B, sole caller `fcn.104fbbd0`) — computes
+`ln(Σ exp(-value_i))` over a loop of `this+0x110` elements: the
+numerically-stable **log-sum-exp** idiom (negated `exp()` accumulated in a
+loop, then one closing `ln()` via `fldln2`/`fyl2x`). A statistics/
+likelihood-style aggregate — exactly the shape §32.4's own reasoning
+already predicted for this neighbourhood ("much more consistent with a
+statistical/entropy-style computation than a per-pixel density
+conversion"), now confirmed directly rather than inferred from density
+alone. Not a per-pixel, two-log-difference formula.
+
+**`0x10203470`** (951 B) contains one real `fyl2x` (`0x1020366a`,
+`log10(a/b) × scale[i]`, rounded via the shared helper `fcn.104ffe44` into
+a per-index int array — a genuine per-element LUT-shaped loop). Traced
+its own real caller chain (`axtj`, one hop at a time): `0x10203470` ←
+`0x1011c3a0` ← `0x100fe960`. **`0x100fe960` is `analyzeFalloff`** — the
+exact address this doc's own §11 call-order table already names. §11/§20
+already established, independently of this pass, that `analyzeFalloff`
+*"was already dead (structurally absent calibration data)"* on this
+device. This candidate inherits that already-closed verdict rather than
+needing its own.
+
+**`0x10205660`** (202 B) contains one real `fyl2x` (`0x1020569c`) —
+read in full: a single `log10` of one float argument, compared against a
+stored threshold, setting a one-byte boolean flag (`[edi+0xb5]`) — a
+classification/gate, not a value-producing density formula (the target
+formula needs *two* independent `log10` calls of *different* quantities,
+subtracted; this has one, feeding a boolean). Its own caller chain
+(`0x10205660` ← `0x10206c50` ← `0x1011e1f0` ← `0x10112f30`) resolves to
+**`analyzeNoise`** — this doc's own §26, already fully self-naming-string
+confirmed (`"analyzeNoise"`, `noiseMethods.cpp`) and already closed with
+*"two independent checks confirm zero live channel into the six-subsystem
+tone chain."* Same situation as `0x10203470`: reachable from the real
+driver, genuinely executes, but already-established by this doc's own
+prior work to be architecturally isolated from the tone/density chain.
+
+**`0x10273530`** — the single most promising candidate this pass found.
+Read and discussed in full in §51.5, on its own, because it deserves more
+than a one-paragraph dismissal.
+
+**`0x101da930`/`0x1022c8f0`** (388 / 386 B, `is-pure: true`, 6 args,
+17 basic blocks, near-identical shape — plausibly two template/manual
+instantiations of the same routine for different pixel types, the same
+pattern already seen elsewhere in this DLL for `LilyImageData<short>`/
+`<float>`) and **`0x1029dbd0`** (1,110 B) and **`0x102aac00`** (492 B,
+`is-pure: true`) all contain, at their one real `f2xm1` site, the
+identical textbook `exp()` idiom (`fldl2e`/`frndint`/`fsub`/`f2xm1`/
+`fld1`/`faddp`/`fscale`) — confirmed by reading each site's own immediate
+context, not inferred from the mnemonic alone. **`0x1029b360`** (47 B,
+single basic block, 4 callers) is the cleanest of this family: `1 / (1 +
+exp((x−a)·b))` — a textbook logistic sigmoid, likely an S-curve/soft-
+threshold utility. All five are genuine `exp()`/sigmoid-family
+computations. This matters structurally, not just as a one-off
+observation: `f2xm1` is the x87 primitive for `2^x − 1`, and in every
+occurrence read across this entire pass — inside or outside the live-
+reachable set — it appears exclusively as part of the standard
+`frndint`+`f2xm1`+`fscale` *exponential* idiom, never as part of a `log`
+computation. `f135_rom12_to_rpd12`'s own formula needs two `log10` calls,
+not an `exp` — so on structural grounds alone, `f2xm1`-only sites were
+always the weaker half of this search, and that expectation held for
+every one of them.
+
+### 51.5 — `0x10273530`: the shape genuinely matches; the reachability
+doesn't
+
+Read in full (`af`+`pdf`, 249 B, 10 basic blocks): a loop, `arg_10h`
+iterations, writing a 12-bit-clamped `word` array (`mov word [edi], ax`,
+explicitly clamped into `[0, 0xfff]` before the store — `cmp ax, 0xfff;
+jle …; mov eax, 0xfff`). Per iteration it computes `pow(10, x·0.001)`
+twice via `MSVCR71.dll`'s real `_CIpow` (imported, not reconstructed),
+one genuine `log10` via `fldlg2`+`fyl2x`, multiplies the log by the
+literal constant **`1000.0`** (`0x105a3c18`, decoded directly:
+`0x408f400000000000` = `1000.0`), then rounds through the same shared
+helper (`fcn.104ffe44`, 1,741 xrefs across the whole DLL — a generic
+`round(double)→int` utility, read in full and confirmed generic, not
+distinguishing on its own). This is, shape-for-shape, what a
+`rpd12 = fpo + 1000·(log10(...) − log10(...))`-style LUT *builder* would
+look like: a per-index loop, two `pow`/`log10` calls, a `×1000` scale, a
+12-bit clamp. It is the closest structural match this whole pass found —
+closer than the far more suggestively *named* `ColorMetricRPD12`
+(§51.6).
+
+**Its own real call chain, traced hop by hop (`axtj`, one real caller per
+hop, not inferred):**
+
+```
+0x10273530 ← 0x10274d10 ← 0x101d1120 ← 0x100fb080 ← 0x10069490
+```
+
+`0x100fb080` is not a new address — it is **`analyzeAsea`**, already
+cited by this doc's own §11 call-order table (`"[0x100fb080 — not yet
+identified]"`) and already fully characterized by §20 (citing `docs/66`
+Track 2's own disassembly): `scene_type==7` is checked one call site
+*before* the six-subsystem `analyzeAutoTone` chain (`cmp dword
+[esi+0x44], 7` at `0x100699e7` — re-confirmed directly this pass, not
+just cited, by disassembling `0x100699b0`-`0x100699e7` fresh) and, on a
+match, the driver calls `analyzeAsea` **instead of** the six-subsystem
+chain entirely. §20 already closed, independently and twice ("closed a
+second time empirically," a real `scene_type` sweep 0-7 on a captured
+frame), that real F-135 CN-Enhanced frames run with `scene_type=0` —
+never `7`. Every hop in `0x10273530`'s own chain has exactly one caller
+(`0x10274d10`, `0x101d1120`, and `0x100fb080` itself are each called from
+exactly one place), so this is not a shared utility reachable some other
+way — it is `analyzeAsea`'s own, private, four-hop-deep subtree, and
+`analyzeAsea` itself only runs for a `scene_type` value this device's real
+frames never carry.
+
+**Verdict on this one candidate specifically: real, well-shaped, genuinely
+RPD12-formula-*like* — and confirmed dead code for real F-135 frames**,
+on this doc's own already-established `scene_type` finding, not a new
+assumption. Flagged plainly because the shape match is real and worth
+someone's attention if `scene_type` handling is ever revisited, not
+because it explains anything about the live render path today.
+
+### 51.6 — The most suggestively-*named* candidate, run to ground and
+ruled out on the same "already-established, dead capability" grounds as
+§32's own Shasta/CN-Premium findings
+
+`method.ColorMetricRPD12.virtual_44` (`0x1027df40`) — a name containing
+the doc's own target domain literally — carries a real `fyl2x`. Read in
+full: `1000·log10(arg / (0.18 · 10^(field·0.001)))`-shaped, using two
+values obtained through the object's *own* vtable (calls through
+`[eax+0x3c]`/`[edx+0x28]`, both confirmed by direct byte dump to be
+3-byte `fld qword [ecx+N]; ret` field accessors, not further logic), and
+the literal constant `1000.0` at the same address (`0x105a3c18`) the
+`0x10273530` candidate above also uses. Its sibling
+`ColorMetricERIMM.virtual_44`/`virtual_48` (`0x1027dcb0`/`0x1027dbe0`)
+carry 8 more real `fyl2x` sites, similarly shaped.
+
+**Traced to its own real construction site, not assumed from the name.**
+Confirmed the class hierarchy is genuine via RTTI, not guessed: `f~
+ColorMetric` surfaces real `.?AV` type-descriptor strings for
+`ColorMetric`/`ColorMetricSRGB`/`ColorMetricROMM12`/`ColorMetricERIMM`/
+`ColorMetricRPD12`; dumped each class's real vtable (found by raw-byte
+search for pointers to the known method addresses, then confirmed by
+reading 18 consecutive dwords at the resolved base) and found `RPD12`
+and `ERIMM` share every vtable slot with their siblings **except** the
+two the class overrides (`virtual_44`/`virtual_48` — offsets 44/48
+decimal into the table, each subclass implementing its own version of
+exactly these two, everything else inherited unmodified). Found the real
+constructor (`fcn.1027dff0` for RPD12, `fcn.1027dd90` for ERIMM, both
+confirmed by locating the raw vtable-base immediate inside each
+constructor's own `mov [esi], <vtable>` instruction) and its one real
+caller: **`fcn.101eb0b0`**, which string-compares a name argument against
+literal `"RPD12"`/`"ERIMM12"`/`"ROMM12"` and constructs the matching
+object with construction parameters pulled from a `0x1059b1xx` float
+table. `fcn.101eb0b0`'s own two real callers are
+**`method.FlareParameterReader.virtual_12`** and
+**`method.AnsFlareDpi.virtual_16`**.
+
+**This is flare-correction parameter unit conversion, not the F-135
+sensor inversion — and `docs/62` already independently established that
+flare itself is dead code for this device**, the same category of
+already-closed finding this doc has repeatedly used to rule out Shasta/
+CN-Premium: `docs/62-colour-engine-consolidation.md` §12.4.1(b) shows
+`"flare"` is one of `AnsCnPremiumPath::exportParameterPack`'s own operands
+and explicitly absent from `AnsCnEnhancedPath::exportParameterPack`'s pack
+(*"noise, balance, FUGC, area, falloff, asea, autoTone, sharpening,
+defects. **No flare, no Shasta, no ColorAdjust**"*), and that same section
+independently shows the real path-selector switch table
+(`0 → DC-Premium, 1 → CN-Enhanced, 2 → CN-Enhanced, 3 → CN-Lockbeam,
+4 → CP-Balance`) has **no case that yields CN-Premium at all** for this
+device. Confirmed directly, not just by citation: neither
+`fcn.101eb0b0` nor `method.AnsFlareDpi.virtual_16` nor any of the four
+`ColorMetric*` `virtual_44`/`virtual_48` methods appears in either
+reachable set this pass computed from the real per-scene driver — the
+1,558-function `0x10069490`-seeded set, the corrected 1,708-function
+`0x10069d80`-seeded set, or (checked separately) the 39-function direct
+reachable set of `asea` (`0x100ff0a0`) itself, the one flare-adjacent
+capability that *is* in `AnsCnEnhancedPath`'s own live pack. **Ruled out
+on the same standard, and with the same confidence, as Shasta/CN-Premium
+throughout this doc — a real, suggestively-named function that turns out
+to belong to a capability this device's own real switch table never
+selects.**
+
+### 51.7 — The other 44 real-hit, not-live-reachable functions, triaged
+by class/caller name only, per this task's own "deep-read only real
+candidates" instruction
+
+Not individually disassembled in full — each already self-identifies, via
+a real RTTI class name or a real named caller, as belonging to a
+capability or subsystem this doc has already established (here or in
+`docs/62`) is not on `AnsCnEnhancedPath`'s live chain, or is a generic,
+non-density image operator:
+
+- **`fcn.100e37d0` and `fcn.10063730`** — already resolved in §51.2: every
+  one of their raw hits (10 `fyl2x`, 8 `fyl2xp1`) is a false positive,
+  zero real instructions survive. Noted here only because §32.4 spent
+  real analysis on `fcn.100e37d0` specifically; for what it's worth had
+  either carried real hits, their callers (`method.AnsArchivePath.
+  virtual_4`/`virtual_8`, `method.AnsCnLockbeamPath.virtual_8`/
+  `virtual_12`) are both real, distinct `AnsCn*Path`-family classes §18
+  already distinguished from `AnsCnEnhancedPath` by their own self-naming
+  strings — so this would have been a fast, independent ruling-out even
+  without the false-positive finding.
+- **`fcn.104693f0`** (5 real hits: 3 `fyl2x` + 2 `f2xm1`, confirmed
+  genuine) — the one function in this list actually read in full rather
+  than triaged by name, because §32.4 flagged it explicitly as "not read
+  in full." Computes, per read: `ln(a)` and `ln(b)` (two real `fyl2x`
+  sites via `fldln2`), summed and halved (`×0.5`, `0x10574f40`), then
+  `exp(...)` of the result via the same standard idiom — i.e.
+  `exp(0.5·(ln(a)+ln(b))) = sqrt(a·b)`, a **geometric-mean interpolation**
+  between two entries of a 10-slot table (`eax` clamped to `[0,9]`,
+  `fld qword [esp+eax*8+...]`), repeated twice per call. Shape mismatch
+  from the target formula (mean via addition, not a subtraction/
+  difference), and its own callers (`fcn.10452c60`, `fcn.104534f0`) carry
+  no RTTI name and don't appear in either reachable set computed this
+  pass — real, correctly out of scope, and now actually characterized
+  rather than left as a named-but-unread cluster.
+- **`method.AnsDcBalancePath.virtual_8`/`virtual_16`** — `AnsDc*Path` is
+  the "third, distinct path-class family" §18 already separated from
+  `AnsCn*Path` entirely (a different device/mode class, not a colour-
+  negative F-135 scan).
+- **`method.LilyImageData<short>/<float>.virtual_64`/`virtual_68`** (4
+  real hits total) — a templated image-data accessor class, generic
+  across pixel types; not tied to any named capability, and absent from
+  both reachable sets.
+- **`method.ImaEBPGammaOp<unsigned char>/<short>/<unsigned short>.
+  virtual_40`** (12 real `fyl2x`, 4 each) — a generically-templated
+  **gamma-curve** operator (three pixel-type instantiations), the
+  general-purpose image-library gamma utility, not the specific two-log
+  density-difference shape.
+- **`method.ImaJpegDeblockOp.virtual_12`/`virtual_16`**,
+  **`method.AnsJpegDeblockOperand.virtual_12`/`virtual_16`** — JPEG
+  deblocking filter math.
+- **`method.ImaColorShiftOpT<float>.virtual_24`**,
+  **`method.AnsNoiseFilteringOperand.virtual_12`/`virtual_16`**,
+  **`method.ImaMetadataOperation.virtual_76`**,
+  **`method.ImaXySimpleRegion.virtual_12`** — self-naming, none of them
+  RPD12/density-shaped by their own stated purpose.
+- **`sym.PakonIMAu.dll_PIColorAdjustPlanar`** (a real, non-RTTI *exported*
+  symbol, `0x10013bc0`) and its own callee `fcn.103675f0`, also called
+  from `method.ImaICCCombineAgg.virtual_76` — "ColorAdjust" is, per the
+  same `docs/62` §12.4.1(b) citation used in §51.6, explicitly absent from
+  `AnsCnEnhancedPath`'s live pack and present only in `AnsCnPremiumPath`'s
+  — the identical already-established dead-capability pattern as flare.
+- **The `0x102ee850`/`0x102ef040`/`0x102ef830`/`0x1026a490`/`0x10292c*`/
+  `0x10293*`/`0x1024a050`/`0x1027d2c0`/`0x1015*`/`0x1016*`/`0x1045*`
+  remainder** (plain `fcn.` names, no RTTI symbol recovered) —
+  not individually traced this pass; none appear in either reachable set
+  computed above, so none needed a name-based ruling to be set aside, only
+  the reachability check itself. Flagged honestly as the one part of this
+  triage that used absence-from-the-reachable-set alone, without an
+  independent second reason, the same standard §32.4 itself used for its
+  own two unread clusters.
+
+### 51.8 — Verdict
+
+**This closes §32.4's own explicitly-flagged-incomplete `PakonIMAu.dll`
+search — genuinely, not by re-stating the same "not fully triaged" hedge
+with new numbers.** Every one of the 159 raw `fyl2x`/`fyl2xp1`/`f2xm1`
+hits in this DLL has now been individually resolved: 67 are byte-level
+false positives (including, newly, the finding that **`fyl2xp1` is never
+real anywhere in this binary** — 34 for 34), and of the 92 real
+instructions, only 10 sit inside functions reachable, by direct calls,
+from `AnsCnEnhancedPath`'s own real analyze-time entry point — corrected
+this pass to include `virtual_8`/`0x10069d80`, not just the
+already-cited `0x10069490` driver body alone. **All 10 were read in full.
+None of them computes anything resembling `f135_rom12_to_rpd12`'s own
+`fpo + 1000·(log10(base−c9) − log10(poly−c9))` construction** — the
+closest structural match (`0x10273530`, §51.5) is confirmed dead code for
+real F-135 frames on this doc's own already-established `scene_type`
+finding; the most suggestively-named candidate (`ColorMetricRPD12`,
+§51.6) is confirmed dead code for real F-135 frames on `docs/62`'s own
+already-established flare/CN-Premium finding; every other real,
+live-reachable site is a statistics aggregate, a threshold gate inside an
+already-isolated subsystem (`analyzeFalloff`/`analyzeNoise`, both already
+closed by this doc's own §11/§20/§26), or an `exp()`/sigmoid/Gaussian-
+kernel computation structurally incapable of producing a log-difference
+result.
+
+**Combined with §32.3's already-clean TLB.dll negative, this means: of
+the two DLLs this project has ever searched for the one operation
+`f135_rom12_to_rpd12`'s own construction requires, neither contains a
+reachable, real instance of it.** This is new, decisive, load-bearing
+negative evidence for `PakonIMAu.dll` specifically — the first time this
+particular search has actually been finished, not left "incomplete."
+
+**What this does, and does not, mean going forward — three concrete,
+un-collapsed possibilities, none confirmed or preferred over the others
+by anything this pass found:**
+
+1. **The formula may not be computed via a live `fyl2x`-family
+   instruction at all.** `0x10273530` (§51.5) is real, independent proof
+   that this exact DLL *does* contain the shape this task predicted —
+   a per-index loop, two `log10`/`pow` calls, a `×1000` scale, a 12-bit
+   clamp — as a genuine, compiled LUT-*builder*, just for a different
+   (dead) capability. Given the real formula's domain is a pure function
+   of a 14-bit raw code (at most 16,384 values × 3 channels), the
+   vendor's real implementation may build an analogous LUT **once**, at
+   calibration time, from an address this pass's direct-call-only
+   methodology hasn't located — or may use SSE2 scalar float ops instead
+   of x87 entirely (plausible for a 2006-era MSVC build targeting a
+   Pentium-4-class CPU; this binary's own compile timestamp, read via `i`,
+   is `Tue Aug 22 16:41:19 2006`), or a literal precomputed constant table
+   with no runtime log computation at all. None of these alternatives was
+   tested this pass; they are the most concrete un-tried leads this
+   section's own negative result points at.
+2. **Real vendor DLLs this project has never searched or even hashed
+   exist alongside the two that have been.** `/Users/guy/pakon-windows-
+   repair/COM-SERVER/` contains `AIDToolkit.dll`, `DMLDICELib.dll`,
+   `TLA.dll`, `TLC.dll`, and `tlx.dll` in addition to `TLB.dll` and
+   `PakonIMAu.dll` — none of the five is cited by MD5, searched for this
+   instruction family, or mentioned at all, in any doc in this repo
+   (checked directly, `grep -rl` across `docs/*.md`). `TLA.dll` in
+   particular is a natural next candidate given its size (580 KB, between
+   TLB.dll's 524 KB and TLC.dll's 600 KB) and its naming adjacency to
+   `TLB.dll`, which this doc already knows hosts real per-unit
+   calibration/session code.
+3. **The virtual-dispatch blind spot this pass had to work around twice
+   (`ColorMetricRPD12`'s own construction chain, `AnsCnEnhancedPath::
+   virtual_8` itself) is structural, not incidental**, and applies to
+   anything this pass didn't happen to reconstruct by hand. A genuinely
+   vtable-only call site — reached from a live object this investigation
+   hasn't traced construction for — would be invisible to every
+   reachable-set figure in this section, the same caveat §46 already
+   raised for `AnsAreaCapabilityImpl` and never fully closed.
+
+**If a fourth candidate is found and its shape genuinely matches** (two
+independent `log10`/`fyl2x` calls of different quantities, subtracted, on
+a value that behaves like a calibrated raw code, reachable from a live
+object this investigation can show is actually constructed on the real
+render path — not just present in the binary), the concrete next step
+this doc's own established method points to is what §36 already did for
+PolyPixel and SBA balance-apply: a Unicorn harness executing the real
+function on `test123.bin` frame 0's own real data, diffed against
+`f135_rom12_to_rpd12`'s own Python output on the identical input. No such
+candidate survived this pass to be worth building that harness for.
+
+**No production, golden, or port file was changed by this pass.** All
+work is additive, under `/tmp/pakon_re/` (new files this pass added:
+`hits_raw.json`, `hits_disasm.json`, `hits_mapped.json`,
+`final_verify_results.json`, `aflj2.json`/`aflj3_postaaa.json` — cached
+full-binary function catalogs — `reach_cnenh.json`, `reach_v8.json`,
+`reach_asea.json`, and the `step*.py` scripts that produced them), matching
+this doc's own established convention. `docs/74-…md` itself is the only
+file this pass edited (this section).
+
+**Verification.** DLL MD5 re-checked (`eea9dcf78ee21d4f7c515a6c2512242d`)
+against two independent local copies before any work. The raw `/x` search
+was re-run twice (once to derive counts, once implicitly reproduced via
+the `hits_raw.json` re-load in every later script) and produced identical
+counts both times. Every function-boundary claim in §51.4-49.6 came from
+`af`+`pdf` (r2 6.1.8) at the real address, never a raw `pD` byte range,
+per this project's own established convention — the one exception
+(`0x105623a0`-`0x105624c0`, §51.2) is explicitly flagged as a `pD`
+diagnostic used only to confirm "this is not real code," never to
+characterize a function's purpose. `fcn.104ffe44`'s "1,741 xrefs" and
+`method.AnsCnEnhancedPath.virtual_8`'s "in-degree: 0" both came from `afi`
+directly, not estimated. The `ColorMetricRPD12`/`ColorMetricERIMM` vtable
+dump (§51.6) was cross-checked two ways — locating the vtable base by
+raw-byte search for pointers to the already-identified method addresses,
+then independently confirming the same base by dumping 18 consecutive
+dwords and checking the known-shared slots resolve to identical addresses
+across both sibling classes — not read once and trusted. The
+`AnsCnEnhancedPath::virtual_8` → `0x10069490` call (§51.3) was confirmed
+by grepping the real `pdf` output for the literal `call fcn.10069490`
+line, not inferred from the two addresses' proximity. `scene_type==7`'s
+own check (§51.5) was re-disassembled fresh at `0x100699b0`-`0x100699e7`
+and matches this doc's own already-standing citation exactly
+(`cmp dword [esi+0x44], 7`). `tools/re/reachability.py walk` was used completely unmodified — the
+tool itself, not just its published calibration point — for both the
+`0x10069490` seed (1,558 functions, this pass's own first run of this
+specific seed; not previously published by this doc) and the corrected
+`0x10069d80` seed (1,708 functions) this section introduces. The five
+never-before-cited DLL names in §51.8 item 2 were confirmed present by
+directly listing `/Users/guy/pakon-windows-repair/COM-SERVER/`, not
+assumed from memory of the directory.

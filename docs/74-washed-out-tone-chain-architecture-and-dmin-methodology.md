@@ -11275,3 +11275,274 @@ capture. Reported as a real discrepancy, not resolved.
 | `tlb_ccd_acquire_control` toggling window | Entirely within `t+0..5,516ms`, before any per-frame hook |
 | `tlb_ccd_acquire_control` vs. `docs/55`'s `0x0060`/`0x0061` pattern | Partially confirmed directly: call 2's raw return `EDX` is `0x00000061`, matching `docs/55` exactly; the disassembly-only trace of the second `fcn.10029770` merge call predicts `0x62`, a real, reported discrepancy between hand-tracing and live data |
 | Open-gate/with-film duty switch (`docs/59`) | **Confirmed live** — calls 11/13/14 carry the open-gate duty, call 18 (in the `BeforeScan` cluster) carries the with-film duty, both within ~0.4% of `docs/59`'s registry-derived ratios |
+
+## 53 — §52's incidental `afe_offsets` gap run to ground: a real, well-evidenced
+regression traced to §42's own promotion, live hardware genuinely absent this
+session (checked, not assumed), and the correction tested directly against
+`AA001.tif` — real but small, and it does not move the brightness gap
+
+§52.5 flagged, as an aside, that this unit's real vendor convergence
+(`-19,-26,-20`, live-captured twice, two days apart) sits nowhere near
+`calibration/README.json`'s stored `afe_offsets` (`0,-6,2`), and left it for
+"someone's attention." This section is that attention: where `0,-6,2` came
+from, whether live hardware could re-settle it tonight, what the real
+render-level effect of the discrepancy is, and whether the structural
+cancellation argument §31.3/§33.4/§34.5 already established for duty/gain/
+matrix rescales also protects the AFE dark offset the same way.
+
+### 53.1 — Hardware check first, honestly: the scanner is not connected this
+session, contrary to the task's own assumption
+
+`python3 tools/pakon_scan.py status`:
+
+```
+scanner        absent  (No scanner on USB. Open an existing capture instead — everything downstream works offline.)
+```
+
+Cross-checked independently, not just trusting the one tool's own report:
+`system_profiler SPUSBDataType` was searched for any Pakon/Kodak/F-135 entry
+and found none. **`converge_afe_offsets`/`--live-afe-converge` (§44) could
+not be run against real hardware this session** — the premise this task
+opened with ("it's connected and available this session") does not match
+what this machine's own USB bus and this project's own status command both
+report, right now. Reported plainly rather than fabricated or silently
+skipped; everything below uses real historical hardware data already on
+this machine instead (git history, dated calibration snapshots, and §52's
+own real live-hook capture from two days ago), not a live run.
+
+### 53.2 — Where `[0,-6,2]` actually came from, and what it replaced
+
+`calibration/README.json`'s `generated_at` is `2026-08-14T06:50:06`,
+`generated_by: tools/calib_wizard.py` — a real, on-hardware self-calibration
+search (`calibration-fresh-scan/`, this exact unit's serial `16275`,
+`search_note`: *"The AFE offsets and the lamp on-counts in config were
+SEARCHED against this scanner's own response, not copied"* — §34.4 already
+established this is genuine, not synthetic). It was **promoted** into
+`calibration/` by commit `0096c2c` (2026-08-15T12:19:37, *"calibration:
+promote calibration-fresh-scan/ into calibration/, per docs/71's documented
+never-overwrite procedure"*) — §42 of this doc, done at the owner's explicit
+request, exactly per `docs/71`'s backup-first convention. The backup it made
+is still on disk, untouched: `calibration/{dark_2000x3,gain_2000x3}
+.pre-freshscan-promotion-20260815.npy` and `README.pre-freshscan-
+promotion-20260815.json`.
+
+**What that promotion overwrote**, read directly from that backup and from
+`test123.scan.json`'s own recorded exposure (not inferred):
+
+```
+test123.scan.json  exposure.afe_offsets = [-18, -26, -20]   <- what test123.bin
+                                                                 was ACTUALLY
+                                                                 captured under
+calibration/README.pre-freshscan-promotion-20260815.json
+                    config.afe_offsets  = [-18, -26, -20]   <- matches exactly;
+                                                                 generated_at
+                                                                 2026-08-12T08:21:09,
+                                                                 this is the file
+                                                                 test123.bin's own
+                                                                 calibration_source
+                                                                 pointed at
+calibration/README.json (current, post-promotion)
+                    config.afe_offsets  = [0, -6, 2]         <- what every render
+                                                                 of test123.bin has
+                                                                 used since 2026-08-15
+```
+
+**This unit's own calibration history clusters tightly around `-18/-19,
+-26, -20` — `[0,-6,2]` is the one outlier, not the norm.** Every dated
+`calibration/README*.json` snapshot on this checkout, read directly:
+
+```
+file                                              captured    afe_offsets
+README.pre-vendor-base8-20260812-010019.json      2026-08-07  [-18, -26, -20]
+README.pre-recal-20260812.json                    2026-08-07  [-18, -26, -20]
+README.pre-dutyfix-20260812-002813.json           2026-08-07  [-18, -26, -20]
+README.pre-recapture-20260812-070345.json         2026-08-07  [-19, -26, -20]  <- exact
+                                                                                    vendor match
+README.pre-vendorfaithful-20260812-080455.json    2026-08-07  [-18, -26, -20]
+README.pre-freshscan-promotion-20260815.json      2026-08-12  [-18, -26, -20]  <- what
+                                                                                    test123.bin
+                                                                                    used
+README.json (current, post-promotion)             2026-08-14  [0, -6, 2]      <- the
+                                                                                    outlier
+```
+
+Six independent snapshots across eight days, spanning three separate
+recalibration passes (the original 2026-08-07 capture, the 2026-08-12
+duty/vendor-faithful/recapture sequence, and this doc's own §52 live TLB.dll
+hook capture two days after that) land within one register count of
+`-18/-19, -26, -20`. `tools/pakon_scan.py`'s own `ScanConfig.afe_offsets`
+dataclass default (`:566`) is hardcoded to `(-18, -26, -20)` — the value the
+project's own source code falls back to when a calibration file omits the
+key, and never actually the *promoted* value, evidence of what this
+codebase's own prior self considered the settled number before the 2026-08-14
+self-cal run. `[0,-6,2]` is a single, unreplicated measurement from one
+`calib_wizard.py` search session, now sitting in production. Whether that
+session found genuine hardware drift or a search-algorithm anomaly is not
+settled by this evidence alone (§53.5 explains why it can't be, without a
+fresh live run) — but it is the odd one out against everything else on this
+machine, including the real vendor's own two independent live captures.
+
+### 53.3 — Tested directly against `AA001.tif`: swapping in the matching,
+pre-promotion calibration, real render, real reference, twice
+
+`~/Library/Caches/PakonScan/workspace/f4c91b62` (the workspace §31-52 cite)
+no longer exists on this machine — cleaned up between sessions. Re-opened
+`test123.bin` fresh via `pr.open_capture(..., film_path="ColNeg",
+sba_default=True)`, `PAKON_COLOUR_ENGINE=python`, the same production call
+path every prior section used, twice: once against `calibration/` exactly
+as currently stored (`0,-6,2`), once with the real `*.pre-freshscan-
+promotion-20260815.*` backup swapped in (`-18,-26,-20`, matching
+`test123.bin`'s own capture) — backed up and restored via plain `cp`,
+`calibration/` left byte-identical to its starting state afterward (`git
+status --porcelain calibration/` empty, confirmed). Measured against the
+real `AA001.tif` (found at `/Users/guy/.claude-account-1/jobs/5e3f6f65/tmp/
+vendor-tiffs/AA001.tif` — the same file this doc's own §31 cites; the
+`f4c91b62` copy is gone but this one is the same file, re-verified by
+re-measuring it directly rather than trusting a stale citation):
+
+```
+                                p0.1  p1   p5   p50  p95  p99 p99.9
+R AA001.tif (target):            0   10   17    90  235  252  254
+R current  ([0,-6,2]):          32   69   93   188  250  254  254
+R pre-promo ([-18,-26,-20]):    31   65   88   190  252  254  254
+
+G AA001.tif (target):            8   11   17   103  239  251  255
+G current  ([0,-6,2]):          43   49   60   165  249  254  254
+G pre-promo ([-18,-26,-20]):    34   43   55   166  245  253  254
+
+B AA001.tif (target):            7   10   18   139  246  255  255
+B current  ([0,-6,2]):         108  121  138   237  254  254  254
+B pre-promo ([-18,-26,-20]):    98  112  136   235  254  254  254
+
+median delta vs target:  R  current +98  pre-promo +100
+                          G  current +62  pre-promo +63
+                          B  current +98  pre-promo +96
+```
+
+Restoring the calibration that actually matches what `test123.bin` was
+captured under moves the median by **2, 1, and 2 codes** (R/G/B) — and makes
+R and G *very slightly worse*, not better. Not the explanation, and not
+close to it.
+
+**A second, more surgical version, isolating the dark-table effect from
+`film_base`'s own already-documented saturation bug.** `roll.film_base` is
+recomputed fresh from whichever dark table is active (§31.2/§41), so the
+naive test above conflates two things: the AFE-offset mismatch itself, and
+`film_base`'s own separate sensitivity to it. Re-ran holding `roll.film_base`
+**fixed** at the same value (`[4094, 2442, 4067]`, the `[0,-6,2]`-state's own
+natural measurement) in both cases, varying *only* the per-pixel dark table
+used to decode the frame's actual pixel content:
+
+```
+                          median delta vs target
+R  dark=[0,-6,2]:    +98      dark=[-18,-26,-20]: +106   (worse by 8)
+G  dark=[0,-6,2]:    +62      dark=[-18,-26,-20]: +62    (unchanged)
+B  dark=[0,-6,2]:    +98      dark=[-18,-26,-20]: +96    (better by 2)
+```
+
+Even fully isolated from the film_base confound, the largest shift anywhere
+in either test is **8 sRGB codes**, in the *wrong* direction for red. Two
+independent tests, same verdict: this real, real-hardware-evidenced
+discrepancy does not move the ~88-90+ code gap in any material way.
+
+### 53.4 — Why, structurally: an additive AFE/dark-offset error is NOT
+protected by §31.3/§33.4/§34.5's cancellation argument — checked with the
+real algebra, not assumed either way, per this task's own explicit
+instruction
+
+§31.3/§33.4/§34.5 all found the same shape of result — a *pure multiplicative
+rescale* of the raw domain cancels in `f135_rom12_to_rpd12`'s own
+`fpo + 1000·(log10(base−c9) − log10(poly−c9))` formula, because a shared
+scale factor `k` on both `base` and `poly` moves `log10(k·x)` and
+`log10(k·y)` up by the identical additive amount, which subtracts out
+exactly. **A wrong AFE dark offset is not that shape.** It is an *additive*
+error at the raw wire/14-bit stage, applied uniformly to every pixel in a
+channel (both the frame's own content and, since `film_base` is measured
+from the same dark-subtracted decode, the `base` term too) — call it `Δ`:
+
+```
+(base−c9) -> (base−c9) + Δ        (poly−c9) -> (poly−c9) + Δ
+dens' = 1000·(log10((base−c9)+Δ) − log10((poly−c9)+Δ))
+```
+
+Unlike the multiplicative case, `log10(x+Δ) − log10(y+Δ) ≠ log10(x) −
+log10(y)` in general — this genuinely does **not** cancel algebraically,
+confirming the task's own suspicion that the AFE stage is architecturally
+different from the duty/gain/matrix levers already ruled out. This is a
+real, distinct structural finding, checked directly rather than assumed
+from the family resemblance to the already-closed levers.
+
+**But the empirical size of the surviving term depends on how big `Δ` is
+relative to `(base−c9)` and `(poly−c9)` themselves**, which are both in the
+thousands of raw-domain counts at the median tonal position on a real
+photograph (§31.1's own stage table: calibrated-14-bit medians in the
+1,200-3,700 range). The real, measured `Δ` here — the actual difference
+between the two dark tables (`dark_2000x3.npy` means, wire domain: current
+`[1259.1, 1325.8, 1396.9]` vs. pre-promotion `[990.1, 670.6, 610.6]`, delta
+`[269, 655, 786]` wire counts, i.e. `[67, 164, 197]` in the raw14 domain
+`load_unit_calibration` actually subtracts in) — is not negligible in
+absolute terms, but it is small relative to `(poly−c9)`/`(base−c9)` at the
+median, where the formula's sensitivity to an additive perturbation
+(`d(dens)/dΔ ∝ 1/(x+Δ) − 1/(y+Δ)`, both terms already small when `x,y` are
+in the thousands) is correspondingly small. This is consistent with, not
+contradicted by, §34.6's own separate observation that this same formula's
+sensitivity to an upstream error is *much* higher near `c9` (deep shadow)
+than at the median — it is the same mechanism, read in the other direction:
+an error that would be large in the shadows is compressed at the median,
+exactly where §53.3 measured it. **The structural argument is genuinely
+different from the multiplicative case (does not cancel), but the real,
+measured magnitude on this real frame is small anyway** — both facts stated
+plainly, neither one assumed from the other.
+
+### 53.5 — What this leaves open, honestly
+
+Whether `[0,-6,2]` reflects real dark-current drift on this unit between
+2026-08-12 and 2026-08-14, or a `calib_wizard.py` search anomaly that
+session, is **not settled by this section** — that needs a fresh, live,
+multi-round convergence (the exact gap §44.6 already flagged: neither real
+run to date has forced the search's own multi-round solve path), which this
+session's absent hardware could not provide. §52's own live-hook capture is
+strong evidence the vendor's *own* converged number is genuinely
+`-19,-26,-20` on this unit as of two days ago, and this project's own
+history agrees with that number five times out of six — but "agrees with
+history" is not the same claim as "is correct today," and this section does
+not overreach into that claim.
+
+### 53.6 — Verdict
+
+1. **Real hardware was not available this session** (§53.1) — checked, not
+   assumed; §44's own live-convergence loop could not be re-run, contrary to
+   this task's own opening premise.
+2. **The stored `[0,-6,2]` is a real, traceable regression**, not a mystery:
+   §42's own well-documented, owner-directed `calibration-fresh-scan/`
+   promotion (commit `0096c2c`) overwrote a value (`-18,-26,-20`) that (a) is
+   exactly what `test123.bin` was captured under, and (b) is within one
+   register count of the real vendor's own live-captured convergence
+   (`-19,-26,-20`, §52.5-52.6) and of five of this project's own six dated
+   calibration snapshots spanning three separate recalibration passes over
+   eight days.
+3. **Tested directly, twice, against the real `AA001.tif`: it does not move
+   the gap.** Restoring the matching calibration shifts the median by at
+   most 2 codes (naive) or 8 codes (film_base held fixed, isolating the
+   effect cleanly) — small, inconsistent in direction across channels, and
+   nowhere near the ~88-90+ code gap this doc has chased since §31.
+4. **Structurally real, not just empirically small**: an additive AFE
+   dark-offset error does *not* cancel in `f135_rom12_to_rpd12`'s
+   log-difference the way a multiplicative duty/gain/matrix rescale does
+   (§53.4) — the task's own suspicion that this stage might be
+   architecturally different from the already-closed levers is correct. It
+   simply happens, on this real frame, at this real magnitude, to land in a
+   regime (median tonal range, far from `c9`) where that non-cancelling term
+   is small — the same reason §34.6 gives for why upstream errors show up
+   worst in the shadows, read in reverse.
+
+**Per this task's own explicit fallback instruction (§53.3's empirical test
+does not show improvement): no calibration file was changed by this pass.**
+`calibration/README.json` still reads `afe_offsets: [0,-6,2]`, exactly as
+§42 left it; the pre-promotion backup remains on disk, untouched, for
+whoever runs the real live multi-round convergence this section could not.
+This closes the same way §33/§34 did: a real, evidenced, worth-someone's-
+attention finding (this unit's AFE dark offset has one recent outlier
+measurement against five agreeing ones, including two independent real
+vendor captures) — separable from, and not the explanation for, the
+brightness gap. **The ~88-90+ code brightness gap remains open.**

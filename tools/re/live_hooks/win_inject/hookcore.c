@@ -431,6 +431,79 @@ void HookCore_Shutdown(HookEngine *eng) {
 }
 
 /* ---------------------------------------------------------------------
+ * docs/74 SS47's own opt-in "extra buffer dump" feature -- see hookcore.h's
+ * ExtraDumpSpec comment for the motivation/design. Called once per "enter"
+ * event, after the normal call-enter line has already been logged, so a
+ * bug in here can never suppress the baseline capture this whole harness
+ * exists for. Emits ZERO OR MORE separate `{"kind":"buffer_dump",...}`
+ * JSONL lines, one per matching g_extraDumps[] row, each independently
+ * IsBadReadPtr-guarded -- one bad pointer in one row logs
+ * `"readable":false` for that row only, never aborts the others.
+ * --------------------------------------------------------------------- */
+static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp) {
+    const ExtraDumpSpec *spec;
+    /* HOOKCORE_EXTRA_DUMP_MAX_BYTES*2 hex chars + JSON field overhead;
+     * sb_putc's own bounds check makes a too-small buffer truncate safely
+     * rather than overflow, but this is sized generously so truncation
+     * should never actually happen for any row in g_extraDumps[]. */
+    char dumpLine[HOOKCORE_EXTRA_DUMP_MAX_BYTES * 2 + 256];
+    StrBuf sb;
+
+    for (spec = g_extraDumps; spec->hookId != NULL; spec++) {
+        DWORD numBytes;
+        void *srcPtr;
+        BOOL readable;
+
+        if (!mc_streq_ci(spec->hookId, d->id)) continue;
+        /* Defensive: g_extraDumps[] rows are hand-written constants, but
+         * a future added row with a bad stackIndex should skip cleanly
+         * rather than read outside the STACK_DWORDS_LOGGED dwords the
+         * caller already validated. */
+        if (spec->stackIndex < 0 || spec->stackIndex >= STACK_DWORDS_LOGGED) continue;
+
+        numBytes = spec->numBytes;
+        if (numBytes > HOOKCORE_EXTRA_DUMP_MAX_BYTES) numBytes = HOOKCORE_EXTRA_DUMP_MAX_BYTES;
+
+        srcPtr = NULL;
+        readable = FALSE;
+        if (spec->kind == EXTRA_DUMP_STACK_PTR) {
+            srcPtr = (void *)(DWORD_PTR)sp[spec->stackIndex];
+            readable = !IsBadReadPtr(srcPtr, numBytes);
+        } else { /* EXTRA_DUMP_DEREF_PTR: base = sp[idx], real ptr = *(base + off) */
+            void *base = (void *)(DWORD_PTR)sp[spec->stackIndex];
+            if (!IsBadReadPtr((BYTE *)base + spec->derefOffset, sizeof(void *))) {
+                srcPtr = *(void **)((BYTE *)base + spec->derefOffset);
+                readable = !IsBadReadPtr(srcPtr, numBytes);
+            }
+        }
+
+        sb_init(&sb, dumpLine, sizeof(dumpLine));
+        sb_puts(&sb, "{\"kind\":\"buffer_dump\",\"hook_id\":");
+        sb_put_json_str(&sb, d->id);
+        sb_puts(&sb, ",\"call_id\":");
+        sb_put_i32_dec(&sb, (long)callId);
+        sb_puts(&sb, ",\"label\":");
+        sb_put_json_str(&sb, spec->label);
+        sb_puts(&sb, ",\"addr\":");
+        sb_put_hex8_quoted(&sb, (unsigned long)(DWORD_PTR)srcPtr);
+        sb_puts(&sb, ",\"len\":");
+        sb_put_u32_dec(&sb, numBytes);
+        sb_puts(&sb, ",\"readable\":");
+        sb_puts(&sb, readable ? "true" : "false");
+        sb_puts(&sb, ",\"hex\":");
+        if (readable) {
+            sb_putc(&sb, '"');
+            sb_put_hex_bytes(&sb, (const unsigned char *)srcPtr, (int)numBytes);
+            sb_putc(&sb, '"');
+        } else {
+            sb_puts(&sb, "null");
+        }
+        sb_puts(&sb, "}");
+        LogLine(eng, dumpLine, FALSE); /* same hot-path flush policy as the enter/leave lines */
+    }
+}
+
+/* ---------------------------------------------------------------------
  * Called from hookstub.S's SharedEntryHandler. See hookcore.h for the
  * exact contract.
  * --------------------------------------------------------------------- */
@@ -443,6 +516,7 @@ void *HookEntryC(DWORD hookIndex, HookRegs *regs, void *realRetAddr,
     char stackBuf[STACK_DWORDS_LOGGED * 13 + 16];
     StrBuf stackSb;
     DWORD *sp;
+    BOOL spReadable;
     char line[2048];
     StrBuf sb;
 
@@ -477,7 +551,8 @@ void *HookEntryC(DWORD hookIndex, HookRegs *regs, void *realRetAddr,
      * pointer" safety agent.js's tryReadBytes() had via Frida. */
     sb_init(&stackSb, stackBuf, sizeof(stackBuf));
     sp = (DWORD *)argsPtr;
-    if (!IsBadReadPtr(sp, STACK_DWORDS_LOGGED * sizeof(DWORD))) {
+    spReadable = !IsBadReadPtr(sp, STACK_DWORDS_LOGGED * sizeof(DWORD));
+    if (spReadable) {
         int i;
         for (i = 0; i < STACK_DWORDS_LOGGED; i++) {
             if (i > 0) sb_putc(&stackSb, ',');
@@ -513,6 +588,16 @@ void *HookEntryC(DWORD hookIndex, HookRegs *regs, void *realRetAddr,
     sb_puts(&sb, stackBuf);
     sb_puts(&sb, "]}");
     LogLine(eng, line, FALSE); /* hot path -- see LogLine's header comment */
+
+    /* docs/74 SS47 extension -- only ever does anything for hook_ids that
+     * appear in g_extraDumps[] (currently just area_image_apply_lut), a
+     * plain linear scan/compare against a handful of static rows, so this
+     * is a no-op cost for every other one of the 25 hooks. Requires the
+     * SAME sp readability already established above -- never dereferences
+     * sp[] on a pointer this function has already decided not to trust. */
+    if (spReadable) {
+        LogExtraDumps(eng, d, (DWORD)callId, sp);
+    }
 
     if (r->exitEnabled) {
         if (!LooksLikeCodeAddress(realRetAddr)) {

@@ -100,7 +100,26 @@ void HookCore_BuildRealTable(HookEngine *eng) {
         (void *)&Thunk_12, (void *)&Thunk_13, (void *)&Thunk_14,
         (void *)&Thunk_15, (void *)&Thunk_16, (void *)&Thunk_17,
         (void *)&Thunk_18, (void *)&Thunk_19, (void *)&Thunk_20,
-        (void *)&Thunk_21, (void *)&Thunk_22,
+        (void *)&Thunk_21, (void *)&Thunk_22, (void *)&Thunk_23,
+        (void *)&Thunk_24, (void *)&Thunk_25, (void *)&Thunk_26,
+        (void *)&Thunk_27,
+        /* Thunk_23 fixes a real, latent NULL-entryThunk bug left by the
+         * prior commit (6d2e36a) that inserted analyze_scp_lut_balance
+         * mid-array without adding a matching thunk -- see hookstub.S's
+         * own comment on Thunk_23 for the full account. Thunk_24 is the
+         * new slot for this pass's own addition, area_image_apply_lut,
+         * appended at the END of table[] below specifically so no
+         * existing entry's index (and therefore no existing entry's
+         * thunk assignment) moves again.
+         *
+         * Thunk_25/26/27 (docs/74 §49, 2026-08-15): same append-only
+         * discipline, for the three new TLB.dll lamp/AFE-gain/CCD-
+         * acquire-control hooks (tlb_lamp_on, tlb_afe_gain_write,
+         * tlb_ccd_acquire_control) added at the very end of table[]
+         * below. HOOKCORE_MAX_HOOKS bumped 25->28 in hookcore.h and the
+         * matching DEFTHUNK 25/26/27 added to hookstub.S in the SAME
+         * commit -- double-checked specifically against the Thunk_23
+         * mistake this file's own comment above documents. */
     };
 
     static const HookDef table[HOOKCORE_MAX_HOOKS] = {
@@ -438,6 +457,209 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "throughout both new 2026-08-14 captures.",
           "docs/72 SS1.3 (\"FN_bDrvPutCcdAtoDOffsets at 0x100299c0, "
           "[VERIFIED-FROM-BINARY]\"); r2 af/axt re-check 2026-08-15", 0, 1, 0, 0, 0 },
+
+        /* ---- Area image per-pixel LUT apply (docs/74 SS46) ---- */
+        { "PakonIMAu.dll", 0x100d9340, "area_image_apply_lut",
+          "AnsImageData::applyLut -- self-named by 4 embedded strings in "
+          "its own body (\"AnsImageData::applyLut\" @ 0x10584320, "
+          "\"Images must have 3 bands.\" @ 0x10584338, \"Source and "
+          "destination have different packing.\" @ 0x105842f0, \"Source "
+          "and destination are different sizes.\" @ 0x105842c4; path "
+          "\"\\Atc\\ansel\\src\\libStub.ansel\\AnsImageData.cpp\" @ "
+          "0x10584274) -- THE genuine per-pixel write this doc's own "
+          "priority list (docs/74 SS27.4/SS37.7/SS45) had been missing: "
+          "a real nested width/height-bounded loop (outer row loop "
+          "0x100d97f0-0x100d98be, inner column loop 0x100d9822-0x100d986b, "
+          "both `dec reg; jne`-terminated against edi->+0xc/+0x10, the "
+          "same width/height offsets pakon_fugc.FUGC_IMG_DESC_WIDTH_OFF/"
+          "HEIGHT_OFF already document for this same AnsImageData-shaped "
+          "descriptor layout) doing, per pixel per row: `movsx "
+          "ebx,word[src+idx]; mov bx,word[lutBase+ebx*2]; mov "
+          "word[dst+idx2],bx` for R, G, and B against three SEPARATE "
+          "caller-supplied 4096-entry LUTs (0x100d9822/0x100d9837/"
+          "0x100d9846) -- a genuine `[base+index*stride]`-shaped indexed "
+          "LUT lookup AND indexed pixel write inside an image-bounded "
+          "loop, not a struct-field or capability-object write (the "
+          "shape every other function read in this neighbourhood turned "
+          "out to have -- AnsFugcCapabilityImpl::applyLut/0x101fa5b0 in "
+          "SS28 had zero indexed writes in 705 instructions; "
+          "analyzeScpLutBalance/0x100fd190 in SS40 never wrote its own "
+          "flag byte at all). Called (E8 exhaustive .text scan, this "
+          "pass, 10 real static callers total) 4x from balanceAreaImage "
+          "(0x10103561/0x1010386a/0x101038f7/0x10103965, ALL on the "
+          "AREA capability's own real \"AREA analysis image\" object -- "
+          "the exact this+0x1a4 field SS27.3 already read via "
+          "fcn.100dc060, confirmed here to be var_34h at each of these "
+          "4 call sites, with LUT triples from the shift+SCPLut-composed "
+          "buffer SS37.4/SS38-40 already traced), once from "
+          "sba_apply_balance_shifts/0x1019a274 (currently gated off per "
+          "SS37.3, 0/12 real fires), once from analyzePostBalance "
+          "(0x100fdc40, per docs/62 SS2.5's own citation of the scene "
+          "order \"analyzePostBalance 0x100fdc40 -> analyzeFugc -> "
+          "balanceAreaImage\"), and 3x from AnsDcPremiumPath's own "
+          "vtable method_12 (0x1006fa90 range -- the CN-Premium path, "
+          "not this doc's own CN-Enhanced negative path per docs/64). "
+          "Independently corroborated by THREE pre-existing docs this "
+          "investigation had not cross-referenced before this pass: "
+          "docs/62 SS2.5 (\"balanceAreaImage composes filmLut_c . "
+          "scpLut_c . shift_c . fugc_c and applies it through "
+          "AnsImageData::applyLut 0x100d9340\"), docs/64 (\"They compose "
+          "into the pixel buffer in balanceAreaImage\"), and "
+          "docs/reports/autotone-scope-2026-08-10/{fugc,filmLut}.md "
+          "(\"applied to image pixels via AnsImageData::applyLut "
+          "0x100d9340 -- genuine per-channel density math\"). The "
+          "STILL-open question those same earlier docs flag and this "
+          "pass does not resolve (docs/58 SS16.5 as quoted in docs/62 "
+          "SS2.5): whether this \"AREA analysis image\" aliases the "
+          "shared scene buffer cna/dra actually read, or is a private "
+          "analysis-only copy -- exactly what this live hook is for. "
+          "approximate=0: afij (1,505 realsz/473 ninstrs/106 nbbs, "
+          "single real exit ebbs=1, minaddr/maxaddr span matches the "
+          "full af+pdf read exactly) plus this section's own E8 scan "
+          "(10 real CALL xrefs, not a guess) both independently confirm "
+          "a genuine, independently call-reachable function entry, the "
+          "same standard SS37.2/SS39.2/SS40 already established. "
+          "wantExitDefault=1, hotPathDisabled=0: called a small, bounded "
+          "number of times PER FRAME externally (<=4 from "
+          "balanceAreaImage, <=1 each from the other real call sites) "
+          "-- its own internal per-pixel loop is opaque to the external "
+          "call count, unlike tlb_polypixel (called roughly every 15-45 "
+          "ticks, i.e. externally once per scanline-batch) -- so full "
+          "entry+exit tracing at this call frequency is not the "
+          "high-volume hot-path risk hotPathDisabled exists for.",
+          "docs/74 SS46; docs/62 SS2.5; docs/64; docs/58 SS16.5 (quoted "
+          "in docs/62); docs/reports/autotone-scope-2026-08-10/"
+          "{fugc,filmLut}.md", 0, 1, 0, 0, 0 },
+
+        /* ---- Lamp / AFE-gain / CCD-acquire-control (docs/74 SS49) ----
+         * Three new TLB.dll entries covering the real lamp warm-up + CCD
+         * dark-offset-calibration bring-up sequence docs/55 and docs/59
+         * captured on the wire, extending the existing tlb_afe_offset_write
+         * hook above (which only covers the AFE OFFSET register write) to
+         * the other two real, independently call-reachable driver
+         * functions in that same sequence. All three re-derived and
+         * confirmed fresh this pass against the hash-verified TLB.dll
+         * (md5 193d9b2ce0a4b77ae9b78262bd06c0fc, same file every other
+         * TLB.dll citation in this table traces to, extracted from
+         * research/sdk/PAKONF135.iso and independently re-hashed this
+         * pass) via `r2 -e bin.baddr=0x10000000 -c 'aaa; af @ <va>; axt @
+         * <va>; pdf @ <va>'` -- not carried over from agent.js (agent.js
+         * gained the same three entries, appended, in this same pass). */
+        { "TLB.dll", 0x1002c5f0, "tlb_lamp_on",
+          "FN_bDrvLampOn -- the real lamp enable+duty-write function: one "
+          "call writes light-board reg 0x80 (enable mask), 0x81 (5-byte "
+          "LED levels [B,Ir,R,0,G]) and 0x82 (12-byte PWM on-count sextet "
+          "+ period N), matching docs/59's captured steps 16-18/80-82/100/"
+          "114 and docs/40 SS3/SS12's own static derivation of this exact "
+          "address (`FN_bDrvLampOn = fcn.1002c5f0`). Re-confirmed fresh "
+          "this pass, independent of docs/40's citation: `af @ 0x1002c5f0` "
+          "resolves to itself (minaddr==maxaddr-2175==0x1002c5f0, "
+          "num-instrs=656), `axt` finds 8 genuine CALL-type xrefs from 6 "
+          "distinct caller functions (0x1001e7b0 x3, 0x1001ec90, "
+          "0x10020dc0, 0x1002d5c0, 0x1002d7f0 -- FN_bBeforeScan per docs/59's "
+          "own header note, 0x1002dbd0), zero CODE-type/internal-jump "
+          "xrefs -- the same axt-based safety check that found the 5 "
+          "notCallReachable entries above finds nothing wrong here. "
+          "Prologue is an entirely ordinary MSVC frame: `push ebp; mov "
+          "ebp,esp; and esp,0xfffffff8; sub esp,0x54` (stack realignment "
+          "for the function's own FPU/double-precision locals, per the "
+          "immediately-following `fld qword [0x10067008]` -- no relative "
+          "jump/call anywhere near the bytes MinHook needs to relocate). "
+          "This hook observes the SAME register writes docs/59's "
+          "`tools/lamp_replay_vendor.py` sends deliberately from the host "
+          "side -- it does not send anything itself, only logs entry/exit "
+          "when PSI's own code calls this function during a real scan.",
+          "docs/40 SS3 (\"FN_bDrvLampOn = fcn.1002c5f0\"), SS12 (write-order "
+          "correction: 0x80 first, then 0x81, then 0x82); docs/59 (captured "
+          "wire sequence this function produces); fresh r2 af/axt/pdf "
+          "2026-08-15 against TLB.dll md5 193d9b2ce0a4b77ae9b78262bd06c0fc",
+          0, 1, 0, 0, 0 },
+        { "TLB.dll", 0x100298b0, "tlb_afe_gain_write",
+          "The AFE GAIN register write function -- the address README.md's "
+          "\"AFE gain -- honestly unresolved\" section asked for, found "
+          "this pass. Self-naming string \"FN_bDrvPutCcdAtoDGains\" exists "
+          "in this exact binary at 0x10063b4c (found via `izz~AtoD`, "
+          "alongside \"FN_bDrvPutCcdAtoDOffsets\" at 0x10063b18 -- the "
+          "already-hooked tlb_afe_offset_write's own name), confirming the "
+          "vendor's own FN_bDrv... naming convention includes this "
+          "function; the string itself is referenced only from the shared "
+          "name-lookup/logging dispatcher (fcn.100170b0, a big "
+          "switch-on-command-id table that also references "
+          "\"FN_bDrvLampOn\"'s and \"FN_bDrvCcdAcquireControl\"'s own name "
+          "strings the same indirect way), NOT from inside 0x100298b0's "
+          "own body -- so the name<->address link here is by STRUCTURAL "
+          "match, not a literal in-body self-reference, same standard "
+          "already used to identify tlb_afe_offset_write in the first "
+          "place. That structural match is exact: 0x100298b0 sits "
+          "immediately before tlb_afe_offset_write (0x100299c0) in .text, "
+          "same shape (in-degree 8, cyclomatic-complexity 13 vs the "
+          "offset function's 19), and writes CCD board reg 0x84 with "
+          "indices 2, 3, 4 (`push 2/push 0x84`, `push 3/push 0x84`, "
+          "`push 4/push 0x84`, each followed by a call to the same "
+          "cache-check helper fcn.1000a5d0 then the same PutRegisterWord "
+          "primitive fcn.1001acd0 the offset function also calls) -- "
+          "exactly docs/55's captured steps 19-21 (`0x44 0x84 idx 2/3/4 "
+          "= gain R/G/B`, all value 0x000D=13), as opposed to the offset "
+          "function's idx 5/6/7. `axt` finds 8 genuine CALL-type xrefs "
+          "from 8 real call sites (0x1001e242, 0x1001ff3b, 0x1001ffaf, "
+          "0x100208f9, 0x10020fd0, 0x1002120a, 0x100213a9, 0x1002df92), "
+          "the same call-reachability bar tlb_afe_offset_write meets. "
+          "Prologue: `push ebx; mov ebx,[esp+8]` -- exactly 5 bytes, no "
+          "relative jump/call, a clean MinHook target.",
+          "README.md \"AFE gain -- honestly unresolved\" (the search "
+          "strategy this hook is the result of); docs/55 steps 19-21 "
+          "(captured 0x44/0x84 idx2/3/4 gain writes this function "
+          "produces); fresh r2 izz/af/axt/pdf 2026-08-15 against TLB.dll "
+          "md5 193d9b2ce0a4b77ae9b78262bd06c0fc",
+          0, 1, 0, 0, 0 },
+        { "TLB.dll", 0x1002c340, "tlb_ccd_acquire_control",
+          "The CCD acquire-on/off toggle function docs/40 SS11 names "
+          "\"FN_bDrvCcdAcquireControl\" (\"sets bit 0 of CCD register "
+          "0x82\"), matching docs/55's captured steps 2/18/35/40/43 (board "
+          "0x44 reg 0x82 idx 0: mask 0x0060 vs acquire-on 0x0061). LOWER "
+          "CONFIDENCE ON THE NAME SPECIFICALLY than the other two new "
+          "entries above: the self-naming string \"FN_bDrvCcdAcquireControl\" "
+          "(0x10064220, found via the same `izz~bDrv` scan) is, like the "
+          "other FN_bDrv* strings, referenced only from the shared "
+          "name-lookup dispatcher fcn.100170b0 -- never from inside "
+          "0x1002c340's own body -- so this address is identified by "
+          "BEHAVIOR AND POSITION, not a direct citation: it validates "
+          "exactly the CCD acquisition-window parameters this role "
+          "implies (four embedded assert-message strings at 0x10066f38, "
+          "0x10066efc, 0x10066e58, 0x10066e08, 0x10066ddc name "
+          "`uiCcdPixelHeight`, `uiCcdPixelOffset`, `uiCalibrationOffset`, "
+          "`uiCcdIntegrationTime` by name), then calls "
+          "fcn.10029770 -- a small (149-byte, in-degree 4, real CALL "
+          "xrefs only) shared primitive that merges a caller-supplied "
+          "value into a cached word at [this+0x358] and writes it to reg "
+          "0x82 idx 0 via the same fcn.1001acd0 PutRegisterWord primitive "
+          "the gain/offset functions use -- TWICE, at 0x1002c4c3 and "
+          "0x1002c518, consistent with one call setting the mask "
+          "(0x0060-shaped base) and a later one toggling the acquire bit "
+          "(0x0061). This function's own address range (0x1002c340-"
+          "0x1002c5f0) ends EXACTLY where tlb_lamp_on/FN_bDrvLampOn "
+          "begins -- the two are adjacent in the same translation unit, "
+          "consistent with docs/40's own description of these as "
+          "sibling FN_bDrv... driver functions. `axt` finds 8 genuine "
+          "CALL-type xrefs from 6 distinct callers (0x1001fe10 x3, "
+          "0x10020590, 0x10020dc0 x2, 0x1002d5c0, 0x1002dbd0 -- three of "
+          "which, 0x1001fe10/0x10020dc0/0x1002dbd0, are also callers of "
+          "tlb_lamp_on, i.e. the real driver dispatch layer calls both "
+          "from the same handful of higher-level functions), zero "
+          "CODE-type xrefs. Prologue: `push ecx; mov eax,[esp+0x1c]` -- "
+          "exactly 5 bytes, no relative jump/call, a clean MinHook "
+          "target. This is a real, confirmed, independently "
+          "call-reachable entry by every mechanical test this project's "
+          "own axt-based safety check applies -- flagged as "
+          "behavior-inferred rather than address-cited only so a future "
+          "reader knows the difference from tlb_lamp_on's docs/40-cited "
+          "address above.",
+          "docs/40 SS11 (\"FN_bDrvCcdAcquireControl sets bit 0 of CCD "
+          "register 0x82\"); docs/55 steps 2/18/35/40/43 (captured "
+          "0x44/0x82 idx0 mask/acquire writes this function produces); "
+          "fresh r2 izz/af/axt/pdf 2026-08-15 against TLB.dll md5 "
+          "193d9b2ce0a4b77ae9b78262bd06c0fc",
+          0, 1, 0, 0, 0 },
     };
 
     int i;
@@ -447,3 +669,41 @@ void HookCore_BuildRealTable(HookEngine *eng) {
         eng->defs[i].entryThunk = thunks[i];
     }
 }
+
+/* ---------------------------------------------------------------------
+ * g_extraDumps[] -- docs/74 SS47's own re-derived calling convention for
+ * area_image_apply_lut (0x100d9340), from a fresh af+pdf this pass (not
+ * reused from SS46's transcription, which SS47.1 found had dropped a real
+ * `push edi` instruction at the first balanceAreaImage call site). Stack
+ * layout at entry, confirmed against BOTH the caller-side push order AND
+ * the callee-side [esp+N] reads independently, and cross-checked live
+ * (ecx == stack_dwords[4] on all 18 real captured calls, docs/74 SS47.2):
+ *
+ *   stack_dwords[0] = &status   (caller-owned out-param, NOT a buffer)
+ *   stack_dwords[1] = R-band LUT pointer (4096 x int16 = 8192 bytes)
+ *   stack_dwords[2] = G-band LUT pointer (= R + 0x2000 in every real
+ *                      capture from balanceAreaImage's own compose chain,
+ *                      but NOT assumed here -- read via its own pointer)
+ *   stack_dwords[3] = B-band LUT pointer (= R + 0x4000, same caveat)
+ *   stack_dwords[4] = dup-this: the SAME AnsImageData* as `this`/ecx
+ *
+ * Pixel-buffer preview: `this->0x20` (source object's own pixel-data
+ * base-pointer field, per docs/74 SS47.1's own trace of the "if
+ * width/height/bands > 0: eax = [edi+0x20]; cache it for the loop" block
+ * at 0x100d9650-0x100d9664) is this pass's OWN inference -- unlike the
+ * width/height offsets (+0xc/+0x10) this project already cites elsewhere
+ * (pakon_fugc.FUGC_IMG_DESC_WIDTH_OFF/HEIGHT_OFF), +0x20 as "the pixel
+ * data pointer" is NOT independently corroborated by any other doc in
+ * this tree as of SS47 -- flagged here, not overstated. Kept to a small
+ * 256-byte preview (not a full-image dump: real per-frame widths here
+ * run into the hundreds of pixels x 3 bands x 2 bytes, i.e. plausibly
+ * tens of KB, well past what's worth risking on the real box for a
+ * "preview") specifically because of that lower confidence.
+ */
+const ExtraDumpSpec g_extraDumps[] = {
+    { "area_image_apply_lut", "r_lut", EXTRA_DUMP_STACK_PTR, 1, 0, 8192 },
+    { "area_image_apply_lut", "g_lut", EXTRA_DUMP_STACK_PTR, 2, 0, 8192 },
+    { "area_image_apply_lut", "b_lut", EXTRA_DUMP_STACK_PTR, 3, 0, 8192 },
+    { "area_image_apply_lut", "pixel_data_preview", EXTRA_DUMP_DEREF_PTR, 4, 0x20, 256 },
+    { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0 }, /* sentinel */
+};

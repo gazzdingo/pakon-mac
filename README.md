@@ -9,12 +9,49 @@
 <h2 align="center" >⚠️ WARNING WIP⚠️</h2>
 The application and some of the image processing pipelines are **NOT working 100% yet**. This repository is highly experimental and in active development. Please do not run this or attempt to interface with your scanner unless you know exactly what you are doing.
 
-**Colour is currently in progress.** The F-135 negative→positive inversion
-is fixed and verified against the vendor's own ICC output. The tone stage
-feeding it (`AnsShastaCapabilityImpl::analyze`) is still a two-anchor
-stand-in — `ShastaAnalyzePorted = false` in both pipelines — and is being
-ported from the vendor binary now, Unicorn-verified leaf by leaf. Expect
-rendered colour to change as that lands.
+**Colour is currently in progress.** See
+[`docs/74-washed-out-tone-chain-architecture-and-dmin-methodology.md`](docs/74-washed-out-tone-chain-architecture-and-dmin-methodology.md)
+for the full, running, evidence-cited investigation log — the summary below
+is a snapshot, that doc is the source of truth.
+
+**Verified against the real vendor DLL and/or real hardware, not assumed:**
+- The six-subsystem F-135 colour-negative tone chain (`analyzeAutoTone`:
+  cna/dra/toneHelper/contrast/ast/citras) — bit-exact via live Unicorn
+  emulation of the real `PakonIMAu.dll`, including at real full-frame
+  scale, not just synthetic test vectors.
+- The ICC transform, AFE gain register, the F-135 raw→RPD polynomial
+  conversion (`PolyPixel`), and the SBA balance-shift math — each
+  independently bit-exact under the same live-execution standard.
+- `fpo` (opening RGB) — confirmed via a live hook capture on the real
+  physical scanner that this unit genuinely uses the generic stock value,
+  not a per-unit correction.
+- The lamp duty sequence (open-gate vs. with-film, the real per-channel
+  PWM values) — matches a real captured vendor USB trace to six figures.
+- The six-subsystem call order and shared internal state — confirmed live
+  via hooking the real DLLs during an actual scan on the real hardware,
+  not just read from disassembly.
+
+**Known-open, real problems, not yet solved:**
+- Even with all of the above independently verified correct, the port's
+  rendered output still shows a real, uniform brightness offset (measured
+  directly against the vendor's own PSI software output on the same
+  physical film) whose root cause is not yet found. 14+ specific
+  hypotheses have been checked and ruled out with real evidence; the
+  investigation is ongoing.
+- The verified tone chain above is **not yet wired into the production Go
+  render path** (`tools/ansel/pipeline/`) — it still uses
+  `ShastaToneRpd`, an explicit placeholder (`AutoTonePorted = false`).
+  The app currently defaults to the Python engine, which does use the
+  verified chain, as an interim measure.
+- Black & white film scanning is currently broken: it uses the same lamp
+  exposure as colour negative, which is tuned to compensate for an orange
+  mask B&W film doesn't have, driving two of three colour channels into
+  real sensor clipping. See
+  [`docs/75-bw-scan-time-duty-mismatch-sensor-ceiling-clipping.md`](docs/75-bw-scan-time-duty-mismatch-sensor-ceiling-clipping.md).
+- F-235 and F-335 support exists in the code but has not been verified
+  against real F-235/F-335 hardware or vendor DLLs — real hardware access
+  this project has had so far is to one F-135 unit only. Treat F-235/F-335
+  behavior as unverified until tested against real units.
 
 **The Electron app UI is not finished.** It exists to exercise the scan and
 decode pipeline end to end, not as a polished product yet — expect rough
@@ -71,6 +108,8 @@ Everything can be done from userspace with libusb.
 | [`04-api-surface.md`](docs/04-api-surface.md) | The TLX API — operations, parameters, error codes |
 | [`05-source-material.md`](docs/05-source-material.md) | What's in the vendor distribution and where |
 | [`06-roadmap.md`](docs/06-roadmap.md) | Implementation plan, open questions, how to help |
+| [`74-washed-out-tone-chain-architecture-and-dmin-methodology.md`](docs/74-washed-out-tone-chain-architecture-and-dmin-methodology.md) | The colour pipeline's own running investigation log — what's verified against the real vendor DLL/hardware, what's still open |
+| [`75-bw-scan-time-duty-mismatch-sensor-ceiling-clipping.md`](docs/75-bw-scan-time-duty-mismatch-sensor-ceiling-clipping.md) | Why black & white film scanning currently fails, and what fixing it needs |
 
 ## Provenance and confidence
 
@@ -84,8 +123,16 @@ Every claim in these docs is tagged:
   independently confirmed here.
 - **[UNKNOWN]** — called out explicitly so gaps aren't mistaken for coverage.
 
-Nothing here has been tested against real hardware yet. Treat all of it as a
-map, not a guarantee.
+This tagging describes the *hardware-interface* documentation
+(`docs/00`-`docs/06`) specifically. The colour pipeline is held to a
+stricter, separate standard — see "Colour is currently in progress" above
+and `docs/74`/`docs/75` — where claims are verified either by live Unicorn
+emulation of the real vendor DLL, or by hooking/capturing the real DLL
+running on real physical hardware, and are labeled accordingly rather than
+tagged with this scheme. Real hardware (one physical F-135 unit) has been
+used extensively for calibration, wire-protocol capture, and live DLL
+hooking; treat anything not explicitly described as hardware-verified
+above as a map, not a guarantee.
 
 ## Credits
 

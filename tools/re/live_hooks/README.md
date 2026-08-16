@@ -99,33 +99,38 @@ next section for the specific, mechanically-checked evidence.
   failed to compile, colliding with mingw's own `restrict`-qualified
   declarations) is in that file's own header comment.
 - `win_inject/hookcore.h` — **read this file's header comment next.** It
-  explains, in detail, why entry+exit logging for all 23 hooks needed a
-  hand-written, calling-convention-agnostic generic engine (a
-  "return-address swap" technique) rather than 23 typed MinHook detours:
-  none of these 23 real functions' true signatures (cdecl vs stdcall vs
-  thiscall vs fastcall, argument count) have ever been re-derived from a
-  live disassembly — `agent.js`'s own header comment says exactly the same
+  explains, in detail, why entry+exit logging for all of these hooks (28
+  as of docs/74 §49, originally 23) needed a hand-written,
+  calling-convention-agnostic generic engine (a "return-address swap"
+  technique) rather than one typed MinHook detour per hook: none of these
+  real functions' true signatures (cdecl vs stdcall vs thiscall vs
+  fastcall, argument count) have ever been re-derived from a live
+  disassembly — `agent.js`'s own header comment says exactly the same
   thing about the prior Frida version. Writing typed detours would mean
-  inventing 23 unconfirmed signatures, which this project's own rules
-  forbid.
+  inventing that many unconfirmed signatures, which this project's own
+  rules forbid.
 - `win_inject/hookcore.c` — the engine implementation: JSONL logging (via
   `mincrt.h`'s `StrBuf`), `hooks.cfg` parsing, the MinHook install loop,
   and the two C functions (`HookEntryC`, `LogExitC`) called from the asm
   side.
 - `win_inject/hookstub.S` — the ONE hand-written x86 asm file: a shared
-  entry handler + return-address-swap exit thunk + 23 tiny per-hook
-  stubs (`Thunk_00`..`Thunk_22`), all mechanically identical in shape.
-  Full derivation of the stack layout is in this file's own header
-  comment.
-- `win_inject/hookcore_real_table.c` — the real 23-hook table. A
-  byte-for-byte transcription of `agent.js`'s own `HOOKS` array (same
-  addresses, same ids, same citations, same order — reused, not
-  re-derived). `win_inject/check_table_sync.py` mechanically diffs the
-  two files' `(dll, va, id)` triples so this is a checked fact:
+  entry handler + return-address-swap exit thunk + 28 tiny per-hook
+  stubs (`Thunk_00`..`Thunk_27` as of docs/74 §49; originally
+  `Thunk_00`..`Thunk_22`), all mechanically identical in shape. Full
+  derivation of the stack layout is in this file's own header comment.
+- `win_inject/hookcore_real_table.c` — the real hook table (28 entries as
+  of docs/74 §49). Originally a byte-for-byte transcription of `agent.js`'s
+  own `HOOKS` array (same addresses, same ids, same citations, same order
+  — reused, not re-derived); every addition since (including §49's three
+  new TLB.dll lamp/AFE-gain/CCD-acquire-control hooks) has been appended
+  to BOTH files in the same order, never inserted mid-array, specifically
+  to avoid the Thunk-index bug §46 found and fixed. `win_inject
+  /check_table_sync.py` mechanically diffs the two files' `(dll, va, id)`
+  triples so this is a checked fact:
 
   ```
   $ python3 tools/re/live_hooks/win_inject/check_table_sync.py
-  OK: 23 hooks, identical (dll, va, id) in identical order.
+  OK: 28 hooks, identical (dll, va, id) in identical order.
   ```
 
 - `win_inject/hookdll.c` — `DllMain` + a worker thread (install/logging
@@ -639,37 +644,27 @@ empirically, from real data.
 | `tlb_f135_poly_remap` | TLB.dll | `0x10034b9b` | F-135 ColNeg poly remap — **naming ambiguity RESOLVED 2026-08-15: this VA is the address of a `call` opcode inside another function, not a function at all — see below** |
 | `tlb_polypixel` | TLB.dll | `0x1000d880` | `PolyPixel` — general stage-2 3×10 quadratic — **confirmed real entry, but OFF by default in `win_inject/` (not `agent.js`), see below** |
 | `tlb_afe_offset_write` | TLB.dll | `0x100299c0` | `FN_bDrvPutCcdAtoDOffsets` — AD9826 offset register |
+| `tlb_lamp_on` | TLB.dll | `0x1002c5f0` | `FN_bDrvLampOn` — lamp enable + `0x81`/`0x82` duty write, docs/40 §3/§12 |
+| `tlb_afe_gain_write` | TLB.dll | `0x100298b0` | AFE **gain** register write (reg `0x84` idx 2/3/4) — resolves "AFE gain — honestly unresolved" below |
+| `tlb_ccd_acquire_control` | TLB.dll | `0x1002c340` | CCD acquire on/off (reg `0x82` idx 0 mask/acquire-bit) — name inferred from behavior, not a direct self-naming citation, see docs/74 §49 |
 
-## AFE gain — honestly unresolved
+## AFE gain — resolved 2026-08-15 (docs/74 §49)
 
-The task this harness was built for asks for an "AFE gain application"
-hook. What's actually documented (`docs/72` §1.3) is the AD9826 **offset**
+The task this harness was originally built for asked for an "AFE gain
+application" hook and, until 2026-08-15, only the AD9826 **offset**
 register encoder, `FN_bDrvPutCcdAtoDOffsets` @ `TLB.dll:0x100299c0`
-(hooked above, `tlb_afe_offset_write`) — this port had a real two's-
-complement-vs-sign-magnitude bug there, fixed 2026-08-12. **No distinct
-address for a gain-register write function was found documented anywhere
-in `docs/62` through `docs/74`** — only the *values* (`afe_gains` in
-`tools/pakon_scan.py`, e.g. `[13,13,13]`) are tracked, not a named/addressed
-vendor DLL function that writes them. Rather than invent a plausible
-address next to the offset one, this is left as an open TODO with a
-concrete search strategy, per this project's own RE playbook
-(`docs/67-re-playbook.md` §4 — "grep the binary's string table for
-self-naming assert/log strings first, more reliable than static call-graph
-inference alone"):
-
-```
-# with TLB.dll extracted on the Windows box (or anywhere with radare2):
-r2 -q -c 'izz~AtoD' TLB.dll
-```
-
-look for a self-naming string near `bDrvPutCcdAtoDOffsets` (e.g.
-`bDrvPutCcdAtoDGains` or similar — the vendor's own naming convention for
-this driver family is `FN_bDrv...`, confirmed for offsets, IR mode,
-lamp-on, FPGA control/settings in `docs/70`) and its cross-reference
-(`axt` in r2) gives the real entry address directly. Once found, add it to
-`HOOKS` in `agent.js` AND `hookcore_real_table.c` (re-run
-`check_table_sync.py`) the same way every other entry is — cited, not
-guessed.
+(`tlb_afe_offset_write`), had a documented address — no distinct address
+for a gain-register write function was found documented anywhere in
+`docs/62` through `docs/74` at the time. Found via exactly the search
+strategy this section used to recommend (`r2 -q -c 'izz~AtoD' TLB.dll`
+against the hash-verified TLB.dll, md5 `193d9b2ce0a4b77ae9b78262bd06c0fc`):
+a self-naming string `FN_bDrvPutCcdAtoDGains` at `0x10063b4c`, and a
+structural match (writes CCD reg `0x84` idx 2/3/4 — gain R/G/B, exactly
+`docs/55`'s captured steps 19-21 — immediately preceding the confirmed
+offset function in `.text`, same shape, same shared helper calls) at
+`0x100298b0` — now hooked as `tlb_afe_gain_write` above. Full citation and
+the exact `axt`/prologue evidence are in `hookcore_real_table.c`'s own
+entry and in `docs/74` §49.
 
 ## Address-base caveat
 

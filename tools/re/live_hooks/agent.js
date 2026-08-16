@@ -337,6 +337,119 @@ const HOOKS = [
     cite: 'docs/72 §1.3 ("FN_bDrvPutCcdAtoDOffsets at 0x100299c0, ' +
           '[VERIFIED-FROM-BINARY]")',
   },
+
+  // ---- Area image per-pixel LUT apply (docs/74 §46) ----
+  {
+    dll: 'PakonIMAu.dll', va: 0x100d9340, id: 'area_image_apply_lut',
+    role: 'stage', pixelBuffer: true,
+    desc: 'AnsImageData::applyLut -- self-named by its own embedded ' +
+          'strings ("AnsImageData::applyLut" @ 0x10584320 and three ' +
+          'sibling error strings, path ' +
+          '"\\Atc\\ansel\\src\\libStub.ansel\\AnsImageData.cpp" @ ' +
+          '0x10584274). A real nested width/height-bounded loop (outer ' +
+          'row loop 0x100d97f0-0x100d98be, inner column loop ' +
+          '0x100d9822-0x100d986b) doing, per pixel, an indexed LUT ' +
+          'lookup (`mov bx,word[lutBase+ebx*2]`) and indexed pixel write ' +
+          '(`mov word[dst+idx],bx`) for each of R/G/B against three ' +
+          'separate 4096-entry caller-supplied LUTs -- the genuine ' +
+          'per-pixel write §27.4/§37.7/§45 had been missing, not another ' +
+          'capability-object field write. Called 4x from ' +
+          'balanceAreaImage (all on the AREA capability\'s own real ' +
+          '"AREA analysis image" object, this+0x1a4 per §27.3), once ' +
+          '(currently gated off) from sba_apply_balance_shifts, once ' +
+          'from analyzePostBalance (0x100fdc40), and 3x from ' +
+          'AnsDcPremiumPath\'s own CN-Premium vtable method -- 10 real ' +
+          'static callers total, E8-scan confirmed. Independently ' +
+          'corroborated by docs/62 §2.5, docs/64, and ' +
+          'docs/reports/autotone-scope-2026-08-10/{fugc,filmLut}.md, ' +
+          'none of which this investigation had cross-referenced before ' +
+          'this pass. Still-open question this hook exists to help ' +
+          'settle: whether the "AREA analysis image" aliases the shared ' +
+          'scene buffer cna/dra actually reads, or is a private, ' +
+          'analysis-only copy (docs/58 §16.5 as quoted in docs/62 §2.5).',
+    cite: 'docs/74 §46; docs/62 §2.5; docs/64; docs/58 §16.5 (quoted in ' +
+          'docs/62); docs/reports/autotone-scope-2026-08-10/' +
+          '{fugc,filmLut}.md',
+  },
+
+  // ---- Lamp / AFE-gain / CCD-acquire-control (docs/74 §49) ----
+  // Three new TLB.dll entries covering the real lamp warm-up + CCD
+  // dark-offset-calibration bring-up sequence docs/55 and docs/59
+  // captured on the wire, extending the existing tlb_afe_offset_write
+  // hook (AFE OFFSET register only) to the other two real,
+  // independently call-reachable driver functions in that sequence.
+  // Re-derived fresh this pass against the hash-verified TLB.dll (md5
+  // 193d9b2ce0a4b77ae9b78262bd06c0fc) via r2 af/axt/pdf -- appended here
+  // AND in win_inject/hookcore_real_table.c's table[] in the same order,
+  // per check_table_sync.py.
+  {
+    dll: 'TLB.dll', va: 0x1002c5f0, id: 'tlb_lamp_on',
+    role: 'stage', pixelBuffer: false,
+    desc: 'FN_bDrvLampOn -- the real lamp enable+duty-write function: ' +
+          'writes light-board reg 0x80 (enable mask), 0x81 (5-byte LED ' +
+          'levels [B,Ir,R,0,G]) and 0x82 (12-byte PWM on-count sextet + ' +
+          'period N), matching docs/59\'s captured steps 16-18/80-82/100/' +
+          '114 and docs/40 §3/§12\'s own static derivation of this exact ' +
+          'address ("FN_bDrvLampOn = fcn.1002c5f0"). Re-confirmed fresh ' +
+          'this pass: `axt` finds 8 genuine CALL-type xrefs from 6 ' +
+          'distinct caller functions, zero CODE-type/internal-jump ' +
+          'xrefs. Prologue: `push ebp; mov ebp,esp; and esp,0xfffffff8; ' +
+          'sub esp,0x54` -- an entirely ordinary MSVC frame (stack ' +
+          'realignment for FPU locals), no relative jump/call anywhere ' +
+          'near the bytes MinHook needs to relocate.',
+    cite: 'docs/40 §3 ("FN_bDrvLampOn = fcn.1002c5f0"), §12 (write-order ' +
+          'correction); docs/59 (captured wire sequence); fresh r2 ' +
+          'af/axt/pdf 2026-08-15 against TLB.dll md5 ' +
+          '193d9b2ce0a4b77ae9b78262bd06c0fc',
+  },
+  {
+    dll: 'TLB.dll', va: 0x100298b0, id: 'tlb_afe_gain_write',
+    role: 'stage', pixelBuffer: false,
+    desc: 'The AFE GAIN register write function -- the address ' +
+          'README.md\'s "AFE gain -- honestly unresolved" section asked ' +
+          'for. Self-naming string "FN_bDrvPutCcdAtoDGains" exists in ' +
+          'this exact binary at 0x10063b4c, matching the vendor\'s own ' +
+          'FN_bDrv... naming convention (referenced only from the shared ' +
+          'name-lookup/logging dispatcher fcn.100170b0, not from inside ' +
+          'this function\'s own body -- the name<->address link here is ' +
+          'by structural match, same standard already used for ' +
+          'tlb_afe_offset_write). Sits immediately before ' +
+          'tlb_afe_offset_write (0x100299c0) in .text, same shape, and ' +
+          'writes CCD reg 0x84 idx 2/3/4 -- exactly docs/55\'s captured ' +
+          'steps 19-21 (gain R/G/B), vs. the offset function\'s idx 5/6/7. ' +
+          '`axt` finds 8 genuine CALL-type xrefs. Prologue: `push ebx; ' +
+          'mov ebx,[esp+8]` -- exactly 5 bytes, no relative jump/call.',
+    cite: 'README.md "AFE gain -- honestly unresolved"; docs/55 steps ' +
+          '19-21 (captured 0x44/0x84 idx2/3/4 gain writes); fresh r2 ' +
+          'izz/af/axt/pdf 2026-08-15 against TLB.dll md5 ' +
+          '193d9b2ce0a4b77ae9b78262bd06c0fc',
+  },
+  {
+    dll: 'TLB.dll', va: 0x1002c340, id: 'tlb_ccd_acquire_control',
+    role: 'stage', pixelBuffer: false,
+    desc: 'The CCD acquire-on/off toggle function docs/40 §11 names ' +
+          '"FN_bDrvCcdAcquireControl" ("sets bit 0 of CCD register ' +
+          '0x82"), matching docs/55\'s captured steps 2/18/35/40/43 ' +
+          '(board 0x44 reg 0x82 idx 0: mask 0x0060 vs acquire-on 0x0061). ' +
+          'LOWER CONFIDENCE ON THE NAME specifically than the other two ' +
+          'new entries: the self-naming string is, like the others, ' +
+          'referenced only from the shared dispatcher fcn.100170b0, not ' +
+          'from inside this function\'s own body -- identified by ' +
+          'behavior and position instead: validates uiCcdPixelHeight/' +
+          'uiCcdPixelOffset/uiCalibrationOffset/uiCcdIntegrationTime (4 ' +
+          'embedded assert strings naming them), then calls a small ' +
+          'shared reg-0x82-idx0 write primitive (fcn.10029770) TWICE. ' +
+          'This function\'s own address range (0x1002c340-0x1002c5f0) ' +
+          'ends EXACTLY where tlb_lamp_on/FN_bDrvLampOn begins -- ' +
+          'adjacent in the same translation unit. `axt` finds 8 genuine ' +
+          'CALL-type xrefs from 6 distinct callers, 3 of which also call ' +
+          'tlb_lamp_on. Prologue: `push ecx; mov eax,[esp+0x1c]` -- ' +
+          'exactly 5 bytes, no relative jump/call.',
+    cite: 'docs/40 §11 ("FN_bDrvCcdAcquireControl sets bit 0 of CCD ' +
+          'register 0x82"); docs/55 steps 2/18/35/40/43 (captured ' +
+          '0x44/0x82 idx0 mask/acquire writes); fresh r2 izz/af/axt/pdf ' +
+          '2026-08-15 against TLB.dll md5 193d9b2ce0a4b77ae9b78262bd06c0fc',
+  },
 ];
 
 // ---------------------------------------------------------------------

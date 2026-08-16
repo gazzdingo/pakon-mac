@@ -24,6 +24,12 @@
       580,
       508
     ],
+    "bw_on_counts_R_G_B": [
+      643,
+      580,
+      508
+    ],
+    "bw_on_counts_note": "PLACEHOLDER, NOT MEASURED AGAINST REAL B&W FILM. docs/75-bw-scan-time-duty-mismatch-sensor-ceiling-clipping.md: on_counts_R_G_B above is the colour-negative orange-mask compensation and overexposes green/blue on real panchromatic B&W stock (no orange mask to compensate for). This value is simply flat_field_on_counts_R_G_B (this unit's own real, fresh OPEN-GATE duty) copied in as the best-available candidate -- zero base density is closer to a B&W base than a colour negative's orange mask is, but it is still a candidate, not a measurement, per docs/75 s8. Re-measure with real B&W film loaded via `python3 tools/calib_wizard.py duty-bw --confirm-real-bw-film-loaded` (docs/75 s9) and replace both this field and this note before trusting a B&W scan's exposure.",
     "afe_gains": [
       13,
       13,

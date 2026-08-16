@@ -51,6 +51,22 @@ static int TestFastcall(int a, int b, int c) {
     return a * a + b - c;
 }
 
+/* docs/74 SS47's opt-in extra-buffer-dump feature (hookcore.h's
+ * ExtraDumpSpec) is only ever populated for real hook_ids in
+ * hookcore_real_table.c -- selftest.exe does NOT link that file (it uses
+ * this file's own synthetic 4-hook table instead, see BuildSelftestTable
+ * below), so this translation unit needs its own definition of the
+ * `extern const ExtraDumpSpec g_extraDumps[]` hookcore.c references. A
+ * sentinel-only (empty) table is the correct thing here, not a copy of
+ * the real rows: none of test_cdecl/test_stdcall/test_thiscall/
+ * test_fastcall are real hook_ids, so LogExtraDumps would find no match
+ * for them either way -- this also exercises (under the same Wine
+ * concurrency stress every other part of this harness runs through) the
+ * "scan the table, find nothing, do nothing" path safely. */
+const ExtraDumpSpec g_extraDumps[] = {
+    { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0 }, /* sentinel */
+};
+
 /* ---- synthetic table builder ---------------------------------------- */
 
 static void BuildSelftestTable(HookEngine *eng) {

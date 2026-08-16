@@ -102,12 +102,25 @@ extern "C" {
 
 /* ---------------------------------------------------------------------
  * Fixed slot count. The asm side (hookstub.S) hand-defines exactly this
- * many Thunk_NN entry stubs (Thunk_00 .. Thunk_22). hookdll.c's real table
- * uses all 23 for the documented PSI.exe hooks; selftest.c reuses the same
+ * many Thunk_NN entry stubs (Thunk_00 .. Thunk_27). hookdll.c's real table
+ * uses all 28 for the documented PSI.exe hooks; selftest.c reuses the same
  * fixed slots 0..N for its own small synthetic table. Never grow this
- * without adding matching Thunk_NN stubs in hookstub.S.
+ * without adding matching Thunk_NN stubs in hookstub.S -- see hookstub.S's
+ * own Thunk_23 comment (docs/74 §46) for what happens when this drifts:
+ * a prior commit bumped this define and inserted a table[] entry
+ * mid-array without adding a matching thunk, silently leaving one real
+ * hook's entryThunk NULL. Bumped 25->28 (docs/74 §49, 2026-08-15): three
+ * new TLB.dll lamp/AFE/CCD-acquire hooks
+ * (tlb_lamp_on, tlb_afe_gain_write, tlb_ccd_acquire_control) appended at
+ * the END of table[] in hookcore_real_table.c, same reasoning as
+ * area_image_apply_lut's own append-only placement above -- so no
+ * existing entry's index (and therefore no existing entry's thunk
+ * assignment) moves again. Thunk_25/26/27 added to hookstub.S in the
+ * same pass, matching thunks[25..27] in hookcore_real_table.c -- the
+ * exact "forgot the matching thunk" mistake §46/§47 found and fixed is
+ * the one thing this bump was double-checked against.
  * --------------------------------------------------------------------- */
-#define HOOKCORE_MAX_HOOKS 24
+#define HOOKCORE_MAX_HOOKS 28
 
 /* Must exactly match the PUSHAD+PUSHFD+index+retaddr stack layout that
  * hookstub.S's SharedEntryHandler builds -- see that file's header
@@ -247,6 +260,52 @@ typedef struct HookRuntime {
     int      installed;
 } HookRuntime;
 
+/* ---------------------------------------------------------------------
+ * OPT-IN, PER-HOOK "ALSO DUMP FULL BUFFER CONTENTS" EXTENSION (docs/74
+ * SS47) -- layered ON TOP of the existing generic stack_dwords dump, not
+ * a replacement for it. Motivation: for area_image_apply_lut specifically
+ * (docs/74 SS46/SS47), the 3 LUT-pointer stack_dwords (indices 1/2/3,
+ * confirmed docs/74 SS47.1's own re-derivation of the calling convention)
+ * point at real, small (4096 entries x int16 = 8192 bytes each) buffers
+ * whose CONTENTS -- not just their addresses -- had never been captured.
+ * Deliberately kept OUT of HookDef itself (not a new positional field
+ * threaded through all 25 existing table-literal entries in
+ * hookcore_real_table.c) precisely because it is hook_id-specific,
+ * optional, and small -- same spirit as hooks.cfg being a separate
+ * overlay rather than a HookDef field, so adding it cannot silently
+ * shift any existing entry's fields the way the Thunk_23 bug (SS46.8)
+ * already showed a positional-array insertion can. Bounded at
+ * HOOKCORE_EXTRA_DUMP_MAX_BYTES per row specifically so this stays a
+ * small, cheap addition on the real box (worst case for
+ * area_image_apply_lut: 3 x 8192 + 1 x 256 bytes per CALL, not per
+ * pixel -- nothing like the per-pixel volume hotPathDisabled guards
+ * against). Every row is IsBadReadPtr-guarded exactly like the existing
+ * stack_dwords dump; an unreadable pointer logs `"readable":false`
+ * rather than skipping the row silently or crashing. */
+#define HOOKCORE_MAX_EXTRA_DUMPS 8
+#define HOOKCORE_EXTRA_DUMP_MAX_BYTES 8192
+
+typedef enum ExtraDumpKind {
+    EXTRA_DUMP_STACK_PTR = 0,  /* dump N bytes from   *stack_dwords[idx]        */
+    EXTRA_DUMP_DEREF_PTR = 1   /* dump N bytes from  **(stack_dwords[idx]+off)  */
+} ExtraDumpKind;
+
+typedef struct ExtraDumpSpec {
+    const char    *hookId;      /* matches HookDef.id                       */
+    const char    *label;       /* short JSON field name, e.g. "r_lut"      */
+    ExtraDumpKind  kind;
+    int            stackIndex;  /* index into the same stack_dwords[] array
+                                    HookEntryC already logs on "enter"       */
+    DWORD          derefOffset; /* only used for EXTRA_DUMP_DEREF_PTR       */
+    DWORD          numBytes;    /* must be <= HOOKCORE_EXTRA_DUMP_MAX_BYTES,
+                                    enforced defensively at the call site
+                                    too, not just by convention here        */
+} ExtraDumpSpec;
+
+/* Defined in hookcore_real_table.c, terminated by a {NULL,...} sentinel
+ * row (checked by hookId == NULL, not by array length). */
+extern const ExtraDumpSpec g_extraDumps[];
+
 /* One shared engine instance -- either hookdll.c's real table or
  * selftest.c's synthetic one, never both in the same process. */
 typedef struct HookEngine {
@@ -268,7 +327,8 @@ typedef struct HookEngine {
  * one of those two object files is ever linked into a given binary. */
 extern HookEngine g_engine;
 
-/* Populate g_engine.defs[]/count with the REAL 23-hook PSI.exe table
+/* Populate g_engine.defs[]/count with the REAL PSI.exe hook table (28
+ * entries as of docs/74 SS49; originally a 23-hook, then 25-hook table)
  * (verbatim transcription of agent.js's HOOKS array -- see
  * hookcore_real_table.c and its own header for the address-by-address
  * citations, and tools/re/live_hooks/win_inject/check_table_sync.py for
@@ -350,6 +410,8 @@ extern void Thunk_12(void); extern void Thunk_13(void); extern void Thunk_14(voi
 extern void Thunk_15(void); extern void Thunk_16(void); extern void Thunk_17(void);
 extern void Thunk_18(void); extern void Thunk_19(void); extern void Thunk_20(void);
 extern void Thunk_21(void); extern void Thunk_22(void);
+extern void Thunk_23(void); extern void Thunk_24(void);
+extern void Thunk_25(void); extern void Thunk_26(void); extern void Thunk_27(void);
 
 #ifdef __cplusplus
 }

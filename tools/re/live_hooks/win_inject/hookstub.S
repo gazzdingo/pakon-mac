@@ -154,11 +154,45 @@ _OnReturnThunk:
      * flags value instead of a known-correct one. */
 
 /* ---------------------------------------------------------------------
- * Thunk_00 .. Thunk_22 -- 23 fixed slots (HOOKCORE_MAX_HOOKS in
+ * Thunk_00 .. Thunk_27 -- 28 fixed slots (HOOKCORE_MAX_HOOKS in
  * hookcore.h). Each is just `push <its own index>; jmp SharedEntryHandler`
  * -- deliberately identical in shape so a bug in one is a bug in all of
- * them (uniform, mechanically-checkable, not 23 independently-hand-
+ * them (uniform, mechanically-checkable, not 28 independently-hand-
  * written variants that could each have their own typo).
+ *
+ * Thunk_25/26/27 (docs/74 §49, 2026-08-15): added alongside the three new
+ * TLB.dll lamp/AFE-gain/CCD-acquire-control hooks appended at the END of
+ * hookcore_real_table.c's table[] (tlb_lamp_on, tlb_afe_gain_write,
+ * tlb_ccd_acquire_control). Added in the SAME commit as the
+ * HOOKCORE_MAX_HOOKS 25->28 bump and the new thunks[25..27] entries in
+ * hookcore_real_table.c, specifically to not repeat the Thunk_23 bug
+ * described below (a table[] bump that landed without its matching thunk).
+ *
+ * Thunk_23 (added docs/74 §46, alongside Thunk_24): fixes a real, latent
+ * bug this file did NOT introduce but that a prior commit (6d2e36a,
+ * "add analyze_scp_lut_balance hook") did. That commit bumped
+ * HOOKCORE_MAX_HOOKS 23->24 and inserted its new table[] entry in the
+ * MIDDLE of hookcore_real_table.c's array (right after balance_area_image),
+ * which shifted every later entry's array index up by one -- including
+ * tlb_afe_offset_write, which moved from index 22 (Thunk_22, real) to
+ * index 23 (no Thunk_23 existed). `HookCore_BuildRealTable`'s
+ * `eng->defs[i].entryThunk = thunks[i]` is purely positional, and
+ * `thunks[HOOKCORE_MAX_HOOKS]`'s C array initializer only named 23
+ * thunks -- so `thunks[23]` silently zero-initialized to NULL, meaning
+ * tlb_afe_offset_write's `entryThunk` was NULL the moment that commit
+ * landed. This was never caught because (a) selftest.c uses its own
+ * separate 4-hook synthetic table (`void *thunks[4]`), never exercising
+ * `HookCore_BuildRealTable`'s real 24-entry array at all, and (b)
+ * tlb_afe_offset_write's own MH_CreateHook call has independently failed
+ * with MH_ERROR_NOT_EXECUTABLE on every real capture so far (docs/74
+ * §40.1's own "every one of the 121 failures is tlb_afe_offset_write"),
+ * which short-circuits before MinHook ever dereferences the NULL
+ * pDetour -- so the bug has been silently latent, not silently wrong,
+ * on every capture to date. Confirmed by direct inspection (`git show
+ * 6d2e36a -- hookstub.S` shows zero changes to this file in that commit)
+ * before writing this, not assumed. Fixed here by simply defining the
+ * thunk that should have existed all along, at the position its
+ * (unmoved) index already implies.
  * --------------------------------------------------------------------- */
     .macro DEFTHUNK idx, sfx
     .globl _Thunk_\sfx
@@ -190,3 +224,8 @@ _Thunk_\sfx:
     DEFTHUNK 20, 20
     DEFTHUNK 21, 21
     DEFTHUNK 22, 22
+    DEFTHUNK 23, 23
+    DEFTHUNK 24, 24
+    DEFTHUNK 25, 25
+    DEFTHUNK 26, 26
+    DEFTHUNK 27, 27

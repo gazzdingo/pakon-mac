@@ -537,6 +537,31 @@ class ScanConfig:
     #: real vendor doing exactly that switch (step 82 -> step 100), not
     #: driving one fixed duty for the whole roll.
     open_gate_on_counts: tuple | None = None
+    #: The with-film duty for a *panchromatic B&W negative*, as opposed to
+    #: `on_counts` -- which docs/75 shows, from three independent sources in
+    #: this repo (the calibration record's own note, docs/59's six-figure
+    #: registry/wire-trace verification, and this module's own docstrings),
+    #: IS the colour-negative orange-mask compensation: `on_counts` is
+    #: `open_gate_on_counts` boosted by `10^D` per channel (D=0.144/0.400/
+    #: 0.715 R/G/B) to add back what an orange mask absorbs. Real B&W stock
+    #: has no orange mask (`tools/film_ids.py`, the vendor's own
+    #: `defaults.ini`), so driving it under `on_counts` overexposes green
+    #: and blue toward the sensor's own 16383 ceiling -- docs/75's root
+    #: cause. None means no B&W-specific duty has been calibrated for this
+    #: unit, and `film_on_counts` falls back to `on_counts` -- the behaviour
+    #: every scan had before this field existed.
+    bw_on_counts: tuple | None = None
+    #: Provenance for `bw_on_counts` (e.g. "measured against real B&W film,
+    #: <date>, tools/calib_wizard.py duty-bw" or a PLACEHOLDER disclaimer),
+    #: carried straight through from calibration/README.json's own
+    #: ``bw_on_counts_note`` for the sidecar record. Purely informational --
+    #: unlike the entries in `warnings`, its presence does NOT gate a scan
+    #: behind `--force`. Only a MISSING `bw_on_counts` on a BnW roll does
+    #: that (see `from_calibration`), because that is the case where the
+    #: scan silently reuses the wrong (ColNeg) duty; a *documented* B&W
+    #: duty, placeholder or not, is a deliberate value already in force and
+    #: does not need re-acknowledging on every single scan.
+    bw_on_counts_note: str | None = None
     afe_gains: tuple = (13, 13, 13)
     afe_offsets: tuple = (-18, -26, -20)
     pixel_offset: int = 32
@@ -554,6 +579,25 @@ class ScanConfig:
     #: known before the transport starts, so it goes in the sidecar.
     film_path: str | None = None            # ColNeg | BnW | POSITIVE | IMPORTED
     dx: str | None = None                   # "78-13", as typed by the operator
+
+    @property
+    def film_on_counts(self) -> tuple:
+        """The with-film duty to actually drive for THIS roll's film_path.
+
+        docs/75: `on_counts` is calibrated specifically for colour negative's
+        orange-mask compensation. `film_path == "BnW"` with a calibrated
+        `bw_on_counts` uses that instead; every other film_path (ColNeg,
+        POSITIVE, IMPORTED, or None/unset) is unaffected and gets exactly
+        `on_counts`, byte-for-byte the same value every scan used before
+        this existed. A BnW roll with no `bw_on_counts` calibrated also
+        falls back to `on_counts` -- unchanged behaviour, not a silent
+        under-exposure -- with a warning surfaced separately (see
+        `ScanConfig.from_calibration`'s `warn` list) so the gap is visible
+        rather than quietly reproducing the colour-negative duty on B&W.
+        """
+        if self.film_path == "BnW" and self.bw_on_counts is not None:
+            return self.bw_on_counts
+        return self.on_counts
 
     @classmethod
     def from_calibration(cls, cal_dir: str | Path | None = None,
@@ -681,6 +725,27 @@ class ScanConfig:
         if max(on) >= n - 1:
             warn.append(f"PWM on-count {max(on)} is not <= N-2 ({n - 2})")
 
+        bw_on = (tuple(c["bw_on_counts_R_G_B"])
+                if c.get("bw_on_counts_R_G_B") else None)
+        bw_on_note = c.get("bw_on_counts_note")
+        film_path_norm = (str(film_path).strip() or None) if film_path else None
+        if film_path_norm == "BnW" and bw_on is None:
+            # A genuine configuration gap -- the scan is about to silently
+            # reuse the ColNeg-tuned duty on B&W film (docs/75) -- so this
+            # DOES gate behind --force, the same as every other entry in
+            # `warn` here. A note attached to a bw_on_counts that IS
+            # present (even a placeholder one, see calibration/README.json)
+            # is provenance, not a gap, and is carried in
+            # `bw_on_counts_note` below without gating anything -- see that
+            # field's own docstring.
+            warn.append(
+                "BnW selected but this calibration has no bw_on_counts_"
+                "R_G_B -- running at the ColNeg-tuned with-film duty "
+                f"{on}, which docs/75 shows overexposes green/blue on "
+                f"real B&W stock (no orange mask to compensate for). "
+                f"Recommended: run the B&W duty search "
+                f"(calib_wizard.py duty-bw) with real B&W film loaded.")
+
         return cls(
             dpi_base=dpi_base,
             integration=integ,
@@ -697,11 +762,13 @@ class ScanConfig:
                       else MOTOR_SPEED.get(dpi_base, MOTOR_SPEED[16])),
             source=str(source),
             warnings=warn,
-            film_path=(str(film_path).strip() or None) if film_path else None,
+            film_path=film_path_norm,
             dx=(str(dx).strip() or None) if dx else None,
             open_gate_on_counts=(tuple(c["flat_field_on_counts_R_G_B"])
                                   if c.get("flat_field_on_counts_R_G_B")
                                   else None),
+            bw_on_counts=bw_on,
+            bw_on_counts_note=(str(bw_on_note) if bw_on_note else None),
         )
 
     @classmethod
@@ -968,9 +1035,13 @@ def lamp_on(link: Link, cfg: ScanConfig) -> None:
     # Open-gate duty if the calibration has one (docs/59): the leader has no
     # film in it yet, so starting at the with-film duty overexposes it (and
     # is what made this project's own flat-field bright references clip).
-    # run_scan switches to cfg.on_counts the instant film sensors report
-    # film present -- see the film.armed check in its main loop.
-    on_r, on_g, on_b = cfg.open_gate_on_counts or cfg.on_counts
+    # run_scan switches to cfg.film_on_counts the instant film sensors report
+    # film present -- see the film.armed check in its main loop. The
+    # fallback (no separate open-gate duty calibrated) uses film_on_counts
+    # too, not the bare ColNeg-tuned on_counts, so a BnW roll never starts
+    # at the orange-mask-compensated duty even for the one line before the
+    # first film-present event (docs/75).
+    on_r, on_g, on_b = cfg.open_gate_on_counts or cfg.film_on_counts
 
     caps = pc.led_level_max(ir_on=False)
     for name, v in (("R", r_lvl), ("G", g_lvl), ("B", b_lvl)):
@@ -1032,12 +1103,20 @@ def lamp_switch_to_scan_duty(link: Link, cfg: ScanConfig) -> bool:
     (levels) is written once at bring-up and never touched again in the real
     trace, so this does not re-send it. A no-op, not a fault, if the
     calibration has no separate open-gate duty (``cfg.open_gate_on_counts``
-    is None) -- the scan is already running at ``cfg.on_counts`` in that
-    case, same as before this existed.
+    is None) -- the scan is already running at ``cfg.film_on_counts`` in
+    that case (``lamp_on``'s own fallback), same as before this existed.
+
+    The duty switched TO is ``cfg.film_on_counts``, not the bare
+    ``cfg.on_counts`` -- docs/75: `on_counts` is the colour-negative
+    orange-mask compensation specifically, and a BnW roll with a calibrated
+    ``cfg.bw_on_counts`` switches to that instead. ColNeg/POSITIVE/IMPORTED
+    and a BnW roll with no B&W duty calibrated are unaffected -- both read
+    back exactly ``cfg.on_counts`` from ``film_on_counts``, byte-for-byte
+    what this function always switched to before this existed.
     """
     if cfg.open_gate_on_counts is None:
         return True
-    on_r, on_g, on_b = cfg.on_counts
+    on_r, on_g, on_b = cfg.film_on_counts
     try:
         r = link.ack(pc.write_register(
             pc.AD_LIGHT, pc.REG_LIGHT_LED_DUTY,
@@ -1258,12 +1337,18 @@ def lamp_refresh(link: Link, cfg: "ScanConfig", mode: str = "full") -> bool:
     band through the middle of the owner's roll.
 
     Values come from ``cfg``, so a refresh cannot drift the exposure away from
-    the one the committed calibration is valid for.
+    the one the committed calibration is valid for. That includes the BnW/
+    ColNeg duty split (docs/75, ``ScanConfig.film_on_counts``): this reasserts
+    whatever duty the scan is actually running at, via ``cfg.film_on_counts``,
+    not the bare ``cfg.on_counts`` -- otherwise a periodic refresh on a BnW
+    roll would silently revert the lamp to the colour-negative-tuned duty
+    every ``--lamp-refresh`` interval, defeating the switch
+    ``lamp_switch_to_scan_duty`` just made.
     """
     if mode == "off":
         return True
     r_lvl, g_lvl, b_lvl, _ir = (list(cfg.levels) + [0, 0, 0, 0])[:4]
-    on_r, on_g, on_b = cfg.on_counts
+    on_r, on_g, on_b = cfg.film_on_counts
     ok = True
     try:
         if mode in ("full", "drive"):
@@ -2238,6 +2323,15 @@ def capture_metadata(out: Path, cfg: "ScanConfig", res: "ScanResult",
             "line_rate_0x91": cfg.line_rate_0x91,
             "levels_R_G_B_Ir": list(cfg.levels),
             "on_counts_R_G_B": list(cfg.on_counts),
+            # What was actually driven for THIS roll, after the docs/75
+            # BnW/ColNeg duty split: equal to on_counts_R_G_B above for
+            # every film_path except a BnW roll with a calibrated
+            # bw_on_counts, where this is that value instead. See
+            # ScanConfig.film_on_counts.
+            "on_counts_applied_R_G_B": list(cfg.film_on_counts),
+            "bw_on_counts_R_G_B": (list(cfg.bw_on_counts)
+                                   if cfg.bw_on_counts is not None else None),
+            "bw_on_counts_note": cfg.bw_on_counts_note,
             "afe_gains": list(cfg.afe_gains),
             "afe_offsets": list(cfg.afe_offsets),
             # The words actually put on the wire. The AD9826 offset register is
@@ -2846,7 +2940,7 @@ def run_scan(out_path: str | Path,
                 if lamp and film.armed and not was_armed:
                     ok = lamp_switch_to_scan_duty(link, cfg)
                     log("lamp_duty_switch", to="with-film",
-                        on_counts=list(cfg.on_counts), ok=ok)
+                        on_counts=list(cfg.film_on_counts), ok=ok)
                 if ended:
                     stop_reason, stop_detail = "roll_end", ended
                     break
@@ -3839,6 +3933,57 @@ def _selftest_logic() -> int:
     board.write(EP_CMD_OUT, pc.dx_lamp_restart())
     check("only 0x08 puts the board back the way it boots",
           (board.dx_illum, board.dx_illum_armed), (pc.DX_ILLUM_BOTH, True))
+
+    # ---- the BnW/ColNeg with-film duty split (docs/75) ----
+    #
+    # ScanConfig.film_on_counts is the one thing standing between a real B&W
+    # roll and the colour-negative orange-mask duty that clips it. Every
+    # branch, offline, no scanner required.
+    cn_cfg = ScanConfig(on_counts=(912, 938, 804), bw_on_counts=(643, 580, 508),
+                        film_path="ColNeg")
+    check("ColNeg reads back on_counts, not bw_on_counts",
+          cn_cfg.film_on_counts, cn_cfg.on_counts)
+    pos_cfg = replace(cn_cfg, film_path="POSITIVE")
+    check("POSITIVE reads back on_counts too -- only BnW is redirected",
+          pos_cfg.film_on_counts, pos_cfg.on_counts)
+    none_cfg = replace(cn_cfg, film_path=None)
+    check("no film_path chosen reads back on_counts (pre-existing default)",
+          none_cfg.film_on_counts, none_cfg.on_counts)
+    bw_cfg = replace(cn_cfg, film_path="BnW")
+    check("BnW with a calibrated bw_on_counts reads THAT back, not on_counts",
+          bw_cfg.film_on_counts, bw_cfg.bw_on_counts)
+    check("...and it actually differs from the ColNeg duty",
+          bw_cfg.film_on_counts != bw_cfg.on_counts, True)
+    bw_uncal_cfg = replace(cn_cfg, film_path="BnW", bw_on_counts=None)
+    check("BnW with NO bw_on_counts calibrated falls back to on_counts "
+          "unchanged (no silent under/over-exposure, no crash)",
+          bw_uncal_cfg.film_on_counts, bw_uncal_cfg.on_counts)
+
+    # from_calibration wires the same field through from README.json's
+    # config, and warns loudly rather than silently reusing the ColNeg duty
+    # when a BnW roll has no bw_on_counts_R_G_B of its own.
+    no_bw_cfg = dict(dpi_base="DpiBase16_35", on_counts_R_G_B=[900, 900, 900])
+    cfg_missing = ScanConfig.from_calibration(config=no_bw_cfg,
+                                              film_path="BnW")
+    check("from_calibration warns when BnW has no bw_on_counts_R_G_B at all",
+          any("bw_on_counts" in w for w in cfg_missing.warnings), True)
+    with_bw_cfg = dict(no_bw_cfg, bw_on_counts_R_G_B=[600, 550, 500],
+                       bw_on_counts_note="test placeholder")
+    cfg_present = ScanConfig.from_calibration(config=with_bw_cfg,
+                                              film_path="BnW")
+    check("from_calibration reads bw_on_counts_R_G_B off the config",
+          tuple(cfg_present.bw_on_counts), (600, 550, 500))
+    check("...and film_on_counts picks it up",
+          cfg_present.film_on_counts, (600, 550, 500))
+    check("...and its note is carried for the sidecar",
+          cfg_present.bw_on_counts_note, "test placeholder")
+    check("A PRESENT bw_on_counts (placeholder or not) does NOT gate the "
+          "scan behind --force -- only a MISSING one does",
+          cfg_present.warnings, [])
+    cfg_colneg_same_cal = ScanConfig.from_calibration(config=with_bw_cfg,
+                                                      film_path="ColNeg")
+    check("the SAME calibration, scanned as ColNeg, is untouched",
+          cfg_colneg_same_cal.film_on_counts, tuple(no_bw_cfg["on_counts_R_G_B"]))
 
     # ---- what the capture says it is ----
     #

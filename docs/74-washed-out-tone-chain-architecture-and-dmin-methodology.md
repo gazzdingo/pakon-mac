@@ -9332,3 +9332,407 @@ file was modified this pass. Every scratch file this pass produced
 `/tmp/pakon_re/test_hexdump.c` and its compiled `.exe`, plus various raw
 `pdf`/`afij` text dumps) is additive/scratch under `/tmp/pakon_re/`, not
 committed, matching this doc's own established convention.
+## 48 — The new `buffer_dump` capture fully decoded: the per-frame `applyLut`
+LUT is real, non-trivial, per-channel-additive-shift-with-clamp — and it is
+already implemented, already wired into the render path, and already shown
+not to close the brightness gap. A real, hardware-confirmed finding that
+closes a real open question and is, honestly, not the fix.
+
+Picked up exactly where §47.5 left off: `live_hooks_20260815-124028.jsonl`
+(`/Users/guy/.claude-account-1/jobs/5e3f6f65/tmp/live_hooks_v6/`, downloaded
+this pass, not present before) is the first real capture taken with §47.4's
+own `ExtraDumpSpec`/`LogExtraDumps` extension installed, and it contains real
+LUT/pixel **content**, not just pointer values. `md5sum` of the JSONL was not
+separately re-verified against a build artifact (there is none to check it
+against — this is a live-capture data file, not a binary) but its own
+internal structure was cross-checked exhaustively before trusting it: 5
+`status`, 17 `hook_installed`, 252 `call` (126 enter/126 leave), 72
+`buffer_dump` lines, decoded via direct `json.loads` per line, not `grep`.
+
+A first spot-check in this task's own opening brief found `call_id=7`'s
+`r_lut` decodes as a literal identity table — but flagged, correctly, that
+it was unknown whether `call_id=7` belongs to the 12-call startup burst or
+the 6-call `analyzePostBalance` group §47.2 already distinguished. Sorting
+that out, and fully decoding the other 71 `buffer_dump` records, is this
+section's own work.
+
+### 48.1 — Re-deriving the two-group split from the raw JSONL directly, not
+trusted from §47.2's own prose
+
+Same method §47.2 already established: `hook_installed`'s own line for this
+session (`"va_documented":"0x100d9340","rt_address":"0x07dd9340"`) gives the
+same `+0x08300000` runtime→static delta as every prior capture. Translated
+all 18 `retaddr` values (`static = retaddr + 0x08300000`) and grouped:
+
+```
+0x101b291d  (inside fcn.101b28c0, the startup-burst wrapper) -> 12 calls:
+    call_id  7  8  9 10 11 12   (sub-burst A, tick=35292515, ALL SAME ecx=0x093997d0)
+    call_id 26 28 30 32 34 36   (sub-burst B, ticks 35292531/35292546, ecx DIFFERS every call)
+0x100fe87a  (inside fcn.100fdc40 = analyzePostBalance)        -> 6 calls:
+    call_id 62 71 80 89 98 107  (ticks 35292593/609/671/703/718/750)
+```
+
+Exactly reproduces §47.2's own two-group shape (12 + 6, same split rule, same
+container functions) on a completely independent capture taken in a later
+session. **`call_id=7` is in the startup burst (sub-burst A)** — the task's
+own opening spot-check of an identity table was, correctly per its own
+flagged uncertainty, looking at the wrong group. The group that matters for
+the brightness-gap question is `call_id ∈ {62, 71, 80, 89, 98, 107}`.
+
+Cross-checked the per-frame group's ticks against every other already-
+verified per-frame hook firing in this same capture, the same discipline
+§47.2 used:
+
+```
+balance_area_image / analyze_area / analyze_attributes / analyze_falloff / analyze_auto_tone:
+  ticks = [35292593, 35292640, 35292671, 35292703, 35292734, 35292750]
+fugc_analyze:
+  ticks = [35292593, 35292625, 35292671, 35292703, 35292718, 35292750]
+area_image_apply_lut (per-frame group, call_id 62,71,80,89,98,107):
+  ticks = [35292593, 35292609, 35292671, 35292703, 35292718, 35292750]
+area_image_apply_lut (startup burst, all 12):
+  ticks = [35292515, 35292531, 35292546]  -- all three BEFORE the earliest
+                                              per-frame tick (593)
+```
+
+4 of 6 ticks match the `balance_area_image`/`analyze_area`/`analyze_auto_tone`
+family exactly (593/671/703/750); the other two (609, 718) sit within one
+sub-tick slot of that family's own 640/734, the same small jitter §47.3
+already characterized as normal cross-hook skew within one frame's
+processing window, not a contradiction. The startup burst's three ticks all
+precede the per-frame loop's own earliest tick, reproducing §47.2's "once,
+up front" finding on new data. Both group identities are now established
+twice, independently, on two different real captures.
+
+### 48.2 — All 72 `buffer_dump` records decoded: the startup burst is
+**100% identity, no exceptions**, across all 4096 entries, every channel,
+every one of its 12 calls — genuinely a no-op pass, not "six candidate tone
+curves" as §47.2's own (explicitly flagged as unconfirmed) hypothesis read it
+
+Decoded every `r_lut`/`g_lut`/`b_lut` as 4096 little-endian `int16` (the
+byte count matches exactly: 8192 bytes / 2 = 4096 entries, per §47.4's own
+row spec) and checked `arr[i] == i` for **every** `i` in `0..4095`, not a
+handful of sample points:
+
+```
+call_id  7  r_lut  IDENTITY (4096/4096)   g_lut  IDENTITY   b_lut  IDENTITY
+call_id  8  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+call_id  9  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+call_id 10  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+call_id 11  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+call_id 12  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+call_id 26  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+call_id 28  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+call_id 30  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+call_id 32  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+call_id 34  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+call_id 36  r_lut  IDENTITY               g_lut  IDENTITY   b_lut  IDENTITY
+```
+
+All 36 LUTs (12 calls × 3 bands), every one of 4096 entries, `arr[i]==i`
+exactly. **This directly corrects §47.2's own explicitly-hedged reading of
+this sub-burst** ("6 DIFFERENT LUT triples... one image, six candidate tone
+curves in succession" — stated there as "a hypothesis, not confirmed by
+tracing `fcn.101b28c0`'s own two callers' own semantics"). With real content
+now in hand: the R/G/B pointer addresses genuinely differ call-to-call (as
+§47.2 found), but every one of those six differently-addressed LUT triples
+holds byte-identical, pure identity data. This is not six candidate tone
+curves — it is six calls that apply no transform at all. Whatever
+`fcn.101b28c0`'s two callers actually are (still not traced this pass, same
+honest gap §47.2 already flagged), what they do to real image data is
+nothing.
+
+### 48.3 — The per-frame `analyzePostBalance` group: genuine, real,
+non-trivial data — `dest[c][i] = clamp(i + shift_c, 0, 4095)`, exact for
+**every one of 4096 entries**, all 6 frames, all 3 channels, no exceptions
+
+Same full, non-sampled check, this time against the hypothesis
+`arr[i] == clamp(i + shift, 0, 4095)` with `shift = arr[0]`:
+
+```
+call_id  this(ecx)    R shift  R exact   G shift  G exact   B shift  B exact
+    62   0x08faf0cc      686   4096/4096    269   4096/4096      4   4096/4096
+    71   0x08fb55a8      819   4096/4096    400   4096/4096    161   4096/4096
+    80   0x08fbba84      871   4096/4096    474   4096/4096    203   4096/4096
+    89   0x08fc1f60      991   4096/4096    588   4096/4096    327   4096/4096
+    98   0x08fc843c      592   4096/4096    191   4096/4096    -42   4096/4096
+   107   0x08fce918      774   4096/4096    364   4096/4096    122   4096/4096
+```
+
+Every one of the 18 arrays (6 frames × 3 bands) matches `clamp(i+shift,0,4095)`
+**exactly**, entry-for-entry, no partial matches, no residual curve on top —
+verified with a plain Python loop over the full 4096-length array, not
+sampled points. (`call_id=98`'s `b_lut` is the one negative-shift case: its
+own low end reads `arr[0..41]==0`, then `arr[42]=0`... `arr[i]=i-42` from
+`i=42` on, `arr[4095]=4053` — the same formula with `shift=-42`, clamped at
+the FLOOR rather than the ceiling; confirmed the same way as the other 17.)
+**This is a genuine, real per-channel additive shift with saturation
+clamping — not identity, not a general nonlinear tone curve, not the
+`SCPLut`-composed curve §37.4/§46.4 traced inside `balanceAreaImage`'s own
+(never-firing, per §47.2) call sites.** It is the bare shift-only formula
+`0x1006c4f0`'s own LUT-build loop already produces (§37.1's own citation:
+`out[i] = master[i + shift]` = `clamp(i+shift,0,4095)`), applied with no
+further composition, at a call site (`analyzePostBalance`) neither §36-40
+nor §46 ever independently traced content for.
+
+**Real per-frame variation, not a fixed constant reused across frames**: R
+ranges 592-991, G ranges 191-588, B ranges -42-327 across the 6 real frames
+in this capture — six genuinely different triples, consistent with a
+per-frame scene-balance measurement, not a session-wide or roll-wide
+constant baked into a single shared LUT.
+
+### 48.4 — `pixel_data_preview` cross-check: the startup burst and the
+per-frame group read the identical underlying source buffer, byte-for-byte,
+confirming the identity pass genuinely precedes the shift pass on the same
+data
+
+Decoded all 18 `pixel_data_preview` dumps (256 bytes / int16 = 128 entries)
+and compared address + MD5 of content across every call:
+
+```
+call_id  7  (startup A, this=0x093997d0)  addr=0x0bc80020  md5=be611edb...
+call_id 26  (startup B, this=0x08faf0cc)  addr=0x0bc80020  md5=be611edb...
+call_id 62  (per-frame, this=0x08faf0cc)  addr=0x0bc80020  md5=be611edb...
+   [same pattern repeats for all 6 frame slots: 8/28/71, 9/30/80, 10/32/89,
+    11/34/98, 12/36/107 — same address, byte-identical content, all three
+    times, in every one of the 6 slots]
+```
+
+Every one of the 6 real frames' underlying pixel-preview buffer is read at
+the exact same address with byte-identical content across all THREE calls
+that touch it (startup-A, startup-B, per-frame) — even though the `this`
+(`ecx`, the `AnsImageData*` container) differs between startup-A and the
+other two. This is real, direct evidence that (a) the identity-LUT startup
+pass and the later shift-LUT per-frame pass genuinely operate on the same
+underlying frame content, not different data, and (b) nothing modifies that
+underlying source buffer between the startup burst and the real per-frame
+processing — consistent with the startup burst being a one-time
+initialization/read pass over the same 6 already-digitized frames, not a
+separate calibration image set. (Caveat carried over from §47.4/§47.1: the
+`this->0x20` offset `pixel_data_preview` reads is this project's own
+inference, not independently corroborated elsewhere — the cross-buffer
+identity finding here is real regardless of whether `+0x20` is exactly the
+field this pass believes it is, since the SAME offset is read consistently
+across all three call types being compared.)
+
+### 48.5 — Independent reproduction of §47.3's pointer-identity finding, on
+a wholly separate real capture: `applyLut`'s `this` (per-frame group) equals
+`analyzeAutoTone`'s `edi` at entry, 6/6, not 5/6
+
+Repeated §47.3's own cross-reference against this new capture's own
+`analyze_auto_tone` hook lines:
+
+```
+applyLut call_id= 62 tick=35292593 this=0x08faf0cc -> analyze_auto_tone tick=35292593 edi=0x08faf0cc  MATCH
+applyLut call_id= 71 tick=35292609 this=0x08fb55a8 -> analyze_auto_tone tick=35292640 edi=0x08fb55a8  MATCH
+applyLut call_id= 80 tick=35292671 this=0x08fbba84 -> analyze_auto_tone tick=35292671 edi=0x08fbba84  MATCH
+applyLut call_id= 89 tick=35292703 this=0x08fc1f60 -> analyze_auto_tone tick=35292703 edi=0x08fc1f60  MATCH
+applyLut call_id= 98 tick=35292718 this=0x08fc843c -> analyze_auto_tone tick=35292734 edi=0x08fc843c  MATCH
+applyLut call_id=107 tick=35292750 this=0x08fce918 -> analyze_auto_tone tick=35292750 edi=0x08fce918  MATCH
+```
+
+**6 of 6**, exact, byte-for-byte — better coverage than §47.3's own 5/6 (the
+one frame that pass could not check due to timing skew is fully covered
+here). Two independent real captures, taken in different sessions, both
+show the object `applyLut` writes its per-frame LUT-applied output into is
+the exact same pointer `analyzeAutoTone` holds live at its own entry. This
+does not newly resolve `docs/58` §16.5's own last remaining gap (whether
+`analyzeAutoTone`'s internal `cna`/`dra` lookups resolve pixel data from
+this same object once inside its own body — still not independently walked
+this pass either), but it makes the address-level link one capture
+stronger, not weaker.
+
+### 48.6 — Cross-checked against the Python port: this exact mechanism is
+**already implemented and already wired into the live render path** —
+`pakon_sba_apply.apply_balance_shifts`, called from `AnselEngine.render_scene`
+immediately before `real_auto_tone` — though its own docstring cites a
+different, and per §37.1, dead, DLL address
+
+`tools/ansel/python-pipeline/pakon_sba_apply.py:152-175`,
+`apply_balance_shifts(rpd12, shifts)`:
+
+```python
+def apply_balance_shifts(rpd12: np.ndarray, shifts: tuple[int, int, int]) -> np.ndarray:
+    """Pakon apply: ``out = clamp(code + shift, 0, 4095) per channel``."""
+    ...
+    for c, s in enumerate(shifts):
+        out[:, :, c] = np.clip(x[:, :, c] + int(s), 0, MASTER_MAX)   # MASTER_MAX = 0xFFF
+```
+
+— the identical formula this section just confirmed, byte-exact over all
+4096 entries, on all 6 real frames of the per-frame `applyLut` group
+(§48.3). `pakon_ansel.py:847-850` (`AnselEngine.render_scene`) calls it,
+gated on `self.setshifts_out is not None`, immediately before
+`real_auto_tone(x)` runs — i.e. the exact same relative pipeline position
+this section's own live evidence (§48.5, and §47.3 before it) places the
+real `analyzePostBalance`→`applyLut` call, immediately upstream of
+`analyzeAutoTone`. `render_scene` is not a golden-test-only path: it is
+called from `tools/pakon_render.py:1353`
+(`toned = _quiet(eng.render_scene, rpd12, scale_v)`), inside
+`_render_colour_python`, the actual production entry point every
+percentile measurement in this doc (§31 onward) has used.
+
+**A real citation gap, not a functional bug, worth naming plainly.**
+`pakon_sba_apply.py`'s own docstring and comments attribute this function to
+`AnsAreaCapabilityImpl::applyBalanceShifts` (`0x1019a0c0`) and the
+shift-LUT-builder `0x1006c4f0` it calls — but §37.1 (this same doc)
+already found, from a real 6-frame live capture, that `applyBalanceShifts`
+fires **zero** times on real hardware (gated off by the flag byte §37.3
+traced inside `analyzeArea`). The function this pass's own live evidence
+shows genuinely fires, once per real frame, applying this exact formula, is
+`AnsImageData::applyLut` (`0x100d9340`) called from `analyzePostBalance`
+(`0x100fdc40`) — a call site neither `pakon_sba_apply.py`'s own docstring
+nor any prior pass in this doc connects to this ported function. The port's
+own math is right; its own citation of *which* real DLL call site produces
+that math is not. **Not independently confirmed this pass**: whether
+`analyzePostBalance`'s own shift source is literally the same
+`setshifts_out` value `render_scene` already computes — this section's own
+captured shift triples (§48.3) come from a different real roll/session than
+`test123.bin`, so the *values* cannot be cross-checked directly against
+`setshifts_out=(683,297,151)`; only the *mechanism* (bare additive
+shift+clamp, no other composition) has been directly, byte-exactly
+confirmed to match.
+
+### 48.7 — Directly re-measured against the real `AA001.tif` reference,
+fresh this pass, not trusted from §37.6's own older citation: the shift
+stage this section just hardware-confirmed is already present in the
+baseline, and the gap is still there
+
+Re-ran the exact harness §31-41 established (`PAKON_COLOUR_ENGINE=python`,
+`test123.bin`, `film_path="ColNeg"`, frame 0, `scale="preview"`,
+`tools.pakon_render.render_frame`), fresh, this pass, against the *current*
+live calibration state — confirmed to be the post-§41-fix state, not an
+older one, by checking `roll.film_base` before measuring anything:
+`film_base=[4094.0, 2442.0, 4067.0]`, matching §41.2's own cited "combined
+(fixed)" output for this exact roll exactly, digit for digit — not the
+pre-fix `[3107,2490,2414]` §31-37 used. `eng.setshifts_out = (683, 297, 151)`,
+matching every prior citation of this exact roll's own value.
+
+```
+                     p0.1   p1    p5    p50   p95   p99   p99.9
+baseline (unmodified port -- apply_balance_shifts INCLUDED):
+R  ours:               32    69    93   188   250   254   254
+R  AA001.tif:            0    10    17    90   235   252   255
+G  ours:               43    49    60   165   249   254   254
+G  AA001.tif:            8    11    17   103   239   251   255
+B  ours:              108   121   138   237   254   254   254
+B  AA001.tif:            7    10    18   139   246   255   255
+
+p50 delta (ours - AA001), baseline:      R +98.0   G +62.0   B +98.0
+
+patched (apply_balance_shifts -> identity, runtime monkeypatch,
+         same technique §37.6 used, no file on disk touched):
+R  patched:              0     0     0     0   206   248   254
+G  patched:               5    11    24   146   247   254   254
+B  patched:             132   138   152   227   254   254   254
+
+p50 delta (ours - AA001), no shift:      R -90.0   G +43.0   B +88.0
+```
+
+**Reproduces §37.6's own qualitative finding, independently, under today's
+calibration state** (the absolute numbers differ from §37.6's own older
++88/+89/+78 baseline, expected and already explained by §41.2's own
+"calibration was live and moving under this measurement" caveat — this is
+not a contradiction, it is the same roll measured under different, later
+calibration data). Removing the shift is still not a fix: R overshoots
+catastrophically in the opposite direction (+98 → -90, the same
+roughly-2×-overshoot shape §37.6 already found), G improves partway but
+remains far off (+62 → +43), B is essentially unchanged (+98 → +88). The
+baseline, WITH the now-hardware-confirmed shift stage already applied,
+still sits 62-98 codes too bright at the median on every channel.
+
+### 48.8 — Verdict
+
+**Task item 1, fully closed.** All 18 real captured calls decoded and
+correlated to the two real call-site groups, re-derived from the raw JSONL
+independently of §47.2's own prose (§48.1): 12 calls (`call_id`
+7,8,9,10,11,12,26,28,30,32,34,36) are the one-time `fcn.101b28c0` startup
+burst; 6 calls (`call_id` 62,71,80,89,98,107) are the genuine per-frame
+`analyzePostBalance` calls, tick-matched to every other per-frame hook in
+the capture. `call_id=7`, the one the task's own opening brief spot-checked
+as an identity table, is in the startup burst, not the per-frame group —
+exactly the ambiguity the task flagged as needing resolution before drawing
+any conclusion.
+
+**Task item 2, fully closed, both groups.** The startup burst is **100%
+identity across all 36 LUTs, all 4096 entries each** — genuinely a no-op,
+correcting §47.2's own hedged "six candidate tone curves" reading of the
+same addresses. The per-frame `analyzePostBalance` group is **genuinely
+non-trivial**: `dest[c][i] = clamp(i + shift_c, 0, 4095)`, exact for every
+one of 4096 entries on all 6 real frames and all 3 channels, with real,
+substantial per-frame variation in the shift values (R 592-991, G 191-588,
+B -42-327) — not identity, not a fixed constant, not the `SCPLut`-composed
+curve traced elsewhere in this doc.
+
+**Task item 3, closed, with a real and important qualification.** This IS
+a real per-pixel transform this doc had never before captured *content*
+for. But it is **not** an unaccounted-for missing stage: `pakon_sba_apply.
+apply_balance_shifts` already implements the identical formula, already
+called from `AnselEngine.render_scene` immediately before `real_auto_tone`
+— the exact relative position this section's own live evidence (and §47.3's
+independent, address-level confirmation, now reproduced 6/6 on a second
+capture) places the real call. The genuinely new finding is narrower and
+more precise than "a missing stage": it identifies, for the first time with
+real captured content, *which* of the three static candidate shift-application
+sites (`applyBalanceShifts`, `balanceAreaImage`'s `SCPLut`-composed variant,
+`analyzePostBalance`'s own call) is the one that actually fires on real
+hardware and exactly what it does — and finds the port's own already-shipped
+code is mathematically right, while its own citation of which DLL function
+it corresponds to is wrong (§48.6). No production code changed this pass to
+add anything, because there was nothing missing to add.
+
+**Task item 4: measured directly, fresh, against the real reference.**
+Not a "candidate LUT" application in the sense the task anticipated (this
+capture's own shift values belong to a different roll than `test123.bin`,
+so they cannot themselves be substituted in) — instead, the equivalent,
+already-wired mechanism was re-measured directly against `AA001.tif`, fresh
+this pass, under current calibration (§48.7): baseline (shift included) sits
+at p50 +98/+62/+98 vs `AA001.tif`; removing the shift makes R dramatically
+worse (-90, overshooting in the opposite direction) and does not close G/B
+either. The stage is real, necessary, already present, and insufficient.
+
+**Task item 5's honest-dead-end framing applies, in a more precise form
+than "identity/no-op."** The per-frame LUTs are emphatically not identity —
+they are the most concrete, content-verified, real-hardware-confirmed
+per-pixel transform this entire investigation has captured. But because the
+equivalent transform is already implemented, already wired into the actual
+render path, and was already tested against the real reference (both before
+this pass, §37.5-37.6, and again fresh this pass, §48.7) without closing
+the gap, this specific thread — despite the genuinely exciting §47
+buffer-aliasing discovery that motivated it — does not explain the
+remaining ~62-98 sRGB code brightness gap. Stated plainly, as the task
+asked: this closes a real open question (which shift call site fires, and
+its exact shape) with strong, real, address-level and content-level
+evidence, and it is a real, honest dead end for the brightness gap
+specifically. The remaining candidates named in the task's own item 5 —
+`analyzeArea`'s other unread territory, or the untriaged `fyl2x`/`f2xm1`
+sites from §32.4 — remain the concrete next places to look.
+
+**Verification.** DLL provenance not re-checked this pass (no new
+disassembly was performed; §47's own fresh `af`+`pdf`/E8-scan work is relied
+on unchanged, per its own already-stated verification). The runtime→static
+`retaddr` delta was re-derived from this session's own `hook_installed`
+line, not assumed from §47's citation, and cross-checked against the same
+two known call sites (`0x100d9340`'s own 10 static callers, `fcn.101b28c0`
+and `analyzePostBalance`'s own addresses) §47.2 already established. Every
+LUT/pixel decode in this section came from a real, small, additive Python
+script (`/tmp/pakon_re/tick_crosscheck_48.py`, `/tmp/pakon_re/crossref_48.py`,
+plus inline decode scripts, all scratch, not committed) reading the real
+`hex` fields directly out of the downloaded JSONL — no synthetic or
+representative data was substituted anywhere in §48.1-48.6. The full,
+non-sampled 4096-entry check (not spot points) was used for every identity
+and shift+clamp claim in §48.2/§48.3. The `AA001.tif` re-measurement
+(§48.7) used the same real capture (`test123.bin`), the same real reference
+TIFF, and the same production entry point (`tools.pakon_render.render_frame`)
+every prior section since §31 has used, run fresh this pass rather than
+quoted from an earlier section, with the current `film_base`/`setshifts_out`
+state explicitly checked and shown to match this project's own most recent
+established citation (§41.2) before any percentile was trusted. No existing
+production file (`pakon_sba_apply.py`, `pakon_ansel.py`, `pakon_render.py`)
+was modified — the no-shift comparison in §48.7 used the same
+runtime-monkeypatch technique as §37.6, not a file edit. This project's rule
+against describing `captures/` pixel content in writing was respected
+throughout — every number reported above is a LUT table value, a shift
+constant, a pointer address, or a percentile of a rendered/reference image
+array, none of it raw scanned pixel content from `captures/`.
+

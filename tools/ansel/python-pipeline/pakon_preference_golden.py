@@ -109,9 +109,11 @@ def build_param(
     param0: int = 0,
     param_0x12: int = 0,
     param_0x40: int = 0,
+    param_uv: tuple[int, int] = (0, 0),
 ) -> bytes:
     b = bytearray(0x80)
     struct.pack_into("<h", b, 0x00, param0)
+    struct.pack_into("<hh", b, 0x02, param_uv[0], param_uv[1])
     struct.pack_into("<h", b, 0x12, param_0x12)
     struct.pack_into("<h", b, 0x40, param_0x40)
     return bytes(b)
@@ -210,6 +212,7 @@ def py_hiNN(case: dict, mode: int) -> tuple[int, int, int]:
         arg1_0=case.get("arg1_0", 0),
         arg1_2=case.get("arg1_2", 0),
         arg1_4=case.get("arg1_4", 0),
+        param_uv=case.get("param_uv", (0, 0)),
     )
 
 
@@ -244,6 +247,11 @@ CASES_HINN: list[dict] = [
     dict(CN_DEFAULT, lo=3, hi=0x30, arg1_0=1500, arg1_2=100, arg1_4=-100, non_flash_adj=0),
     dict(CN_DEFAULT, lo=3, hi=0x30, arg1_0=1500, arg1_2=100, arg1_4=-100, non_flash_adj=500),
     dict(CN_DEFAULT, lo=3, hi=0x30, arg1_0=1500, arg1_2=100, arg1_4=-100, non_flash_adj=1000),
+    # hi=0 else-branch reads arg1[2]/arg1[4] = the param struct (docs/74 sec68)
+    # — pinned with non_flash_adj≠0 so the aimU/aimV term is not zeroed out.
+    dict(CN_DEFAULT, lo=0, hi=0x00, param0=1500, param_uv=(100, -100), non_flash_adj=1000),
+    dict(CN_DEFAULT, lo=1, hi=0x00, param_uv=(80, -60), non_flash_adj=500),
+    dict(CN_DEFAULT, lo=0, hi=0x00, param0=1200, param_uv=(-30, 70), non_flash_adj=250),
 ]
 
 def main(argv: list[str]) -> int:
@@ -293,6 +301,7 @@ def main(argv: list[str]) -> int:
             param0=case.get("param0", 0),
             param_0x12=case.get("param_0x12", 0),
             param_0x40=case.get("param_0x40", 0),
+            param_uv=case.get("param_uv", (0, 0)),
         )
         arg1 = build_arg1(arg1_0=case.get("arg1_0", 0)) if need_arg1 else None
         # We need arg1_2 and arg1_4 for hi=0x30

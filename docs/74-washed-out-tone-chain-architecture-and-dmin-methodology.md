@@ -13446,3 +13446,33 @@ capture is the anomaly to explain, not a second writer of `+0x3a38`. v18 adds
 a `scene+0x5074` (mode-word) dump at `getShifts` to settle whether the live
 mode word is `0x33` (arg5 capture artifact) or `0` (Preference reads the mode
 from somewhere other than `[ebp+0x18]`).
+
+## 68 — §67 resolved: the live mode is 0, and the Preference's `hi=0` else-branch reads the orderFpo U/V from `scene+0x38a2` (a port bug, now fixed)
+
+v18 (`live_hooks_20260817-091509.jsonl`, md5 `3518fb9e…9524df`) dumped the mode
+word directly: `scene+0x5074` = `0` at `getShifts` on every frame, matching the
+`arg5`=0 captures. So the mode really is 0 — §67's "arg5 capture artifact" was
+wrong, and the second open resolution was the true one, with a twist.
+
+The Preference's `hi=0` aim-UV else-branch is `0x1028ca2f`: `movsx edx,[edi+2]
+; movsx eax,[edi+4]`, where `edi = [ebp+8]` = **arg1** (the *param* struct,
+`scene+0x38a2` live), **not** the blob `fpo` (`[ebp+0x14]`). So with mode=0:
+
+* `aim_y` = `param0` = `scene+0x38a2[0]` = orderFpo **Y** (per-frame),
+* `aim_uv` = `scene+0x38a2[+2]/[+4]` = orderFpo **U/V** (per-frame).
+
+That is exactly the orderFpo Y/U/V §64 matched — but via **mode=0**, not
+`hi=0x30/lo=3`. The port's `preference_aim_uv` returned `fpo[1]/fpo[2]` for the
+else case (a conflation of the param and blob structs, invisible to the golden
+test only because `non_flash_adj=0` zeroes the aim-UV term in every original
+case). Fixed: added a `param_uv` argument (param `+0x02/+0x04`) and made the
+else-branch return it. Unicorn-verified (3 new `hi=0` golden cases with
+`non_flash_adj`∈{1000,500,250}, all `dll==py`), and live bit-exact 6/6 frames:
+`preference_shifts_hiNN(hi=0, lo=0, param0=orderFpoY, param_uv=orderFpoUV,
+cmm=1000) == +0x3a38`.
+
+Related, flagged not fixed (mode=0 doesn't reach them): `hi=0x20` (neu) reads
+`arg1[+0x0c/+0x0e/+0x10]` and `hi=0x40` (lo42/hi44) reads `arg1[+0x42/+0x44]`
+— both from the *param* struct, not the blob — so the port's `neu`/`lo42`/
+`hi44` (blob-sourced) are also wrong for those two modes. Live-irrelevant for
+the shipped mode=0 path, but wrong byte-for-byte if ever exercised.

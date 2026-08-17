@@ -239,6 +239,11 @@ CASES_HINN: list[dict] = [
     dict(CN_DEFAULT, lo=1, hi=0x40, neutral_button=150, under=-20.0, over=20.0),
     dict(CN_DEFAULT, lo=1, hi=0x00, fpo=(100, 200, 300)),  # else case
     dict(CN_DEFAULT, lo=3, hi=0x20, arg1_0=500, neu=(800, 800, 800)),
+    # live mode hi=0x30, lo=3 with the non_flash_adj scale swept — pins the
+    # blob+0x30 (cmm) scale path (docs/74 sec64: cmm=1000 = 100%, not 0).
+    dict(CN_DEFAULT, lo=3, hi=0x30, arg1_0=1500, arg1_2=100, arg1_4=-100, non_flash_adj=0),
+    dict(CN_DEFAULT, lo=3, hi=0x30, arg1_0=1500, arg1_2=100, arg1_4=-100, non_flash_adj=500),
+    dict(CN_DEFAULT, lo=3, hi=0x30, arg1_0=1500, arg1_2=100, arg1_4=-100, non_flash_adj=1000),
 ]
 
 def main(argv: list[str]) -> int:

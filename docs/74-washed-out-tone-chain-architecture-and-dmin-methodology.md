@@ -13278,7 +13278,24 @@ made prior passes' Preference outputs diverge from the live A. This closes
 is matched by parameter search against the live A (5/5 bit-exact), not yet
 traced to its read site in the disassembly — flag that tier honestly.
 
-### 64.1 — What remains: only Δ (term 2)
+### 64.1 — The scale field is `cmm` (blob+0x30), Unicorn-verified, not `nonFlashAdj`
+
+§64 called the scale `non_flash_adj=1000` on a parameter-search match. That
+is now traced and Unicorn-pinned (tier 1). The Preference reads the scale at
+`0x1028caa7` (`movsx eax, [ebx+0x30]`) — `ebx` = arg4 = the blob (set at
+`0x1028ca47 mov ebx,[ebp+0x14]`) — then `fimul dword [0x105a0800]` (×0.001).
+The blob fill `0x10214f20` maps `blob+0x30 ← scene+0x4d1c` (`mov cx,[esi+0x4d1c]
+; mov [edi+0x30],cx`), and `scene+0x4d1c` is the dpi field **`cmm`**
+(`sba-CN-default.dpi` line 17: `cmm = 1000`; `fog` is the neighbour at
+`+0x4d1e`→`blob+0x32`). So the chroma-aim scale is `cmm·0.001`, and
+`nonFlashAdj` (`+0x4d1a`→`blob+0x12`… `blob[18]=25`) is a *different* field
+that the Preference does not read here. Added three `hi=0x30,lo=3` cases to
+`pakon_preference_golden.py` sweeping `non_flash_adj`(=cmm) over `0/500/1000`
+— all bit-exact vs the DLL (dll/py `(1038,652,506)`, `(877,651,669)`,
+`(716,649,832)`). Value live: `blob[24]=1000`, so the live chroma aim is at
+full strength — the prior passes' `0` disabled it.
+
+### 64.2 — What remains: only Δ (term 2)
 
 With A now closed-form, the applied balance is `setshifts_12(A,A) + Δ` where
 Δ (v17) = `+95/+63/+65/+29/+73` uniform. Δ is the `setShifts`/caller post-

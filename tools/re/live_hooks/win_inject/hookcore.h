@@ -119,8 +119,11 @@ extern "C" {
  * same pass, matching thunks[25..27] in hookcore_real_table.c -- the
  * exact "forgot the matching thunk" mistake §46/§47 found and fixed is
  * the one thing this bump was double-checked against.
+ * Bumped 28->29 (docs/74 §57, 2026-08-16): one new PakonIMAu.dll hook
+ * (color_adjust_shift, 0x101b76d0) appended at the END of table[], same
+ * append-only discipline. Thunk_28 added to hookstub.S in the same pass.
  * --------------------------------------------------------------------- */
-#define HOOKCORE_MAX_HOOKS 28
+#define HOOKCORE_MAX_HOOKS 29
 
 /* Must exactly match the PUSHAD+PUSHFD+index+retaddr stack layout that
  * hookstub.S's SharedEntryHandler builds -- see that file's header
@@ -281,13 +284,39 @@ typedef struct HookRuntime {
  * pixel -- nothing like the per-pixel volume hotPathDisabled guards
  * against). Every row is IsBadReadPtr-guarded exactly like the existing
  * stack_dwords dump; an unreadable pointer logs `"readable":false`
- * rather than skipping the row silently or crashing. */
+ * rather than skipping the row silently or crashing.
+ * Bumped 8192 -> 0x84000 (540672 = 132 pages, docs/74 SS60, 2026-08-16):
+ * the full 245x367 planar/interleaved frame is 539490 bytes (=0x83B62), so
+ * the old cap only carried ~2-16 scanlines, which is not enough to solve
+ * the raw<->RPD12 spatial relayout by 2D cross-correlation (the two
+ * buffers are laid out differently and the truncated tops don't overlap).
+ * 0x84000 is the page-rounded committed size of that buffer (539490 rounds
+ * up to 132*4096); the first v12 build used 0x90000 (the observed inter-
+ * buffer stride) and every full-frame dump came back IsBadReadPtr-failed,
+ * so 0x84000 is the read-safe ceiling. LogExtraDumps' line buffer moved to
+ * the heap at the same time because 0x84000*2 hex chars exceeds the
+ * default 1 MB thread stack. */
 #define HOOKCORE_MAX_EXTRA_DUMPS 8
-#define HOOKCORE_EXTRA_DUMP_MAX_BYTES 8192
+#define HOOKCORE_EXTRA_DUMP_MAX_BYTES 0x84000
 
 typedef enum ExtraDumpKind {
     EXTRA_DUMP_STACK_PTR = 0,  /* dump N bytes from   *stack_dwords[idx]        */
-    EXTRA_DUMP_DEREF_PTR = 1   /* dump N bytes from  **(stack_dwords[idx]+off)  */
+    EXTRA_DUMP_DEREF_PTR = 1,  /* dump N bytes from  **(stack_dwords[idx]+off)  */
+    EXTRA_DUMP_THIS_OFFSET = 2,/* dump N bytes from   (regs->ecx + derefOffset) --
+                                   for a __thiscall target, the Impl/`this`
+                                   object's own fields (stackIndex ignored)     */
+    EXTRA_DUMP_PLANAR_PLANE = 3, /* dump N bytes from  *(stack_dwords[idx]) +
+                                   (stack_dwords[3] * stack_dwords[4]) *
+                                   derefOffset -- PolyPixel's planar buffer,
+                                   R/G/B at base + w*h*(0/2/4); w/h are
+                                   hard-coded to stack_dwords[3]/[4] per the
+                                   PolyPixel calling convention (docs/74 SS32)  */
+    EXTRA_DUMP_THIS_DEREF_OFFSET = 4 /* dump N bytes from
+                                   *(regs->ecx + stackIndex) + derefOffset --
+                                   for a __thiscall target whose `this` points
+                                   to a holder: deref this+stackIndex to get the
+                                   Impl, then add derefOffset (e.g. getShifts
+                                   reads *(SbaCap+0x10)+0x3a38)                */
 } ExtraDumpKind;
 
 typedef struct ExtraDumpSpec {
@@ -412,6 +441,7 @@ extern void Thunk_18(void); extern void Thunk_19(void); extern void Thunk_20(voi
 extern void Thunk_21(void); extern void Thunk_22(void);
 extern void Thunk_23(void); extern void Thunk_24(void);
 extern void Thunk_25(void); extern void Thunk_26(void); extern void Thunk_27(void);
+extern void Thunk_28(void);
 
 #ifdef __cplusplus
 }

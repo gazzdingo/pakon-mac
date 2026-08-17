@@ -102,7 +102,7 @@ void HookCore_BuildRealTable(HookEngine *eng) {
         (void *)&Thunk_18, (void *)&Thunk_19, (void *)&Thunk_20,
         (void *)&Thunk_21, (void *)&Thunk_22, (void *)&Thunk_23,
         (void *)&Thunk_24, (void *)&Thunk_25, (void *)&Thunk_26,
-        (void *)&Thunk_27,
+        (void *)&Thunk_27, (void *)&Thunk_28,
         /* Thunk_23 fixes a real, latent NULL-entryThunk bug left by the
          * prior commit (6d2e36a) that inserted analyze_scp_lut_balance
          * mid-array without adding a matching thunk -- see hookstub.S's
@@ -414,33 +414,26 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "resolved the naming ambiguity this hook (and tlb_f135_poly_remap "
           "above) originally existed to settle live -- both addresses are "
           "PolyPixel-family, statically, with no live capture needed. "
-          "DISABLED BY DEFAULT (hotPathDisabled, distinct from "
-          "`approximate` -- this address IS a confirmed real function "
-          "entry): the disassembly itself (docs/74 SS32.2) shows a "
-          "per-pixel loop (iterates up to 512 word-pixels per call, "
-          "0x1000d8f2-0x1000dab0), i.e. this is a per-pixel or "
-          "per-scanline-batch hot path by construction, not an assumption. "
-          "An unverified JSONL sample from this same session (provenance "
-          "not independently confirmed as a genuine XP-box capture -- see "
-          "the caveat this change's own commit/PR description records) "
-          "showed calls to this address roughly 15-45 ticks apart; even "
-          "taken only as a plausible illustration rather than confirmed "
-          "hardware evidence, it's consistent with the loop structure the "
-          "disassembly already shows. Combined with the fact that this "
-          "hook's only original diagnostic purpose (the naming ambiguity "
-          "above) is now fully resolved by static disassembly alone, "
-          "there is no remaining live-data question that justifies tracing "
-          "it at full entry+exit volume by default. The prologue itself "
-          "was checked directly and is NOT the concern: "
-          "the concern: `push -1; push <SEH handler>; mov eax,fs:[0]; push "
-          "eax; mov fs:[0],esp; sub esp,0x48` is an entirely ordinary "
-          "MSVC/SEH prologue, two immediate-operand instructions with no "
-          "relative jump/call in the relocated bytes -- a completely "
-          "standard, safe MinHook trampoline target. Re-enable via "
-          "hooks.cfg (`tlb_polypixel=on`) if a specific investigation "
-          "needs it again; consider `tlb_polypixel.exit=off` first if you "
-          "do, to keep only entry markers on this hot path.",
-          "docs/74 SS32.2-32.3, SS32.7", 0, 1, 1, 0, 0 },
+          "RE-ENABLED 2026-08-16 (hotPathDisabled was 1) with a real "
+          "live-data question restored: the v8 area_image_apply_lut "
+          "capture now yields the vendor's actual RPD12, but there is no "
+          "matching raw capture to fit ROM12 -> RPD12 against, so this "
+          "hook's own g_extraDumps[] row (poly_input_r) captures the raw "
+          "14-bit R plane PolyPixel reads (stack_dwords[1] = buffer base "
+          "at call site fcn.10026c90 @ 0x100270a5; planar, in-place). "
+          "Entry-only (wantExitDefault=0) because the per-pixel loop "
+          "(iterates up to 512 word-pixels per call, 0x1000d8f2-0x1000dab0) "
+          "makes exit-hooking this a demonstrated hot path; the entry "
+          "buffer dump is what the analysis needs. If per-scanline call "
+          "volume turns out too large for a full roll, reduce the "
+          "poly_input_r numBytes in g_extraDumps[] (only the first call's "
+          "entry dump is pure pre-poly raw anyway -- later calls are "
+          "in-place-contaminated). The prologue itself was checked directly "
+          "and is NOT the concern: `push -1; push <SEH handler>; mov "
+          "eax,fs:[0]; push eax; mov fs:[0],esp; sub esp,0x48` is an "
+          "entirely ordinary MSVC/SEH prologue, a standard, safe MinHook "
+          "trampoline target.",
+          "docs/74 SS32.2-32.3, SS32.7", 0, 0, 0, 0, 0 },
 
         /* ---- AFE (device-side register write) ---- */
         { "TLB.dll", 0x100299c0, "tlb_afe_offset_write",
@@ -654,12 +647,32 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "behavior-inferred rather than address-cited only so a future "
           "reader knows the difference from tlb_lamp_on's docs/40-cited "
           "address above.",
-          "docs/40 SS11 (\"FN_bDrvCcdAcquireControl sets bit 0 of CCD "
-          "register 0x82\"); docs/55 steps 2/18/35/40/43 (captured "
-          "0x44/0x82 idx0 mask/acquire writes this function produces); "
-          "fresh r2 izz/af/axt/pdf 2026-08-15 against TLB.dll md5 "
-          "193d9b2ce0a4b77ae9b78262bd06c0fc",
-          0, 1, 0, 0, 0 },
+           "docs/40 SS11 (\"FN_bDrvCcdAcquireControl sets bit 0 of CCD "
+           "register 0x82\"); docs/55 steps 2/18/35/40/43 (captured "
+           "0x44/0x82 idx0 mask/acquire writes this function produces); "
+           "fresh r2 izz/af/axt/pdf 2026-08-15 against TLB.dll md5 "
+           "193d9b2ce0a4b77ae9b78262bd06c0fc",
+           0, 1, 0, 0, 0 },
+
+        /* ---- AnsColorAdjustCapability density-adjust shift (docs/74 SS57) ---- */
+        { "PakonIMAu.dll", 0x101b76d0, "color_adjust_shift",
+          "The analyzePostBalance shift leaf (fcn.101b76d0, 282 B) -- "
+          "computes the three int16 post-balance shifts as "
+          "out_c = round((in_c - mean(in)) * M_c + S1*S2 + dmin_c), "
+          "Unicorn-verified bit-exact (pakon_postbalance_golden.py). "
+          "thiscall: ecx = AnsColorAdjustCapabilityImpl (the Impl at "
+          "Cap+0x10); the Impl fields are M/S1/S2/dens/dmin at +0xc..+0x30 "
+          "(M and S1 are ctor args defaulting 25/25/25/75; dens/S2/dmin are "
+          "zeroed at construction -- their non-zero writer is the still-open "
+          "question this hook exists to answer). Prologue "
+          "`push ecx; push esi; mov esi,ecx` (5 B, no rel jmp/call) is a "
+          "clean MinHook target; reached via two real CALL sites "
+          "(fcn.100f13a0 @ 0x100f13c1, and fcn.101b7e90 @ 0x101b80ad), "
+          "so notCallReachable=0. Entry-only (wantExitDefault=0): the OUT "
+          "shifts are already covered by the verified formula; the unknown "
+          "is the Impl field VALUES, captured by the impl_fields extra dump.",
+          "docs/74 SS57; tools/ansel/python-pipeline/"
+          "pakon_postbalance_golden.py", 0, 0, 0, 0, 0 },
     };
 
     int i;
@@ -687,23 +700,112 @@ void HookCore_BuildRealTable(HookEngine *eng) {
  *   stack_dwords[3] = B-band LUT pointer (= R + 0x4000, same caveat)
  *   stack_dwords[4] = dup-this: the SAME AnsImageData* as `this`/ecx
  *
- * Pixel-buffer preview: `this->0x20` (source object's own pixel-data
- * base-pointer field, per docs/74 SS47.1's own trace of the "if
- * width/height/bands > 0: eax = [edi+0x20]; cache it for the loop" block
- * at 0x100d9650-0x100d9664) is this pass's OWN inference -- unlike the
- * width/height offsets (+0xc/+0x10) this project already cites elsewhere
- * (pakon_fugc.FUGC_IMG_DESC_WIDTH_OFF/HEIGHT_OFF), +0x20 as "the pixel
- * data pointer" is NOT independently corroborated by any other doc in
- * this tree as of SS47 -- flagged here, not overstated. Kept to a small
- * 256-byte preview (not a full-image dump: real per-frame widths here
- * run into the hundreds of pixels x 3 bands x 2 bytes, i.e. plausibly
- * tens of KB, well past what's worth risking on the real box for a
- * "preview") specifically because of that lower confidence.
+ * Pixel-buffer dump: `this->0x20` is the AnsImageData pixel-data
+ * base-pointer field. Originally SS47.1's own inference (traced via the
+ * "if width/height/bands > 0: eax = [edi+0x20]; cache it for the loop"
+ * block at 0x100d9650-0x100d9664); re-confirmed 2026-08-16 by a fresh
+ * af+pdf of 0x100d9340 -- 0x100d9661 `mov eax,[edi+0x20]` is the real
+ * per-pixel-loop source base, and the band-pointer arithmetic at
+ * 0x100d967f-0x100d9708 shows the packing==0 layout is INTERLEAVED
+ * 16-bit RGB (band 0 at base+0, band 1 at base+2, band 2 at base+4),
+ * with width at this->0xc, height at this->0x10, bands at this->0x14,
+ * packing at this->0x4, row stride at this->0x1c. Bumped from SS47's
+ * 256-byte preview to the full 8192-byte row cap specifically so a
+ * capture carries enough real RPD12 pixel values (4096 int16 = ~1365
+ * interleaved RGB pixels) to fit the F-135 inversion curve
+ * (ROM12 -> RPD12) against this port's own PolyPixel output on the same
+ * frame -- the one unverified stage behind the washed-out defect
+ * (docs/74 SS8/SS32/SS51/SS54). Still bounded at
+ * HOOKCORE_EXTRA_DUMP_MAX_BYTES, and still IsBadReadPtr-guarded, so
+ * this stays a per-CALL (not per-pixel) cost on the real box.
+ */
+/* ---------------------------------------------------------------------
+ * tlb_polypixel (0x1000d880) extra dump -- captures the raw 14-bit R
+ * plane the F-135 PolyPixel reads, so the inversion curve (ROM12 -> RPD12)
+ * can be fit point-for-point against the area_image_apply_lut pixel_data
+ * capture on the SAME frame.
+ *
+ * Calling convention (fresh af+pdf 2026-08-16, call site fcn.10026c90 @
+ * 0x100270a5): `push eax; push esi; push edi; call fcn.1000d880`, i.e. at
+ * entry stack_dwords[0]=edi, stack_dwords[1]=esi (= buffer base),
+ * stack_dwords[2]=eax (filmClass). The buffer is PLANAR int16:
+ * R at base, G at base + w*h*2, B at base + w*h*4, where w=stack_dwords[3]
+ * and h=stack_dwords[4] (PolyPixel's own `imul eax,[esp+0x68],[esp+0x6c]`
+ * then `lea ebx,[edx+eax*2]`/`lea ebp,[edx+eax*4]` at
+ * 0x1000d8ce-0x1000d8e3). Confirmed live (v10, docs/74 SS59): the frame is
+ * 245x367 (w=0xf5, h=0x16f), NOT 2000 px wide as this comment previously
+ * guessed. PolyPixel is in-place, so at ENTRY the dump is the raw 14-bit
+ * (pre-poly) plane; the port computes ROM12 = PolyPixel(raw) bit-exact.
+ * First 8192 bytes of each plane = first 4096 pixels (~16.7 scanlines at
+ * w=245). v12/v13 (docs/74 SS60) bumps poly_input_r to 0x84000 bytes
+ * (540672 = the page-rounded committed frame size; 245x367x3 planes x2 =
+ * 539490 = 0x83B62, R+G+B contiguous, since the planes are back-to-back at
+ * w*h*2/4), so the whole frame is carried in ONE dump -- this is what
+ * makes the raw<->RPD12 spatial relayout solvable by 2D cross-correlation
+ * (the truncated tops of the two differently-laid-out buffers did not
+ * overlap). poly_input_g/b are dropped (redundant with the full dump).
+ * 0x90000 was tried first and came back IsBadReadPtr-failed on every row
+ * (the inter-buffer stride is larger than the committed region), so 0x84000
+ * is the read-safe ceiling. Bounded/IsBadReadPtr-guarded.
+ *
+ * area_image_apply_lut (0x100d9340) img_desc dump: 0x24 bytes of the
+ * AnsImageData descriptor at this->0x0 -- packing@0x4, width@0xc,
+ * height@0x10, bands@0x14, row stride@0x1c -- so the RPD12 pixel_data
+ * layout (interleaved vs planar, stride) is read straight off the object
+ * instead of guessed from the buffer stride.
+ */
+/*
+ * color_adjust_shift (0x101b76d0) extra dump -- captures the raw
+ * AnsColorAdjustCapabilityImpl field region so the still-open question
+ * docs/74 SS57.5 flags (which code writes the non-zero dens/S2/dmin) can
+ * be settled from live values instead of the noise-swamped static search.
+ *
+ * __thiscall: ecx = Impl. Field layout (verified, docs/74 SS57.2):
+ *   +0x0c/+0x10/+0x14   M (3 x float)
+ *   +0x18               S1 (float)
+ *   +0x1c/+0x20/+0x24   dens a,b,c (3 x float)
+ *   +0x28               S2 (float)
+ *   +0x2c/+0x2e/+0x30   dmin (3 x int16)
+ *
+ * Dump 0x28 bytes from Impl+0x0c (M..dmin inclusive, 38 bytes + 2 pad) --
+ * raw hex, so the floats/int16s parse offline against the already-ported
+ * orderFpo/fosDmin. EXTRA_DUMP_THIS_OFFSET reads regs->ecx, so stackIndex
+ * is ignored (0). 40 bytes per call, IsBadReadPtr-guarded like the rest.
+ */
+/*
+ * sba_get_shifts (0x10124000) extra dump -- captures the 3 int16 that
+ * getShifts copies out of *(AnsSbaCapability+0x10)+0x3a38 (the SBA Impl's
+ * shift words) into its out buffer, so the per-frame +0x3a38 values the
+ * balance actually reads can be read DIRECTLY instead of recovered by
+ * inverting setshifts_12 (docs/74 SS62). __thiscall: ecx = AnsSbaCapability;
+ * EXTRA_DUMP_THIS_DEREF_OFFSET reads *(ecx + 0x10) + 0x3a38 (6 bytes = 3
+ * int16). This settles SS62.3's open contradiction -- whether +0x3a38 is
+ * written per-frame by a second writer (it varies) or is constant (it
+ * doesn't) -- and lets the per-frame values be correlated against the FOS
+ * orderFpo/fosDmin the port already computes.
+ */
+/*
+ * sba_preference (0x1028c780) extra dumps -- capture the Preference's own
+ * INPUTS to find the source of the per-frame uniform luma offset Delta that
+ * SS62.5 found is added to setshifts_12(+0x3a38) in the applied balance
+ * shift. Calling convention (SS62): arg1 = scene+0x38a2 (preference data the
+ * hi=0/hi=0x30 U/V-aim fields live in), arg2 = FOS (null live), arg3 =
+ * scene+0x3a30 (shift out), arg4 = blob (the nested-fpo copy), arg5 = mode.
+ * So pref_data dumps the per-frame preference words (orderFpo/fpo) and blob
+ * dumps the nested-fpo struct -- enough to see whether the Delta tracks the
+ * FOS orderFpo luma or the DPI constant.
  */
 const ExtraDumpSpec g_extraDumps[] = {
     { "area_image_apply_lut", "r_lut", EXTRA_DUMP_STACK_PTR, 1, 0, 8192 },
     { "area_image_apply_lut", "g_lut", EXTRA_DUMP_STACK_PTR, 2, 0, 8192 },
     { "area_image_apply_lut", "b_lut", EXTRA_DUMP_STACK_PTR, 3, 0, 8192 },
-    { "area_image_apply_lut", "pixel_data_preview", EXTRA_DUMP_DEREF_PTR, 4, 0x20, 256 },
+    { "area_image_apply_lut", "img_desc", EXTRA_DUMP_THIS_OFFSET, 0, 0x0, 0x24 },
+    { "area_image_apply_lut", "pixel_data", EXTRA_DUMP_DEREF_PTR, 4, 0x20, 0x80000 },
+    { "tlb_polypixel", "poly_input_r", EXTRA_DUMP_STACK_PTR, 1, 0, 0x84000 },
+    { "sba_get_shifts", "shifts_3a38", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x3a38, 6 },
+    { "sba_get_shifts", "pref_out_3a30", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x3a30, 6 },
+    { "sba_preference", "pref_data", EXTRA_DUMP_STACK_PTR, 0, 0, 0x64 },
+    { "sba_preference", "blob", EXTRA_DUMP_STACK_PTR, 3, 0, 0x48 },
+    { "color_adjust_shift", "impl_fields", EXTRA_DUMP_THIS_OFFSET, 0, 0x0c, 0x28 },
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0 }, /* sentinel */
 };

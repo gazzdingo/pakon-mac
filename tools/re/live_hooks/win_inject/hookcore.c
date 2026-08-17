@@ -440,14 +440,24 @@ void HookCore_Shutdown(HookEngine *eng) {
  * IsBadReadPtr-guarded -- one bad pointer in one row logs
  * `"readable":false` for that row only, never aborts the others.
  * --------------------------------------------------------------------- */
-static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp) {
+static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp, HookRegs *regs) {
     const ExtraDumpSpec *spec;
-    /* HOOKCORE_EXTRA_DUMP_MAX_BYTES*2 hex chars + JSON field overhead;
-     * sb_putc's own bounds check makes a too-small buffer truncate safely
-     * rather than overflow, but this is sized generously so truncation
-     * should never actually happen for any row in g_extraDumps[]. */
-    char dumpLine[HOOKCORE_EXTRA_DUMP_MAX_BYTES * 2 + 256];
+    /* HOOKCORE_EXTRA_DUMP_MAX_BYTES*2 hex chars + JSON field overhead.
+     * Heap-allocated (not a stack array) because 0x90000*2 hex chars exceed
+     * the default 1 MB thread stack -- see the HOOKCORE_EXTRA_DUMP_MAX_BYTES
+     * bump note in hookcore.h. sb_putc's own bounds check makes a too-small
+     * buffer truncate safely rather than overflow. */
+    DWORD lineCap = HOOKCORE_EXTRA_DUMP_MAX_BYTES * 2 + 256;
+    char *dumpLine = (char *)mc_alloc(lineCap);
     StrBuf sb;
+
+    if (dumpLine == NULL) {
+        /* Allocation failed: log a status line and skip ALL extra dumps for
+         * this call -- never crash the hooked process over a diagnostics
+         * convenience feature. */
+        HookCore_LogStatus(eng, "LogExtraDumps: mc_alloc for dump line failed -- skipping extra dumps for this call");
+        return;
+    }
 
     for (spec = g_extraDumps; spec->hookId != NULL; spec++) {
         DWORD numBytes;
@@ -458,8 +468,11 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp) 
         /* Defensive: g_extraDumps[] rows are hand-written constants, but
          * a future added row with a bad stackIndex should skip cleanly
          * rather than read outside the STACK_DWORDS_LOGGED dwords the
-         * caller already validated. */
-        if (spec->stackIndex < 0 || spec->stackIndex >= STACK_DWORDS_LOGGED) continue;
+         * caller already validated. (EXTRA_DUMP_THIS_OFFSET ignores
+         * stackIndex -- it reads from regs->ecx -- so its rows use 0.) */
+        if (spec->kind != EXTRA_DUMP_THIS_OFFSET &&
+            spec->kind != EXTRA_DUMP_THIS_DEREF_OFFSET &&
+            (spec->stackIndex < 0 || spec->stackIndex >= STACK_DWORDS_LOGGED)) continue;
 
         numBytes = spec->numBytes;
         if (numBytes > HOOKCORE_EXTRA_DUMP_MAX_BYTES) numBytes = HOOKCORE_EXTRA_DUMP_MAX_BYTES;
@@ -469,15 +482,33 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp) 
         if (spec->kind == EXTRA_DUMP_STACK_PTR) {
             srcPtr = (void *)(DWORD_PTR)sp[spec->stackIndex];
             readable = !IsBadReadPtr(srcPtr, numBytes);
-        } else { /* EXTRA_DUMP_DEREF_PTR: base = sp[idx], real ptr = *(base + off) */
+        } else if (spec->kind == EXTRA_DUMP_DEREF_PTR) { /* base = sp[idx], real ptr = *(base + off) */
             void *base = (void *)(DWORD_PTR)sp[spec->stackIndex];
             if (!IsBadReadPtr((BYTE *)base + spec->derefOffset, sizeof(void *))) {
                 srcPtr = *(void **)((BYTE *)base + spec->derefOffset);
                 readable = !IsBadReadPtr(srcPtr, numBytes);
             }
+        } else if (spec->kind == EXTRA_DUMP_THIS_OFFSET) { /* the __thiscall Impl/this object */
+            srcPtr = (void *)((DWORD_PTR)regs->ecx + spec->derefOffset);
+            readable = !IsBadReadPtr(srcPtr, numBytes);
+        } else if (spec->kind == EXTRA_DUMP_THIS_DEREF_OFFSET) {
+            /* *(ecx + stackIndex) + derefOffset -- e.g. getShifts reads
+             * *(SbaCap+0x10)+0x3a38 (this -> Impl -> +0x3a38). */
+            void *base = (void *)(DWORD_PTR)regs->ecx;
+            if (!IsBadReadPtr((BYTE *)base + spec->stackIndex, sizeof(void *))) {
+                srcPtr = *(void **)((BYTE *)base + spec->stackIndex);
+                srcPtr = (void *)((DWORD_PTR)srcPtr + spec->derefOffset);
+                readable = !IsBadReadPtr(srcPtr, numBytes);
+            }
+        } else { /* EXTRA_DUMP_PLANAR_PLANE: PolyPixel planar R/G/B,
+                    base + (stack_dwords[3]*stack_dwords[4]) * derefOffset */
+            DWORD_PTR base = (DWORD_PTR)sp[spec->stackIndex];
+            DWORD_PTR wh = (DWORD_PTR)sp[3] * (DWORD_PTR)sp[4];
+            srcPtr = (void *)(base + wh * spec->derefOffset);
+            readable = !IsBadReadPtr(srcPtr, numBytes);
         }
 
-        sb_init(&sb, dumpLine, sizeof(dumpLine));
+        sb_init(&sb, dumpLine, lineCap);
         sb_puts(&sb, "{\"kind\":\"buffer_dump\",\"hook_id\":");
         sb_put_json_str(&sb, d->id);
         sb_puts(&sb, ",\"call_id\":");
@@ -501,6 +532,7 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp) 
         sb_puts(&sb, "}");
         LogLine(eng, dumpLine, FALSE); /* same hot-path flush policy as the enter/leave lines */
     }
+    mc_free(dumpLine);
 }
 
 /* ---------------------------------------------------------------------
@@ -596,7 +628,7 @@ void *HookEntryC(DWORD hookIndex, HookRegs *regs, void *realRetAddr,
      * SAME sp readability already established above -- never dereferences
      * sp[] on a pointer this function has already decided not to trust. */
     if (spReadable) {
-        LogExtraDumps(eng, d, (DWORD)callId, sp);
+        LogExtraDumps(eng, d, (DWORD)callId, sp, regs);
     }
 
     if (r->exitEnabled) {

@@ -12694,3 +12694,338 @@ doc's own established convention. `docs/74-…md` itself is the only file
 this pass edited (this section). `TLB.dll` was not reached this pass —
 scoped out honestly rather than claimed and skipped, per the time this
 pass's own hand-tracing standard required for `PakonIMAu.dll` alone.
+
+## 57 — §55.7's own dangling `DMLDICELib.dll:0x100020c3` caller thread run
+to ground: a real, live, vtable-dispatched call from `DMLDICEProcess`
+itself, confirmed reachable, confirmed the wrong subsystem, confirmed
+never exercised by this project's own port
+
+§55.7 found the single closest two-independent-`log10` shape this whole
+project's DLL search has ever produced — `DMLDICELib.dll`'s `0x100020c3`
+pair, real code computing `log10(a)/log10(b)` rather than
+`f135_rom12_to_rpd12`'s own `log10(a)−log10(b)` — but explicitly could not
+establish its own caller: `aaa`'s recursive-descent walk never forms a
+function there, and the one `CODE XREF` comment r2 itself attached to the
+address resolved, on direct lookup, to an unrelated stub that could not be
+its real container. This section finishes that specific thread: hashes the
+DLL again, finds the function's real boundary, finds its real caller chain
+by discovering the C++ vtable it lives in, and resolves — decisively, not
+provisionally — what §55.7 left open.
+
+### 57.1 — Provenance
+
+`DMLDICELib.dll` re-hashed against both
+`/Users/guy/pakon-windows-repair/COM-SERVER/DMLDICELib.dll` and a fresh
+`/tmp/pakon_re/DMLDICELib.dll` copy: `md5`
+`10e2095015c2580998e063b563407041` both places, exact match to §55.1's
+own published hash — same binary, no drift. `PakonIMAu.dll` was also
+re-hashed for an independent check used in §57.5:
+`eea9dcf78ee21d4f7c515a6c2512242d`, matching every prior citation of this
+DLL in this doc. Tooling: `radare2` 6.1.8 via `r2pipe`, `aaa` full
+analysis, `af`+`pdf`/`pdfj` for real function-boundary disassembly, `pD`
+never used to characterize a function's purpose, only as a "not real code"
+diagnostic where explicitly flagged. Scripts are scratch,
+`/tmp/pakon_re/*.py`, not committed.
+
+### 57.2 — The function itself, read in full: `fcn.10002080`, both
+branches, every constant decoded
+
+Forcing `af` at `0x100020c3` (the same address §55.7 found `aaa` never
+attached to a function) resolves a clean 164-byte function,
+`fcn.10002080` (`0x10002080`–`0x10002123`), containing both the
+`0x100020c3` pair §55.7 read and the "second, near-identical copy" it
+noted at `0x10002109` — **one correction to §55.7's own phrasing here**:
+these are not two copies in two functions, they are the `if`/`else` halves
+of one function, selected by its own first argument. Read in full via
+`pdf`:
+
+```
+fcn.10002080(mode, x):                       ; stdcall, ret 8 (2 stack dwords)
+    N = 4095   if mode == 12
+    N = 16383  if mode == 14
+    (anything else -> return 0.0, degenerate)
+    d = 0.1646  if x >= 0.035     ; fcomp x, 0x100351b0; fnstsw; test ah,0x41
+    d = 0.02    if x <  0.035
+    return N * log10(1 + d) / log10(N + 1)
+```
+
+Every constant decoded directly (`pxj`, IEEE-754, not read off a
+disassembly comment): `0x100351b0` = `0.035`, `0x100351ac` = `0.02`,
+`0x100351a8` = `0.1646`, `0x10035128` = `1.0`, `0x10035198` (dword) =
+`16383.0`, `0x100351a0` (qword) = `16384.0`, `0x1003518c` (dword) =
+`4095.0`, `0x10035190` (qword) = `4096.0` — the identical `16383`/`16384`
+and `4095`/`4096` 12-bit/14-bit domain pair this whole DLL uses throughout
+(§55.7's own `fcn.10001380`, §57.4 below). The two real `fyl2x` sites
+§55.7 already confirmed (`0x100020c3` in the `mode==14` branch,
+`0x10002109` in the `mode==12` branch) are each half of the identical
+`fldlg2; fxch; fyl2x` × 2 → `fdivp` → `fmul` idiom — `log10(1+d)` divided
+by `log10(N+1)`, then rescaled by `N`. Numerically, for the two `d`
+values this function ever uses: `16383·log10(1.02)/log10(16384) ≈ 33.4`,
+`16383·log10(1.1646)/log10(16384) ≈ 257.3`, `4095·log10(1.02)/log10(4096)
+≈ 9.7`, `4095·log10(1.1646)/log10(4096) ≈ 75.0` (computed directly in
+Python from the decoded constants, not estimated) — small, integer-ish
+magnitudes, the shape of a bin-count or margin, not a pixel value.
+
+**What this computes, structurally.** `log10(1+d)/log10(N+1)` is the
+fraction of the full log-dynamic-range (`log10(N+1)`) that a `(1+d)`
+gain/contrast ratio represents; multiplying by `N` rescales that fraction
+back into 0..`N` code-value units. This is "how many steps, out of a full
+N-step log-scaled axis, does a d×100% margin correspond to" — a
+percentage-of-dynamic-range-to-log-bin-count conversion, computed once per
+call from two fixed constants (`0.02`/`0.1646`, selected by a `0.035`
+threshold test on a caller-supplied float) and a mode flag, never from a
+per-pixel raw code. Both real inputs are stack arguments (`[esp+8]` = mode
+int, `[esp+4]` = the float compared against `0.035`); the return is the
+single scalar in `ST(0)`, `ret 8` popping both. This is exactly the
+diagnostic/parameter shape the task asked to distinguish from a
+colour-conversion path — a session-level threshold or margin value, not a
+per-pixel density.
+
+### 57.3 — No direct call exists anywhere in the DLL: confirmed two
+independent ways, not just by r2's own analysis
+
+`axtj`/`afij` at `0x10002080` after a fresh `aaa` + forced `af`: zero
+xrefs, `indegree: 0` — reproducing §55.7's own negative. Because §55.2
+already established that r2's own forced-`af`/`afij` signal can be
+self-fulfilling, this pass additionally ran a from-scratch, r2-independent
+check: a Python PE parser reading `DMLDICELib.dll`'s own section table
+directly and linearly scanning the entire `.text` section's raw bytes for
+`E8` (`call rel32`) opcodes, computing each candidate's real target VA by
+hand and comparing against `0x10002080`. **Zero matches** — no `E8 call`
+anywhere in this binary's `.text` targets this function's entry, at all,
+independent of any r2 analysis pass. This function is genuinely never
+called by a direct `call` instruction — the only way it can be reached is
+indirectly.
+
+### 57.4 — Finding the vtable: a genuine C++ virtual method table at
+`0x10035164`, confirmed by construction, not by name-guessing
+
+A raw-byte search for the literal little-endian `DWORD` `0x10002080`
+across the whole file (independent of r2, same Python script) finds
+exactly **one** occurrence, at raw offset `0x3517c`, inside `.rdata`
+(VA `0x1003517c`). r2's own pointer-aware hex dump (`pxr`) at that address
+shows this is not a coincidental float bit-pattern (the false-positive
+class §51.2/§55.2 already trained this project to expect in this exact
+byte range, since it sits close to the float constants read in §57.2) —
+it is one slot of a **contiguous 9-entry table of real code addresses**,
+`0x10035164`–`0x10035184`, each entry resolving to the start of a real,
+named function:
+
+```
+0x10035164 -> fcn.10001f20   (slot 0)
+0x10035168 -> fcn.10001f50   (slot 1)
+0x1003516c -> fcn.10001fd0   (slot 2)
+0x10035170 -> fcn.10001f70   (slot 3)
+0x10035174 -> fcn.10002050   (slot 4)
+0x10035178 -> fcn.10002060   (slot 5)
+0x1003517c -> fcn.10002080   (slot 6)  <- the target
+0x10035180 -> fcn.10002130   (slot 7)
+0x10035184 -> fcn.100021b0   (slot 8)
+```
+
+This is a real C++ vtable, confirmed by its own construction, not
+inferred from the table's shape alone: `fcn.10001f00` (18 bytes, read in
+full) does `call fcn.10001000; mov dword [esi], 0x10035164; mov eax, esi;
+ret` — the textbook MSVC "construct object, install its own vtable
+pointer" idiom, `esi` being the `this` the caller passed in `ecx`. This
+also resolves the exact loose end §55.7 left unexplained: the stray
+`CODE XREF from fcn.10001f40` comment r2 attached to the target address
+turns out to belong to `fcn.10001f40` — itself `mov dword [ecx],
+0x10035164; jmp fcn.10001050`, the same "reset vtable pointer, delegate to
+shared teardown" idiom MSVC emits for a scalar-deleting destructor, called
+from slot 0 (`fcn.10001f20`) — i.e. slot 0 of this table is the
+destructor, and the `CODE XREF` r2 attached to `0x100020c3` was always a
+sibling-slot artifact, not a real attribution, exactly as §55.7 already
+suspected but could not confirm.
+
+`fcn.10001f00` itself has exactly one caller (`axtj`): `DMLDICEBegin`
+(the exported entry point) at `0x1002b682`, immediately after a
+`0xc38c8`-byte allocation (`fcn.1002bdc4`, `push 0xc38c8`) succeeds. The
+returned, vtable-installed object (`ebx`) is then passed as `this`
+(`ecx`) directly into `fcn.10001130` — the exact function §55.7 already
+traced one hop further into `fcn.10001380`'s own log-histogram-table
+builder. Both of §55.7's two `DMLDICELib.dll` candidates — the log-binning
+initializer and this section's own target — are therefore methods
+reachable off the **same constructed object**, the handle `DMLDICEBegin`
+hands back to its own caller.
+
+### 57.5 — The real caller chain, hop by hop, `axtj`, single caller
+confirmed at every hop, exactly this doc's established discipline
+
+```
+fcn.10002080 (target)
+  <- [vtable dispatch, call dword [edx+0x18], edx = dword [esi], esi = this]
+     fcn.100021e0 @ 0x1000227d          (axtj: 1 real CALL xref)
+  <- fcn.100012d0 @ 0x1000134f          (axtj: 1 real CALL xref)
+  <- DMLDICEProcess @ 0x1002b725        (exported; axtj on DMLDICEBegin: 0
+                                          in-DLL xrefs, i.e. this is a real
+                                          external entry point, not an
+                                          internal helper)
+```
+
+Read directly, not inferred: `DMLDICEProcess` (`0x1002b6f0`) loads its
+handle argument into `ebx`, and — when non-null — calls `fcn.100012d0`
+with `ecx = ebx`. `fcn.100012d0` immediately does `mov esi, ecx` and,
+on exactly one of four mutually-exclusive branches (gated by
+`[esi+0x30] <= 1999` and `[esi+0x40] == 0`; the other three branches call
+three sibling functions, `fcn.10020ed0`/`fcn.10016890`/`fcn.1000c4b0`,
+instead), does `mov ecx, esi; call fcn.100021e0` — the same `this` object,
+unmutated. `fcn.100021e0` (21,567 bytes, `pdf` read for the relevant
+prologue-to-call span) does `mov esi, ecx` at entry and, after two value-
+selection branches that both converge back onto the mainline (confirmed
+by reading every conditional jump between the function's entry and the
+call site — exactly two, `je 0x1000222d` and `jne 0x10002261`, neither of
+which exits the function or skips past the call), unconditionally reaches:
+
+```
+0x1000226e   mov eax, dword [esi + 0x14]      ; mode arg
+0x10002271   mov ecx, dword [esi + 0x28ac]    ; float-x arg
+0x10002277   mov edx, dword [esi]             ; edx = this object's OWN vtable
+0x10002279   push eax
+0x1000227a   push ecx
+0x1000227b   mov ecx, esi                     ; this
+0x1000227d   call dword [edx + 0x18]          ; slot 6 = fcn.10002080
+```
+
+`edx` is loaded fresh from `[esi]` immediately before the call — the same
+object whose vtable was installed to `0x10035164` by `fcn.10001f00` in
+§57.4 — not a different or unconfirmed object. Offset `0x18` is `6 × 4`,
+exactly slot 6, exactly `fcn.10002080`. The two pushed arguments (object
+fields at `+0x14` and `+0x28ac`) land on `fcn.10002080`'s own two stack
+parameters (`mode`, `x`) exactly as §57.2 characterized them. This is a
+real, confirmed, hand-verified vtable dispatch — the same category of
+evidence §51.6 used for `ColorMetricRPD12`'s vtable and §56 used for
+`AnsError`/`Ima2DImage` — landing, without ambiguity, on the exact
+function this section set out to find a caller for.
+
+**This closes §55.7's own dangling gap.** The function does have a real
+caller, reachable — conditionally, not unconditionally on every
+`DMLDICEProcess` call, per the branch gate in `fcn.100012d0` — from a real
+exported entry point on the vendor's own binary. §55.7's own separate,
+already-published finding that `DMLDICEProcess` itself is called from a
+live, statically-resolved site inside `TLB.dll` (`0x10026fe6`, through a
+`GetProcAddress`-resolved pointer) extends this chain one hop further,
+onto real vendor Windows software.
+
+### 57.6 — Why `tools/re/reachability.py walk` does not apply to this
+specific chain, explained rather than forced
+
+This entire five-hop chain (`TLB.dll` → `DMLDICEProcess` → `fcn.100012d0`
+→ `fcn.100021e0` → vtable slot 6 → `fcn.10002080`) lives across two DLLs
+this tool was never built to scope. `tools/re/reachability.py`'s own
+docstring is explicit that it is "a direct-call reachability walk over
+**PakonIMAu.dll**" specifically: its `--dll` flag accepts "an
+already-extracted PakonIMAu.dll," its calibration point and every
+published seed (`AnsShastaCapabilityImpl::analyze`,
+`AnsCnEnhancedPath::virtual_8`) are `PakonIMAu.dll`-internal addresses,
+and — more fundamentally than the file-path scoping — the walk follows
+**only direct `E8 call` edges**, tallying indirect/vtable call sites
+without resolving them (documented in the tool's own module docstring and
+already exercised this way in §51/§55/§56). The load-bearing hop in this
+chain is precisely the one kind of edge the tool is designed not to
+follow: `fcn.100021e0`'s `call dword [edx+0x18]` at `0x1000227d`. Running
+`walk` seeded at `DMLDICEProcess` inside `DMLDICELib.dll` would trace the
+two direct hops to `fcn.100021e0` and then stop, correctly reporting one
+more indirect call site — reproducing, mechanically, only the part of
+§57.5 this section already had to hand-verify with `pxr` and a raw-byte
+vtable search precisely because the automated tool cannot do it. Separate
+from the file-scoping question, the more decisive reason the walk adds
+nothing here: `PakonIMAu.dll` — the one binary whose own render path this
+doc treats as "live" for `f135_rom12_to_rpd12`'s own purposes — was
+re-checked fresh this pass (`ii`, full import listing, `eea9dcf7…`,
+matching every other citation of this DLL in this doc) and contains
+**zero** references to `DICE`/`DMLDICE` anywhere in its own import table.
+This is an independent, first-hand confirmation of docs/70's own already-
+cited claim ("not in `PakonIMAu.dll`"), not a repeated citation of it.
+Since `reachability.py`'s entire seed universe is addresses inside
+`PakonIMAu.dll`, and `PakonIMAu.dll` never imports from `DMLDICELib.dll`
+at all, no seed this tool could be given would ever reach this chain —
+running it against `PakonIMAu.dll` would trivially confirm non-reachability
+without needing to execute it, and running it against `DMLDICELib.dll`
+instead would answer a question this section already answered by hand,
+more completely than the tool's own direct-edge-only design can.
+
+### 57.7 — Verdict
+
+**§55.7's own honestly-flagged gap is closed, not left open a second
+time.** `fcn.10002080` (containing the `0x100020c3`/`0x10002109` pair) has
+a real caller: a confirmed C++ vtable slot (slot 6 of the object
+`DMLDICEBegin` constructs and returns), dispatched from `fcn.100021e0`,
+reached from `fcn.100012d0`, reached from the exported `DMLDICEProcess`
+entry point itself — every hop traced by direct disassembly and `axtj`,
+single real caller confirmed at each, no address accepted on a forced-`af`
+signal alone (§55.2's own standard, reapplied here for the boundary
+discovery in §57.2). Independent of r2's own xref engine, a from-scratch
+byte-level scan of the whole `.text` section confirms there is no direct
+`call` to this function anywhere in the binary — the caller genuinely is
+vtable-only, the same structural blind spot §46/§51.8 item 3/§56 already
+named, worked around here by finding the vtable itself rather than by
+building a general vtable-resolution sweep (out of scope, per this task's
+own instruction).
+
+**And it still isn't `f135_rom12_to_rpd12`.** Two independent grounds,
+each sufficient on its own:
+
+1. **Wrong operation, wrong operands, wrong domain.** The function
+   computes `N·log10(1+d)/log10(N+1)` — a division, not a subtraction,
+   confirmed unchanged from §55.7's own reading — from a mode flag and a
+   float compared against a fixed `0.035` threshold to select between two
+   fixed constants (`0.02`, `0.1646`), not from two independently-varying
+   per-pixel raw codes (`base`, `poly`) each offset by `c9`. Its own
+   numeric outputs (≈9.7–257, computed directly in §57.2) are small,
+   integer-scaled magnitudes consistent with a bin-count or classification
+   margin, not a 12-bit density code. It sits in the same object
+   (`DMLDICEBegin`'s handle) as §55.7's own log-histogram-table builder
+   (`fcn.10001380`) — both are Digital ICE defect-detection configuration
+   methods, not colour/density conversions.
+2. **Wrong subsystem, never exercised by this project's own port,
+   independent of the vendor's own live wiring.** Even fully reachable on
+   the real vendor stack (`TLB.dll` → `DMLDICEProcess`, already published
+   in §55.7), this project's own port has `ICE_PORTED = False` (raises
+   rather than no-ops, per docs/70), has never captured an IR channel on
+   real hardware, and — newly confirmed first-hand this pass, not just
+   cited — `PakonIMAu.dll` itself contains zero references to
+   `DMLDICELib.dll`/`DICE` anywhere in its own import table. The tone
+   chain this doc traces lives entirely inside `PakonIMAu.dll`; this
+   function cannot be reached from it by any path, live or dead.
+
+**What this changes relative to §55.9's own closing tally:** nothing
+about the seven-DLL negative result itself — `DMLDICELib.dll`'s
+`0x100020c3` pair was already correctly counted as a real, non-matching
+instruction there. What changes is epistemic status only: §55.7's own
+"reachability... could not be established" is now "reachability
+established, and it changes nothing" — a strictly stronger, fully closed
+negative, not a re-opened question. Possibilities 1 and 3 from §51.8
+remain exactly as open as §55.9 left them; this section closes one named
+loose end under possibility 3 without collapsing the possibility itself.
+
+**No production, golden, or port file was changed by this pass.** All
+work is additive, scratch scripts under `/tmp/pakon_re/` (ad hoc
+`r2pipe`/PE-parsing one-off scripts, not committed), matching this doc's
+own established convention. `docs/74-…md` itself is the only file this
+pass edited (this section).
+
+**Verification.** `DMLDICELib.dll` MD5 re-checked
+(`10e2095015c2580998e063b563407041`) against two independent local copies
+before any work, matching §55.1's own published hash exactly.
+`PakonIMAu.dll` MD5 re-checked (`eea9dcf78ee21d4f7c515a6c2512242d`)
+independently for §57.6's own import-table check. The function boundary
+at `0x10002080` came from `af`+`pdf`/`pdfj` at the real address, never a
+`pD` byte-range guess. The "no direct caller" finding was confirmed two
+independent ways: r2's own `axtj`/`afij` (`indegree: 0`), and a from-
+scratch Python PE-section-table parse plus a linear `E8`-opcode scan of
+the entire raw `.text` section computing real target VAs by hand — not
+r2-analysis-dependent. The vtable's existence and contents were confirmed
+two independent ways: a raw whole-file byte search for the literal target
+address (exactly one hit, landing inside the table) and r2's own
+pointer-aware `pxr` dump of the same region showing all nine slots resolve
+to real function starts. The vtable's installation was confirmed by
+reading `fcn.10001f00` in full (`mov dword [esi], 0x10035164`), not
+assumed from the table's shape alone. Every hop in the §57.5 caller chain
+came from `axtj` showing exactly one real `CALL`-type xref, the same
+per-hop discipline §51.3/§51.5/§55.4 already used for `PakonIMAu.dll` and
+`TLA.dll`. The `edx = dword [esi]` / `call dword [edx+0x18]` read at
+`0x10002277`–`0x1000227d` was read directly from `pdf`, not inferred from
+the offset arithmetic alone. `PakonIMAu.dll`'s own zero-`DICE`-references
+finding (§57.6) came from a direct `ii` read of its own import table this
+pass, not solely from docs/70's own citation.

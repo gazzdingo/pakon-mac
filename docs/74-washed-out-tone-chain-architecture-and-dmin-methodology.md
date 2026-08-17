@@ -13998,3 +13998,241 @@ alone. `fcn.10101220`'s address was cross-checked against `docs/76`'s own
 citation of "the setShifts caller (`0x10101xxx`)" and `docs/74` §69's own
 `0x10101ff6`/`0x10102033..57` addresses (same function, consistent
 address range), not assumed from proximity alone.
+
+## 72 — docs/76 §5 step 3: §66 closed the other way — full-body reading of
+`0x1028b8d0` shows a Unicorn diff against `fos_analyze_roll` is not a
+well-posed test, because the function doesn't visibly write the orderFpo
+triple at its own top level; live-capture spec given instead
+
+§66 flagged `0x1028b8d0` (13 args, 8 helpers, 5 calls/frame) as a
+*different* function from the ported FOS (`SbaCalcFosResults @
+0x1028f570`) and named a Unicorn-diff-vs-`fos_analyze_roll` as the gate
+before wiring. This section does the full-body read §66 deferred and
+closes the gate — not with a bit-exact diff, but with a concrete,
+evidence-backed reason a diff against `fos_analyze_roll` cannot be a
+meaningful test as currently specified, plus the exact live capture that
+would settle it instead.
+
+### 72.1 — Method
+
+`PakonIMAu.dll` re-hashed before touching it: `md5
+eea9dcf78ee21d4f7c515a6c2512242d`, matching every prior citation in this
+doc. Tooling: `radare2` 6.1.8 via `r2pipe`, `aaa` + forced `af` for real
+function boundaries, `pdf`/`pdfj` for full-body reads (never `pD`). All
+scratch scripts/dumps live in `/tmp/pakon_re/` (`fcn_1028b8d0.txt`,
+`caller_0x102159c0.txt`, `caller_0x10218110.txt`, `stack_trace.txt`,
+`track_stack.py`), not committed, per this doc's own convention. The prior
+pass's "unverified lead" (§ handed off in the task prompt, not a docs/74
+section) about a case-0 path was re-derived from scratch here, not
+trusted.
+
+### 72.2 — r2's own `arg_XXXh` names are internally inconsistent for this
+function; the real 13-argument layout was rebuilt from the caller's push
+order plus manual stack-delta tracking
+
+`afij @ 0x1028b8d0` reports `nargs: 14` for a function whose callers all
+clean up `add esp, 0x34` (13 dwords) — already a contradiction. Reading
+the signature (`arg_2d4h, arg_2d8h, arg_ch, arg_2e0h, arg_2e4h,
+arg_2dch_2, arg_2dch, arg_2f0h, arg_2fch_2, arg_300h, arg_2fch,
+arg_2f0h_2, arg_2f4h, arg_2fch_3`) shows the same logical argument given
+two or three *different* names (`arg_2fch`/`arg_2fch_2`/`arg_2fch_3`)
+depending on how many registers (`esi`/`ebp`/`ebx`/`edi`) had been pushed
+at the point of each read — r2's frame-canonicalizer does not always
+re-derive a stable canonical offset across a function this large (155
+basic blocks), and at least one of these near-duplicate names (`arg_2dch`
+vs `arg_2dch_2`) turned out on manual delta-tracking to denote **two
+genuinely different arguments**, not the same one read twice. Trusting
+these names directly would have produced a wrong signature; this pass
+rejected them and rebuilt the mapping from real evidence instead.
+
+The real mapping was recovered two ways that agree: (1) reading the
+caller's push sequence at both real call sites and inverting cdecl order
+(last push = arg0), and (2) a manual instruction-by-instruction stack-delta
+walk of `0x1028b8d0` itself (`push`/`pop`/`sub esp`/`add esp`, `call`
+treated as net-zero), converting each `[esp+N]` read back to its
+entry-relative pre-`sub esp,0x2c0` offset. Both call sites — `fcn.102159c0`
+(`AnsSbaCapabilityImpl::analyzePass2()`, confirmed by the literal string
+`"AnsSbaCapabilityImpl::analyzePass2()"` at `0x1059dfa8` inside it, same
+identification already used at docs/74 line ~5160) at `0x10215d6a`, and
+`fcn.10218110` at `0x1021937b` — push the *identical* 13-value sequence in
+the *identical* order:
+
+| arg | source (both call sites) |
+|---|---|
+| 0 | `scene+0x1a` (dens — same field `SbaCalcFosResults` gets via `Impl+0xC`) |
+| 1 | `scene+0x3bc8` (a C-bank-shaped array) |
+| 2 | `scene+0x388c` (same field `SbaCalcFosResults` gets via `Impl+0x10`) |
+| 3 | `0` — literal `push 0` at `fcn.10218110`'s call (`0x10219373`); the `edi` register at `fcn.102159c0`'s call (`0x10215d3c`), not independently re-derived to 0 at that exact point but consistent with the pervasive `xor edi,edi`/`mov edi,[0x106b5bd4]` null-sentinel idiom used throughout the rest of the same function |
+| 4 | zero-extended `word[scene+0x38a0]` |
+| 5 | `&`(a small local struct in the *caller's* own frame) |
+| 6 | `scene+0x5978` |
+| 7 | a *caller* local (`fcn.102159c0`: `[ebp-0x30]`, filled once at `0x10215a15` from `fcn.10289590(this=scene+0x3c08)` = `lea eax,[ecx+0x2c]; ret`, i.e. the constant pointer `scene+0x3c34`; `fcn.10218110`: a different caller local, not traced) |
+| 8 | `0` (literal at `fcn.10218110`; `edi` at `fcn.102159c0`, same caveat as arg 3) |
+| 9 | `0` (same as arg 8) |
+| 10 | `&`(a **second** small local struct in the caller's own frame, explicitly zeroed — 9 `mov dword […], 0` — immediately before the call) |
+| 11 | `scene+0x290c` (same field `SbaCalcFosResults` gets via `Impl+0x14` — `fosDmin`) |
+| 12 | `scene+0x38a2` — the exact `pref_data` blob docs/74 §63.1 already established as the FOS `orderFpo` slot Preference's `hi=0` else-branch reads |
+
+This is Tier 3 (static) but cross-checked two independent ways (push order
+at two distinct call sites in two distinct functions, and manual delta
+tracking of the callee), not a single-source read.
+
+### 72.3 — The switch selector (arg 3) is provably 0 at both real call
+sites, and the "mode 0" case does not write the orderFpo Y/U/V triple
+
+Inside `0x1028b8d0`, the 4-way `switch` at `0x1028bd98…bda4`
+(`movsx ecx,dx; cmp ecx,3; ja default; jmp[ecx*4+0x1028c460]`) dispatches
+on a word read twice from the *same* stack slot — `mov edx,[esp+0x2e0]` at
+both `0x1028ba28` and `0x1028bcd5` — which manual delta-tracking (§72.2)
+resolves to **arg 3** both times (delta `0x2c0` + 4 pushes = `0x2d0` at the
+first site; no net push/pop between the two reads). Since arg 3 is a
+literal `0` at `fcn.10218110`'s call site, and `dx==0` at both re-reads of
+that slot drives the flow straight to the `case 0` label (`cmp
+ecx,3`/`jmp[ecx*4+…]` with `ecx=0`), **case 0 is the switch case that
+fires at both real call sites** — a positive, address-cited re-derivation
+of the prior pass's "unverified lead," not a repetition of it on trust.
+
+Case 0 (`0x1028bdab…`) falls through a large body shared with cases 2/3
+(`0x1028be82…c33a`) that: reads `ebp` = arg 12 = `scene+0x38a2` directly
+(not a copy) and inspects **byte** flags at `[ebp+1]…[ebp+6]` — the exact
+`0xff/0xfd/0xfe/0xfc` sentinel-byte classification idiom, and the exact
+`byte[+4]==1` fiduciary-skip test, already ported in
+`fos_order_fpo_helper`/`OBJ290C_OFF_FID` (`pakon_fos.py`) — computes
+several intermediate values via the *same* `MAGIC_Y`/`MAGIC_C1`/`MAGIC_C2`
+(`0x306e8227`/`0x111f883d`/`0x3b510a6f`) opening-axis transform
+`fos_opening_axes` already uses, but applied to **arg 5's** three words
+(`[esi+0]/[esi+2]/[esi+4]`, not any dens/pixel accumulation), calls three
+of the eight helpers (`fcn.1028b570` at `0x1028c1fe`, `fcn.102ae9d0` at
+`0x1028c369`, `fcn.1028b6e0` at `0x1028c3b6`), and finishes:
+
+```
+0x1028c3a1  ax = word[ebp + 0x22]
+0x1028c3a7  cx = word[ebp + 0x1a]
+            (both adjusted by an imul/shift bias)
+0x1028c3b6  call fcn.1028b6e0
+0x1028c3c0  word[ebp + 0x3e] = ax        ; = scene+0x38a2+0x3e = scene+0x38e0
+0x1028c3c5  eax = 0 ; ret
+```
+
+`ebp+0x3e` is **inside** the same 0x64-byte `pref_data` blob §63.1 dumped
+(`scene+0x38a2 … +0x3906`), but it is **not** `+0x0/+0x2/+0x4` — the
+offsets docs/74 §63.1 empirically captured as the per-frame `orderFpo`
+Y/U/V triple. So, on the live-firing case (mode 0), `0x1028b8d0`'s own
+top-level code writes exactly **one** word into `pref_data`, at an
+offset that is not the orderFpo triple, derived from two *other*,
+already-present `pref_data` fields (`+0x22`, `+0x1a`) via `fcn.1028b6e0`
+— a re-derivation/refinement of an existing field, not a fresh
+FOS-style computation of orderFpo from raw statistics. (Case 1, the
+other structurally simple case, is dead on both real call sites since
+mode is 0; for the record, it does a **trivial 3-word copy** from arg 1
+[`scene+0x3bc8`] straight into arg 5's own buffer, `esi[0]/[+2]/[+4]` —
+not into `pref_data` at all, and not through any FOS math.)
+
+**None of the eight helper subroutines
+(`0x1028abf0`, `0x1028ae00`, `0x1028b570`, `0x1028b650`, `0x1028b6e0`,
+`0x102ac310`, `0x102ae9d0`, `0x102aece0`) were read in this pass** — so
+whether the `pref_data+0/+2/+4` orderFpo triple is written *inside* one
+of them (with `ebp`/`pref_data` threaded in as a hidden argument) remains
+open. §66's own "no overlap" finding (none of these 8 addresses sit in
+`SbaCalcFosResults`'s leaf range) still stands and is not contradicted by
+anything found here.
+
+### 72.4 — Arg 5's "open RGB"-shaped input is a copy of the *same* DPI
+blob Preference reads, not FOS pixel/dens statistics
+
+Tracing arg 5's source at `fcn.102159c0` (the only call site fully traced
+back to its origin): `lea eax,[var_b8h_2]` (a caller-local struct,
+`ebp-0xb8` — confirmed the *same* physical stack slot as the differently
+r2-named `var_b8h`/`var_b8h_2`, both literal `[ebp-0xb8]` on direct
+disassembly, §72.2's naming-collision warning applying here too) is
+filled earlier in the same function, at `0x10215a1b…28`, by
+`fcn.10214e30(this=scene, &var_20h, &var_b8h)`. Reading `fcn.10214e30`
+in full (235 bytes, `af`+`pdf`): it copies fixed words from
+`scene+0x4d0e`, `scene+0x4d08`, and `scene+0x4d16…0x4d3a` — the *exact*
+nested-`fpo`/DPI-blob field range §63.1 already identified as constant
+across all captured frames (`fpo=(879,1250,1386)`, and `scene+0x4d1c` is
+the already-traced `cmm` field per §64.1, sitting inside this same copied
+range) — into the local buffer that becomes arg 5. At `fcn.10218110`'s
+call site, the equivalent buffer (`var_2a8h_2`) is instead explicitly
+**zeroed** (9× `mov dword […], 0`) right before the call, not filled from
+`fcn.10214e30` at all.
+
+So arg 5 is not FOS dens/pixel statistics under any reading — it's either
+a snapshot of the same DPI-static Preference blob, or all-zero, depending
+on call site. This directly contradicts treating arg 5 as
+`fos_analyze_roll`'s `open_rgb` (which the port sources from the scene's
+own dpi-`fpo` field via a completely different path, per `pakon_fos.py`'s
+own `FOS_TO_PREFERENCE_FPO_EDGE=False` note).
+
+### 72.5 — Sequencing: `0x1028b8d0` always runs before Preference in the
+same per-frame pass, corroborating (not contradicting) §66/§71
+
+Both `0x1028b8d0` call sites inside `fcn.102159c0` occur (address order,
+same "is-lineal" function) *before* `fcn.102159c0`'s own call to
+Preference at `0x10216444` — the exact call site §71.2 already
+established as Preference's sole caller, writing `esi+0x3a38` from
+`esi+0x38a2`. Immediately after the first `0x1028b8d0` call succeeds
+(`0x10215d74`), the same function sets the FOS-capability "analyzed" flag
+(`byte[edi+0xf]=1`, matching `pakon_fos.py`'s own `CAP_ANALYZED_FLAG=0x0F`)
+and calls `fcn.10214f20` — the same blob-fill function §64.1 already cited
+as writing `blob+0x30 ← scene+0x4d1c` (`cmm`) — before eventually reaching
+Preference. This is consistent with, and strengthens, the pipeline shape
+already on record (`FOS analyze → 0x1028b8d0 ×N → Preference → setShifts
+→ +Δ`); it does not by itself resolve what `0x1028b8d0` writes into
+`pref_data`.
+
+### 72.6 — Verdict: no Unicorn harness was built; a diff against
+`fos_analyze_roll` is not currently a well-posed test
+
+Per docs/76's own standard ("never invent"), building
+`pakon_orderfpo_frame_golden.py` now would require inventing at least
+three load-bearing, currently-unverified inputs: (a) the semantics of the
+8 unread helper subroutines — including whether *any* of them, not
+`0x1028b8d0`'s own top level, is the real writer of `pref_data+0/2/4`;
+(b) which of the two observed arg-5 provenances (DPI-blob copy vs
+all-zero) a "normal" frame actually uses, and whether both call sites
+fire on every real frame or are gated by branches this pass didn't trace;
+(c) arg 3/8/9's exact live value at `fcn.102159c0`'s call site (assumed,
+not proven, to be 0 like `fcn.10218110`'s literal). None of these can be
+filled from evidence already in hand. Even a "successful" Unicorn run
+built on invented values for (a)-(c) would not be evidence either way —
+it would test whatever this pass guessed, not the DLL's real behaviour.
+
+So: **`fos_analyze_roll` is not shown to reproduce `0x1028b8d0`, and
+`0x1028b8d0`'s own directly-observed output (the case-0 write to
+`pref_data+0x3e`) is not the orderFpo triple at all** — a stronger,
+more specific finding than §66's original "these are separate code
+paths." No golden harness file was created; no existing golden file
+(`pakon_fos_golden.py` or any other) was modified.
+
+### 72.7 — The exact live capture that would close this
+
+Per docs/76 §3(a)'s capture-decode-diff loop, next capture (v21) should
+hook `0x1028b8d0` itself (an internal, non-exported address — already
+established as reachable via `win_inject`'s hook mechanism for
+`sba_preference`/`sba_get_shifts`/`sba_set_shifts`, all likewise internal)
+at two points per call, using only dump kinds already in
+`hookcore.h`/`hookcore_real_table.c`:
+
+* **At entry** — 13× `EXTRA_DUMP_STACK_PTR{stack_idx=1..13, nbytes=4}` (the
+  raw arg values — this alone empirically confirms or refutes §72.2's
+  entire arg-index table, since each dumped pointer can be diffed against
+  the known scene base already recovered by existing hooks), plus
+  `EXTRA_DUMP_DEREF_PTR{stack_idx=13, off=0, nbytes=0x64}` (the full
+  `pref_data` blob at `scene+0x38a2`, same size as v16's existing
+  `pref_data` dump, captured *before* the call).
+* **At return** — hook each of the 5 known post-call addresses
+  (`0x10215d6f`, and the equivalent post-`add esp,0x34` addresses at the
+  other two `fcn.102159c0` call sites and both `fcn.10218110` sites,
+  `0x10219380`/`0x102196ae`-ish) and re-dump the *same* `scene+0x38a2`
+  blob, plus `eax` (the return code).
+
+Diffing the before/after `pref_data` blob across all 5 calls per frame,
+for several real frames, directly answers — empirically, with no further
+disassembly needed — whether `pref_data+0/2/4` (the orderFpo triple) ever
+changes across these 5 calls (settling whether `0x1028b8d0` or one of its
+helpers is the real writer, or whether that triple is written somewhere
+else entirely), and which of the 5 calls (if any) is responsible. This is
+a small, surgical addition to `g_extraDumps[]` (14 new entries, no new
+dump kind), fully consistent with the v14–v20 pattern already in the
+repo.

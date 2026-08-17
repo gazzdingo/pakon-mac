@@ -64,13 +64,26 @@ viable ground-truth source too.
    field**. v20 (built, un-captured at handoff) dumps the real read to answer
    (a).
 
-2. **The FOS orderFpo source** (docs/74 §66). The ported
-   `fos_analyze_roll`/`fos_calc_results` == `SbaCalcFosResults @ 0x1028f570`
-   (Unicorn-golden), but the per-frame orderFpo writer is `0x1028b8d0` — a
-   *different* function (13 args, 8 helpers, no overlap with the ported
-   leaves). Not yet proven that the ported FOS reproduces the live per-frame
-   orderFpo. Gate: Unicorn-diff `0x1028b8d0`'s OUT vs `fos_analyze_roll`, or a
-   live capture of the FOS inputs + `scene+0x38a2`.
+2. **The FOS orderFpo source** (docs/74 §66, closed further by §72). The
+   ported `fos_analyze_roll`/`fos_calc_results` == `SbaCalcFosResults @
+   0x1028f570` (Unicorn-golden), but the per-frame orderFpo writer is
+   `0x1028b8d0` — a *different* function (13 args, confirmed via full-body
+   read + two independent caller sites, §72.2). §72 went further than the
+   Unicorn-diff gate: `0x1028b8d0`'s own top-level code, on the case that
+   provably fires live (mode/arg 3 == 0 at both real call sites, §72.3),
+   does **not** write the `pref_data+0/2/4` orderFpo triple at all — it
+   writes one unrelated word at `+0x3e`, derived from other `pref_data`
+   fields, not from FOS statistics. Arg 5 (the input its shared body opens
+   Y/C1/C2 on) is a copy of the *same* DPI blob Preference reads (or
+   all-zero), not FOS dens/pixel data (§72.4). A Unicorn diff against
+   `fos_analyze_roll` is therefore not currently well-posed — it would
+   require inventing the 8 unread helpers' semantics, which of two
+   observed arg-5 provenances is "normal," and arg 3/8/9's exact live
+   value. **`fos_analyze_roll` is not shown to reproduce `0x1028b8d0`,
+   and `0x1028b8d0`'s directly-observed output is not the orderFpo triple
+   at all.** Next step is a live capture, spec'd precisely in docs/74
+   §72.7 (hook `0x1028b8d0` entry+return, dump all 13 args + before/after
+   `pref_data`), not more static reading or an invented Unicorn harness.
 
 3. **The wiring.** `pakon_ansel.py:280 preference_shift_words` still uses the
    DPI-static `preference_shifts_from_dpi_fields` (mode 0x11). It must become:
@@ -182,12 +195,22 @@ hardware captures. Work to this standard, in this order:
    `shifts_3a38_arg1` dump (`*(arg1+0x10)+0x3a38`) settles whether the third
    getShifts fires and reveals the Δ's value directly. Hookdll_v20
    `553b05ee…`, injector_v20 `28c54e93…`.
-2. **Find the second `+0x3a38` writer** — the Δ's source field. Trace who
-   writes that offset in the scene (search write sites; likely in the setShifts
-   caller or a FOS/pass1 function).
-3. **Close §66** — prove (or refute) that `fos_analyze_roll` per-frame
-   reproduces the live `scene+0x38a2` orderFpo (Unicorn-diff `0x1028b8d0` OUT,
-   or a FOS-input capture).
+2. **Find the second `+0x3a38` writer** — answered (docs/74 §71): there is
+   no second field. The third `getShifts` call reads the identical
+   Preference-written OUT §64 already closed, through one more layer of
+   pointer indirection. Still open: whether that third call fires live at
+   all (v19 saw only 2 `sba_get_shifts`/frame) — gated on the v20 capture
+   from step 1.
+3. **§66 closed the other way (docs/74 §72)** — `0x1028b8d0`'s own
+   top-level code does not write the orderFpo triple on the case that
+   provably fires live (mode/arg 3 == 0 at both real call sites); it writes
+   one unrelated word at `pref_data+0x3e` instead. Whether one of its 8
+   unread helper subroutines is the real orderFpo writer is still open. No
+   Unicorn harness was built — doing so now would require inventing
+   load-bearing inputs (the helpers' semantics, which of two observed arg-5
+   provenances is "normal," arg 3/8/9's live value at one of the two call
+   sites). Next: the v21 live capture spec'd in docs/74 §72.7 (hook
+   `0x1028b8d0` entry+return, dump all 13 args + before/after `pref_data`).
 4. **Wire it** — `pakon_ansel.py` per-frame orderFpo → `preference_shifts_hiNN
    (hi=0, lo=0, non_flash_adj=cmm)` → `setshifts_12` → `+Δ`, then re-render and
    diff against the real vendor output.

@@ -282,10 +282,16 @@ def preference_aim_uv(
     fpo: Sequence[int] = (0, 0, 0),
     arg1_2: int = 0,
     arg1_4: int = 0,
+    param_uv: Sequence[int] = (0, 0),
 ) -> tuple[float, float]:
     """High-nibble ``aimU``, ``aimV`` @ ``0x1028c98e``.
 
-    Cite: docs/49-preference-fpu-binary.md
+    Cite: docs/49-preference-fpu-binary.md.
+
+    The ``hi=0`` else-branch reads ``arg1[2]/arg1[4]`` (the *param* struct
+    ``[ebp+8]``, i.e. ``scene+0x38a2`` — live = per-frame FOS orderFpo U/V),
+    **not** the blob ``fpo`` — see docs/74 sec68. ``param_uv`` carries those
+    two words.
     """
     hi_n = hi & 0xF0
     if hi_n == 0x10:
@@ -297,8 +303,8 @@ def preference_aim_uv(
         return float(int(arg1_2)), float(int(arg1_4))
     if hi_n == 0x40:
         return float(int(lo42)), float(int(hi44))
-    # else
-    return float(int(fpo[1])), float(int(fpo[2]))
+    # else (hi=0): arg1[2]/arg1[4] = param struct +0x02/+0x04
+    return float(int(param_uv[0])), float(int(param_uv[1]))
 
 
 def preference_aim_y(
@@ -419,11 +425,16 @@ def preference_shifts_hiNN(
     arg1_0: int = 0,
     arg1_2: int = 0,
     arg1_4: int = 0,
+    param_uv: Sequence[int] = (0, 0),
 ) -> tuple[int, int, int]:
     """Preference shifts for arbitrary ``hi`` and ``lo`` modes.
     
     Includes non-zero ``dU``/``dV`` UV aim computation for ``hi≠0x10``.
-    Cite: docs/49-preference-fpu-binary.md
+    Cite: docs/49-preference-fpu-binary.md.
+
+    ``param_uv`` = the param struct's ``+0x02/+0x04`` words (``scene+0x38a2``
+    live, i.e. the per-frame FOS orderFpo U/V) — the ``hi=0`` else-branch aim
+    (docs/74 sec68).
     """
     opening = preference_rgb_to_opponent(int(fpo[0]), int(fpo[1]), int(fpo[2]))
     fpa_opp = preference_rgb_to_opponent(int(fpa[0]), int(fpa[1]), int(fpa[2]))
@@ -445,6 +456,7 @@ def preference_shifts_hiNN(
         fpo=fpo,
         arg1_2=arg1_2,
         arg1_4=arg1_4,
+        param_uv=param_uv,
     )
     w1e = float(int(pcls))
     d_y = w1e + aim_y - opening.y

@@ -450,6 +450,23 @@ const HOOKS = [
           '0x44/0x82 idx0 mask/acquire writes); fresh r2 izz/af/axt/pdf ' +
           '2026-08-15 against TLB.dll md5 193d9b2ce0a4b77ae9b78262bd06c0fc',
   },
+  {
+    dll: 'PakonIMAu.dll', va: 0x101b76d0, id: 'color_adjust_shift',
+    role: 'stage', pixelBuffer: false,
+    desc: 'The analyzePostBalance shift leaf (fcn.101b76d0, 282 B) -- ' +
+          'computes the three int16 post-balance shifts as out_c = ' +
+          'round((in_c - mean(in)) * M_c + S1*S2 + dmin_c), Unicorn-verified ' +
+          'bit-exact (pakon_postbalance_golden.py). __thiscall: ecx = ' +
+          'AnsColorAdjustCapabilityImpl (the Impl at Cap+0x10); the Impl ' +
+          'fields are M/S1/S2/dens/dmin at +0xc..+0x30 (M and S1 are ctor ' +
+          'args defaulting 25/25/25/75; dens/S2/dmin are zeroed at ' +
+          'construction -- their non-zero writer is the still-open question ' +
+          'this hook exists to answer). Prologue `push ecx; push esi; mov ' +
+          'esi,ecx` (5 B) is a clean MinHook target; reached via two real ' +
+          'CALL sites (fcn.100f13a0 @ 0x100f13c1, fcn.101b7e90 @ ' +
+          '0x101b80ad), so notCallReachable=0.',
+    cite: 'docs/74 §57; tools/ansel/python-pipeline/pakon_postbalance_golden.py',
+  },
 ];
 
 // ---------------------------------------------------------------------

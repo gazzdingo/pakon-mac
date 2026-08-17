@@ -229,3 +229,4 @@ _Thunk_\sfx:
     DEFTHUNK 25, 25
     DEFTHUNK 26, 26
     DEFTHUNK 27, 27
+    DEFTHUNK 28, 28

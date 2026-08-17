@@ -122,8 +122,14 @@ extern "C" {
  * Bumped 28->29 (docs/74 §57, 2026-08-16): one new PakonIMAu.dll hook
  * (color_adjust_shift, 0x101b76d0) appended at the END of table[], same
  * append-only discipline. Thunk_28 added to hookstub.S in the same pass.
+ * Bumped 29->30 (docs/74 §72.7, v21): one new PakonIMAu.dll hook
+ * (sba_order_fpo_calc, 0x1028b8d0) appended at the END of table[], same
+ * append-only discipline. Thunk_29 added to hookstub.S and to
+ * hookcore_real_table.c's own thunks[] array in the SAME pass -- the
+ * §46.8/§47 "forgot the matching thunk" bug class this file's own comment
+ * above documents was explicitly re-checked before committing.
  * --------------------------------------------------------------------- */
-#define HOOKCORE_MAX_HOOKS 29
+#define HOOKCORE_MAX_HOOKS 30
 
 /* Must exactly match the PUSHAD+PUSHFD+index+retaddr stack layout that
  * hookstub.S's SharedEntryHandler builds -- see that file's header
@@ -453,7 +459,7 @@ extern void Thunk_18(void); extern void Thunk_19(void); extern void Thunk_20(voi
 extern void Thunk_21(void); extern void Thunk_22(void);
 extern void Thunk_23(void); extern void Thunk_24(void);
 extern void Thunk_25(void); extern void Thunk_26(void); extern void Thunk_27(void);
-extern void Thunk_28(void);
+extern void Thunk_28(void); extern void Thunk_29(void);
 
 #ifdef __cplusplus
 }

@@ -154,11 +154,19 @@ _OnReturnThunk:
      * flags value instead of a known-correct one. */
 
 /* ---------------------------------------------------------------------
- * Thunk_00 .. Thunk_27 -- 28 fixed slots (HOOKCORE_MAX_HOOKS in
+ * Thunk_00 .. Thunk_29 -- 30 fixed slots (HOOKCORE_MAX_HOOKS in
  * hookcore.h). Each is just `push <its own index>; jmp SharedEntryHandler`
  * -- deliberately identical in shape so a bug in one is a bug in all of
- * them (uniform, mechanically-checkable, not 28 independently-hand-
+ * them (uniform, mechanically-checkable, not 30 independently-hand-
  * written variants that could each have their own typo).
+ *
+ * Thunk_29 (docs/74 §72.7, v21): added alongside the one new PakonIMAu.dll
+ * hook (sba_order_fpo_calc, 0x1028b8d0) appended at the END of
+ * hookcore_real_table.c's table[]. Added in the SAME pass as the
+ * HOOKCORE_MAX_HOOKS 29->30 bump, the new `extern void Thunk_29(void)`
+ * declaration in hookcore.h, and the new thunks[29] array entry in
+ * hookcore_real_table.c -- all four together, specifically to not repeat
+ * the Thunk_23 bug described below.
  *
  * Thunk_25/26/27 (docs/74 §49, 2026-08-15): added alongside the three new
  * TLB.dll lamp/AFE-gain/CCD-acquire-control hooks appended at the END of
@@ -230,3 +238,4 @@ _Thunk_\sfx:
     DEFTHUNK 26, 26
     DEFTHUNK 27, 27
     DEFTHUNK 28, 28
+    DEFTHUNK 29, 29

@@ -102,7 +102,7 @@ void HookCore_BuildRealTable(HookEngine *eng) {
         (void *)&Thunk_18, (void *)&Thunk_19, (void *)&Thunk_20,
         (void *)&Thunk_21, (void *)&Thunk_22, (void *)&Thunk_23,
         (void *)&Thunk_24, (void *)&Thunk_25, (void *)&Thunk_26,
-        (void *)&Thunk_27, (void *)&Thunk_28,
+        (void *)&Thunk_27, (void *)&Thunk_28, (void *)&Thunk_29,
         /* Thunk_23 fixes a real, latent NULL-entryThunk bug left by the
          * prior commit (6d2e36a) that inserted analyze_scp_lut_balance
          * mid-array without adding a matching thunk -- see hookstub.S's
@@ -119,7 +119,15 @@ void HookCore_BuildRealTable(HookEngine *eng) {
          * below. HOOKCORE_MAX_HOOKS bumped 25->28 in hookcore.h and the
          * matching DEFTHUNK 25/26/27 added to hookstub.S in the SAME
          * commit -- double-checked specifically against the Thunk_23
-         * mistake this file's own comment above documents. */
+         * mistake this file's own comment above documents.
+         *
+         * Thunk_29 (docs/74 §72.7, v21): same append-only discipline, for
+         * the one new PakonIMAu.dll hook (sba_order_fpo_calc, 0x1028b8d0)
+         * appended at the very end of table[] below. HOOKCORE_MAX_HOOKS
+         * bumped 29->30 in hookcore.h, `extern void Thunk_29(void)` added
+         * there too, and the matching DEFTHUNK 29 added to hookstub.S --
+         * all in the SAME pass, re-checked against the same Thunk_23
+         * mistake. */
     };
 
     static const HookDef table[HOOKCORE_MAX_HOOKS] = {
@@ -673,6 +681,37 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "is the Impl field VALUES, captured by the impl_fields extra dump.",
           "docs/74 SS57; tools/ansel/python-pipeline/"
           "pakon_postbalance_golden.py", 0, 0, 0, 0, 0 },
+
+        /* ---- Per-frame orderFpo candidate (docs/74 SS66/SS72, v21) ---- */
+        { "PakonIMAu.dll", 0x1028b8d0, "sba_order_fpo_calc",
+          "The function SS66 named as the per-frame orderFpo (scene+0x38a2) "
+          "writer -- 2958 B, 13 cdecl args (callers clean up add esp,0x34), "
+          "8 helper subroutines, called 5x per frame. SS72's full-body read "
+          "found its own TOP-LEVEL code does NOT write the orderFpo Y/U/V "
+          "triple (pref_data+0x0/+0x2/+0x4) on the case that provably fires "
+          "live (switch selector arg 3 == 0 at both real call sites): it "
+          "writes exactly ONE unrelated word at pref_data+0x3e, derived from "
+          "two other already-present pref_data fields. Whether one of the 8 "
+          "unread helpers is the real orderFpo writer -- with pref_data "
+          "threaded in as a hidden argument -- is exactly what this hook "
+          "exists to settle empirically. "
+          "SAFETY (audited 2026-08-17, the same af+axt pass this table's own "
+          "header describes): `axt` finds FIVE real CALL-type xrefs "
+          "(fcn.102159c0 @ 0x10215d6a/0x10215fae/0x1021605b = "
+          "AnsSbaCapabilityImpl::analyzePass2, and fcn.10218110 @ "
+          "0x1021937b/0x102196a9) and ZERO CODE-type jmp/jcc entries, and "
+          "`af` resolves to 0x1028b8d0 itself (its own entry, not a "
+          "containing function) -- so the engine's return-address-swap "
+          "precondition genuinely holds here, unlike the notCallReachable "
+          "entries above. Prologue `mov eax,[esp+0xc]` (4 B) + "
+          "`sub esp,0x2c0` (6 B) is position-independent with no rel32 "
+          "jmp/call in the first 5 bytes, so it is a clean MinHook "
+          "relocation target. notCallReachable=0, entry-only "
+          "(wantExitDefault=0): the before/after question SS72.7 poses is "
+          "answered by consecutive ENTRY dumps (see g_extraDumps below), so "
+          "no exit hook is needed and none is taken.",
+          "docs/74 SS66, SS72 (esp. SS72.2 arg table, SS72.3 case-0 read, "
+          "SS72.7 capture spec); r2 af/axt safety audit 2026-08-17", 0, 0, 0, 0, 0 },
     };
 
     int i;
@@ -822,5 +861,56 @@ const ExtraDumpSpec g_extraDumps[] = {
      * still unlocated (added between setShifts and this read). */
     { "balance_area_image", "balance_shift_4b6", EXTRA_DUMP_STACK_PTR_OFFSET, 3, 0xa, 0, 6 },
     { "color_adjust_shift", "impl_fields", EXTRA_DUMP_THIS_OFFSET, 0, 0x0c, 0, 0x28 },
+    /* docs/74 SS72.7 (v21) -- sba_order_fpo_calc (0x1028b8d0) extra dumps.
+     *
+     * The question: SS72.3 proved this function's own top level writes only
+     * pref_data+0x3e on the live-firing case, NOT the orderFpo Y/U/V triple
+     * at pref_data+0x0/+0x2/+0x4. Either one of its 8 unread helpers writes
+     * that triple (pref_data threaded in as a hidden arg), or something else
+     * entirely does. This capture answers it empirically.
+     *
+     * WHY ENTRY-ONLY IS SUFFICIENT (a real deviation from SS72.7's own
+     * proposed spec, made deliberately, not by oversight): LogExtraDumps is
+     * called ONLY from HookEntryC (hookcore.c ~line 645), never from the
+     * exit path -- extra dumps physically cannot fire on return with this
+     * engine as built, and adding that would be a real engine change with
+     * its own risk (at exit the args have been popped; sp no longer points
+     * at a valid arg frame). It is not needed: this function is called 5x
+     * per frame with the SAME pref_data pointer (arg 12, both call sites,
+     * SS72.2), so consecutive ENTRY dumps give before/after across calls
+     * 1->2, 2->3, 3->4, 4->5 directly, and the state AFTER the 5th call is
+     * already captured by the existing `sba_preference`/`pref_data` row
+     * above -- SS72.5 proved 0x1028b8d0's calls all precede Preference's own
+     * single call in the same per-frame pass. Five entry dumps plus one
+     * existing Preference dump = six observations of the same 0x64-byte blob
+     * spanning all five calls, which is exactly the before/after series the
+     * question needs.
+     *
+     * WHY NO 13 RAW-ARG ROWS (SS72.7 proposed 13x EXTRA_DUMP_STACK_PTR):
+     * they would be redundant AND wrong-shaped. The engine already logs the
+     * first STACK_DWORDS_LOGGED (=16, hookcore.c line 52) raw stack dwords on
+     * every entry, and this function takes 13 args -- so all 13 raw arg
+     * VALUES are captured for free in the existing "stack_dwords" field.
+     * EXTRA_DUMP_STACK_PTR would instead DEREFERENCE each one, which is not
+     * what SS72.7 wanted from those rows. Keeping them out also keeps this a
+     * cheap addition on the real box.
+     *
+     * IMPORTANT -- this dump self-checks SS72.2's own arg table rather than
+     * trusting it: SS72.2 rates its 13-arg mapping Tier 3 (static, cross-
+     * checked two ways, NOT live-confirmed). If arg 12 is not really
+     * scene+0x38a2, pref_data_before dumps something else and the mismatch is
+     * itself the finding -- and the raw stack_dwords in the same JSONL line
+     * give the ground truth to re-derive the real mapping from. Nothing here
+     * assumes SS72.2 is right.
+     *
+     * arg 5 (the DPI-blob-copy-or-zero input SS72.4 traced) and arg 11
+     * (fosDmin, scene+0x290c) are dumped too: SS72.4 found arg 5 has TWO
+     * different provenances at the two call sites (a copy of the same
+     * DPI-static blob Preference reads, vs explicitly zeroed), and which one
+     * a real frame uses is one of the three unknowns SS72.6 named as
+     * blocking a Unicorn harness. Dumping it settles that from real data. */
+    { "sba_order_fpo_calc", "pref_data_before", EXTRA_DUMP_STACK_PTR, 12, 0, 0, 0x64 },
+    { "sba_order_fpo_calc", "arg5_blob", EXTRA_DUMP_STACK_PTR, 5, 0, 0, 0x48 },
+    { "sba_order_fpo_calc", "fos_dmin", EXTRA_DUMP_STACK_PTR, 11, 0, 0, 0x10 },
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0 }, /* sentinel */
 };

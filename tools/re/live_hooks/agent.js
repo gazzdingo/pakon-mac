@@ -467,6 +467,33 @@ const HOOKS = [
           '0x101b80ad), so notCallReachable=0.',
     cite: 'docs/74 §57; tools/ansel/python-pipeline/pakon_postbalance_golden.py',
   },
+  {
+    dll: 'PakonIMAu.dll', va: 0x1028b8d0, id: 'sba_order_fpo_calc',
+    role: 'stage', pixelBuffer: false,
+    desc: 'The function §66 named as the per-frame orderFpo (scene+0x38a2) ' +
+          'writer -- 2958 B, 13 cdecl args (callers clean up add esp,0x34), ' +
+          '8 helper subroutines, called 5x per frame. §72\'s full-body read ' +
+          'found its own TOP-LEVEL code does NOT write the orderFpo Y/U/V ' +
+          'triple (pref_data+0x0/+0x2/+0x4) on the case that provably fires ' +
+          'live (switch selector arg 3 == 0 at both real call sites): it ' +
+          'writes exactly ONE unrelated word at pref_data+0x3e, derived from ' +
+          'two other already-present pref_data fields. Whether one of the 8 ' +
+          'unread helpers is the real orderFpo writer -- with pref_data ' +
+          'threaded in as a hidden argument -- is exactly what this hook ' +
+          'exists to settle empirically. Safety (r2 af+axt 2026-08-17): FIVE ' +
+          'real CALL-type xrefs (fcn.102159c0 @ 0x10215d6a/0x10215fae/' +
+          '0x1021605b = AnsSbaCapabilityImpl::analyzePass2, fcn.10218110 @ ' +
+          '0x1021937b/0x102196a9), ZERO CODE-type jmp/jcc entries, and `af` ' +
+          'resolves to 0x1028b8d0 itself -- the return-address-swap ' +
+          'precondition genuinely holds. Prologue `mov eax,[esp+0xc]` (4 B) ' +
+          '+ `sub esp,0x2c0` (6 B) is position-independent, no rel32 in the ' +
+          'first 5 bytes, so a clean MinHook relocation target. Entry-only: ' +
+          'the before/after question §72.7 poses is answered by consecutive ' +
+          'ENTRY dumps across the 5 calls plus the existing sba_preference ' +
+          'pref_data dump (§72.5 proved all 5 precede Preference).',
+    cite: 'docs/74 §66, §72 (esp. §72.2 arg table, §72.3 case-0 read, ' +
+          '§72.7 capture spec); r2 af/axt safety audit 2026-08-17',
+  },
 ];
 
 // ---------------------------------------------------------------------

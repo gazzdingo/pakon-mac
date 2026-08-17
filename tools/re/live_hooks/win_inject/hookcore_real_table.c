@@ -811,6 +811,11 @@ const ExtraDumpSpec g_extraDumps[] = {
     { "sba_get_shifts", "mode_5074", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x5074, 2 },
     { "sba_preference", "pref_data", EXTRA_DUMP_STACK_PTR, 0, 0, 0x64 },
     { "sba_preference", "blob", EXTRA_DUMP_STACK_PTR, 3, 0, 0x48 },
+    /* docs/74 sec68: balanceAreaImage reads the three ramp-shift words from
+     * arg4+0x0a (0x10102f85..fa3). Dump them directly to pin scene+0x4b6 --
+     * the setShifts OUT plus the per-frame uniform luma offset Delta that is
+     * still unlocated (added between setShifts and this read). */
+    { "balance_area_image", "balance_shift_4b6", EXTRA_DUMP_STACK_PTR_OFFSET, 3, 0xa, 6 },
     { "color_adjust_shift", "impl_fields", EXTRA_DUMP_THIS_OFFSET, 0, 0x0c, 0x28 },
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0 }, /* sentinel */
 };

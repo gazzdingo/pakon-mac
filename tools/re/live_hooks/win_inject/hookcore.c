@@ -500,6 +500,11 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp, 
                 srcPtr = (void *)((DWORD_PTR)srcPtr + spec->derefOffset);
                 readable = !IsBadReadPtr(srcPtr, numBytes);
             }
+        } else if (spec->kind == EXTRA_DUMP_STACK_PTR_OFFSET) {
+            /* stack arg pointer + offset -- e.g. balanceAreaImage's shift at
+             * arg4+0x0a (a field inside the arg's struct). */
+            srcPtr = (void *)((DWORD_PTR)sp[spec->stackIndex] + spec->derefOffset);
+            readable = !IsBadReadPtr(srcPtr, numBytes);
         } else { /* EXTRA_DUMP_PLANAR_PLANE: PolyPixel planar R/G/B,
                     base + (stack_dwords[3]*stack_dwords[4]) * derefOffset */
             DWORD_PTR base = (DWORD_PTR)sp[spec->stackIndex];

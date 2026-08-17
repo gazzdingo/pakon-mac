@@ -311,12 +311,18 @@ typedef enum ExtraDumpKind {
                                    R/G/B at base + w*h*(0/2/4); w/h are
                                    hard-coded to stack_dwords[3]/[4] per the
                                    PolyPixel calling convention (docs/74 SS32)  */
-    EXTRA_DUMP_THIS_DEREF_OFFSET = 4 /* dump N bytes from
-                                   *(regs->ecx + stackIndex) + derefOffset --
-                                   for a __thiscall target whose `this` points
-                                   to a holder: deref this+stackIndex to get the
-                                   Impl, then add derefOffset (e.g. getShifts
-                                   reads *(SbaCap+0x10)+0x3a38)                */
+    EXTRA_DUMP_THIS_DEREF_OFFSET = 4, /* dump N bytes from
+                                    *(regs->ecx + stackIndex) + derefOffset --
+                                    for a __thiscall target whose `this` points
+                                    to a holder: deref this+stackIndex to get the
+                                    Impl, then add derefOffset (e.g. getShifts
+                                    reads *(SbaCap+0x10)+0x3a38)                */
+    EXTRA_DUMP_STACK_PTR_OFFSET = 5 /* dump N bytes from
+                                    (stack_dwords[idx] + derefOffset) -- a raw
+                                    stack arg pointer PLUS an offset, for a
+                                    field inside the arg's struct (e.g.
+                                    balanceAreaImage reads the shift at
+                                    arg4+0x0a)                                 */
 } ExtraDumpKind;
 
 typedef struct ExtraDumpSpec {

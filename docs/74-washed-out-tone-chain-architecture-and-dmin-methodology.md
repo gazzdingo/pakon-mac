@@ -13857,3 +13857,144 @@ per-hop discipline §51.3/§51.5/§55.4 already used for `PakonIMAu.dll` and
 the offset arithmetic alone. `PakonIMAu.dll`'s own zero-`DICE`-references
 finding (§70.6) came from a direct `ii` read of its own import table this
 pass, not solely from docs/70's own citation.
+
+## 71 — docs/76 §5 step 2 answered: there is no second `+0x3a38` writer to find, because there is no second field — the third `getShifts` call reads the same Preference output §64 already closed, through one more layer of indirection
+
+`docs/76-per-frame-balance-handover.md` §5 lists, as the second immediate
+next step, finding what writes the `+0x3a38` field the third `getShifts`
+call (§69) reads via `*(arg1+0x10)+0x3a38` — a different base pointer from
+the one already-verified Preference OUT (§64) reads via directly. This
+section answers it: nothing writes a second field, because a full,
+`aaa`-confirmed static trace shows there is only **one** write site for
+`+0x3a38` anywhere in `PakonIMAu.dll`, and it sits on the exact sub-object
+the third `getShifts` call also addresses.
+
+### 71.1 — Method
+
+`PakonIMAu.dll` re-hashed (`md5 eea9dcf78ee21d4f7c515a6c2512242d`, matching
+every prior citation in this doc). A raw `/x 383a0000` search (the
+little-endian bytes of the `0x3a38` displacement) across the whole binary
+— the same "search immediates first" step `docs/76`'s own method (§3.4)
+prescribes — found exactly **two** hits, both read via `af`+`pdf` at their
+real containing function (never `pD`-guessed): one is the already-known
+third `getShifts` read itself (`0x1012413a`, `add ecx,0x3a38` off
+`[edi+0x10]`, inside the setShifts-caller's own body); the other is a
+debug/trace-dump routine (`fcn.10215305`) that prints the field labelled
+`"  shifts ="` for logging, and — notably — also touches `scene+0x38a2`
+(orderFpo) a few hundred bytes later in the same routine, corroborating
+that this dump function walks the same scene structure this whole
+investigation already has under study. **Neither hit is a write.** Per
+`docs/76`'s own method note ("if none, the write is via a pointer — follow
+the register"), the write must happen through a shared function called
+with a variable base, not a literal per-site offset — so the next step was
+finding Preference's own real caller graph with `aaa` (full analysis,
+needed for `axtj` to resolve anything — plain `af` alone left `axtj`
+empty, matching every prior "forced small-`af`-only" false-negative this
+doc has already hit), not another byte search.
+
+### 71.2 — The write site, and its only caller, and that caller's only caller — three hops, one static path each time
+
+`axtj @ 0x1028c780` (Preference) after `aaa`: **exactly one** caller,
+`fcn.102159c0`, calling from `0x10216444`. Read via `af`+`pdf` at that
+real address: immediately before the call,
+
+```
+0x10216433   lea ecx, [esi + 0x3a30]     ; OUT buffer, pushed as an arg
+0x10216439   lea ebx, [esi + 0x38a2]     ; orderFpo, pushed as another arg
+...
+0x10216444   call 0x1028c780             ; Preference
+```
+
+`esi + 0x3a30` is `esi + 0x3a38 − 8` — the same buffer §64 already
+established as Preference's own OUT, addressed from inside the call this
+time rather than read afterward. `esi` itself, at `fcn.102159c0`'s own
+entry (`0x102159e6 mov esi, ecx`), is simply this function's own `this`
+(thiscall convention) — so `+0x3a38` is written **inside Preference
+itself**, into whatever object `fcn.102159c0` was constructed/called on,
+not by any separate instruction anywhere else.
+
+`axtj @ 0x102159c0` after the same `aaa` pass: again **exactly one**
+caller, `fcn.10123cc0`, calling from `0x10123da2`. Read via `af`+`pdf`:
+
+```
+0x10123d98   mov ecx, dword [var_1ch_2]   ; ecx = this function's OWN this
+0x10123d9b   mov ecx, dword [ecx + 0x10]  ; ecx = *(this + 0x10)
+...
+0x10123da2   call 0x102159c0              ; this = *(outer_this + 0x10)
+```
+
+This is the exact `*(something + 0x10)` shape `docs/76` §69 already
+identified in the third `getShifts` call's own read (`*(arg1+0x10)+0x3a38`)
+— found here independently, from the write side, not assumed from the
+read side's own phrasing.
+
+`axtj @ 0x10123cc0` after the same pass: **seven** static callers this
+time (this function is a shared helper, called from several unrelated
+paths — `fcn.100575e0`×2, `fcn.1006a160`×2,
+`method.AnsDcPremiumPath.virtual_12`, `fcn.1013fa10`, and, the one that
+matters here, **`fcn.10101220`** at `0x10101b6d`). `0x10101220` is the
+literal function `docs/76` §5 step 2 and §69 already cite as "the
+setShifts caller (`0x10101xxx`)" — the same function whose own body
+contains the third `getShifts` call this section set out to explain,
+confirmed by address, not by re-deriving it from scratch.
+
+### 71.3 — Verdict
+
+**The chain is real and fully static-traced, hop by hop, one caller at
+each hop except the last (seven, of which one is the already-known
+setShifts caller):** `fcn.10101220` (setShifts caller) → `fcn.10123cc0`
+(`*(this+0x10)` as the next `this`) → `fcn.102159c0` (Preference's sole
+caller, `esi+0x3a30` as OUT) → `0x1028c780` (Preference, writes
+`esi+0x3a38` as part of its own OUT). This is the same `*(this+0x10)`
+sub-object the third `getShifts` call already reads `+0x3a38` from.
+
+**docs/76 §5 step 2 is answered: there is no second writer, because there
+is no second field.** The third `getShifts` call's own `+0x3a38` read is
+not sourcing from some undiscovered field — it is reading the identical
+Preference-written OUT §64 already closed, on the identical sub-object,
+through one more layer of pointer indirection than the already-verified
+read used. `docs/76` §69's own two flagged sub-questions were (a) whether
+this third call fires live at all, and (b) what writes the field it reads.
+**(b) is now closed: nothing new writes it — it's the known write, reached
+differently.** (a) is unchanged by this section — still genuinely open,
+still gated on the v20 live capture `docs/76` §5 step 1 already flagged,
+since this pass is static-only and cannot observe whether the live control
+flow actually reaches `0x1012413a` on a real frame.
+
+**What this means for Δ, stated carefully, not overreached.** If (a) turns
+out true — the third call does fire live — then Δ is *not* an independent
+third quantity from some second source; it would be the same Preference
+output added again, through this deeper path, which changes the shape of
+`docs/76`'s own pipeline diagram (§1) from "a separate Δ term" to "the
+existing shift applied a second time via a different call path" — a
+materially different, and simpler, wiring question than "find the unknown
+source." If (a) turns out false — the third call never fires live, exactly
+as v19's own "only 2 `sba_get_shifts`/frame" observation already suggested
+— then this section's finding is moot for Δ specifically (there is no live
+third call to source), and Δ's real origin remains wherever `docs/76`'s own
+open items 1 and 3 were already pointing. **Either way, "an unidentified
+second writer" is no longer a live possibility** — this section closes
+that specific branch of the search space, decisively, not provisionally.
+
+**No production, golden, or port file was changed by this pass.** All work
+is additive; the only file this pass edited is `docs/74-…md` (this
+section). Scratch outputs (`fcn_10215305.txt`, `fcn_102159c0.txt`,
+`fcn_10123cc0.txt`) were written for readability during this pass and are
+not committed, matching this doc's own established convention.
+
+**Verification.** `PakonIMAu.dll` MD5 re-checked
+(`eea9dcf78ee21d4f7c515a6c2512242d`) before any work. Both `/x 383a0000`
+raw hits were read at their real `af`+`pdf`-derived function boundaries,
+never characterized from a `pD` guess. `axtj` was run only after a full
+`aaa` pass at each of the three hops — the same lesson §51.2/§55.2/§57(70).3
+already established, that a bare forced `af` leaves `axtj` empty and reads
+as a false "no caller" — and each single-caller claim (Preference,
+`fcn.102159c0`) and the seven-caller claim (`fcn.10123cc0`) came directly
+from that JSON output, not estimated. The `esi+0x3a30`/`esi+0x38a2`
+argument-passing read at `0x10216433`-`0x10216444`, the `this`-chain read
+at `0x10123d98`-`0x10123da2`, and the `esi = ecx` thiscall-entry read at
+`0x102159e6` were each read directly from `pdf`, not inferred from offsets
+alone. `fcn.10101220`'s address was cross-checked against `docs/76`'s own
+citation of "the setShifts caller (`0x10101xxx`)" and `docs/74` §69's own
+`0x10101ff6`/`0x10102033..57` addresses (same function, consistent
+address range), not assumed from proximity alone.

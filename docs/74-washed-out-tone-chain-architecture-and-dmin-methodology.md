@@ -13427,3 +13427,22 @@ reachable, but the captured arg5 is 0. Two open resolutions, both unproven:
 
 Either way, §64's "A = Preference OUT" is **not safe to wire** as stated until
 one is disproved. Do not build the FOS→preference wiring on it.
+
+### 67.1 — §67 resolved in direction: the Preference's *other* OUT proves it runs hi=0x30/lo=3
+
+The Preference writes two triples — the "out+2" (`inv(t', +U, +V)`, at
+`scene+0x3a32`) and the "final shift" (`inv(s', −U, −V)`, at `scene+0x3a38`).
+Both were computed for v17 frame 0 (orderFpo Y=2046,U=70,V=447, cmm=1000):
+
+| mode | final shift (+0x3a38) | out+2 (+0x3a32) |
+|---|---|---|
+| `hi=0x30,lo=3` | (783,366,127) | (766,1183,1422) |
+| `hi=0,lo=0` | (1929,−596,−55) | (−378,2146,1605) |
+
+Live `+0x3a38`=(783,366,127) **and** `+0x3a32/+0x3a34`=(766,1183) both match
+`hi=0x30,lo=3` exactly — the mode=0 values match neither. So §64 stands (the
+live Preference runs `hi=0x30,lo=3`, orderFpo U/V aims), and §67's `arg5=0`
+capture is the anomaly to explain, not a second writer of `+0x3a38`. v18 adds
+a `scene+0x5074` (mode-word) dump at `getShifts` to settle whether the live
+mode word is `0x33` (arg5 capture artifact) or `0` (Preference reads the mode
+from somewhere other than `[ebp+0x18]`).

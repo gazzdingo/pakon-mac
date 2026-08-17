@@ -804,6 +804,11 @@ const ExtraDumpSpec g_extraDumps[] = {
     { "tlb_polypixel", "poly_input_r", EXTRA_DUMP_STACK_PTR, 1, 0, 0x84000 },
     { "sba_get_shifts", "shifts_3a38", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x3a38, 6 },
     { "sba_get_shifts", "pref_out_3a30", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x3a30, 6 },
+    /* docs/74 sec67: the Preference's OUT proves it runs hi=0x30/lo=3 (out+2
+     * matches), yet arg5(mode)=0 is captured. Dump the scene mode word
+     * scene+0x5074 directly at getShifts to settle whether the live mode is
+     * 0x33 (arg5 capture artifact) or 0 (Preference reads mode elsewhere). */
+    { "sba_get_shifts", "mode_5074", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x5074, 2 },
     { "sba_preference", "pref_data", EXTRA_DUMP_STACK_PTR, 0, 0, 0x64 },
     { "sba_preference", "blob", EXTRA_DUMP_STACK_PTR, 3, 0, 0x48 },
     { "color_adjust_shift", "impl_fields", EXTRA_DUMP_THIS_OFFSET, 0, 0x0c, 0x28 },

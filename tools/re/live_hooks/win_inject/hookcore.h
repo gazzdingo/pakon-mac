@@ -317,12 +317,17 @@ typedef enum ExtraDumpKind {
                                     to a holder: deref this+stackIndex to get the
                                     Impl, then add derefOffset (e.g. getShifts
                                     reads *(SbaCap+0x10)+0x3a38)                */
-    EXTRA_DUMP_STACK_PTR_OFFSET = 5 /* dump N bytes from
+    EXTRA_DUMP_STACK_PTR_OFFSET = 5, /* dump N bytes from
                                     (stack_dwords[idx] + derefOffset) -- a raw
                                     stack arg pointer PLUS an offset, for a
                                     field inside the arg's struct (e.g.
                                     balanceAreaImage reads the shift at
                                     arg4+0x0a)                                 */
+    EXTRA_DUMP_STACK_DEREF2_OFFSET = 6 /* dump N bytes from
+                                    *(stack_dwords[idx] + derefOffset) +
+                                    derefOffset2 -- a double deref then offset
+                                    (e.g. getShifts reads *(arg1+0x10)+0x3a38,
+                                    arg1 = stack_dwords[0])                    */
 } ExtraDumpKind;
 
 typedef struct ExtraDumpSpec {
@@ -330,11 +335,12 @@ typedef struct ExtraDumpSpec {
     const char    *label;       /* short JSON field name, e.g. "r_lut"      */
     ExtraDumpKind  kind;
     int            stackIndex;  /* index into the same stack_dwords[] array
-                                    HookEntryC already logs on "enter"       */
+                                     HookEntryC already logs on "enter"       */
     DWORD          derefOffset; /* only used for EXTRA_DUMP_DEREF_PTR       */
+    DWORD          derefOffset2;/* only used for EXTRA_DUMP_STACK_DEREF2_OFFSET */
     DWORD          numBytes;    /* must be <= HOOKCORE_EXTRA_DUMP_MAX_BYTES,
-                                    enforced defensively at the call site
-                                    too, not just by convention here        */
+                                     enforced defensively at the call site
+                                     too, not just by convention here        */
 } ExtraDumpSpec;
 
 /* Defined in hookcore_real_table.c, terminated by a {NULL,...} sentinel

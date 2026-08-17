@@ -505,6 +505,15 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp, 
              * arg4+0x0a (a field inside the arg's struct). */
             srcPtr = (void *)((DWORD_PTR)sp[spec->stackIndex] + spec->derefOffset);
             readable = !IsBadReadPtr(srcPtr, numBytes);
+        } else if (spec->kind == EXTRA_DUMP_STACK_DEREF2_OFFSET) {
+            /* *(sp[idx] + derefOffset) + derefOffset2 -- e.g. getShifts reads
+             * *(arg1+0x10)+0x3a38, arg1 = sp[0]. */
+            void *base = (void *)(DWORD_PTR)sp[spec->stackIndex];
+            if (!IsBadReadPtr((BYTE *)base + spec->derefOffset, sizeof(void *))) {
+                srcPtr = *(void **)((BYTE *)base + spec->derefOffset);
+                srcPtr = (void *)((DWORD_PTR)srcPtr + spec->derefOffset2);
+                readable = !IsBadReadPtr(srcPtr, numBytes);
+            }
         } else { /* EXTRA_DUMP_PLANAR_PLANE: PolyPixel planar R/G/B,
                     base + (stack_dwords[3]*stack_dwords[4]) * derefOffset */
             DWORD_PTR base = (DWORD_PTR)sp[spec->stackIndex];

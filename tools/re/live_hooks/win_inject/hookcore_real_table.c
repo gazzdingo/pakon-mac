@@ -796,26 +796,31 @@ void HookCore_BuildRealTable(HookEngine *eng) {
  * FOS orderFpo luma or the DPI constant.
  */
 const ExtraDumpSpec g_extraDumps[] = {
-    { "area_image_apply_lut", "r_lut", EXTRA_DUMP_STACK_PTR, 1, 0, 8192 },
-    { "area_image_apply_lut", "g_lut", EXTRA_DUMP_STACK_PTR, 2, 0, 8192 },
-    { "area_image_apply_lut", "b_lut", EXTRA_DUMP_STACK_PTR, 3, 0, 8192 },
-    { "area_image_apply_lut", "img_desc", EXTRA_DUMP_THIS_OFFSET, 0, 0x0, 0x24 },
-    { "area_image_apply_lut", "pixel_data", EXTRA_DUMP_DEREF_PTR, 4, 0x20, 0x80000 },
-    { "tlb_polypixel", "poly_input_r", EXTRA_DUMP_STACK_PTR, 1, 0, 0x84000 },
-    { "sba_get_shifts", "shifts_3a38", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x3a38, 6 },
-    { "sba_get_shifts", "pref_out_3a30", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x3a30, 6 },
+    { "area_image_apply_lut", "r_lut", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 8192 },
+    { "area_image_apply_lut", "g_lut", EXTRA_DUMP_STACK_PTR, 2, 0, 0, 8192 },
+    { "area_image_apply_lut", "b_lut", EXTRA_DUMP_STACK_PTR, 3, 0, 0, 8192 },
+    { "area_image_apply_lut", "img_desc", EXTRA_DUMP_THIS_OFFSET, 0, 0x0, 0, 0x24 },
+    { "area_image_apply_lut", "pixel_data", EXTRA_DUMP_DEREF_PTR, 4, 0x20, 0, 0x80000 },
+    { "tlb_polypixel", "poly_input_r", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x84000 },
+    { "sba_get_shifts", "shifts_3a38", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x3a38, 0, 6 },
+    { "sba_get_shifts", "pref_out_3a30", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x3a30, 0, 6 },
+    /* docs/74 sec69: getShifts reads *(arg1+0x10)+0x3a38 (arg1 = sp[0]), NOT
+     * *(this+0x10)+0x3a38 -- the two getShifts the setShifts body makes use
+     * the same this/arg1, but the caller's third getShifts (0x10101ff6) has a
+     * different arg1. Dump the real read to catch the per-frame Delta. */
+    { "sba_get_shifts", "shifts_3a38_arg1", EXTRA_DUMP_STACK_DEREF2_OFFSET, 0, 0x10, 0x3a38, 6 },
     /* docs/74 sec67: the Preference's OUT proves it runs hi=0x30/lo=3 (out+2
      * matches), yet arg5(mode)=0 is captured. Dump the scene mode word
      * scene+0x5074 directly at getShifts to settle whether the live mode is
      * 0x33 (arg5 capture artifact) or 0 (Preference reads mode elsewhere). */
-    { "sba_get_shifts", "mode_5074", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x5074, 2 },
-    { "sba_preference", "pref_data", EXTRA_DUMP_STACK_PTR, 0, 0, 0x64 },
-    { "sba_preference", "blob", EXTRA_DUMP_STACK_PTR, 3, 0, 0x48 },
+    { "sba_get_shifts", "mode_5074", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x5074, 0, 2 },
+    { "sba_preference", "pref_data", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x64 },
+    { "sba_preference", "blob", EXTRA_DUMP_STACK_PTR, 3, 0, 0, 0x48 },
     /* docs/74 sec68: balanceAreaImage reads the three ramp-shift words from
      * arg4+0x0a (0x10102f85..fa3). Dump them directly to pin scene+0x4b6 --
      * the setShifts OUT plus the per-frame uniform luma offset Delta that is
      * still unlocated (added between setShifts and this read). */
-    { "balance_area_image", "balance_shift_4b6", EXTRA_DUMP_STACK_PTR_OFFSET, 3, 0xa, 6 },
-    { "color_adjust_shift", "impl_fields", EXTRA_DUMP_THIS_OFFSET, 0, 0x0c, 0x28 },
-    { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0 }, /* sentinel */
+    { "balance_area_image", "balance_shift_4b6", EXTRA_DUMP_STACK_PTR_OFFSET, 3, 0xa, 0, 6 },
+    { "color_adjust_shift", "impl_fields", EXTRA_DUMP_THIS_OFFSET, 0, 0x0c, 0, 0x28 },
+    { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0 }, /* sentinel */
 };

@@ -13390,3 +13390,40 @@ differences contradict. The gate before any wiring is one of:
 
 Either way it is a verification step, not an assumption — do not wire the
 per-frame orderFpo until one of these is bit-exact.
+
+## 67 — Contradiction to resolve before wiring: the live Preference runs with mode=0, but A is only reproduced by hi=0x30/lo=3
+
+§64's bit-exact match (`A = preference_shifts_hiNN(hi=0x30, lo=3, cmm=1000,
+orderFpo)`) is real — re-verified 5/5 — but the v17 capture shows the
+Preference's `arg5`(mode) = 0 on **all 10 calls** (leader and analysis pass),
+and mode=0 gives a different output. Both computed for v17 frame 0
+(orderFpo Y=2046, U=70, V=447, cmm=1000):
+
+* `hi=0x30, lo=3` (aim_y=arg1_0=Y, aim_uv=arg1_2/arg1_4=U/V) → `(783,366,127)` = A.
+* `hi=0x00, lo=0` (aim_y=param0, aim_uv=fpo[1]/fpo[2]) → `(1929,-596,-55)` ≠ A.
+
+The arg layout itself was re-derived from the **verified** golden harness
+frame (`ret, param, arg1, out, blob, mode`) and the DLL's reads:
+`[ebp+8]=param`, `[ebp+0xc]=arg1` (null-checked, read `+0/+2/+4` by
+`lo=3`/`hi=0x30`), `[ebp+0x10]=out`, `[ebp+0x14]=blob`, `[ebp+0x18]=mode`.
+The live call `0x10216444` pushes `ebx=scene+0x38a2` first (→ the *param*
+slot, so `param0 = scene+0x38a2[0] = orderFpo Y`) and `edi = 0x1013c4e0`
+(→ the *arg1* slot; `0x1013c4e0` fetches the FOS results and returns NULL
+live, hence arg2=0). So with mode=0 the Preference reads per-frame luma via
+`param0`=orderFpo-Y but constant chroma via `fpo[1]/fpo[2]` — which cannot
+produce A's per-frame chroma.
+
+Mode-setting path (`AnsSbaCapabilityImpl` body, `0x102160a7…0x10216413`) is
+multi-stage — `0x102160a7` sets mode=eax∈{1,3,4}, `0x1021610d` sets 1|di,
+`0x102161a8/bb/c9` ORs `0x20/0x30/0x40` off `[ebp-0x2c]`∈{2,3,4}, `0x10216345`
+forces `hi=0x10` when `bl==0`, `0x10216407` ORs the lo nibble — so `0x33` is
+reachable, but the captured arg5 is 0. Two open resolutions, both unproven:
+
+1. the live mode really is `0x33` and the `arg5`=0 capture is a hook/timing
+   artifact (needs a `[esi+0x5074]` dump at the call), or
+2. `+0x3a38` is written *after* the mode=0 Preference by a second per-frame
+   writer, and §64's match is a coincidence of the Y-aim (param0 ≡ orderFpo-Y
+   ≡ arg1_0) that does not extend to chroma.
+
+Either way, §64's "A = Preference OUT" is **not safe to wire** as stated until
+one is disproved. Do not build the FOS→preference wiring on it.

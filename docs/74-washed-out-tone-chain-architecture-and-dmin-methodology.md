@@ -13476,3 +13476,35 @@ Related, flagged not fixed (mode=0 doesn't reach them): `hi=0x20` (neu) reads
 — both from the *param* struct, not the blob — so the port's `neu`/`lo42`/
 `hi44` (blob-sourced) are also wrong for those two modes. Live-irrelevant for
 the shipped mode=0 path, but wrong byte-for-byte if ever exercised.
+
+## 69 — The Δ is a *third* getShifts call in the setShifts caller, reading a different `+0x3a38`
+
+v19 (`live_hooks_20260817-110241.jsonl`, md5 `740bfe5e…579e01`) pinned the
+balance shift directly: `balance_area_image` reads the three ramp-shift words
+from `arg4+0x0a` = `scene+0x4b6` (cn_enhanced_driver passes `esi+0x4ac`,
+`0x10069837`), and they equal `setshifts_12(A,A) + Δ` with Δ uniform
+(`+12/+91/+64/+65/+14/+77`). The write path:
+
+* `scene+0x4b6` is zeroed by `analyze_scp_lut_balance` (`0x100fd8be`: three
+  `mov word [ebx+0x4b6..0x4ba], ax` with `eax=0`) — that is the *only*
+  `+0x4b6`-immediate store in the DLL.
+* The setShifts caller (`0x10101xxx`, after `setShifts` @ `0x10101f89`) then
+  adds Δ at `0x10102033..57`:
+  `add [eax-4], cx; add [eax-2], dx; add [eax], cx`, where `eax=[esp+0x20]`
+  (the OUT buffer base, i.e. `scene+0x4b6+4`) and `cx/dx` come from
+  `[esp+0x88]/[esp+0x8a]/[esp+0x8c]`.
+* `[esp+0x88..]` is the OUT of a **third** getShifts call, `0x10101ff6`
+  (`call 0x10124000`), whose `this=[esp+0x54]` and `arg1=&[esp+0x30]` differ
+  from the two getShifts the `setShifts` body makes (`0x101002dd/0x10100397`,
+  this=`[esp+0xb4]/[esp+0xbc]`). The getShifts body reads `*(arg1+0x10)+0x3a38`
+  — so this third call reads a **different** `+0x3a38` field than the one the
+  hook dumps (`EXTRA_DUMP_THIS_DEREF_OFFSET` reads `*(this+0x10)+0x3a38`).
+
+So Δ is a per-frame uniform triple stored in a *second* `+0x3a38`-offset field
+(the third getShifts's `arg1+0x10` target), added to `scene+0x4b6` after the
+combine. Two things still to pin (flagging, not assumed): (1) whether this
+third call actually fires in the live flow — v19 shows only 2 `sba_get_shifts`
+per frame, so either the `bl` gate at `0x10101fc4/6` skips it and Δ comes from
+elsewhere, or the third call's hook dump is the wrong offset; (2) what writes
+that second `+0x3a38` field. v20 should dump the third getShifts's real read
+(`*(arg1+0x10)+0x3a38`) and `[esp+0x88]`.

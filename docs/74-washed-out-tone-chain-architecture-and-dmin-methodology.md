@@ -13351,3 +13351,42 @@ in §63–64 is "looks right", every table row is bit-exact against a dump.
   `clamp(i+shift,0,4095)`. The port currently uses the DPI-static mode
   (`preference_shifts_from_dpi_fields`, mode 0x11, `non_flash_adj=0`) and no
   per-frame orderFpo and no Δ — that is the gap to close.
+
+## 66 — The per-frame `orderFpo` writer is a *different* function from the ported FOS — `0x1028b8d0`, not `SbaCalcFosResults`
+
+§62.3 named `0x1028b8d0` the per-frame `scene+0x38a2` writer and §62.4
+claimed "the port equivalent is `fos_analyze_roll`". That equivalence is now
+checked and does **not** hold structurally — the ported FOS is the wrong
+entry point for the per-frame orderFpo, pending a Unicorn/live comparison.
+
+* `0x1028b8d0` — the function the `AnsSbaCapabilityImpl` methods call **5×
+  per frame** (`0x10215d6a/15fae/1605b/1937b/196a9`). It spans
+  `0x1028b8d0…0x1028c45d` (~0xba0 bytes), takes **13** cdecl args
+  (`add esp,0x34`), and calls **8 helper subroutines** — `0x1028abf0`,
+  `0x1028ae00`, `0x1028b570`, `0x1028b650`, `0x1028b6e0`, `0x102ac310`,
+  `0x102ae9d0`, `0x102aece0`(×3) — plus two inline 3-band LUT lookups at
+  `0x1028c480` (planar, `[ecx+4/8/0xc][eax]` → 3×i16) and `0x1028c4b0`
+  (interleaved, `[ecx+4][eax*3+k]` → 3×i16). Its body carries the FOS
+  opponent transform at high multiplicity (9 `MAGIC_Y` / 7 `MAGIC_C1` / 6
+  `MAGIC_C2` / 11 `RGB_SCALE` sites vs `0x1028f570`'s 2/2/2/6).
+* `SbaCalcFosResults @ 0x1028f570` — the ported FOS calc (`fos_calc_results`
+  / `fos_analyze_roll`), **10** args, sole `E8` from `AnsFosCapabilityImpl::
+  analyze` (`0x1024087c`). Its golden leaves live at `0x1028f250…0x10290332`.
+* **No overlap**: `0x1028b8d0` calls none of the ported leaves, and no ported
+  leaf sits in `0x1028b8d0`'s helper range `0x1028abxx…0x102aexx`. The two are
+  separate code paths.
+
+So §62.4's wiring recipe (`fos_analyze_roll → preference`) is **not yet
+earned**: it assumes the roll-wide `SbaCalcFosResults` orderFpo equals the
+per-frame `0x1028b8d0` orderFpo, which the argument-count and helper-set
+differences contradict. The gate before any wiring is one of:
+
+1. Unicorn-execute `0x1028b8d0` on a synthetic frame and diff its OUT against
+   `fos_analyze_roll`'s orderFpo for the same inputs; or
+2. live-capture (v18) the FOS inputs (dens `scene+0x1a`, C banks
+   `+0x388c/+0x3bc8`, dmin `+0x290c`, the `+0x38a0/+0x5978` words, and the
+   `dc_*` params) alongside `scene+0x38a2`, then run `fos_analyze_roll`
+   offline and diff.
+
+Either way it is a verification step, not an assumption — do not wire the
+per-frame orderFpo until one of these is bit-exact.

@@ -945,6 +945,26 @@ const ExtraDumpSpec g_extraDumps[] = {
      * change, and if the buffer is shorter than asked the row comes back
      * readable=false while the 0x64 row above still carries its data. */
     { "sba_preference", "pref_scene_big", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x800 },
+    /* v29b (docs/74 SS97.3) -- arg 2, the ONE input the emulation is missing.
+     *
+     * SS97 executed fcn.1028c780 under Unicorn: it writes the balance shift to
+     * arg2+0x08 and three of six frames reproduce within +-1 (FPU rounding).
+     * The other three are short by a UNIFORM per-channel constant
+     * (-92/-91/-91, -65/-65/-66, -39/-39/-40) -- pure luma by SS96's basis.
+     *
+     * A UC_HOOK_MEM_READ trace over the arg2 window then named the cause
+     * exactly: the function reads **arg2+0x54**, and nothing else in that
+     * region. arg2 has never been dumped -- only arg0 (pref_data, 0x64) and
+     * arg3 (blob, 0x48) are -- and arg2 lies past the end of the pref_data
+     * window, so the harness feeds it 0xCD poison. Frames 1-3 survive that;
+     * frames 4-6 do not.
+     *
+     * So this is not a fishing expedition: one named offset, read on every
+     * call, currently supplied as garbage, and the residual it would explain
+     * is already measured and luma-shaped. 0x80 covers +0x54 with margin and
+     * captures the shift/anchor slots the function WRITES at +0x02/+0x08 as
+     * they stood on entry, which also gives a before/after pair for free. */
+    { "sba_preference", "pref_arg2", EXTRA_DUMP_STACK_PTR, 2, 0, 0, 0x80 },
     /* docs/74 sec68: balanceAreaImage reads the three ramp-shift words from
      * arg4+0x0a (0x10102f85..fa3). Dump them directly to pin scene+0x4b6 --
      * the setShifts OUT plus the per-frame uniform luma offset Delta that is

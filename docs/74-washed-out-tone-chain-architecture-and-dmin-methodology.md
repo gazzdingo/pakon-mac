@@ -16395,3 +16395,133 @@ three-parameter blind optimisation. The end-to-end validation uses §31's own
 render parameters and the same `AA001.tif` every other measurement in this
 doc uses. B's poor RMS is attributed to a specific, identified cause (ICC
 ceiling saturation at its top quantile) rather than left unexplained.
+
+## 84 — The vendor's anchor found in its own shipped DPI (`neu = 975`), and
+the reason no anchor change alone can work: **the port derives `setShifts`
+from `fpo`**, so the two are one coupled defect — and the vendor's real
+shifts come from the per-frame Preference chain §79 already made golden
+
+§83 derived the inversion's anchor empirically at 975.2 / 1038.5 / 970.4 —
+near-uniform, against the port's `fpo = (879, 1250, 1386)` — and flagged
+finding the vendor's real anchor as a bounded search with a numeric target.
+This section runs that search, finds it, tests it, and explains why it is
+not sufficient on its own.
+
+### 84.1 — The anchor is in the shipped DPI
+
+`vendor/ansel/anselinstalldir/dataPathItems/sba/SbaDPI/sba-CN-default-96-1.dpi`
+— the real CN SBA DPI, the same file the port already reads `fpo` from:
+
+```
+    fpa = -75 -50 -25
+    neu = 975  975  975
+    neo = 1010 1010 1010
+    fpo = 879  1250 1386
+    neutralBalancePoint = 1550
+```
+
+**`neu` and `neo` are both channel-uniform and both sit inside §83's fitted
+band.** `neu = 975` matches R's fitted anchor (975.2) to **0.2 codes** and
+B's (970.4) to 4.6. These are vendor values read from vendor data, not fitted
+constants — which is the entire point of looking for them.
+
+Corroboration that this is the right *kind* of field: the DC-Premium DPI
+(`sba-DC-Premium-smallImage.dpi`) carries `fpo = 1679 1679 1679` — uniform —
+and `neutralBalancePoint = 1679`, the same value. For a non-negative source
+the anchor and the balance point coincide and there is no orange mask to
+compensate. CN is where `fpo` acquires its 507-code per-channel spread.
+
+### 84.2 — Tested, and it fails the same way §83's fit did
+
+Substituting each vendor constant as the inversion anchor, rendered through
+the real path and measured against `AA001.tif`:
+
+| anchor | median delta R / G / B | p1 ours |
+|---|---|---|
+| `fpo (879,1250,1386)` — port today | +50 / +98 / +99 | 40 / 81 / 65 |
+| `neu` = 975 (vendor DPI) | **+125** / +72 / +51 | 137 / 37 / 0 |
+| `neo` = 1010 (vendor DPI) | **+127** / +73 / +54 | 144 / 41 / 0 |
+| vendor target | 0 / 0 / 0 | 10 / 11 / 10 |
+
+G and B improve — +98→+72 and +99→+51 — and R degrades hard, +50→+125, with
+its black point climbing to 137. **This is the identical signature §83.3
+reported for the fitted constants**, which is itself informative: two
+independently-derived near-uniform anchors (one fitted, one read from vendor
+data) fail in exactly the same way, so the failure is not in the anchor
+value.
+
+### 84.3 — Why: `setShifts` is derived *from* `fpo`
+
+The port's balance shift is not an independent quantity:
+
+```
+port setShifts      = (683, 297, 151)
+neutralBalancePoint − fpo = 1550 − (879, 1250, 1386) = (671, 300, 164)
+```
+
+Within a few codes on every channel. **The port computes its shift as
+`NBP − fpo`** — so `fpo`'s per-channel spread is what *creates* the shift's
+per-channel spread, and the shift then carries every channel's floor back to
+a common 1550. The two errors are one mechanism, and they partially cancel:
+that cancellation is why the port renders a recognisable image at all, and
+why replacing either half alone makes things worse.
+
+Substituting a uniform anchor while leaving `NBP − fpo` in place is
+internally inconsistent — it removes the spread from one side of a
+subtraction and not the other. R has the largest `fpo` deficit (879 vs a
+~975 anchor) and therefore takes the largest inconsistency, which is exactly
+where the damage lands in §84.2.
+
+### 84.4 — What the vendor actually does instead, already in hand
+
+The vendor does not derive its shift from `fpo` at all. §82.1 decoded the
+real applied per-frame shifts straight out of `area_image_apply_lut`'s own
+LUTs:
+
+| frame | R | G | B |
+|---|---|---|---|
+| 1 | 717 | 303 | 35 |
+| 2 | 818 | 400 | 162 |
+| 3 | 873 | 478 | 205 |
+| 4 | 990 | 591 | 330 |
+| 5 | 592 | 196 | −38 |
+| 6 | 774 | 364 | 122 |
+
+These vary by ~400 codes **across frames of the same roll** — impossible for
+anything derived from a DPI constant, and §82.1 showed they decompose
+exactly as `A + Δ`, the per-frame Preference output plus the per-frame luma
+offset. The port's `NBP − fpo` is a static stand-in for a per-frame
+computation.
+
+**This closes the loop with §79.** The per-frame `orderFpo` triple — the head
+of that Preference chain — is now golden, bit-exact on real hardware data
+(§78/§79). The remaining gap between "golden `orderFpo`" and "correct
+render" is the wiring §76's own handover lists, and this section is the
+evidence that the wiring is not a refinement but *the* fix: the balance
+defect and the anchor defect are the same coupled stand-in, and the
+per-frame chain replaces both halves at once.
+
+### 84.5 — Status
+
+* **Anchor located** (`neu = 975`, vendor DPI, matching §83's fit to 0.2
+  codes on R) — but not adoptable alone (§84.2).
+* **Coupling identified** (`setShifts = NBP − fpo`, §84.3) — this is why
+  §83.3's fit, §84.2's vendor constants, and `7584903`'s linear-domain
+  re-order all break R in the same way. Three independent attempts, one
+  shared cause.
+* **The correct replacement is already verified** — per-frame `A + Δ` from
+  the Preference chain, confirmed twice (§73.6 from the applied `+0x4b6`
+  words, §82.1 from the LUTs), with `orderFpo` golden (§79).
+* **Still blocked on** computing Y's `L` term outside a capture (§78.2's
+  bytecode interpreter), which is what stands between the golden chain and
+  production wiring.
+
+**No production file was changed by this pass.** Every anchor test was run
+by substitution at the call boundary, not by editing the port.
+
+**Verification.** The DPI values are quoted from the shipped file with its
+path; `neu`/`neo` were not inferred from the fit but found by searching the
+vendor data for channel-uniform fields in §83's band and then checked against
+it. The `NBP − fpo` identity is arithmetic on values already in the port and
+the same DPI, shown rather than asserted. Every render number uses §31's
+parameters and the same `AA001.tif` as every other measurement in this doc.

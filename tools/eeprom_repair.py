@@ -33,24 +33,32 @@ import time
 
 import usb.core
 
+# This file lives in tools/ alongside these, so a direct run finds them via
+# Python's own script-directory auto-insert -- but that only holds true for a
+# direct run. The explicit insert makes it hold for an import too.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pakon_usb_guard as guard             # noqa: E402
 from pakon_load import Fx2, HexImage, find_unloaded, find_loaded   # noqa: E402
 from write_guard import require_writes_unlocked, confirm_write     # noqa: E402
 
-VENDOR_IN, VENDOR_OUT = 0xC0, 0x40
-READ, WRITE = 0xA9, 0xA2
+# Protocol constants live in pakon_usb_guard, not redefined here -- see
+# eeprom_backup.py's identical comment; this project has gotten these values
+# wrong before and a second hardcoded copy is how that happens again.
+VENDOR_IN, VENDOR_OUT = guard.VENDOR_IN, guard.VENDOR_OUT
+READ, WRITE = guard.REQ_READ, guard.REQ_WRITE
 
 HEALTHY = bytes([0xC0, 0x05, 0x0F, 0x35, 0xF2, 0x07, 0xAA, 0x04, 0x02])
 VENDOR_FILE = ("/Users/guy/Downloads/Pakon Update 2/fx35install/program files/"
                "Pakon/FirmwareLoader/Personalities/USB F135.bin")
 
 
-def read_personality(dev, length=8, tries=4):
+def read_personality(dev, length=len(HEALTHY), tries=4):
     last = None
     for _ in range(tries):
         time.sleep(0.15)
         try:
-            raw = bytes(dev.ctrl_transfer(VENDOR_IN, READ, 0, 0, length, 5000))
+            raw = bytes(guard.ctrl_transfer(dev, VENDOR_IN, READ, 0, 0,
+                                            length, 5000))
         except usb.core.USBError as exc:
             return f"ERROR: {exc}"
         if last is not None and raw != last:
@@ -117,7 +125,7 @@ def main() -> int:
     print(f"\n  current : {before.hex(' ')}")
     print(f"  target  : {payload.hex(' ')}")
 
-    if before[:8] == payload[:8]:
+    if before == payload:
         print("\n  already correct; nothing to do.")
         return 0
 
@@ -131,7 +139,12 @@ def main() -> int:
 
     print("\n  writing...")
     try:
-        n = dev.ctrl_transfer(VENDOR_OUT, WRITE, 0, 0, payload, 8000)
+        # The boot personality is the replaceable chip -- Kodak ships the
+        # exact bytes. The guard still refuses EEPROM 0x52 regardless of this
+        # unlock; see tools/pakon_usb_guard.py. Scoped to this one call so the
+        # gate re-arms even if a later step raises.
+        with guard.boot_write_unlocked("eeprom_repair.py --write, user-confirmed"):
+            n = guard.ctrl_transfer(dev, VENDOR_OUT, WRITE, 0, 0, payload, 8000)
         print(f"  wrote {n} byte(s)")
     except usb.core.USBError as exc:
         sys.exit(f"  write failed: {exc}\n  EEPROM unchanged as far as can be told; "
@@ -144,14 +157,14 @@ def main() -> int:
         return 1
 
     print(f"\n  read back: {after.hex(' ')}")
-    if after[:8] == payload[:8]:
+    if after == payload:
         print("\n  REPAIRED -- content matches the vendor personality.")
         print("  Power-cycle the scanner. It should now enumerate as")
         print("  0f05:f135 without --hex.")
         return 0
     print("\n  MISMATCH -- the write did not take effect.")
-    print(f"    wanted {payload[:8].hex(' ')}")
-    print(f"    got    {after[:8].hex(' ')}")
+    print(f"    wanted {payload.hex(' ')}")
+    print(f"    got    {after.hex(' ')}")
     return 1
 
 

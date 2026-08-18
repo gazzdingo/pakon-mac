@@ -87,6 +87,55 @@ def test_verify() -> None:
           "CRC is reported unchecked rather than faked")
 
 
+def test_crc_status() -> None:
+    section("crc_status: a real verdict when the buffer is long enough, "
+            "honest 'not checked' otherwise")
+    import zlib
+
+    # A synthetic image with the vendor's real section layout and real
+    # CRC-32s, the same construction test_eeprom_backup.py uses -- built
+    # from pakon_eeprom_check's own SECTIONS so the two can never silently
+    # drift apart.
+    import pakon_eeprom_check as check_mod
+    img = bytearray(b"\x00" * check_mod.HIGHEST_BYTE)
+    for name, off, length in check_mod.SECTIONS:
+        payload = bytes((off // 4 + i) & 0xFF for i in range(length - 8))
+        img[off:off + 4] = length.to_bytes(4, "little")
+        img[off + 4:off + 8] = (zlib.crc32(payload) & 0xFFFFFFFF
+                                ).to_bytes(4, "little")
+        img[off + 8:off + length] = payload
+    image = bytes(img)
+
+    r = cv.crc_status(image)
+    check(r["checked"] is True,
+          "a full-length, well-formed image is actually evaluated", r)
+    check(r["ok"] is True, "and every section verifies", r)
+
+    # calib_device.read_bus()'s actual live length -- must stay "not
+    # checked", not silently evaluated against a truncated buffer.
+    live_length_r = cv.crc_status(image[:256])
+    check(live_length_r["checked"] is False,
+          "a 256-byte buffer (today's live read length) is still honestly "
+          "unchecked, not evaluated-and-failed", live_length_r)
+
+    # The real 2026-08-18 hardware finding: section A itself bad (a short
+    # primary), but its backup covers it -- must be "checked" (there was
+    # enough data) and "ok" (the logical section still verifies), not
+    # conflated with "not checked".
+    broken_a = bytearray(image)
+    broken_a[0x100] ^= 0xFF
+    r2 = cv.crc_status(bytes(broken_a))
+    check(r2["checked"] is True and r2["ok"] is True,
+          "a real read with a bad primary but a good backup is 'checked, "
+          "ok' -- not 'not checked'", r2)
+    check(r2["sections"]["A"] is False and r2["sections"]["A-backup"] is True,
+          "and the per-section detail says exactly which copy failed", r2)
+
+    check(cv.crc_status(b"\xff" * check_mod.HIGHEST_BYTE)["checked"] is False,
+          "a full-length but bus-idle read is still 'not checked', not "
+          "'checked, bad'")
+
+
 def test_read_once_guarantee() -> None:
     section("read-once-per-power-cycle, across process restarts")
     t = sim()
@@ -1265,6 +1314,7 @@ def test_wizard_never_writes_repo_calibration() -> None:
 def main() -> int:
     print("calibration read/backup self-tests -- no scanner required")
     test_verify()
+    test_crc_status()
     test_read_once_guarantee()
     test_second_witness()
     test_probe_failure_fails_closed()

@@ -18171,3 +18171,79 @@ other means — a direct write to the shift field, or a later stage entirely.
 produce for frames 4–6. So the write happens **between** `set_shifts` and
 `balance_area_image`, by something that is not `set_shifts`. That is a
 narrower and more useful target than "the order-wide stage".
+
+## 105 — **`k` LOCATED**: `cn_enhanced_driver` applies it, it is pure luma on
+39/39 frames, and it is not per-strip
+
+The v30 capture (`live_hooks_20260818-082519.jsonl`, md5
+`993716cc2152dbeabebef9e2cfde2531`, 352 MB, a much longer roll — 117 LUT calls
+against v28's 18) answers §101's open question directly.
+
+### 105.1 The measurement
+
+§104.4 narrowed the window to between `set_shifts` and `apply_lut`, and the
+capture's own pointers gave the address: the shift lives at
+`cn_enhanced_driver arg1 + 0x4b6` (which is where `balance_shift_4b6` got its
+name). One row, `cn_shift_before`, dumps arg 1 at that function's **entry** —
+39 dumps, 39 readable.
+
+Comparing that against the LUT actually applied one call later:
+
+```
+  cn call      before (+0x4b6)        applied LUT        delta
+  21239     (693, 363,  93)      (718, 388, 118)     +25 +25 +25
+  21248     (619, 176, -53)      (619, 176, -53)       same
+  21266     (653, 281,   5)      (613, 241, -35)     -40 -40 -40
+  21293     (402,  41,-152)      (482, 121, -72)     +80 +80 +80
+  21311     (876, 479, 212)      (886, 489, 222)     +10 +10 +10
+  21338     (949, 561, 283)      (891, 503, 225)     -58 -58 -58
+```
+
+**The luma is added inside `cn_enhanced_driver`.** Preference's chroma passes
+through untouched, exactly as §99/§100.3 predicted.
+
+### 105.2 Pure luma, 39 of 39
+
+```
+  frames: 39      deltas uniform across R, G and B: 39/39
+```
+
+Not one frame where the channels differ by even a single code. `k` is a pure
+move along `(1,1,1)` — the luma axis of §96's basis — now confirmed on 39
+independent frames rather than the 3 that §97 had. This is the strongest
+evidence yet for §96's chroma/luma decomposition, and it was obtained without
+emulating anything.
+
+### 105.3 The strip hypothesis is refuted
+
+§101.5 recorded, explicitly as an observation and not evidence, that the
+correction was zero on frames 1–3 and non-zero on 4–6 — the right shape for
+per-strip state, given the vendor works in strips of 4–6 frames. The longer
+roll settles it:
+
+```
+  k = [25, 0, 0, -40, 0, -40, 80, 0, 10, 0, 0, -58, 0, 0, 0, 0, 0, 59,
+       0, 0, 0, 0, -23, -17, 7, -11, 33, 87, 0, 73, 64, 32, 18, 94, 0, 0, 0, 0, 0]
+
+  21 of 39 frames have k = 0, and the zeros are scattered irregularly
+```
+
+No period, no reset at any 4–6 frame boundary, and long runs of zero (five at
+the start of the tail, five at the end). **Not per-strip**, and not a
+monotonic running quantity either — §101.3's "decreases by ~26.5 per frame"
+was an artefact of reading three points. Both candidate stories are dead.
+
+That `k` is zero on 21 of 39 frames is itself the most useful new fact: the
+correction is **conditional**, not continuous. Something about a frame decides
+whether it gets trimmed at all.
+
+### 105.4 What is now open, and what is not
+
+**Closed:** where `k` is applied (`cn_enhanced_driver`), what it is (pure
+luma), that it is not per-strip, and that Preference's chroma is final.
+
+**Open:** what decides `k`'s value, and what decides whether it is zero. With
+39 frames and 18 non-zero values there is now enough data to test candidate
+inputs properly rather than fit three points — and every per-frame quantity in
+this capture (`orderFpo` triples, `L`, the scene stats) can be tested against
+it offline.

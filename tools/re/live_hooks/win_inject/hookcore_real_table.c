@@ -1078,5 +1078,46 @@ const ExtraDumpSpec g_extraDumps[] = {
     { "sba_vm_interp", "vm_prog1", EXTRA_DUMP_DEREF_PTR, 1, 4, 0, 0x800 },
     { "sba_vm_interp", "vm_prog2", EXTRA_DUMP_DEREF_PTR, 2, 4, 0, 0x800 },
     { "sba_vm_interp", "vm_prog3", EXTRA_DUMP_DEREF_PTR, 3, 4, 0, 0x800 },
+    /* v28 (docs/74 SS88) -- the ONE row that unblocks Y's `L` term.
+     *
+     * SS88 ported the interpreter and located `L` exactly: the 23rd record
+     * with type == 1 is record 156, whose whole body is `PUSH v133 ; STORE
+     * v156`, so L == vars[133]. Computing it needs the input vector `in[]`,
+     * which lives at (fpo_calc's arg 11) + 0x3c, 736 x u32.
+     *
+     * WHY NO EXISTING CAPTURE CAN SUPPLY IT. Extra dumps fire on ENTRY only
+     * (LogExtraDumps is called solely from HookEntryC), and `in[]` is filled
+     * later inside the same 0x1028b8d0 call, before fcn.102ac310 runs. The
+     * region IS already inside arg11_big above -- and measured across all 48
+     * arg11_big dumps of both v27 rolls it is 736 u32 of ZERO, with the whole
+     * 4608-byte buffer holding just 5 non-zero words (indices 992..996,
+     * outside in[]). So this is a timing gap, not a coverage gap, and no
+     * re-reading of captures in hand can close it.
+     *
+     * sba_order_fpo_helper (0x1028ae00) already runs AFTER the fill -- it is
+     * called from 0x1028c023, downstream of it -- and is already hooked, so
+     * this needs no new hook, no thunk, and no HOOKCORE_MAX_HOOKS change:
+     * one dump row only.
+     *
+     * WHICH ARG: MEASURED, NOT DERIVED. This arg-index arithmetic has been
+     * got wrong three times (v22, v24, v26), each costing a hardware round
+     * trip, so it was not derived from the prologue a fourth time. Both
+     * hooks already log their first 16 raw stack dwords, so the answer was
+     * read straight out of the v27 captures: for every helper call, exactly
+     * ONE stack index equals the enclosing fpo_calc call's arg 11 --
+     * index 1, uniquely, 12/12 on roll A and 12/12 on roll B. (argsPtr =
+     * ebp+44 with the return address at ebp+40, hookstub.S:58-60, so
+     * stack_dwords[0] is the FIRST argument.)
+     *
+     * WHY THE WHOLE BUFFER AND NOT arg1+0x3c. A STACK_PTR_OFFSET row at
+     * +0x3c would re-stake the result on the offset being exactly right --
+     * the same shape of assumption that cost v22 four bytes and v24 an
+     * offset-vs-total misreading. Dumping from the base at 0x1200 subsumes
+     * in[] wherever it starts (0x3c + 0xb80 = 0xbbc < 0x1200) and is byte-
+     * for-byte comparable with arg11_big above: same buffer, same span, one
+     * snapshot before the fill and one after. The diff of those two IS the
+     * evidence that the fill happened. ~4.6 KB x 12 helper calls = ~55 KB
+     * per capture. */
+    { "sba_order_fpo_helper", "arg1_big_filled", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x1200 },
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0 }, /* sentinel */
 };

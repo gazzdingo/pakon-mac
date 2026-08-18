@@ -16923,3 +16923,84 @@ two independent rolls. No new hook, no new function, no re-derivation.
 **No production, golden or existing port file was changed by this pass.** The
 only new file is `tools/ansel/python-pipeline/pakon_vm.py`; scratch scripts live
 in `/tmp/pakon_re/vm/` and are not committed, per this doc's convention.
+
+## 89 — v28 capture row prepared: the helper's arg 1 index **measured** from
+captures in hand, and proof that no existing capture can supply `L`'s input
+vector
+
+§88 located `L` exactly (`vars[133]`, record 156 = `PUSH v133 ; STORE v156`)
+and named the blocker: the input vector `in[]` at `(fpo_calc arg11) + 0x3c`,
+736 × u32. This section closes the two questions that stood between that and a
+build, both **without hardware**.
+
+### 89.1 No capture in hand can contain it — measured, not argued
+
+The natural objection is "use a capture we already have". The region *is*
+already inside `arg11_big`, which is 4608 bytes and covers `0x3c + 0xb80 =
+0xbbc`. So the bytes were dumped. They are empty:
+
+```
+roll A (cf67eec3…): 24 arg11_big dumps — 736 u32 in the region, 0 non-zero
+roll B (b7b02a79…): 24 arg11_big dumps — 736 u32 in the region, 0 non-zero
+whole 4608-byte buffer: 5 non-zero words, indices 992..996 — outside in[]
+```
+
+All 48 dumps, both rolls. The structural reason is that extra dumps fire on
+**entry only** (`LogExtraDumps` is called solely from `HookEntryC`,
+`hookcore.c` ~line 645), and `in[]` is filled later inside the same
+`0x1028b8d0` call. So this is a **timing gap, not a coverage gap**, and it is
+independent of which capture is chosen — v22 through v27 alike.
+
+Correcting §88 on one number: it reported "56 of ~740 entries populated" at
+entry. On the offsets §88 itself specifies, the measurement is **0 of 736**.
+The conclusion is unchanged and slightly stronger; the figure was wrong.
+
+### 89.2 The arg index: read out of the captures, not derived a fourth time
+
+This arithmetic has been got wrong three times — v22 (arg6 four bytes short),
+v24 (offset read as a total), v26 (a missed `push ebp`) — each costing a
+hardware round trip. So it was not re-derived from the prologue.
+
+Both hooks already log their first 16 raw stack dwords on every entry, which
+makes the question answerable from data in hand. For every
+`sba_order_fpo_helper` call, take the enclosing `sba_order_fpo_calc` call's
+`stack_dwords[11]` and ask which of the helper's own stack dwords equals it:
+
+```
+roll A: 12 helper calls — stack index(es) equal to calc's arg11: [1]  x12
+roll B: 12 helper calls — stack index(es) equal to calc's arg11: [1]  x12
+```
+
+**Index 1, uniquely, 24/24 across both rolls.** No other index ever matches,
+so there is no ambiguity to hedge against. The convention is fixed by
+`hookstub.S:58-60` (`argsPtr = ebp+44`, return address at `ebp+40`), so
+`stack_dwords[0]` is the **first** argument.
+
+### 89.3 The row, and why it dumps the base rather than `+0x3c`
+
+```c
+{ "sba_order_fpo_helper", "arg1_big_filled", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x1200 },
+```
+
+A `STACK_PTR_OFFSET` row at `+0x3c` would re-stake the result on the offset
+being exactly right — the same shape of assumption that cost v22 and v24.
+Dumping from the base at `0x1200` subsumes `in[]` wherever it starts
+(`0xbbc < 0x1200`) and is byte-for-byte comparable with `arg11_big`: same
+buffer, same span, one snapshot **before** the fill and one **after**. The
+diff of those two is itself the evidence that the fill happened. Cost ~4.6 KB
+× 12 helper calls ≈ 55 KB per capture.
+
+`sba_order_fpo_helper` is **already hooked** (0x1028ae00, v24), so this needs
+no new hook, no `DEFTHUNK`, and no `HOOKCORE_MAX_HOOKS` change — the
+§46.8/§47 coupling rule does not apply to a dump row. `check_table_sync.py`
+before and after: `OK: 32 hooks, identical (dll, va, id) in identical order`.
+Built clean; `arg1_big_filled` verified present in the emitted `hookdll.dll`.
+
+### 89.4 Status
+
+**Prepared, not run.** Nothing here is evidence about `L` itself — it is the
+apparatus for getting it. When the scanner is next connected, one scan with
+this build yields the vector, and `pakon_vm.l_term()` can be checked against
+the 12 values both rolls already carry (A: 125, 30, −102, −296, 223, 64;
+B: −186, −44, −2, −8, 38, 125). Until that runs, §88's port remains validated
+for decode/termination only, **not** for arithmetic.

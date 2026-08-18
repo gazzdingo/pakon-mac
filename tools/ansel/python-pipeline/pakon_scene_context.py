@@ -143,6 +143,8 @@ import struct
 from dataclasses import dataclass, field
 from typing import Sequence
 
+import numpy as np
+
 SCENE_CONTEXT_DMIN_PORTED = True
 SCPLUT_DMIN_REMAP_PORTED = True
 BADDSCENE_DMIN_PACK_PORTED = True
@@ -365,14 +367,20 @@ def find_dmin_code_from_samples(
 
     ``thr`` defaults to ``len(samples) // 1000`` via the magic mul.
     Sample values are masked to ``n_bins-1`` (DLL ``movzx`` path).
+
+    Histogram is built with ``np.bincount`` rather than a pure-Python
+    per-sample loop (docs/62 §6; bit-identical vs. the loop, ~55-60x
+    faster on real capture data — see docs/74 sec.. perf follow-up).
     """
     n = int(n_bins)
-    hist = [0] * n
-    n_pix = 0
     mask = n - 1
-    for v in samples:
-        hist[int(v) & mask] += 1
-        n_pix += 1
+    arr = np.asarray(samples)
+    n_pix = int(arr.size)
+    if n_pix:
+        masked = np.bitwise_and(arr.astype(np.int64, copy=False), mask)
+        hist = np.bincount(masked, minlength=n)
+    else:
+        hist = np.zeros(n, dtype=np.int64)
     if thr is None:
         thr = find_dmin_thr_n_pixels(n_pix)
     return find_dmin_code_from_hist(hist, int(thr), n_bins=n)

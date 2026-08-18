@@ -39,12 +39,15 @@ from collections import defaultdict
 from pathlib import Path
 
 from unicorn import (UC_ARCH_X86, UC_HOOK_MEM_INVALID, UC_MODE_32, Uc, UcError)
+from unicorn import UC_HOOK_CODE
 from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EIP,
                                UC_X86_REG_ESP, UC_X86_REG_FPCW)
 
 IMAGE_BASE = 0x10000000
 STACK = 0x0BF00000
 STACK_SZ = 0x00800000
+HEAP = 0x0A000000          # CRT stub heap; must not collide with the real
+HEAP_SZ = 0x01000000       # captured buffers (0x08xx_xxxx / 0x09xx_xxxx)
 RET_MAGIC = 0x00110000
 FPCW_WINDOWS = 0x027F
 PAGE = 0x1000
@@ -88,10 +91,133 @@ class Emu:
         self.uc.mem_map(RET_MAGIC & ~0xFFF, PAGE)
         self.uc.mem_write(RET_MAGIC, b"\xC3")
         self.uc.mem_write(0, struct.pack("<I", 0xFFFFFFFF))
+        self.uc.mem_map(HEAP, HEAP_SZ)
+        self._imp_pages: set[int] = set()
         self.uc.reg_write(UC_X86_REG_FPCW, FPCW_WINDOWS)
+        self.brk = HEAP + PAGE
         self._mapped: set[int] = set()
         self.faults: list[str] = []
+        self.crt_calls: list[str] = []
+        self.scene_base: int | None = None
+        self.arg_bases: dict[int, int] | None = None
         self.uc.hook_add(UC_HOOK_MEM_INVALID, self._on_bad_mem)
+        self._stub_bound_imports()
+
+    # -- CRT imports ------------------------------------------------------
+    def alloc(self, size: int, zero: bool) -> int:
+        size = max(int(size), 4)
+        p = self.brk
+        self.brk = (self.brk + size + 0x40) & ~0xF
+        if self.brk >= HEAP + HEAP_SZ:
+            raise RuntimeError("stub heap exhausted")
+        # calloc must zero; malloc must NOT -- poison it so a caller that
+        # relies on malloc'd memory being zero fails loudly instead of
+        # accidentally matching.
+        self.uc.mem_write(p, (b"\x00" if zero else b"\xCD") * size)
+        return p
+
+    def _stub_bound_imports(self) -> None:
+        """Map + stub every bound import address in the IAT.
+
+        This DLL ships with **bound imports**: its IAT already contains real
+        MSVCR71/MSVCP71 addresses (e.g. calloc -> 0x0068bd78) rather than
+        unresolved RVAs, so the code calls straight into a module this
+        harness does not load. Rather than guess which imports matter, every
+        bound target gets a mapped page with a `ret`, and the handful that
+        must actually behave (the allocators) get real implementations.
+        Anything else that is genuinely reached is recorded in
+        ``crt_calls`` -- so an unimplemented CRT call shows up as a named
+        entry to fix, never as a silent wrong answer.
+        """
+        pe = self.pe
+        e = struct.unpack_from("<I", pe, 0x3C)[0]
+        opt = e + 24
+        magic = struct.unpack_from("<H", pe, opt)[0]
+        dd = opt + (96 if magic == 0x10B else 112)
+        imp_rva, imp_sz = struct.unpack_from("<II", pe, dd + 8)
+        if not imp_rva:
+            return
+
+        secs = []
+        ns = struct.unpack_from("<H", pe, e + 6)[0]
+        osz = struct.unpack_from("<H", pe, e + 20)[0]
+        so = opt + osz
+        for i in range(ns):
+            o = so + i * 40
+            vsz, va, rsz, raddr = struct.unpack_from("<IIII", pe, o + 8)
+            secs.append((va, max(vsz, rsz), raddr))
+
+        def rva2off(rva):
+            for va, sz, raddr in secs:
+                if va <= rva < va + sz:
+                    return raddr + (rva - va)
+            return None
+
+        def cstr(off):
+            end = pe.index(b"\x00", off)
+            return pe[off:end].decode("latin1")
+
+        self.imports: dict[int, str] = {}
+        d = rva2off(imp_rva)
+        while d is not None:
+            oft, _, _, name_rva, first_thunk = struct.unpack_from("<IIIII", pe, d)
+            if name_rva == 0 and first_thunk == 0:
+                break
+            dll_name = cstr(rva2off(name_rva))
+            t_off = rva2off(first_thunk)
+            n_off = rva2off(oft) if oft else t_off
+            k = 0
+            while True:
+                bound = struct.unpack_from("<I", pe, t_off + k * 4)[0]
+                hint = struct.unpack_from("<I", pe, n_off + k * 4)[0]
+                if bound == 0 and hint == 0:
+                    break
+                if hint & 0x80000000:
+                    fname = f"#{hint & 0xFFFF}"
+                else:
+                    ho = rva2off(hint & 0x7FFFFFFF)
+                    fname = cstr(ho + 2) if ho is not None else "?"
+                if bound and bound < IMAGE_BASE:
+                    self.imports[bound] = f"{dll_name}!{fname}"
+                k += 1
+            d += 20
+
+        for addr in sorted(self.imports):
+            page = addr & ~(PAGE - 1)
+            if page not in self._imp_pages:
+                self.uc.mem_map(page, PAGE)
+                self.uc.mem_write(page, b"\xC3" * PAGE)
+                self._imp_pages.add(page)
+
+        for addr, name in self.imports.items():
+            short = name.split("!")[-1]
+            if short in ("calloc",):
+                self._hook_crt(addr, name, lambda e, a: (
+                    e.alloc(e.r32(a) * e.r32(a + 4), True), 0))
+            elif short in ("malloc", "??2@YAPAXI@Z"):
+                self._hook_crt(addr, name, lambda e, a: (
+                    e.alloc(e.r32(a), False), 0))
+            elif short in ("free", "??3@YAXPAX@Z"):
+                self._hook_crt(addr, name, lambda e, a: (0, 0))
+            else:
+                self._hook_crt(addr, name, None)
+
+    def _hook_crt(self, va: int, name: str, fn) -> None:
+        def cb(uc, address, size, _u):
+            self.crt_calls.append(name)
+            esp = uc.reg_read(UC_X86_REG_ESP)
+            ret = struct.unpack("<I", uc.mem_read(esp, 4))[0]
+            if fn is not None:
+                res = fn(self, esp + 4)
+                eax = res[0] if isinstance(res, tuple) else res
+                if eax is not None:
+                    uc.reg_write(UC_X86_REG_EAX, eax & 0xFFFFFFFF)
+            uc.reg_write(UC_X86_REG_ESP, esp + 4)
+            uc.reg_write(UC_X86_REG_EIP, ret)
+        self.uc.hook_add(UC_HOOK_CODE, cb, begin=va, end=va)
+
+    def r32(self, a: int) -> int:
+        return struct.unpack("<I", self.uc.mem_read(a, 4))[0]
 
     def _load(self) -> None:
         pe = self.pe
@@ -127,8 +253,25 @@ class Emu:
         self.uc.mem_write(addr, data)
 
     def _on_bad_mem(self, uc, access, address, size, value, _u):
+        """Record the fault, and express it relative to the scene base.
+
+        A raw address is nearly useless for planning the next capture; the
+        same fault expressed as ``arg N + 0xNNN`` names exactly which dump
+        row was too small. ``scene_base`` is set by the caller from arg 12
+        (``scene+0x38a2``), the mapping confirmed two independent ways in
+        docs/74 §73.4/§74.2.
+        """
+        rel = ""
+        if self.scene_base is not None:
+            off = address - self.scene_base
+            rel = f" scene{off:+#x}"
+            for idx, base in (self.arg_bases or {}).items():
+                d = address - base
+                if 0 <= d < 0x20000:
+                    rel += f" == arg{idx}+{d:#x}"
+                    break
         self.faults.append(
-            f"access={access} addr={address:#010x} size={size} "
+            f"access={access} addr={address:#010x}{rel} size={size} "
             f"eip={uc.reg_read(UC_X86_REG_EIP):#010x}")
         return False
 
@@ -212,16 +355,42 @@ def load_capture(path: Path):
     return cases
 
 
-def run_case(pe: bytes, args, bufs, verbose=False):
+def run_case(pe: bytes, args, bufs, gate: tuple[int, int] | None = None):
+    """Execute the real function once.
+
+    ``gate`` is a DIAGNOSTIC-ONLY escape hatch and must be left ``None`` for
+    any run that claims to be golden. It substitutes the two words at
+    ``arg6+0x104/+0x106`` that the bounds check at
+    ``0x1028b928``/``938``/``945``/``94e`` reads. Both loaded registers are
+    provably dead immediately afterwards (``ecx`` overwritten at
+    ``0x1028b967``, ``edx`` at ``0x1028b98d``, neither read in between), so
+    those words affect only whether the early-exit branch is taken — and the
+    real hardware demonstrably did not take it. Substituting several very
+    different bracketing ranges produces byte-identical behaviour, which is
+    evidence they do not feed the arithmetic; it is NOT a substitute for
+    capturing the real bytes, because the same write also overwrites poison
+    that later code could read through ``arg6``.
+    """
     emu = Emu(pe)
     for label, (addr, data) in bufs.items():
         emu.place(addr, data)
+    emu.scene_base = args[12] - 0x38A2
+    emu.arg_bases = {i: args[i] for i in ARG_DUMP}
+    if gate is not None:
+        emu.place(args[6] + 0x104, struct.pack("<hh", gate[0], gate[1]))
     emu.call(ORDER_FPO_CALC, args)
-    pref = args[12]
-    return struct.unpack("<hhh", emu.read(pref, 6))
+    return struct.unpack("<hhh", emu.read(args[12], 6))
+
+
+GATE: tuple[int, int] | None = None   # diagnostic only -- see run_case
 
 
 def main(argv):
+    global GATE
+    if "--diag-gate" in argv:
+        argv = [a for a in argv if a != "--diag-gate"]
+        GATE = (0, 4095)
+        print("*** DIAGNOSTIC MODE: arg6 gate words substituted -- NOT a golden run ***")
     if len(argv) < 2:
         print(__doc__)
         return 2
@@ -242,7 +411,7 @@ def main(argv):
     npass = nfail = nerr = 0
     for cid, args, bufs, exp in cases:
         try:
-            got = run_case(pe, args, bufs)
+            got = run_case(pe, args, bufs, gate=GATE)
         except RuntimeError as ex:
             nerr += 1
             print(f"  call {cid:4d}  ERROR  {ex}")

@@ -15730,3 +15730,369 @@ re-implementing the walk. Both re-diff runs (before and after the fix) used
 identical parameters, and the pre-fix run was additionally repeated with
 §31's explicit `film_base` to confirm the difference was attributable to
 detection rather than to any other change.
+
+## 81 — §80's G/B excess localised by inverting the vendor's own ICC profile
+pair: the error is **not** G/B-specific and **not** clipping — it is a common
+~+480-code excess introduced at the balance/inversion boundary, and §61's
+re-order is **not in this branch's code at all**
+
+§80 closed with "G and B remain ~+98/+99 … it is a narrower, better-shaped
+target than the original uniform-excess framing, but it is open." This
+section runs that target to ground. The headline: the channel-specific
+framing is an artefact of *where each channel's median sits on the ICC
+curve*. Measured in the domain the pipeline actually works in, all three
+channels carry the same defect.
+
+### 81.1 — §80's baseline reproduced first, unchanged
+
+**All measurements in §81.1-§81.5 and §81.7-§81.8 are at `3561c9c`** (§80's
+own commit, this branch's HEAD when this pass started). §61's re-order landed
+mid-pass as `7584903` and is measured separately in §81.6.
+
+`rediff.py` re-run verbatim before touching anything: `AA001.tif`
+(md5 `483a9ec9399bb1b2ed606c2485072d94`), `scan-20260812-091633.bin`
+(md5 `b47bd402f5bc06c306f295c0bca3cdc7`), `PAKON_COLOUR_ENGINE=python`,
+`film_path="ColNeg"`, frame 0, `scale="preview"`. Auto `film_base` =
+`[3210, 2534, 2448]`, `setshifts_out = (683, 297, 151)`. Median delta
+**R +50, G +98, B +99** — identical to §80's, to the code. Everything below
+is measured against that run.
+
+### 81.2 — Stage-by-stage: nothing clips, at either rail, anywhere
+
+`f135_rom12_to_rpd12`, `sba_apply.apply_balance_shifts`,
+`pakon_ansel.apply_1d_lut`, `real_auto_tone` and `rpd12_to_icc_u8` wrapped
+in-process (production functions called, not re-implemented), frame 0,
+per-channel `[p1, p50, p99]` and the fraction of pixels sitting on each rail:
+
+```
+stage                     R                     G                     B          rails (0 / 4095)
+1 poly linear12    [ 548, 1408, 3112]    [ 652,  970, 2456]    [ 755,  951, 2353]   0.0% / R 0.3%, G 0.0%, B 0.0%
+2 rpd12 post-log   [ 893, 1267, 1774]    [1267, 1850, 2254]    [1409, 2145, 2567]   0.0% / 0.0%
+3 balanced (dens)  [1576, 1950, 2457]    [1563, 2146, 2550]    [1560, 2296, 2717]   0.0% / 0.0%
+4 post-FUGC lut    [1554, 1949, 2456]    [1531, 2145, 2549]    [1466, 2295, 2716]   0.0% / 0.0%
+5 post-autoTone    [1440, 1676, 2237]    [1436, 1880, 2314]    [1372, 2093, 2429]   0.0% / 0.0%
+6 sRGB             [  40,  140,  251]    [  81,  201,  253]    [  65,  238,  254]
+```
+
+**Question 3 of this pass, answered: there is no clipping in our pipeline.**
+Not one channel puts a measurable fraction of pixels on 0 or on 4095 at any
+stage after the polynomial (R's 0.3 % at the linear 4095 is the known
+poly-domain leader saturation of §31.2, and it is 0.3 %, not a mechanism).
+The top-end crush §80 flagged in B (`p50=238, p95=254, p99=254`) is created
+**at the ICC step and nowhere else**: driving a neutral ramp through the same
+`Rpd2Pcs_HR200_QS_v5s10.pf → Srgb_v2.pf` pair the render uses gives
+`2176→250, 2304→253, 2432→254`, and 254 is the ceiling — the profile pair
+never emits 255 on the neutral axis. 47.4 % of our *pre-tone* B and 1.6 % of
+our *toned* B sit above 2400. So B's crush is a **consequence** of B's
+distribution sitting high, not an independent clipping bug. Cause vs. effect,
+settled.
+
+### 81.3 — The vendor's TIFF inverted through the vendor's own profile pair
+
+The render's last stage is a vendor-shipped ICC pair —
+`vendor/ansel/anselinstalldir/dataPathItems/profile/Rpd2Pcs_HR200_QS_v5s10.pf`
+(md5 `c1d4f3bba8f06f3427ccfaff5c30b559`, 207 372 B) and `Srgb_v2.pf`
+(md5 `95bd003685a81450184af6aaf1d0e31c`, 124 246 B); the run's own
+`ICC: Rpd2Pcs_HR200_QS_v5s10.pf → Srgb_v2.pf` line confirms §21's silent
+fallback did **not** engage. That makes the transform invertible against
+real vendor data: `AA001.tif`'s percentiles can be carried *backwards*
+through the same profile pair into the toned-RPD12 domain, and compared with
+ours there instead of in sRGB.
+
+Inverted on a 3-D grid (RPD12 600..2600 step 16, 1 953 125 triples through
+one `ImageCms` call, nearest match; residual ≤ 2 sRGB codes on every row —
+so this is a real inverse, not a fit). A neutral-axis 1-D inverse run
+independently agrees to ≤ 12 codes at every percentile.
+
+```
+        vendor sRGB      vendor RPD12        ours RPD12        ours − vendor
+p1     [ 10, 11, 10]   [ 936,  952,  936]  [1440, 1436, 1372]  [+504, +484, +436]
+p5     [ 17, 17, 18]   [1048, 1032, 1064]  [1514, 1496, 1429]  [+466, +464, +365]
+p25    [ 48, 60, 83]   [1320, 1352, 1464]  [1601, 1632, 1606]  [+281, +280, +142]
+p50    [ 90,103,139]   [1480, 1512, 1624]  [1676, 1880, 2093]  [+196, +368, +469]
+p75    [149,177,200]   [1672, 1752, 1816]  [1760, 1961, 2218]  [ +88, +209, +402]
+p95    [235,239,246]   [2008, 2040, 2088]  [1995, 2101, 2325]  [ −13,  +61, +237]
+```
+
+**The shape of the defect, stated plainly.** At the shadow end the three
+channels are wrong by the *same* amount — +504/+484/+436 at p1, +466/+464/+365
+at p5. There is no G/B-specific term there at all. What differs per channel
+is *dynamic range*: the vendor's toned p1→p95 span is **1072 / 1088 / 1152**
+codes — three channels within 80 codes of each other — while ours is
+**555 / 665 / 953**, a spread of 398. Our R is contrast-starved, our G less
+so, our B is close to right.
+
+### 81.4 — Confirmed by construction: one number, not three
+
+Taking the toned RPD12 straight out of `real_auto_tone` and subtracting a
+**single uniform constant from all three channels** (not a per-channel fit —
+one number), then running the unmodified `to_srgb`:
+
+```
+offset      median sRGB      median delta      p1 sRGB
+  0        [140, 201, 238]   [+50, +98, +99]   [40, 81, 65]
+−300       [ 38, 116, 182]   [−52, +13, +43]   [ 0, 24, 18]
+−400       [ 23,  88, 154]   [−67, −15, +15]   [ 0, 16, 11]
+−450       [ 19,  74, 140]   [−71, −29,  +1]   [ 0, 13,  7]
+−500       [ 15,  63, 125]   [−75, −40, −14]   [ 0, 10,  5]
+vendor     [ 90, 103, 139]                     [10, 11, 10]
+```
+
+A single −450 puts **all three** shadow ends on the vendor's (`p1` 0/13/7
+against 10/11/10) and B's median exactly on the vendor's (140 against 139).
+What is left over is R −71 and G −29 — the contrast deficit of §81.3, not an
+offset. So of §80's "R +50 / G +98 / B +99": **B's error is entirely the
+common offset, G's is mostly it, and R's smaller number is not R being
+healthier — it is R's own contrast deficit cancelling about half of the same
+common offset at the median.** The channel-specific framing §80 arrived at is
+an artefact of the ICC curve's slope at three different operating points.
+This offset is a *measurement of the gap*, not a proposed correction — it is
+not wired anywhere and must not be.
+
+### 81.5 — Where the common offset is introduced: the balance/inversion boundary, and it is structural, not numerical
+
+Our own p1 density is `(893, 1267, 1409)` = `fpo (879, 1250, 1386)` +
+`(14, 17, 23)` — i.e. the frame's brightest linear pixels (`lin` p99 =
+`3112, 2456, 2353`) land essentially on the roll's `film_base`
+(`3210, 2534, 2448`), which `f135_rom12_to_rpd12` maps to `fpo` by
+construction. `apply_balance_shifts` then adds `setShifts (683, 297, 151)`,
+carrying that floor to `(1562, 1547, 1537)` — the port's own docstring
+(`tools/pakon_decode.py:1010-1014`) states this is the design: *"filmBase … is
+placed on the DPI's fpo … because the SBA balance that runs next is sized to
+carry it from there to the neutral balance point: fpo + setShifts =
+1567/1542/1516 against nbp 1550."* Measured post-balance p1 is
+`(1576, 1563, 1560)`. The design does exactly what it says.
+
+The problem is what 1550 *is*. §1 of this doc established, from the shipped
+`ansel-dra-default-default.dpi` and from bit-exact-verified `cna`, that 1550
+is the **mid-tone anchor**: `lowFixedPoint = highFixedPoint = 1550`,
+`paperMin = 1200`, `paperMax = 2000` bracketing it, `cna.tone_scale_lut[1550]
+= 1550` identity at the anchor, and — §1's own conclusion — *"nowhere in this
+… mechanism is there a step that says take whatever this scene's own darkest
+content is and pull it down to true black."*
+
+The measurement above closes that loop for the first time against a real
+vendor reference: **the vendor's own median lands on the anchor** (implied
+RPD12 p50 = 1480/1512/1624, straddling 1550), while **the port lands the film
+base — scene black — on the anchor** and pushes its median to 1676/1880/2093.
+The common ~+480-code excess is, to within the precision of this measurement,
+the distance from a scene's black to its mid-grey.
+
+**Localisation, stated as narrowly as the evidence supports:** the error is
+introduced **at the `f135_rom12_to_rpd12` + `apply_balance_shifts` boundary**
+— before `analyzeAutoTone`, which §1 already showed cannot and does not move
+a black point; not in FUGC, whose LUT is near-identity here (p50 1949→1949,
+2145→2145, 2295→2295); not in the ICC, which is the vendor's own profile pair
+and was used in both directions; and not by clipping, per §81.2. This is the
+same locus §31.4 nominated as one of two candidates and §60 attacked from the
+other side — now with the stage boundary fixed by measurement rather than by
+elimination.
+
+### 81.6 — §61's re-order was **not in this branch's code**, landed mid-pass, and measurably destroys the R channel
+
+Discovered while instrumenting, and load-bearing for how §80 should be read.
+On `worktree-tender-gliding-abelson` at `3561c9c`:
+
+- `tools/pakon_decode.py:1043-1045` computes
+  `dens = 1000·(log10(base−ped) − log10(lin−ped))` with **no** `setShifts`
+  term; the `setshifts` argument is consumed only by the `quiet=False` print
+  block at `:1046-1053`. The docstring at `:995` still carries the pre-§61
+  formula.
+- `tools/ansel/python-pipeline/pakon_ansel.py:847-850` still calls
+  `sba_apply.apply_balance_shifts(x, self.setshifts_out)` on the **density**.
+
+`git log -S"apply_balance_shifts" -- tools/ansel/python-pipeline/pakon_ansel.py`
+last touches this at `0d89eee` (the FUGC ebp18 wiring), and the
+`per-frame-balance` branch's own copy of both files is byte-identical to this
+branch's. §61's three edits exist only as **uncommitted working-tree
+modifications in the shared checkout** `/Users/guy/www/pakon-mac` (branch
+`calibration-and-tone-port`), where `pakon_decode.py` does carry
+`lin = clip(lin + setshifts, 0, 4095)` and `render_scene` does drop the
+density-domain apply.
+
+**So §80's measurement — and this section's baseline — are of *pre*-§61 code.**
+§80's own framing ("after §60/§61 changed the render path") is not true of the
+branch it measured. Nothing in §80's film_base finding is affected (that path
+is upstream of the balance and its numbers stand), but the "post-§61" label on
+`R +50 / G +98 / B +99` is wrong and is corrected here.
+
+Simulated exactly per §61's description (shift moved into the linear domain
+before the log, density-domain apply neutralised, everything else identical):
+
+```
+                       median sRGB       median delta      toned p1
+current (density)     [140, 201, 238]   [+50, +98, +99]   [1440, 1436, 1372]
+§61 (linear)          [  0, 125, 200]   [−90, +22, +61]   [ 790, 1200, 1374]
+vendor                [ 90, 103, 139]                     [ 936,  952,  936]
+```
+
+G and B move most of the way (+98→+22, +99→+61); R collapses, with **99.6 %
+of R pixels clipped to sRGB 0** by the ICC gamut once R sits that far below
+G/B. The reason is visible in the floors: in the linear order the `fpo` spread
+(879/1250/1386) is no longer cancelled by `setShifts`, so the black point
+lands at 790/1200/1374 — spread 584 — where the vendor's is 936/952/936,
+spread 16. §61's re-order has tier-2 evidence behind its *position* (§60) and
+is right to be pursued, but as written it replaces a neutral-but-too-high
+black point with a badly non-neutral one.
+
+**And it landed while this pass was running.** Commit `7584903` ("apply the
+SBA balance shift in the LINEAR domain, before the log … the code the docs
+already claimed was applied") makes exactly the three edits §61 describes —
+`lin = clip(lin + setshifts, 0, 4095)` in `f135_rom12_to_rpd12` and the
+dropped density-domain apply in `render_scene`/`pakon_parity` — and is now
+this branch's HEAD via merge `772f9ab`. Re-running `rediff.py` unmodified on
+that tree, same capture, same reference, same parameters:
+
+```
+              p0.1    p1     p5    p50    p95    p99   p99.9
+R  ours:         0     0      0      0      0      0      3
+R  AA001:        0    10     17     90    235    252    255
+G  ours:        17    34     39    125    153    177    190
+G  AA001:        8    11     17    103    239    251    255
+B  ours:        36    66     73    200    216    228    237
+B  AA001:        7    10     18    139    246    255    255
+median delta: R −90, G +22, B +61
+```
+
+**The R channel is gone** — zero at every percentile through p99, first
+non-zero at p99.9. This is not a percentile artefact: it is the ICC gamut
+clipping a channel that now sits 400-500 codes below the other two, exactly
+as the simulation above predicted, and it is destructive (the information is
+not recoverable downstream). Measured, on the real tree, not simulated.
+
+Stated plainly, without recommending an action this pass has no authority to
+take: `7584903` is correct about *position* (§60 is tier-2 bit-exact) and its
+G/B numbers do improve, but end to end it is a regression against `3561c9c`,
+because it removes the term that was incidentally neutralising `fpo`'s
+per-channel spread without supplying whatever the vendor uses in its place.
+The missing piece is named in §81.5 and §81.9: what the vendor's density
+anchor actually is once the balance no longer lands on it. Flagged here with
+the measurement rather than reverted, per this repo's rule that a
+just-committed change with real evidence behind it is the owner's call, not a
+passing pass's.
+
+### 81.7 — Clean negative: the per-frame `setShifts` gap does not explain it
+
+v25 (`live_hooks_20260817-181440.jsonl`, md5
+`7f048c8fecbd314ed7080a3c4756775c`) carries the vendor's **actually applied**
+balance shifts for six real frames, as `balance_area_image`'s
+`balance_shift_4b6`, cross-checked against the same scan's
+`area_image_apply_lut` `r/g/b_lut` ramp origins:
+
+```
+frame       1              2              3              4              5              6
+4b6    (717,303,35)  (818,400,162)  (873,478,205)  (990,591,330)  (592,196,−38)  (774,364,122)
+lut[0] (717,303,35)  (818,400,162)  (873,478,205)  (990,591,330)  (592,196,  0)  (774,364,122)
+3a38   (750,335,68)  (788,370,132)  (858,463,191)  (956,557,296)  (661,265, 30)  (763,354,111)
+```
+
+(frame 5's B ramp is `clamp(i−38, 0, 4095)`, so its `lut[0]` reads 0 — ramp
+origin and `4b6` word agree.) The port's DPI-static value on the
+`scan-20260812-091633` roll is `(683, 297, 151)`.
+
+Substituting each of the six **real** triples for the port's static one, same
+frame, same everything else — **a sensitivity test on a different scan, not a
+verification**, since v25 is not a capture of the `AA001` roll:
+
+```
+shift              median delta        shift              median delta
+port (683,297,151)  [+50, +98, +99]    (990,591,330)      [+99, +124, +106]
+(717,303, 35)       [+72, +105, +92]   (592,196,−38)      [+45,  +92,  +87]
+(818,400,162)       [+81, +111, +99]   (774,364,122)      [+75, +109,  +97]
+(873,478,205)       [+86, +116, +100]
+```
+
+Across the **entire** range the vendor's own per-frame balance actually spans,
+G's error moves only between +92 and +124 and B's only between +87 and +106,
+against errors of +98 and +99. The port's static value already sits at the
+favourable end. **The per-frame `setShifts` gap (§59, §62-§79) cannot account
+for the G/B excess — it is worth at most ±16 sRGB codes of it, and every real
+triple is neutral-to-worse in the current order.** This is a genuine negative
+on the lead this pass was asked to test, and it is consistent with §59's own
+reasoning (a per-frame variation cannot produce a constant offset) now backed
+by an end-to-end measurement rather than an argument. In the §61 linear order
+the same six triples move G between −27 and +27 and B between +42 and +69,
+with R pinned at −90 by the gamut clip in every case.
+
+### 81.8 — `fpo` and `c9` checked against their own citations
+
+Asked directly, because both are cited elsewhere as "live-confirmed" and that
+phrase is doing different work in the two cases.
+
+* **`fpo = (879, 1250, 1386)` — the per-channel *values* are tier-2
+  confirmed.** §63.1's v16 `sba_preference` `blob` dump (arg4, the nested-fpo
+  struct) reads `fpo=(879,1250,1386)` **constant across all six frames** out
+  of the running vendor DLL, matching the shipped DPI defaults verbatim; §5
+  independently establishes it is DPI-static in the real DLL, §29 that no
+  per-unit correction exists. The citations do support the per-channel
+  numbers, G and B included.
+* **`c9 = (159.594, 444.750, 635.535)` — real per-unit data, read from the
+  file.** §33.1 reads them directly out of this unit's `film_class=1`
+  NegMatrix (the one every ColNeg render uses) as the pedestal column of the
+  three polynomial rows. That is a real read of real per-unit calibration,
+  not an inference.
+* **Neither citation supports their *role*.** `F135_INVERT_PORTED = False`
+  (`tools/pakon_decode.py:585`; docs/63's own table: *"no DLL call site has
+  been shown to compute this exact arithmetic"*). `fpo` as the additive
+  density anchor and `c9` as a pre-log linear pedestal are both part of the
+  reconstructed formula, not of anything verified. So the honest answer to
+  "are `c9` and `fpo` correct for G/B" is: **the values are right and the
+  equation that consumes them is unverified** — and §81.3's finding that our
+  per-channel dynamic ranges (555/665/953) diverge where the vendor's do not
+  (1072/1088/1152) is a per-channel *contrast* discrepancy, which is exactly
+  what `c9` controls in that equation (`1000·log10((hi−c9)/(lo−c9))` widens
+  monotonically with `c9`, and our three ranges are monotone in `c9`). Named
+  as an observation with its magnitude quantified — **not** tuned, and not
+  claimed: no vendor evidence in this pass says the `c9` subtraction is wrong,
+  only that the formula containing it is the last unverified stage and that
+  the residual after removing the common offset has the shape that stage would
+  produce.
+
+### 81.9 — What this settles and what it does not
+
+* **Settled.** §80's G/B-specific framing is superseded: measured in the
+  toned-RPD12 domain, all three channels carry a common ~+480-code excess at
+  the shadow end (+504/+484/+436), and a single uniform −450 puts every
+  channel's shadows and B's median on the vendor's. G and B are not separately
+  broken.
+* **Settled.** No clipping anywhere in the linear or density domain; B's
+  top-end crush is produced by the vendor's own ICC pair reaching its 254
+  ceiling at RPD12 ≈ 2432, and is a consequence of the excess, not a cause.
+* **Settled.** The excess is introduced at the balance/inversion boundary,
+  upstream of `analyzeAutoTone` (which §1 showed cannot move a black point)
+  and downstream of the polynomial. The mechanism is structural: the port
+  anchors *film base* on `nbp = 1550`, which §1's own `dra`/`cna` evidence
+  shows is the **mid-tone** anchor, and the vendor's real render puts its
+  **median** there.
+* **Settled, negative.** The per-frame `setShifts` gap accounts for ≤ ±16 sRGB
+  codes of a ~98-code error, measured against the vendor's own six real
+  applied triples.
+* **Settled, correction.** §61's code changes were not on this branch when
+  §80 measured; §80's numbers are pre-§61. They landed mid-pass as `7584903`.
+  Measured on that tree, §61 as written moves G/B toward the vendor
+  (+98→+22, +99→+61) and **drives R to zero at every percentile through p99**
+  — an end-to-end regression against `3561c9c`, quantified in §81.6.
+* **Not settled.** What the vendor actually puts on 1550, and therefore what
+  the correct density anchor is. Two things would decide it, both live: a
+  capture of any vendor buffer *downstream* of `area_image_apply_lut` (v25
+  hooks `analyze_auto_tone` and `icc_xform_apply` at enter/leave but dumps no
+  pixels at either — a `pixel_data`-style dump on one of them would give the
+  real post-balance density directly), and the per-frame `orderFpo`→RGB anchor
+  §63.1 already has live values for (879/1279/1537 … 657/1047/1244 across six
+  frames) but which nothing in the render path consumes.
+* **No production code changed.** Every candidate this pass examined is either
+  unverified or measurably worse; per this repo's standard, nothing was
+  shipped on the strength of a better number alone.
+
+**Verification.** `tools/test_calib.py` 200/200 and `tools/test_render_f135.py`
+PASS on both trees measured here (`3561c9c` and the post-`7584903` HEAD) —
+worth noting on its own: **neither test catches a render whose entire R
+channel is zero**, which is a real gap in the harness of the same family as
+§19's. Every figure above comes from the production
+functions called in-process and wrapped, never re-implemented — the ICC
+inverse uses `AnselEngine.to_srgb` itself, the stage taps wrap
+`f135_rom12_to_rpd12` / `apply_balance_shifts` / `apply_1d_lut` /
+`real_auto_tone`, and the shift sweep drives `render_scene` with only
+`setshifts_out` changed. The §61 simulation reproduces §61's own three
+described edits exactly and was cross-checked against the shared checkout's
+uncommitted implementation of them.

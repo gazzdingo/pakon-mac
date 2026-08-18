@@ -103,7 +103,14 @@ LIMITS -- what this does NOT yet cover
   to download the stage-1 loader over ``0xA0``. The three EEPROM tools all
   import it, so the ``0xA0`` denial here is a good default but does **not**
   yet close the route that did the original damage. Routing ``Fx2`` through
-  this module would.
+  this module would NOT simply close it as-is: ``check()`` denies every
+  ``0xA0`` transfer unconditionally (see "the raw-I2C route" above), and
+  ``0xA0`` is also how ``Fx2.reset_8051()``/``download()`` legitimately push
+  the CPUCS reset and stage-1 loader that every EEPROM tool run starts with.
+  Routing ``Fx2`` through here today would deny that too. Actually closing
+  this gap needs the allow-list to tell a known-good stage-1 firmware image
+  apart from an arbitrary ``0xA0`` payload (e.g. by hash), which is real,
+  separate work -- not done here.
 * Chip selection is firmware-held state (that is what the ``0xA4`` select
   *is*), so which chip a later boot-path request lands on could in principle
   depend on what was selected earlier in the same power cycle -- possibly by

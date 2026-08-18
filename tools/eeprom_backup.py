@@ -53,19 +53,25 @@ import sys
 import time
 
 import usb.core
-
-import pakon_eeprom_check as check
-import pakon_usb_guard as guard
 import usb.util
 
+# This file lives in tools/ alongside these three, so a direct run finds them
+# via Python's own script-directory auto-insert -- but that only holds true
+# for a direct run. The explicit insert makes it hold for an import too.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pakon_eeprom_check as check          # noqa: E402
+import pakon_usb_guard as guard             # noqa: E402
 from pakon_load import Fx2, HexImage, find_unloaded   # noqa: E402
 
-VENDOR_IN = 0xC0
-VENDOR_OUT = 0x40
-SELECT = 0xA4
-READ = 0xA9
-WINDEX = 0x1234
+# Protocol constants live in pakon_usb_guard, not redefined here: this file
+# got the vendor's parameters wrong twice already (see the module docstring
+# above), and a second, independently-hardcoded copy is exactly how a future
+# correction to one and not the other goes unnoticed by the allow-list.
+VENDOR_IN = guard.VENDOR_IN
+VENDOR_OUT = guard.VENDOR_OUT
+SELECT = guard.REQ_SELECT
+READ = guard.REQ_READ
+WINDEX = guard.WINDEX_DEVICE
 CHUNK = 32                  # the vendor's own chunk size (0x1001618e: cmp esi, 0x20)
 
 

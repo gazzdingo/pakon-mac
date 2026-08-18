@@ -33,14 +33,19 @@ import time
 
 import usb.core
 
-import pakon_usb_guard as guard
-
+# This file lives in tools/ alongside these, so a direct run finds them via
+# Python's own script-directory auto-insert -- but that only holds true for a
+# direct run. The explicit insert makes it hold for an import too.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pakon_usb_guard as guard             # noqa: E402
 from pakon_load import Fx2, HexImage, find_unloaded, find_loaded   # noqa: E402
 from write_guard import require_writes_unlocked, confirm_write     # noqa: E402
 
-VENDOR_IN, VENDOR_OUT = 0xC0, 0x40
-READ, WRITE = 0xA9, 0xA2
+# Protocol constants live in pakon_usb_guard, not redefined here -- see
+# eeprom_backup.py's identical comment; this project has gotten these values
+# wrong before and a second hardcoded copy is how that happens again.
+VENDOR_IN, VENDOR_OUT = guard.VENDOR_IN, guard.VENDOR_OUT
+READ, WRITE = guard.REQ_READ, guard.REQ_WRITE
 
 HEALTHY = bytes([0xC0, 0x05, 0x0F, 0x35, 0xF2, 0x07, 0xAA, 0x04, 0x02])
 VENDOR_FILE = ("/Users/guy/Downloads/Pakon Update 2/fx35install/program files/"

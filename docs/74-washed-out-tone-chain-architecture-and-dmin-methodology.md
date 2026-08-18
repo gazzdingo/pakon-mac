@@ -17827,3 +17827,68 @@ against the cheap experiment that could refute it. Overwriting the suspect
 region with three fills costs one script and settles it outright. Both
 corrections were found by asking "what would make this wrong?" — and both times
 the answer was available offline, before any hardware was spent.
+
+## 101 — The luma correction is applied **downstream of Preference**, per
+render, and is zero for the first three frames
+
+Narrowing §100's residual, offline.
+
+### 101.1 It is not the inputs
+
+Neither the arguments nor the captured `pref_data` distinguishes the frames
+that reproduce from the frames that do not:
+
+* every one of the six calls has the same scalar args (`arg1=0, arg4=0,
+  arg6=0`);
+* **no** `int16` field anywhere in `pref_data` separates frames 1–3 from 4–6
+  (tested exhaustively: no field where the two groups' ranges are disjoint).
+
+Combined with §100.2 — the shift is invariant to the whole un-captured window —
+the emulation is being given everything Preference itself uses.
+
+### 101.2 The call structure, which explains it
+
+```
+  3300 helper   3301 preference   3302 set_shifts   3303-4 get_shifts
+  3305 cn_driver -> 3306 apply_lut -> ... -> 3313 analyze_auto_tone   render 1
+  3314 cn_driver -> 3315 apply_lut -> ... -> 3322                     render 2
+  3323 cn_driver -> 3324 apply_lut -> ...                             render 3
+  ...
+```
+
+**One `sba_preference` per scene, then all six renders afterwards.** The shift
+`apply_lut` applies is therefore not necessarily the value Preference left —
+anything in the per-render `cn_enhanced_driver` / `analyze_*` chain can adjust
+it in between.
+
+### 101.3 What that means for the residual
+
+Per frame, ours vs the vendor:
+
+```
+  frame 1   0        frame 4   +92 / +91 / +91
+  frame 2   ±1       frame 5   +65 / +65 / +66
+  frame 3   ±1       frame 6   +39 / +39 / +40
+```
+
+Uniform across channels in every case — pure luma in §96's basis, with the
+chroma matching to under a code (§100.3). So Preference fixes the chroma
+correctly for all six, and a **per-render luma correction** is applied
+afterwards: zero for the first three frames, then +92, +65, +39.
+
+Note the correction *decreases* by ≈26.5 per frame across 4→6. That is
+suggestive of a running quantity, but "suggestive" is all it is — extrapolating
+the same slope backwards predicts large corrections for frames 1–3, and those
+are zero. **No formula is proposed here**; the pattern is recorded so the next
+capture can test it rather than a fit being reverse-engineered from six points.
+
+### 101.4 Consequence for the next capture
+
+The target has moved. `pref_scene_big` (§95.5) is superseded by §100 and would
+teach us nothing. What is wanted instead is the shift **as it stands at each
+`apply_lut`**, versus **as Preference left it** — i.e. a dump on the
+per-render chain (`cn_enhanced_driver` or `balance_area_image`'s own inputs),
+which would show directly where the luma is added and by how much.
+
+`balance_shift_4b6` already gives the *final* value (§95.1). The missing half is
+the value *before* the per-render chain touches it.

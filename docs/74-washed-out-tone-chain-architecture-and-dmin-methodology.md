@@ -17229,3 +17229,83 @@ open question — the ~172 ms of unhooked work between writes).
 **Nothing is wired from this.** The probe prints and restores. Changing
 `BLACK_TARGET_WIRE`, the accept window, or `calibration/` is a separate
 reviewed change under docs/71's timestamp-never-overwrite rule.
+
+## 93 — The vendor's per-frame shift is **one scalar**: `shift[f,c] = A[c] + k[f]`,
+rms 4.4 codes — and the AFE offset is ruled out as the washed-out cause
+
+Two results, one negative and one structural.
+
+### 93.1 The AFE offset does NOT cause the washed-out look
+
+§92 fixed the convergence loop and it now finds `(-23, -25, -18)` against the
+vendor's `(-19, -26, -19)`. A full scan was taken with the vendor's offsets
+passed in-memory (nothing promoted) and rendered. The scene-independent
+measurement barely moved:
+
+```
+                    pre-tone RPD p1 floor
+  baseline (0,-6,2)     901   1282   1419
+  vendor (-19,-26,-19)  926   1284   1438      G +2, B +19
+  vendor's own AA001    928    944    928
+```
+
+**Structural reason:** the inversion pins p1 to `fpo` by construction —
+`f135_rom12_to_rpd12` maps `film_base → fpo`, and `film_base` is measured from
+the same capture, so an AFE shift moves the pixels and the anchor together and
+normalises out. Ours sits at `fpo + (47, 34, 52)`; the vendor's `928/944/928`
+is **not** at its `fpo` for G and B.
+
+The AFE work stands as a correctness fix (black really was +1022 codes off),
+but it is **not** the washed-out cause. Recording this so it is not
+re-litigated. Also correcting an in-flight read of mine: the sRGB frame means
+did drop, but those were *different photographs* — the scene-independent
+number is the one to believe, and it shows no real change.
+
+### 93.2 The shift decomposes to a per-channel base plus ONE per-frame scalar
+
+The v28 capture carries the same 18 `area_image_apply_lut` calls §82.1 found:
+12 identity (preview/analysis) and **6 real render passes**. Decoding
+`lut[i] − i` over `i = 200…3800`:
+
+```
+  800  388  136        829  402  167        798  360  130
+  889  458  221        833  405  169        766  351   96
+```
+
+Subtracting the port's `NBP − fpo = (671, 300, 164)` and fitting
+`D[f,c] = A[c] + k[f]`:
+
+```
+  A = [148.2, 94.0, -10.8]   (i.e. absolute base [819.2, 394.0, 153.2])
+  k = [-14.1, 10.6, -26.1, 67.2, 13.6, -51.1]
+  residual max 8.1, rms 4.41
+```
+
+**Eighteen numbers reproduced by nine.** The per-frame balance work is a
+*single scalar*; the channel structure is constant across frames. This is the
+forward-side shape §84.4 predicted when it said the vendor does not derive its
+shift from `fpo`.
+
+Note `A[B] = 153.2` against the port's `151` — B's base is already right
+within 2 codes. R (`819` vs `683`) and G (`394` vs `297`) are where the base
+is wrong, matching the G/B asymmetry seen in the RPD floor.
+
+### 93.3 What is NOT established
+
+`k` is **not** `L`, at least not pairwise as captured:
+
+```
+  k = [-14, 11, -26, 67, 14, -51]
+  L = [-12, -56, 11, 7, 54, 121]     signs agree on 3 of 6
+```
+
+The two hook sites need not enumerate scenes in the same order, so the
+correspondence must be *established* before `k` and `L` can be compared —
+fitting a permutation until they agree would manufacture a result. Recorded as
+open, not as a negative.
+
+**Next:** establish the scene correspondence between `area_image_apply_lut`'s
+render passes and the `orderFpo`/helper calls (both carry per-scene pointers
+that should identify the frame), then test whether `k` is computable from
+`orderFpo` + `L`. That is the remaining link between the solved VM and the
+balance shift.

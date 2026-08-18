@@ -17466,3 +17466,56 @@ Built; `pref_scene_big` verified present in the emitted `hookdll.dll`
 
 **Staged, not uploaded** — the drop server was unreachable at the time of
 writing. Upload and one scan closes this.
+
+## 96 — Why `A + k` works: `sba_preference` computes in the **orthonormal
+opponent basis**, so `k` is a pure luminance move and `A` is chroma
+
+Static, from `PakonIMAu.dll` md5 `eea9dcf78ee21d4f7c515a6c2512242d`,
+`af`+`pdf` at `fcn.1028c780`'s own boundary (1411 B). Tier 3 — strongly
+indicated by the constants, not yet emulated.
+
+The function's FPU constants are diagnostic:
+
+```
+  0x105a6f38 = 0.5773502717  = 1/sqrt(3)
+  0x105a6f30 = 0.4082482976  = 1/sqrt(6)
+  0x105a6f28 = 0.7071067624  = 1/sqrt(2)
+  0x105a69e0 = 1.7320508     = sqrt(3)
+```
+
+`1/√3`, `1/√2`, `1/√6` appearing together is the orthonormal opponent-colour
+basis:
+
+```
+  Y = (R + G + B)/sqrt(3)      luminance      axis (1, 1, 1)
+  U = (R − B)/sqrt(2)          red-blue
+  V = (R − 2G + B)/sqrt(6)     green-magenta
+```
+
+**This explains §93's decomposition.** A term added *equally to all three
+channels* is, by definition, a pure move along `(1,1,1)` — the **Y axis** in
+this basis. So `shift[f,c] = A[c] + k[f]` is not an empirical curiosity that
+happened to fit at rms 4.4: it is the vendor's own **chroma/luma split**,
+recovered from the applied LUTs without knowing the basis, and then found to
+hold on a second roll (§94.2).
+
+* **`A[c]`** — the chroma part: the film's fixed colour balance. Stable across
+  rolls (G within 5 codes), which is what a film-level constant should be.
+* **`k[f]`** — the luminance part: a per-frame exposure correction. Varies per
+  scene, and varies far more on some rolls than others (spread 387 vs 118).
+
+It also reframes §94.1's negative. `orderFpo`'s `Y` not correlating with `k` is
+consistent rather than puzzling: the luminance term applied here is computed by
+**Preference from the scene**, not carried in from `orderFpo`. `orderFpo`
+supplies the triple Preference *consumes*; `k` is what Preference *produces*.
+
+**Consequence for the port.** `tools/pakon_decode.py` computes its shift as
+`NBP − fpo` directly in RGB. The vendor computes in opponent space and rotates
+back. That is a structural difference, not a numeric one — and it is the most
+likely reason substituting a uniform anchor into the RGB formula broke R
+(§84.2/§61) while leaving B nearly right: an RGB-space substitution cannot
+express a luma-only move.
+
+**Not claimed:** the exact expression for `k`. The constants establish the
+*basis*; they do not give the scene statistic Preference feeds into the Y axis.
+That is what v29's `pref_scene_big` row (§95.5) is for.

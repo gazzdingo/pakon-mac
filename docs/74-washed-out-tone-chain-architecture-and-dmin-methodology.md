@@ -16548,3 +16548,40 @@ Together these close off the two cheap routes and leave sec78.2's finding standi
 What this does NOT block: U and V are fully derived and golden (sec79), the dens arrays needed to compute them are captured, and sec84 identified the anchor. The wiring is blocked on L alone.
 
 No production file changed.
+
+
+## 86 - The VM scoped: programs captured, short, generated per scene, and a small real opcode set (encoding 262/264 recovered)
+sec84 established the per-frame Preference wiring is THE fix and sec85 closed the two cheap routes to Y's L term, leaving the bytecode interpreter (sec78.2) as the thing in the way. This scopes it.
+
+STATIC FIRST, NO HARDWARE (sec86.1). The dispatch is two-stage: movzx from a 254-byte index table at 0x102ac018, then jmp through a 51-entry table at 0x102abf4c. Reading the index table shows the 254 opcodes collapse to 51 handler indices, and index 50 alone covers 203 of them -- the default/invalid case. So there are 50 real handlers, not 254.
+
+THE v26 CAPTURE FAILED, AND WHY (sec86.2). It fired 3168 times and every dump came back readable=false. Cause, from the capture's own raw stack_dwords: sp[2] = 0, sp[1] = a live pointer. The derivation missed a push --
+
+    0x102aadf3  push ebx
+    0x102aadf4  push ebp        <- missed
+    0x102aadf5  mov ebp,[esp+0x3c]
+
+two pushes precede the load, so [esp+0x3c] is arg 1, not arg 2. Third time this arithmetic has cost a hardware round trip (v22's arg6 four bytes short, v24's arg0 read as a total rather than offset-plus-length, now this). v27 dumps all four low arg indices instead of the derived one, which removes the error class rather than promising more care; vm_prog1 came back readable 3168/3168, confirming arg 1 exactly.
+
+WHAT THE PROGRAMS ARE (sec86.3). From v27 (live_hooks_20260817-212408.jsonl, md5 cf67eec3...):
+
+- 3168 interpreter calls per capture -- not ~6/frame, so the VM is used broadly across the pipeline, not only on the orderFpo path.
+- Every program terminates within the 0x800 dump (no truncation).
+- Programs are SHORT: 6-28 words including the halt, most commonly 6 (1452 calls), 10 (348), 7 (192), 18 (168), 28 (132), 21 (96).
+- 264 DISTINCT programs across the 3168 calls, and 3168 distinct contexts. So the bytecode is generated/parameterised per scene, NOT one static program -- which answers the question this capture was built for.
+- Every program starts with opcode 1.
+
+ENCODING, 262/264 RECOVERED (sec86.4). Requiring every captured program to parse exactly to its 0xff halt is a strong constraint, and it recovers the shape: opcode 1 is a PUSH whose operand count depends on its first operand (a type/source selector -- type 6 takes one more word, type 4 takes two), while the other opcodes take fixed counts. Worked examples:
+
+    [1,6,15, 1,6,617, 4,2,3, 255]                 -> push(6,15) push(6,617) op4(2,3) halt
+    [1,4,0,24, 1,4,0,36, 5,2,2, 255]              -> push(4,0,24) push(4,0,36) op5(2,2) halt
+
+A greedy solve over the operand table parses 262 of 264. The two stragglers are consistent with a different assignment for opcodes 4/5/6, and an exhaustive search over the six dominant opcodes did WORSE (151/264) because it constrained the long tail badly -- recorded as a failed approach rather than quietly dropped. Finishing this needs per-branch disassembly of each handler (the summed `add edi` counts over-count, since they total every path), which is static work needing no further capture.
+
+HONEST STATUS. The opcode count reported earlier as "51 distinct" is an UPPER BOUND, not a result: it classified any value mapping to a non-default handler as an opcode, and short operands (the 6 in "1, 6, 643") get miscounted that way too. The true set is smaller and is not yet pinned.
+
+WHAT THIS MEANS FOR THE PORT. Bounded, but larger than "port 50 handlers": the programs are generated per scene, so a port needs the generator as well as the interpreter. Against that, the programs themselves are tiny and the operand encoding is nearly recovered, and 264 real programs with their contexts are now in hand as test vectors.
+
+Next capture worth having (not blocking): the same v27 build on a DIFFERENT roll, to establish whether the 264 programs are roll-dependent or fixed. That single fact changes the size of the port substantially and only a second roll can answer it.
+
+No production file changed.

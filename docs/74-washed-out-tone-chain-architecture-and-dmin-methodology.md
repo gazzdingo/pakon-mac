@@ -17580,3 +17580,75 @@ with `A` being film-level and therefore reproducible without history.
 non-arbitrary miss. The remaining term is a specific, named thing to find — not
 a mystery — and `pref_scene_big` (§95.5, v29, built) plus the neighbouring
 roll-level structures are where to look.
+
+## 98 — Correcting §97: "zero faults" did not mean "all inputs captured".
+Preference reads to `arg0+0x1e4`; we dump `0x64`. **384 bytes have been fed as
+poison in every capture we own** — and that is why 3 of 6 frames failed
+
+§97 reported that `sba_preference` emulates with zero memory faults and
+concluded Preference "does not read outside the `0x64`/`0x48` windows already
+captured." **That conclusion was wrong**, and the error is worth stating
+plainly because it is a trap the harness design creates.
+
+### 98.1 Why the fault count was silent
+
+`Emu.place()` maps whole **4 KB pages** and poison-fills them (`0xCD`). A read
+past the end of a 100-byte dump but *inside* its page therefore hits mapped
+memory and raises **no fault at all**. The poison exists so short dumps "fail
+loudly" — but only when *written back and compared*, never at read time.
+
+So a zero fault count proves reads stayed inside mapped pages. It says nothing
+about whether they stayed inside captured data.
+
+Instrumenting reads against the *dumped byte ranges* rather than the pages:
+
+```
+  frame 1 (call 1951): 144 POISON reads, first at pref_data + 0x64
+  frame 4 (call 2761): 144 POISON reads, first at pref_data + 0x64
+```
+
+`0x64` is exactly where the dump ends. And the furthest read:
+
+```
+  highest byte read from arg0: 0x1e4  (484 bytes)   dump is 0x64 (100)
+```
+
+**384 bytes of real input have been supplied as `0xCD` on every call, in every
+capture this project has ever taken.** Frames 1–3 tolerated it; 4–6 did not —
+which is the whole of §97's 3/6.
+
+### 98.2 A second correction: `arg2+0x54` is not an input
+
+§97.3's follow-up claimed the function reads `arg2+0x54` as a missing input.
+Also wrong. A read/write-*ordered* trace shows the write comes first:
+
+```
+  0x1028c884  mov  word [esi + 0x54], cx      <- WRITE
+  0x1028c8eb  cmp  word [esi + 0x54], ax      <- read, as a loop bound
+  0x1028c8ff  cmp  ax, word [esi + 0x54]
+  events at arg2+0x54: [('W', 208601232), ('R', 0), ('R', 0), ...]
+```
+
+It is an internal temporary. No capture can or should supply it. The `pref_arg2`
+row is kept on different grounds — arg2 is where Preference *writes* the anchor
+(`+0x02`) and shift (`+0x08`), so an entry-time dump makes the next capture
+self-checking — and its comment now says so.
+
+Also checked and cleared: every DLL global the function reads
+(`0x10573c40`, `0x105943c0`, `0x105a0800`, `0x105a6f28/30/38/40`) lives in
+**`.rdata`**, so file-initial values are runtime values and no mutable global
+state is involved.
+
+### 98.3 What this changes
+
+The `pref_scene_big` row (§95.5, `0x800` on arg 0) was proposed on a *guess*
+that Preference reads beyond its window. It does — now measured, to `+0x1e4`,
+with `0x800` covering it comfortably. The row is unchanged; only its evidence
+is, from speculation to measurement.
+
+**And §97's headline stands with a smaller claim.** The emulation genuinely
+runs, genuinely writes the shift to `arg2+0x08`, and genuinely reproduces three
+frames within ±1 — *while being fed 384 bytes of garbage*. That it gets any
+frame exactly right under those conditions is evidence the port of the
+surrounding structure is sound. The 3/6 is not a mystery to solve; it is a
+known-deficient input, with the deficit measured and the fix built.

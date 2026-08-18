@@ -235,20 +235,50 @@ answered. Step 4 is now gated on one new, well-scoped question.**
    grep of the function body for `[ebp+N]` stores refuted it. No further
    capture is needed for this question.
 
-5. **NEXT — trace the six locals into real inputs.** Knowing *where* the
-   write is does not yet give the arithmetic. The porting target is now
-   bounded and fully static: find where `var_28h`, `var_dch`, `var_2ch`,
-   `var_64h`, `var_68h`, `var_30h` are computed in the case-0 body, back
-   through its `MAGIC_Y`/`MAGIC_C1`/`MAGIC_C2` opening-axis arithmetic
-   (docs/74 §72.3 describes the shape) to the function's real inputs —
-   which, per §73.4, are now live-confirmed for arg 5 (the DPI blob,
-   `(879,1250,1386)`), arg 11 (`fosDmin`, `(297,734,964)` on the live
-   `arg3==0` path) and arg 12 (`pref_data`). Then port and Unicorn-verify
-   against the six known-good per-scene triples the v21 capture already
-   recorded: (2079,58,465), (2041,72,447), (1914,48,455), (1731,54,451),
-   (2233,65,431), (2056,67,444). **Those six values are a ready-made
-   golden test** — a port that reproduces them from real inputs is correct
-   by this project's own Tier-1 standard, with no new hardware needed.
+5. ~~**Trace the six locals into real inputs**~~ — **DONE for five of six;
+   the sixth is a named, well-scoped capture request** (docs/74 §76). The
+   write decomposes as
+
+   ```
+   orderFpo.Y = fos_opening_axes(arg5).Y  + L[-0x200]      <-- UNRESOLVED
+   orderFpo.U = fos_opening_axes(arg5).C1 + out[+4]
+   orderFpo.V = fos_opening_axes(arg5).C2 + out[+8]
+   ```
+
+   * The three constants **are** the existing `fos_opening_axes` port,
+     unchanged: `fos_opening_axes(879,1250,1386) == (2029, 96, 359)`, and
+     `arg5` is DPI-static, so those terms are fixed for the whole roll
+     (§76.3). Required per-frame deltas, from the six known triples:
+     Y `+50/+12/−115/−298/+204/+27`, U `−38/−24/−48/−42/−31/−29`,
+     V `+106/+88/+96/+92/+72/+85`.
+   * **U and V are fully derived** (§76.4): `out[+4]`/`out[+8]` come from
+     `fcn.1028ae00`'s arg 6 out-struct, and on the live `arg3==0` path that
+     function's own top level computes a *weighted mean chroma residual*
+     over 864 dens samples — a 50×83 `int8` weight table indexed by
+     `(c1/16+24, c2/16+41)`, a two-clause sample-selection test, and a
+     round-half-away-from-zero divide by `864*100` or `count*100`. **No
+     helper emulation is needed.** Full pseudocode with per-instruction
+     citations is in §76.4.
+   * **Y is not derived** (§76.6). `L−0x200` is a frame local that no
+     argument carries and that `0x1028b8d0` never writes; by elimination
+     over every stack pointer that leaves the frame, it is
+     `((int32_t*)&buf_at_−0x258)[22]`, filled by `fcn.102ac310` from a
+     record list hanging off **arg 6** — the argument §75.1 refuted as
+     `scene+0x5978` and which has never been dumped. **All** of Y's
+     per-frame variation lives in this one term.
+   * **Two bit-exact live confirmations** of the branch analysis, on v21
+     data recorded before the claim existed: `pref_data+0x5e == 200`
+     (12/12) and the vendor's own Newton isqrt reproducing
+     `pref_data+0x2a` from `+0x24`/`+0x26` (6/6, where `math.isqrt` gets
+     two of the six wrong by one) (§76.5).
+
+   **NEXT on this thread:** the capture list in §76.7. Highest value by far
+   is hooking **`0x1028ae00` at entry and logging its raw `stack_dwords`** —
+   its `arg 9` *is* `L−0x200`, so one dword per call closes Y outright.
+   Note also that §75.2's v22 sizes for `arg0` (`0x40`) and `arg7` (`0x40`)
+   are far too small: U/V need `arg0+0x1440` for `0x1440` bytes and `arg7`
+   for `0x1036` bytes, plus `arg11+0xc20` for `0x360` bytes and
+   `arg11+0x48`.
 
 6. **Δ's source is open** (docs/74 §73.5/§73.6). Δ is measured, real,
    per-frame, and uniform to within one code (−43, +32, +7, +34, −68, +12

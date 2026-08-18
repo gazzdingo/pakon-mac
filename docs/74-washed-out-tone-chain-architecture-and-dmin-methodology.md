@@ -14729,3 +14729,446 @@ next step, not a dead end.
 **No production, golden, or port file was changed by this pass.** The only
 files edited are `hookcore_real_table.c` (six additive dump rows, no hook
 table change) and `docs/74-…md` (this section).
+
+## 76 — docs/76 §5 step 5: the six locals traced to real inputs. `orderFpo`
+= `fos_opening_axes(arg5)` + a three-term delta; **U and V are fully
+derived** (a weighted-mean chroma over 864 dens samples, computed at
+`0x1028ae00`'s own top level, no helper emulation needed), **Y is not** —
+its delta is a stack local no argument carries, written by `fcn.102ac310`
+into a buffer at frame offset `−0x258`
+
+§74 pinned the three write instructions and named the six locals feeding
+them (`var_28h`, `var_dch`, `var_2ch`, `var_64h`, `var_68h`, `var_30h`) as
+"the next concrete porting step". This section does that trace. Five of the
+six resolve to real, named inputs with complete arithmetic. The sixth — the
+one on the **Y** channel, which carries all of `orderFpo` Y's per-frame
+variation — resolves to a stack slot that is not any argument and is not
+written anywhere in `0x1028b8d0`'s own body, so it is stated as unresolved
+rather than guessed, with the exact capture that would close it.
+
+### 76.1 — Method, and why r2's `var_*` names are re-derived rather than used
+
+`PakonIMAu.dll` re-hashed first: `md5 eea9dcf78ee21d4f7c515a6c2512242d`,
+matching every prior citation. `radare2` 6.1.8 via `r2pipe`, `aa` + forced
+`af`, `pdf`/`pdfj` at real function boundaries only (never `pD`), with
+`e asm.sub.var=false` so every operand shows its **raw** `[esp+N]`
+displacement instead of r2's label.
+
+Per §72.2's warning, no `var_*` name is trusted. Instead a CFG-walking
+stack-delta propagator (worklist over `pdfj`'s own `jump`/`fail` edges, with
+the four-entry switch table at `0x1028c460` — `{0x1028bdab, 0x1028c3cf,
+0x1028bde3, 0x1028be36}` for cases 0/1/2/3 — seeded manually) assigns every
+instruction an `esp`-delta from function entry, and every `[esp+N]` operand
+is converted to a **canonical entry-relative offset** `N − delta`. The walk
+covers **all 912 instructions with zero delta conflicts** — i.e. every
+instruction is reached with exactly one `esp` value along every path, which
+is itself a self-check that the propagation is sound. Canonical offsets
+`+0x4 … +0x34` are args 0–12; everything negative is a frame local.
+
+Two independent corroborations that the mapping is right:
+
+* `mov ebp, dword [esp+0x304]` at `0x1028c208` (delta `0x2d0`) canonicalises
+  to `+0x34` = **arg 12**, which §73.4/§74.2 already live-confirmed is
+  `pref_data`.
+* r2's own canonicaliser independently maps `[esp+0xdc]` at `0x1028bfea`
+  (delta `0x2dc`) and `[esp+0xd0]` at `0x1028c2a1` (delta `0x2d0`) to the
+  **same** name `var_dch`; the propagator maps both to canonical `−0x200`.
+  Two different methods, same slot identity.
+
+Below, locals are named by their canonical offset (`L−0x200` etc.) and the
+literal `[esp+N]` form at the site is given so every claim is checkable.
+Scratch scripts and dumps under `/tmp/pakon_re/` (`track2.py`, `helper.py`,
+`fcn_annot2.txt`, `h_1028ae00.txt`, `h_102ac310.txt`, `h_102aece0.txt`),
+not committed.
+
+### 76.2 — The six locals, in raw displacements
+
+At the write block the frame delta is `0x2d0` (`sub esp,0x2c0` +
+`push esi/ebp/ebx/edi`). Reading `0x1028c291…0x1028c2ce`:
+
+| r2 name | site | literal | canonical | is |
+|---|---|---|---|---|
+| `var_28h` | `0x1028c291` | `[esp+0x28]` | `−0x2a8` | **Y** of `fos_opening_axes(arg5)` |
+| `var_dch` | `0x1028c2a1` | `[esp+0xd0]` | `−0x200` | **UNRESOLVED** (see §76.6) |
+| `var_2ch` | `0x1028c2aa` | `[esp+0x2c]` | `−0x2a4` | **C1** of `fos_opening_axes(arg5)` |
+| `var_64h` | `0x1028c295` | `[esp+0x64]` | `−0x26c` | `fcn.1028ae00` out-struct `[+4]` |
+| `var_68h` | `0x1028c2b0` | `[esp+0x68]` | `−0x268` | `fcn.1028ae00` out-struct `[+8]` |
+| `var_30h` | `0x1028c299` | `[esp+0x30]` | `−0x2a0` | **C2** of `fos_opening_axes(arg5)` |
+
+So the write is, structurally:
+
+```
+orderFpo.Y = axesY (arg5) + L[-0x200]
+orderFpo.U = axesC1(arg5) + outstruct[+4]
+orderFpo.V = axesC2(arg5) + outstruct[+8]
+```
+
+— an opening-axis constant plus a per-frame delta, per channel.
+
+### 76.3 — `L−0x2a8/−0x2a4/−0x2a0` **are** `fos_opening_axes`, unchanged;
+reuse the existing port rather than re-deriving
+
+The function prologue (`0x1028b967…0x1028ba24`, before the switch) reads
+arg 5's three `int16` words and writes a six-dword struct at canonical
+`−0x2b4`:
+
+```
+0x1028b971  edi = movsx word[esi+0]      -> [esp+0x1c]  (-0x2b4)  R
+0x1028b96c  ebx = movsx word[esi+2]      -> [esp+0x20]  (-0x2b0)  G
+0x1028b967  ecx = movsx word[esi+4]      -> [esp+0x24]  (-0x2ac)  B
+0x1028b979…0x1028b9ac  (R+G+B)*0x186a0 ±0x1524a, imul 0x306e8227, sar 15
+                                         -> [esp+0x28]  (-0x2a8)  Y
+0x1028b9b0…0x1028b9e0  (2G−B−R)*0x186a0 ±0x1de6a, imul 0x111f883d, sar 14
+                                         -> [esp+0x2c]  (-0x2a4)  C1
+0x1028b9e4…0x1028ba24  (B−R)  *0x186a0 ±0x11436, imul 0x3b510a6f, sar 15
+                                         -> [esp+0x30]  (-0x2a0)  C2
+```
+
+This is instruction-for-instruction the transform already ported as
+`fos_opening_axes` in `tools/ansel/python-pipeline/pakon_fos.py`
+(`RGB_SCALE=0x186a0`, `BIAS_Y/C1/C2 = 0x1524a/0x1de6a/0x11436`,
+`MAGIC_Y/C1/C2 = 0x306e8227/0x111f883d/0x3b510a6f`, `sar 15/14/15`, with
+the `mov eax,edx; shr eax,0x1f; add eax,edx` sign fixup). **Stated
+explicitly as the task asked: the body's arithmetic matches the existing
+port; reuse `fos_opening_axes`, do not re-derive it.** Running the repo's
+own function on the live `fpo`:
+
+```
+fos_opening_axes(879, 1250, 1386) == (2029, 96, 359)
+```
+
+which an independent transcription of the disassembly written for this pass
+reproduces exactly.
+
+Two branch facts make this the *reaching* definition on the live path:
+
+* The only other writer of these three slots is `0x1028bcc9/bccd/bcd1`,
+  inside the block at `0x1028bb3f…0x1028bcd1` that is entered only when
+  arg 3 is 2 (with global `[0x106bc7d8]` non-zero) or 3
+  (`0x1028bb25…0x1028bb39`, `jne 0x1028bcd5`). Arg 3 is **0** live
+  (§73.3), so that block is jumped over and the prologue values survive.
+* `arg 5` is the DPI-static blob, live-confirmed `(879, 1250, 1386)` on all
+  24 calls (§73.4).
+
+Therefore, **live, per frame**, the constant terms are exactly
+`(2029, 96, 359)`, and the required per-frame deltas — derived from the six
+known-good triples — are:
+
+| scene | orderFpo | Y delta `L−0x200` | U delta `out[+4]` | V delta `out[+8]` |
+|---|---|---|---|---|
+| 1 | (2079, 58, 465) | **+50** | −38 | +106 |
+| 2 | (2041, 72, 447) | **+12** | −24 | +88 |
+| 3 | (1914, 48, 455) | **−115** | −48 | +96 |
+| 4 | (1731, 54, 451) | **−298** | −42 | +92 |
+| 5 | (2233, 65, 431) | **+204** | −31 | +72 |
+| 6 | (2056, 67, 444) | **+27** | −29 | +85 |
+
+Note what this already establishes independent of any further work: **all of
+`orderFpo` Y's per-frame variation (a 502-code spread) lives in the one
+term that is not resolved**, while U and V's deltas are narrow-range
+(−48…−24, +72…+106) chroma corrections.
+
+### 76.4 — `L−0x26c` / `L−0x268` (U and V): fully derived
+
+Both are the `[+4]`/`[+8]` fields of the out-struct at canonical `−0x270`,
+passed as **arg 6** of `fcn.1028ae00`, called at `0x1028c023` with 15 cdecl
+arguments (`add esp,0x3c`). Recovering that call's argument order from the
+push sequence `0x1028bfdf…0x1028c022` (last push = arg 0), with the same
+delta propagation:
+
+| helper arg | pushed at | value |
+|---|---|---|
+| 0 | `0x1028c022` | outer arg 0 (`scene+0x1a`, dens) |
+| 1 | `0x1028c021` | outer arg 11 (`scene+0x290c`) |
+| 2 | `0x1028c01c` | `0x360` = **864** |
+| 3 | `0x1028c014` | `(outer arg4 & 0x2000) ? 0 : outer arg7` (`0x1028bfc4…bfda`) |
+| 4 | `0x1028c012` | `0x32` = 50 |
+| 5 | `0x1028c010` | `0x53` = 83 |
+| 6 | `0x1028c00f` | `&L−0x270` (**out**) |
+| 7 | `0x1028c007` | outer arg 3 |
+| 8 | `0x1028c006` | outer arg 10 |
+| 9 | `0x1028bffe` | **`L−0x200`** (the unresolved Y term, passed by value) |
+| 10 | `0x1028bff6` | `&L−0x2b4` (the six-dword `{R,G,B,Y,C1,C2}` of §76.3) |
+| 11 | `0x1028bff1` | outer arg 2 (`scene+0x388c`) |
+| 12 | `0x1028bfe9` | `L−0x2bc` = outer arg 6 + `0xdc` (`0x1028bdc4`) |
+| 13 | `0x1028bfe8` | `&L−0x2c0` (**out**, one word) |
+| 14 | `0x1028bfdf` | `&L−0x294` (**out**, three dwords) |
+
+Self-checks that this ordering is right, not assumed: helper arg 2/4/5 are
+read as `word` and used as `864` / `50` / `83` loop-and-clamp bounds
+(`0x1028b070`, `0x1028b171`, `0x1028b18a`), matching the literal pushes;
+helper arg 12 is dereferenced at `+0x12/+0x14/+0x16` as a small parameter
+block; helper arg 10 is dereferenced at `+0xc/+0x10/+0x14`, i.e. exactly the
+Y/C1/C2 fields of the `−0x2b4` struct.
+
+**Live, arg 4 == 0 on all 24 calls and arg 7 is a non-null pointer
+(`scene+0x3c34`) on all 24** (raw `stack_dwords`, v21), so helper arg 3 is
+non-zero and the early exit at `0x1028ae8a…0x1028aebd` does **not** fire.
+Helper **arg 7 == outer arg 3 == 0** on the twelve live calls that matter,
+which selects two things:
+
+1. `0x1028aed6` `cmp word[arg7],0` → equal → falls to `0x1028aef7`, which
+   seeds `[arg14] = arg10[+0xc]`, `[arg14+4] = arg10[+0x10]`,
+   `[arg14+8] = arg10[+0x14]` (i.e. `L−0x294/−0x290/−0x28c` = the *same*
+   `fos_opening_axes(arg5)` triple), sets `L−0x5c = L−0x58 = 0`, and stores
+   **`0xc8` (200) through arg 13** at `0x1028af19`.
+2. `0x1028b2b4` `cmp word[arg7],0` → equal → `je 0x1028b552`, the short
+   return that writes **only** `[arg6+4]` and `[arg6+8]` and leaves arg 14
+   untouched.
+
+Both are independently confirmed against v21 — see §76.5.
+
+**The arithmetic** (`fcn.1028ae00`, `0x1028b070…0x1028b247` loop, then
+`0x1028b254…0x1028b2b2` and `0x1028b4ef…`), transcribable directly:
+
+```
+# constants on this path
+N      = 864                       # helper arg2
+NX, NY = 50, 83                    # helper arg4, arg5
+OFFX   = (NX - 1) // 2   # = 24    # 0x1028ae03: dec/cdq/sub/sar 1 (trunc toward 0)
+OFFY   = (NY - 1) // 2   # = 41    # 0x1028ae12
+
+Yo, C1o, C2o = fos_opening_axes(*arg5_rgb)          # = (2029, 96, 359)
+
+densY  = i16[arg0 + 0x1440 + 2*i]   for i in 0..863   # (base+0x21c0) - 0xd80
+densC1 = i16[arg0 + 0x1b00 + 2*i]                     # (base+0x21c0) - 0x6c0
+densC2 = i16[arg0 + 0x21c0 + 2*i]
+
+Nmin = i16[arg6 + 0xdc + 0x12]                        # 0x1028b099
+R1sq = i16[arg6 + 0xdc + 0x14] ** 2                   # 0x1028ae3d/ae5b
+R2sq = i16[arg6 + 0xdc + 0x16] ** 2                   # 0x1028ae60/ae6a
+if i8[arg2 + 4] < 0:  R1sq = 0x3d0900                 # 0x1028aec5..aed2 (= 2000^2)
+Ythr = i32[arg11 + 0x48]                              # 0x1028b1fa
+
+cnt = 0 ; Sall1 = Sall2 = Ssel1 = Ssel2 = 0
+for i in 0..863:
+    y  = i16(densY [i] - Yo )      # 16-bit sub then movsx  (0x1028b0c2/b0d3)
+    c1 = i16(densC1[i] - C1o)      #                        (0x1028b0b8/b0c9)
+    c2 = i16(densC2[i] - C2o)      #                        (0x1028b0bf/b0ce)
+
+    gx = clamp16(trunc(c1/16) + OFFX, 0, NX-1)   # 0x1028b146..b182
+    gy = clamp16(trunc(c2/16) + OFFY, 0, NY-1)   # 0x1028b159..b191
+    w  = i8[ arg7 + gx*NY + gy ]                 # 0x1028b19c..b1a8 (50x83 int8 table)
+
+    if cnt < Nmin:                               # 0x1028b1ac
+        Sall1 += w*c1 ; Sall2 += w*c2            # 0x1028b1bd..b1cf
+
+    sq = c1*c1 + c2*c2                           # 0x1028b1d7..b1e1
+    sel = (u8[arg11 + 0xc20 + i] == 1 and sq <  R1sq)     # 0x1028b1e7..b1f5
+    if not sel:
+        sel = (y > Ythr and sq < R2sq)                    # 0x1028b1f7..b203
+    if sel:
+        cnt += 1 ; Ssel1 += w*c1 ; Ssel2 += w*c2          # 0x1028b205..b22c
+
+if cnt < Nmin:  num1, num2, den = Sall1, Sall2, N*100     # 0x1028b25f/b267/b26b
+else:           num1, num2, den = Ssel1, Ssel2, cnt*100   # 0x1028b4ef/b4f5
+
+def rdiv(n, d):                    # 0x1028b27e/b4de + 0x1028b28b idiv (trunc)
+    h = abs(d) >> 1
+    return trunc((n + h) / d) if n >= 0 else trunc((n - h) / d)
+
+out4 = rdiv(num1, den)   # + L-0x5c, which is 0 on this path
+out8 = rdiv(num2, den)   # + L-0x58, which is 0 on this path
+
+orderFpo.U = C1o + out4
+orderFpo.V = C2o + out8
+```
+
+`clamp16` is a genuine 16-bit clamp (`test di,di` / `cmp di, word[arg4]`),
+and the `/16` is `mov eax,r; cdq; and edx,0xf; add eax,edx; sar eax,4` —
+truncation toward zero, not an arithmetic shift. The `*100` denominators
+say `w` is a percentage weight; `out4`/`out8` are a **weighted mean chroma
+residual over the 864 dens samples**, which is the right order of magnitude
+for the −48…+106 deltas §76.3 measured. That is consistency, not proof —
+the proof is a numeric run once the buffers are captured.
+
+**No helper emulation is needed for U and V.** Everything above is
+`0x1028b8d0`'s and `0x1028ae00`'s own top-level code. This is a materially
+smaller ask than the full Unicorn harness §75.2 is building toward: U and V
+can be computed in pure Python from six flat buffers.
+
+### 76.5 — Two predictions of the §76.4 branch analysis, checked bit-exact
+against v21 — data recorded before this section existed
+
+Both come from the same twelve `pref_data` dumps §74.2 used, so neither can
+have been fitted.
+
+**(a) `pref_data+0x5e == 200` on all 12.** `0x1028af19` stores `0xc8`
+through helper arg 13 (`&L−0x2c0`) *only* on the `arg7 == 0` branch; the
+other branches store `0`, `0x64`, or `0x64+2` (`0x1028ae83`, `0x1028af65`,
+`0x1028af86`, `0x1028afaf`). The outer then copies that word to
+`pref_data+0x5e` at `0x1028c033…0x1028c04f`. Observed: **200 on every one of
+the 12 dumps**, no exceptions. This is direct live confirmation that the
+`arg3==0` path takes the branch §76.4 depends on.
+
+**(b) `pref_data+0x2a == isqrt(pref_data+0x24 ² + pref_data+0x26 ²)`, 6/6.**
+The tail (`0x1028c203…0x1028c29d`) squares the two words it just wrote to
+`+0x24`/`+0x26` and runs the vendor's own Newton integer-sqrt loop
+(`0x1028c237…0x1028c28f`: `0x60000000` normalisation, then
+`c = (n/c + c + 1) >> 1` to a fixpoint). Transcribing that loop exactly:
+
+| `+0x24` | `+0x26` | vendor loop | captured `+0x2a` | |
+|---|---|---|---|---|
+| −60 | 208 | 216 | 216 | match |
+| −35 | 296 | 298 | 298 | match |
+| −56 | 165 | 174 | 174 | match |
+| −44 | 145 | 152 | 152 | match |
+| −39 | 174 | 178 | 178 | match |
+| −37 | 178 | 182 | 182 | match |
+
+**6/6 bit-exact** — and note a naive `math.isqrt` gets **151** and **181**
+on rows 4 and 6, i.e. two of the six only match the vendor's own fixpoint,
+which is the kind of one-code difference this project exists to get right.
+
+This also confirms the surrounding reads: because `L−0x294/−0x290/−0x28c`
+are seeded to `fos_opening_axes(arg5)` itself (§76.4 item 1), the outer's
+`0x1028c053…0x1028c077` collapses to `pref_data+0x24 = i16(arg11[+0x4c])`
+and `pref_data+0x26 = i16(arg11[+0x50])` — so the captured `+0x24`/`+0x26`
+columns above are, transitively, the first ever readout of
+`scene+0x2958`/`scene+0x295c`.
+
+### 76.6 — `L−0x200` (the Y delta): unresolved, and why that is a finding
+rather than a gap to paper over
+
+`L−0x200` is read exactly twice in the whole function — `0x1028bfea` (as
+helper arg 9) and `0x1028c2a1` (as the Y delta) — and **written nowhere**.
+A full enumeration of every `esp`-relative *write* in the 912-instruction
+body yields these canonical offsets, and no others:
+
+```
+-0x2c0 -0x2bc -0x2b8 -0x2b4 -0x2b0 -0x2ac -0x2a8 -0x2a4 -0x2a0 -0x29c
+-0x298 -0x294 -0x290 -0x28c -0x288 -0x284 -0x280 -0x278 -0x274 -0x270
+-0x26c -0x268 -0x264
+```
+
+`−0x200` is not among them, and there is no indexed (`[esp+reg+N]`),
+`rep stos`, or `memset` write anywhere in the body. So it is written by a
+**callee, through a pointer**. Only six stack addresses ever leave the
+frame, all as `lea`+`push`:
+
+| `lea` site | canonical base | passed to | offset needed to reach `−0x200` |
+|---|---|---|---|
+| `0x1028bdd2`/`be18`/`be6b`/`c352`/`c417` | `−0x2b4` | `fcn.102aece0`, `fcn.1028ae00` arg10, `fcn.102ae9d0` | `+0xb4` |
+| `0x1028bf89` | `−0x298` | `fcn.102ac310` arg8 | `+0x98` |
+| `0x1028bf90`, `0x1028c360` | `−0x258` | `fcn.102ac310` arg6, `fcn.102ae9d0` | `+0x58` |
+| `0x1028bfdb`, `0x1028c35b` | `−0x294` | `fcn.1028ae00` arg14, `fcn.102ae9d0` | `+0x94` |
+| `0x1028bfe4` | `−0x2c0` | `fcn.1028ae00` arg13 | `+0xc0` |
+| `0x1028c008` | `−0x270` | `fcn.1028ae00` arg6 | `+0x70` |
+
+Five of the six are excluded by the frame layout itself: the slots
+immediately above `−0x2b4`, `−0x298`, `−0x294`, `−0x2c0` and `−0x270` are
+all used by `0x1028b8d0` as *its own* scalars (the list above), so none of
+those objects can extend far enough to reach `−0x200` without overlapping a
+live local. `−0x258` is the only base that is **never** touched as a scalar,
+and canonical `−0x254 … −0x204` is the only unused run in the frame — the
+signature of a real buffer. So:
+
+> `L−0x200` == `((int32_t *)&buf_m258)[22]`, where `buf_m258` is the
+> variable-length dword list `fcn.102ac310` fills.
+
+`fcn.102ac310` (read in full, `0x102ac310…0x102ac42e`, 85 instructions) is
+called at `0x1028bfa8` as
+`fcn.102ac310(0, arg6, 0x2d0, &arg11[0x3c], 0, 0, &buf_m258, 0, &L−0x298)`,
+**gated** at `0x1028bf7f` on `arg6[0x158] == 0`. It stores its scalars into
+`arg6[0x198…0x1a4]`, `calloc`s, calls `0x102ac140(&arg6[0x138])`, then:
+
+```
+edi = arg6_out                                   # &buf_m258
+for k in 0 .. arg6[0x160]-1:                     # 0x102ac3e0..0x102ac402
+    e = arg6[0x168] + 0x10*k                     # 16-byte records
+    if dword[e+0xc] == 1:  *edi++ = dword[e+8]
+*arg8_out = arg6[0x164]                          # -> L-0x298
+```
+
+i.e. it extracts the value field of every record whose type field is 1, in
+order. `L−0x200` is the **23rd such extracted dword (index 22)**.
+
+Three things are *not* known and are not guessed here: whether the gate at
+`0x1028bf7f` even lets the call run on a real frame; how many records match
+(and therefore whether index 22 exists); and what a record's `+8`/`+0xc`
+fields mean. `arg 6` is the argument §75.1 just **refuted** as
+`scene+0x5978` — it is a separate allocation nobody has dumped — so none of
+this is answerable from data in hand.
+
+For the record, `fcn.102aece0` — the other callee that receives a stack
+pointer before `0x1028bfea` — was read and **excluded**: its real body is
+`0x102aece0…0x102afac8` (the first `ret` at frame delta 0; r2's `af` merges
+several later functions into one 0x5f9b-byte blob, which is why the
+boundary matters), it reads only args 2/4/5/6/7, contains exactly one call
+(`calloc`), and **never dereferences its arg 1** at all. It cannot be the
+writer.
+
+### 76.7 — The precise v22 (or v23) dump list
+
+§75.2's v22 adds six `EXTRA_DUMP_STACK_PTR` rows with generous-but-guessed
+sizes. This section can now replace the guesses with derived requirements.
+Everything below is an offset **this** analysis showed is actually read.
+
+**To close Y — the single highest-value dump, and the only one that closes
+it without solving `arg 6`'s object model first:**
+
+* **Hook `0x1028ae00` at entry and log its raw `stack_dwords`.** `arg 9` of
+  that call *is* `L−0x200`. One 4-byte value per call gives the Y delta
+  directly, per scene, and — combined with §76.3's `axesY(arg5) = 2029` —
+  closes `orderFpo` Y numerically with zero further disassembly. It also
+  cross-checks §76.4's entire 15-argument table in one shot.
+* Failing that, dump `arg6 + 0x158` (4 bytes, the gate), `arg6 + 0x160`
+  (4, the record count), `arg6 + 0x168` (4, the record array pointer), and
+  then `*(arg6+0x168)` for `0x10 * count` bytes.
+
+**To compute U and V offline (§76.4), the exact requirement:**
+
+| buffer | address | bytes needed | v22's current size |
+|---|---|---|---|
+| dens Y/C1/C2 planes | `arg0 + 0x1440` | **`0x1440`** (3 × 864 × 2) | `arg0` `0x40` — far too small |
+| weight table | `arg7 + 0` | **`0x1036`** (50 × 83 int8) | `arg7` `0x40` — far too small |
+| sample mask | `arg11 + 0xc20` | **`0x360`** (864 bytes) | not dumped |
+| luma threshold | `arg11 + 0x48` | 4 | not dumped |
+| `arg11[+0x4c]`, `[+0x50]` | `arg11 + 0x4c` | 8 | not dumped (confirms §76.5b) |
+| params | `arg6 + 0xdc + 0x12` | 6 (`+0x12/+0x14/+0x16`) | `arg6` `0x100` — just covers it |
+| sentinel byte | `arg2 + 4` | 1 | `arg2` `0x20` — covered |
+
+The two "far too small" rows are the load-bearing ones: without the
+864-sample dens planes and the 4150-byte weight table, no U/V number can be
+produced, and a Unicorn harness executing the real code needs the same
+memory mapped anyway.
+
+**To validate the port once captured:** hook `0x1028ae00`'s return and dump
+`arg6`'s out-struct `[+4]`/`[+8]` (8 bytes). Those two dwords are exactly
+`out4`/`out8` above, so the port can be diffed against them per frame
+*before* the outer addition, which localises any mismatch to one side.
+
+### 76.8 — Verdict
+
+1. **Five of §74's six locals are resolved to real inputs with complete,
+   transcribable arithmetic** (§76.3, §76.4). Three of them are the existing
+   `fos_opening_axes` port, unmodified — stated explicitly as such and
+   reused, not re-derived.
+2. **`orderFpo` U and V are fully derived** and require no helper
+   emulation, only six flat buffers (§76.4, §76.7).
+3. **`orderFpo` Y is not derived.** Its entire per-frame variation
+   (−298 … +204 across the six scenes) sits in `L−0x200`, a frame local no
+   argument carries, written by `fcn.102ac310` into an unnamed record-list
+   buffer at frame offset `−0x258`, index 22. Per this doc's own "never
+   invent" rule no value is assumed for it; §76.7 gives the one-line capture
+   that closes it.
+4. **Two independent bit-exact confirmations of the branch analysis**
+   against data captured before this section existed: `pref_data+0x5e == 200`
+   (12/12) and the vendor isqrt → `pref_data+0x2a` (6/6, where two rows
+   distinguish the vendor's fixpoint from `math.isqrt`) (§76.5).
+5. **A refinement to §72.3's reading**: it described the case-0 body's
+   opening-axis arithmetic as applied to "arg 5's three words" — correct —
+   but did not note that those three results *are* two of the three written
+   `orderFpo` terms plus the Y constant.
+6. **§75.2's v22 buffer sizes are wrong for two of the six rows** (`arg0`
+   and `arg7`), by more than an order of magnitude in both cases; §76.7
+   gives the derived sizes. This is a live, actionable finding for the pass
+   currently building that capture, not a retrospective one.
+
+**No production, golden, or port file was changed by this pass.** No new
+file was created: the task's own gate for implementing the formula in
+Python was "if and only if every input is resolvable from data already in
+hand", and item 3 above says plainly that it is not. The only files edited
+by this pass are `docs/74-…md` (this section) and `docs/76`'s step 5.
+Scratch scripts live in `/tmp/pakon_re/` and are not committed, per this
+doc's convention.

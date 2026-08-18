@@ -17168,3 +17168,64 @@ contaminated §89's percentiles — it does not:
 **Open, and the right target for the next hook:** what the vendor *measures* to
 decide `-29 → -21 → -19`. `tlb_afe_offset_write` gives the outputs; the
 feedback signal driving them is what this port's loop is failing to compute.
+
+## 92 — The black level measured on silicon: ours sits **+1022 wire codes**
+too high, and `BLACK_TARGET_WIRE` is ~2× the vendor's real target
+
+§91 recovered the vendor's converged offsets `(-19, -26, -19)` and showed this
+port's loop returns its seed unchanged. This measures what those offsets
+actually *do*, which is the number needed to fix the loop for **every** unit
+rather than hardcode one unit's answer.
+
+New: `tools/afe_black_probe.py`. Read-only, no lamp, no motor, no EEPROM, no
+writes to `calibration/`; restores the stored offsets in a `finally`. Two
+rounds through the existing `_live_afe_measure` (whose docstring guarantees
+*"Never sends TRANSPORT FORWARD and never touches the lamp"*), 15 s cap each.
+Run 2026-08-18 with `pakon_scan.py stop` asserted first (`errors: []`).
+
+```
+  black at stored   (0, -6, 2)     : 1747.9  1590.8  1639.6   mean 1659.4
+  black at vendor  (-19,-26,-19)   :  779.7   562.3   571.2   mean  637.7
+  difference                       : +1021.7 wire codes
+  neither reading floored
+```
+
+### 92.1 What it establishes
+
+**1. The lifted black floor is real and is at the sensor.** §89's `c9` solve
+inferred an additive pedestal from image data alone (a flat linear floor of
+~735–780 across all three channels). This confirms it upstream of any colour
+maths: at the offsets actually in use, black sits **1022 codes above** where
+the vendor's own offsets put it.
+
+**2. `BLACK_TARGET_WIRE` is wrong.** Code targets `1300.0`; the vendor's
+offsets produce **~638**. So even a correctly-functioning loop would have
+converged to roughly twice the vendor's black level.
+
+**3. The accept window is what produced §91.3's null result.**
+`BLACK_MIN_WIRE`(400)..`BLACK_MAX_WIRE`(4000) contains both 1659 and 638, so
+`landed` is satisfied almost immediately and round 1 returns before any
+correction is applied.
+
+### 92.2 Why this generalises, which is the whole point
+
+`(-19, -26, -19)` is **this unit's** answer (serial 16275) and must never be
+hardcoded — another F-135's sensor converges elsewhere. What generalises is
+the **target**: the vendor drives black to ~638 on whatever silicon it has.
+Fix the target and tighten the window, and every machine converges to its own
+correct offsets by the vendor's own criterion. That is the difference between
+a port that matches colour on one scanner and a port that matches it on all of
+them.
+
+### 92.3 Honest limits
+
+~638 is what the vendor's offsets produce **under this probe's conditions**
+(lamp off, this port's integration time and gains). The vendor converged under
+its own. So this is a strong measurement of the right *order*, not yet a
+verified constant: confirming it wants either a second unit or a vendor-side
+capture of the level the vendor itself measures between offset writes (§91.4's
+open question — the ~172 ms of unhooked work between writes).
+
+**Nothing is wired from this.** The probe prints and restores. Changing
+`BLACK_TARGET_WIRE`, the accept window, or `calibration/` is a separate
+reviewed change under docs/71's timestamp-never-overwrite rule.

@@ -17920,3 +17920,79 @@ which drives the same OEM binaries), and this capture's correction is zero for
 frames 1–3 and non-zero for 4–6. That is the right shape for per-strip state,
 and it is **not** evidence — the boundary could as easily be coincidence at six
 frames. Recorded so a capture spanning a known strip boundary can test it.
+
+## 102 — The downstream `set_shifts` is gated on
+`dynamic_cast<AnsSCPLutCapability*>` — and the SCPLut-composition explanation
+for §101's residual is **refuted** by the LUTs themselves
+
+Static, `PakonIMAu.dll` md5 `eea9dcf78ee21d4f7c515a6c2512242d`, `af`+`pdf` at
+each function's own boundary.
+
+### 102.1 The per-render write, and its gate
+
+§101.2 established the shift can be modified between Preference and
+`apply_lut`. The path is now named:
+
+```
+  method.AnsCnEnhancedPath.virtual_12
+    -> fcn.1006a160          (480 B header, 6588 B)
+      -> fcn.10100260        (sba_set_shifts) at 0x1006b74f
+```
+
+and the call is **conditional**, reached only via `jne 0x1006b73b` at
+`0x1006b614`. The condition is an RTTI cast, not a numeric test:
+
+```
+  0x1006b60a  call __RTDynamicCast(..., 0x10692518, 0x106927d4, ...)
+  0x1006b612  cmp eax, edi          ; edi = 0
+  0x1006b614  jne 0x1006b73b        ; cast SUCCEEDED -> set_shifts
+```
+
+Reading the type descriptors: `0x10692518` = `.?AVAnsCapability@@`,
+`0x106927d4` = `.?AVAnsSCPLutCapability@@`. So the render path re-sets the
+shift **only when the capability dynamic-casts to `AnsSCPLutCapability`**.
+
+That is a real, previously-unrecorded gate, and it connects to this doc's
+existing SCPLut work: §~5335 found the applied table is
+`combined[i] = SCPLut[clamp(i + shift, 0, 4095)]` — function composition, "a
+real, previously-unread mechanism this port does not model at apply time."
+
+### 102.2 The attractive hypothesis, and why it is wrong
+
+That composition threatens §93's whole extraction. Those shifts were decoded as
+`lut[i] − i`, which recovers the shift **only if `SCPLut` is identity**. If
+SCPLut were non-identity on frames 4–6 — gated by exactly the cast above — then
+§101's "luma correction" would be an artefact of misreading a composed table,
+and the shifts would never have differed at all.
+
+Tested directly, since a pure shift gives a *constant* delta and a composed
+table cannot:
+
+```
+  frame 1  r: mode 800 in 100.0 % of samples, 1 distinct   (g, b likewise)
+  frame 2  r: mode 829 in 100.0 %, 1 distinct
+  frame 3  r: mode 798 in 100.0 %, 1 distinct
+  frame 4  r: mode 889 in 100.0 %, 1 distinct
+  frame 5  r: mode 833 in 100.0 %, 1 distinct
+  frame 6  r: mode 766 in 100.0 %, 1 distinct
+```
+
+**Every channel of every frame has exactly one delta across 2801 samples.** All
+six tables are bare `clamp(i + shift, 0, 4095)`; no composition occurred in this
+capture. So:
+
+* §93's shift extraction is **vindicated** — it was not reading a composed
+  table, and §95.1's independent `balance_shift_4b6` agreement already said the
+  same from the other side;
+* the SCPLut-composition explanation for §101's residual is **refuted**;
+* and the `AnsSCPLutCapability` gate, though real in the code, was **not taken
+  in a way that composed a curve here** — either the capability was absent, or
+  its LUT is identity. Which of those, this capture cannot say.
+
+### 102.3 Status of the `k` hunt
+
+Ruled out so far, each by measurement rather than argument: `orderFpo`'s Y, U
+and V (§94.1); `L` (§93.3); every field in `pref_data`, captured and
+un-captured (§95.3, §100.2); an alternative frame pairing (§101.5); and now
+SCPLut composition. What survives is §101.3's reading: a genuine per-render
+luma term, applied downstream of Preference, zero on frames 1–3.

@@ -47,7 +47,7 @@ VENDOR_FILE = ("/Users/guy/Downloads/Pakon Update 2/fx35install/program files/"
                "Pakon/FirmwareLoader/Personalities/USB F135.bin")
 
 
-def read_personality(dev, length=8, tries=4):
+def read_personality(dev, length=len(HEALTHY), tries=4):
     last = None
     for _ in range(tries):
         time.sleep(0.15)
@@ -120,7 +120,7 @@ def main() -> int:
     print(f"\n  current : {before.hex(' ')}")
     print(f"  target  : {payload.hex(' ')}")
 
-    if before[:8] == payload[:8]:
+    if before == payload:
         print("\n  already correct; nothing to do.")
         return 0
 
@@ -136,9 +136,10 @@ def main() -> int:
     try:
         # The boot personality is the replaceable chip -- Kodak ships the
         # exact bytes. The guard still refuses EEPROM 0x52 regardless of this
-        # unlock; see tools/pakon_usb_guard.py.
-        guard.unlock_boot_write("eeprom_repair.py --write, user-confirmed")
-        n = guard.ctrl_transfer(dev, VENDOR_OUT, WRITE, 0, 0, payload, 8000)
+        # unlock; see tools/pakon_usb_guard.py. Scoped to this one call so the
+        # gate re-arms even if a later step raises.
+        with guard.boot_write_unlocked("eeprom_repair.py --write, user-confirmed"):
+            n = guard.ctrl_transfer(dev, VENDOR_OUT, WRITE, 0, 0, payload, 8000)
         print(f"  wrote {n} byte(s)")
     except usb.core.USBError as exc:
         sys.exit(f"  write failed: {exc}\n  EEPROM unchanged as far as can be told; "
@@ -151,14 +152,14 @@ def main() -> int:
         return 1
 
     print(f"\n  read back: {after.hex(' ')}")
-    if after[:8] == payload[:8]:
+    if after == payload:
         print("\n  REPAIRED -- content matches the vendor personality.")
         print("  Power-cycle the scanner. It should now enumerate as")
         print("  0f05:f135 without --hex.")
         return 0
     print("\n  MISMATCH -- the write did not take effect.")
-    print(f"    wanted {payload[:8].hex(' ')}")
-    print(f"    got    {after[:8].hex(' ')}")
+    print(f"    wanted {payload.hex(' ')}")
+    print(f"    got    {after.hex(' ')}")
     return 1
 
 

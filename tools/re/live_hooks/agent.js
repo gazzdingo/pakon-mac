@@ -515,6 +515,28 @@ const HOOKS = [
           'Entry-only: the wanted value is an input argument.',
     cite: 'docs/74 §76; r2 af/axt safety audit 2026-08-17',
   },
+  {
+    dll: 'PakonIMAu.dll', va: 0x102aadf0, id: 'sba_vm_interp',
+    role: 'stage', pixelBuffer: false,
+    desc: 'fcn.102aadf0 (4423 B) -- the BYTECODE INTERPRETER §78.2 found ' +
+          'standing between a captured Y term and a computable one. Program ' +
+          'pointer at [arg2+4], 16-bit opcodes, 0xff halt, two-stage ' +
+          'dispatch (254-byte index table at 0x102ac018, then the jump table ' +
+          'at 0x102abf4c). Static scoping (§86): the 254 opcodes collapse to ' +
+          '51 handler indices and index 50 alone covers 203 of them (the ' +
+          'default case), so there are 50 real handlers, not 254. This ' +
+          'capture dumps the PROGRAM rather than logging each dispatch: ' +
+          'comparing the bytes across frames and scans settles ' +
+          'static-vs-generated, and walking them against the index table ' +
+          'gives the exact opcode set this path uses -- the number that ' +
+          'decides whether porting the VM is bounded. Safety (r2 af+axt ' +
+          '2026-08-17): exactly one real CALL xref (fcn.102ac140 @ ' +
+          '0x102ac15a), zero CODE-type entries, `af` resolves to its own ' +
+          'entry, and the prologue `sub esp,0x2c` + `push ebx` + `push ebp` ' +
+          'is exactly 5 position-independent bytes with no rel32. ' +
+          'Entry-only: the program and context are inputs.',
+    cite: 'docs/74 §78.2, §86; r2 af/axt safety audit 2026-08-17',
+  },
 ];
 
 // ---------------------------------------------------------------------

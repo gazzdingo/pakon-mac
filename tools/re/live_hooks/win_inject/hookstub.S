@@ -154,7 +154,7 @@ _OnReturnThunk:
      * flags value instead of a known-correct one. */
 
 /* ---------------------------------------------------------------------
- * Thunk_00 .. Thunk_30 -- 31 fixed slots (HOOKCORE_MAX_HOOKS in
+ * Thunk_00 .. Thunk_31 -- 32 fixed slots (HOOKCORE_MAX_HOOKS in
  * hookcore.h). Each is just `push <its own index>; jmp SharedEntryHandler`
  * -- deliberately identical in shape so a bug in one is a bug in all of
  * them (uniform, mechanically-checkable, not 30 independently-hand-
@@ -240,3 +240,4 @@ _Thunk_\sfx:
     DEFTHUNK 28, 28
     DEFTHUNK 29, 29
     DEFTHUNK 30, 30
+    DEFTHUNK 31, 31

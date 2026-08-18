@@ -122,6 +122,13 @@ extern "C" {
  * Bumped 28->29 (docs/74 §57, 2026-08-16): one new PakonIMAu.dll hook
  * (color_adjust_shift, 0x101b76d0) appended at the END of table[], same
  * append-only discipline. Thunk_28 added to hookstub.S in the same pass.
+ * Bumped 31->32 (docs/74 §86, v26): one new PakonIMAu.dll hook
+ * (sba_vm_interp, 0x102aadf0) appended at the END of table[], same
+ * append-only discipline. Thunk_31 added to hookstub.S and to
+ * hookcore_real_table.c's thunks[] in the SAME pass. This is the bytecode
+ * interpreter §78.2 identified; the capture dumps its program so the
+ * static-vs-generated question and the live opcode count can both be
+ * answered offline, without per-dispatch logging.
  * Bumped 30->31 (docs/74 §76, v24): one new PakonIMAu.dll hook
  * (sba_order_fpo_helper, 0x1028ae00) appended at the END of table[], same
  * append-only discipline. Thunk_30 added to hookstub.S and to
@@ -136,7 +143,7 @@ extern "C" {
  * §46.8/§47 "forgot the matching thunk" bug class this file's own comment
  * above documents was explicitly re-checked before committing.
  * --------------------------------------------------------------------- */
-#define HOOKCORE_MAX_HOOKS 31
+#define HOOKCORE_MAX_HOOKS 32
 
 /* Must exactly match the PUSHAD+PUSHFD+index+retaddr stack layout that
  * hookstub.S's SharedEntryHandler builds -- see that file's header
@@ -467,7 +474,7 @@ extern void Thunk_21(void); extern void Thunk_22(void);
 extern void Thunk_23(void); extern void Thunk_24(void);
 extern void Thunk_25(void); extern void Thunk_26(void); extern void Thunk_27(void);
 extern void Thunk_28(void); extern void Thunk_29(void);
-extern void Thunk_30(void);
+extern void Thunk_30(void); extern void Thunk_31(void);
 
 #ifdef __cplusplus
 }

@@ -103,7 +103,7 @@ void HookCore_BuildRealTable(HookEngine *eng) {
         (void *)&Thunk_21, (void *)&Thunk_22, (void *)&Thunk_23,
         (void *)&Thunk_24, (void *)&Thunk_25, (void *)&Thunk_26,
         (void *)&Thunk_27, (void *)&Thunk_28, (void *)&Thunk_29,
-        (void *)&Thunk_30,
+        (void *)&Thunk_30, (void *)&Thunk_31,
         /* Thunk_23 fixes a real, latent NULL-entryThunk bug left by the
          * prior commit (6d2e36a) that inserted analyze_scp_lut_balance
          * mid-array without adding a matching thunk -- see hookstub.S's
@@ -740,6 +740,35 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "nothing.",
           "docs/74 SS76 (U/V derivation, and Y's L[-0x200] traced to this "
           "function's arg 9); r2 af/axt safety audit 2026-08-17", 0, 0, 0, 0, 0 },
+
+        /* ---- the bytecode interpreter (docs/74 SS78.2/SS86, v26) ---- */
+        { "PakonIMAu.dll", 0x102aadf0, "sba_vm_interp",
+          "fcn.102aadf0 (4423 B) -- the BYTECODE INTERPRETER SS78.2 found "
+          "standing between a captured Y term and a computable one. Program "
+          "pointer at [arg2+4], 16-bit opcodes, 0xff halt, two-stage dispatch "
+          "(movzx from the 254-byte index table at 0x102ac018, then jmp "
+          "through the table at 0x102abf4c). Static scoping (SS86): 254 "
+          "opcodes collapse to 51 handler indices, and index 50 alone covers "
+          "203 opcodes (the default/invalid case) -- so there are 50 real "
+          "handlers, not 254. "
+          "WHY THIS CAPTURE: dumping the PROGRAM rather than logging each "
+          "dispatch answers both open questions offline and costs one dump "
+          "per call instead of thousands of log lines. Comparing the program "
+          "bytes across frames and across scans settles static-vs-generated; "
+          "walking those bytes against the index table gives the exact set of "
+          "opcodes this path actually uses, which is the number that decides "
+          "whether porting the VM is a bounded job. "
+          "SAFETY (r2 af+axt 2026-08-17, this table's own standard): exactly "
+          "ONE real CALL-type xref (fcn.102ac140 @ 0x102ac15a), zero "
+          "CODE-type jmp/jcc entries, and `af` resolves to 0x102aadf0 itself. "
+          "Prologue `sub esp,0x2c` (3 B) + `push ebx` (1 B) + `push ebp` "
+          "(1 B) is exactly 5 position-independent bytes with no rel32 -- a "
+          "clean MinHook relocation target. Entry-only (wantExitDefault=0): "
+          "the program and its context are inputs, so the return adds "
+          "nothing. NOT hot-path disabled, but note this fires per "
+          "interpreted run, not per pixel.",
+          "docs/74 SS78.2 (interpreter identified), SS86 (static scoping: 50 "
+          "real handlers); r2 af/axt safety audit 2026-08-17", 0, 0, 0, 0, 0 },
     };
 
     int i;
@@ -1010,5 +1039,24 @@ const ExtraDumpSpec g_extraDumps[] = {
     { "sba_order_fpo_calc", "arg10_big", EXTRA_DUMP_STACK_PTR, 10, 0, 0, 0x200 },
     { "sba_order_fpo_calc", "arg11_big", EXTRA_DUMP_STACK_PTR, 11, 0, 0, 0x1200 },
     { "sba_order_fpo_calc", "arg12_big", EXTRA_DUMP_STACK_PTR, 12, 0, 0, 0x200 },
+    /* v26 (docs/74 SS86) -- the interpreter's own context and PROGRAM.
+     *
+     * Calling convention (r2 af+pdf): args are sp[0..3]; `mov ebp,[arg_3ch]`
+     * at 0x102aadf5 resolves by stack-delta (entry - 0x2c - 4 push, so
+     * [esp+0x3c] == entry+0xc) to **arg index 2**, and `mov edi,[ebp+4]` at
+     * 0x102aadfb is the program pointer. So:
+     *   vm_ctx     = *sp[2]            -- the interpreter's context struct
+     *   vm_program = *(*(sp[2] + 4))   -- the bytecode itself
+     * EXTRA_DUMP_DEREF_PTR is exactly the second shape (deref the stack arg,
+     * add the offset, deref again, dump from there).
+     *
+     * 0x1000 of program is a deliberate over-ask: the real length is unknown
+     * (the halt opcode 0xff terminates it, so it is self-delimiting when
+     * walked offline) and an over-read degrades to "readable":false rather
+     * than truncating silently. If it comes back unreadable at 0x1000 the
+     * smaller ctx dump still lands and the size can be stepped down. */
+    { "sba_vm_interp", "vm_ctx", EXTRA_DUMP_STACK_PTR, 2, 0, 0, 0x40 },
+    { "sba_vm_interp", "vm_program", EXTRA_DUMP_DEREF_PTR, 2, 4, 0, 0x1000 },
+    { "sba_vm_interp", "vm_program_small", EXTRA_DUMP_DEREF_PTR, 2, 4, 0, 0x200 },
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0 }, /* sentinel */
 };

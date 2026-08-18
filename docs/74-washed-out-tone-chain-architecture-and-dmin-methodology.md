@@ -17309,3 +17309,85 @@ render passes and the `orderFpo`/helper calls (both carry per-scene pointers
 that should identify the frame), then test whether `k` is computable from
 `orderFpo` + `L`. That is the remaining link between the solved VM and the
 balance shift.
+
+## 94 — `A` is a real per-channel constant, stable across two rolls; `k` is
+**not** from `orderFpo` (all three components tested); and R/G are short by
+~136/~91 codes
+
+§93 decomposed the vendor's balance shift as `shift[f,c] = A[c] + k[f]` on one
+capture. This tests both terms against everything available offline.
+
+### 94.1 `k` does not come from `orderFpo` — all three components
+
+The §79-golden triple harness was first re-run on the v28 capture to confirm
+the inputs: **12/12 PASS**, `(Y, U, V)` bit-exact. Then each component against
+`k`, under §93's temporally-established scene correspondence:
+
+```
+  Y: corr -0.460   resid rms 33.0
+  U: corr +0.437   resid rms 33.5
+  V: corr -0.374   resid rms 34.5
+  L: corr -0.460   resid rms 33.0     (Y = fos.Y + L, so Y ∝ L + const)
+
+  Y+U+V+const, least squares: resid rms 30.65 on 4 params / 6 points
+```
+
+`k`'s spread is 118, so ~28 % is unexplained by any single term, and the
+4-parameter fit barely improves on 6 points — that is fitting noise, not a
+relationship. **`orderFpo` is ruled out as the source of `k`.** Recorded as a
+negative: `L` is genuinely solved (§90) and feeds `Y`, but `Y` is not the
+per-frame balance scalar.
+
+### 94.2 `A` reproduces on a SECOND, different roll
+
+Fitting the same decomposition to §82.1's v25 shifts — a different roll,
+different scenes, data the decomposition was not derived from:
+
+```
+  §82.1 (v25)   A = [794.0, 388.7, 136.0]   k spread 387   resid rms 7.92
+  v28  (today)  A = [819.2, 394.0, 153.2]   k spread 118   resid rms 4.41
+  difference        [ 25.2,   5.3,  17.2]
+```
+
+G agrees within **5 codes** across independent rolls, R and B within 25 and 17,
+while `k` swings over a 387-code range in the v25 capture. So `A` is a genuine
+per-channel constant at film/DPI level and `k` is a per-scene response — and
+the decomposition holds on data it was not fitted to, which is the test that
+matters.
+
+### 94.3 Where R and G are wrong
+
+Taking `A ≈ (806.6, 391.4, 144.6)` (mean of both captures) against the port's
+`NBP − fpo = (671, 300, 164)`:
+
+```
+  R short by ~136        G short by ~91        B right within ~20
+```
+
+The same asymmetry the render side shows independently (§93.1: our RPD floor
+`926/1284/1438` vs the vendor's `928/944/928` — R correct, G and B not). Two
+unrelated measurements agreeing on which channels are broken.
+
+**Domain caveat, stated so nobody skips it:** the shifts are additive on the
+*linear* PolyPixel output (§60/§82.1) while the floor discrepancy is in the
+*density* domain. "+136 on R" therefore does **not** translate directly into a
+floor correction, and no such claim is made here.
+
+### 94.4 `A` is not trivially derivable from the shipped DPI
+
+With `A` measured, the vendor's effective anchor is `X = NBP − A =
+(743.4, 1158.6, 1405.4)`. Against `sba-CN-default-96-1.dpi`:
+
+```
+  X − fpo     = (-135.6, -91.3, +19.4)     fpo = 879 1250 1386
+  X − neu     = (-231.6, 183.7, 430.4)     neu = 975 975 975
+  X / minDmin = (4.13, 2.11, 2.01)         minDmin = 180 550 700
+```
+
+Nothing clean. With ~15 parameters in the file and three targets a numeric
+coincidence is easy to manufacture, so no match is claimed — recorded as
+*searched and not found*, not as a lead.
+
+**Open:** where `k` comes from (not `orderFpo`), and whether `A` is vendor data
+or emergent. The hardware step that would settle `A` independently is a dump
+row on `sba_set_shifts` arg 1, which currently logs only pointers.

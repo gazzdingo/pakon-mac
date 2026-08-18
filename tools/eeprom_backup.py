@@ -12,8 +12,9 @@ and both times the tool reported success.
    run against a live F-135+, it returned 0xFF for 8192 of 8192 bytes, on both
    chips, with no error -- a bus-idle read written out as a backup file.
 
-THE SEQUENCE THE VENDOR ACTUALLY USES (docs/69 §5.1, re-confirmed from TLB.dll
-md5 193d9b2ce0a4b77ae9b78262bd06c0fc, fcn.100160a0):
+THE SEQUENCE THE VENDOR ACTUALLY USES (docs/69 §5.1, read from TLB.dll
+md5 193d9b2ce0a4b77ae9b78262bd06c0fc, fcn.100160a0 -- disassembly, triage-tier
+evidence, not yet run bit-exact against this project's own hardware):
 
     0x10016138  or eax, 0x50            ; 7-bit addr = 0x50 | index
     0x1001613b  shl eax, 1              ; 8-bit addr  -> 0xA4 for index 2
@@ -35,10 +36,11 @@ read that addresses nothing now fails loudly instead of producing a file that
 looks like a backup. Use --force to keep a failing read for diagnosis; it is
 named .SUSPECT and is not a backup.
 
-STATUS: the sequence is confirmed by disassembly (docs/69 §5.1) and by a
-third-party live read on another unit (issue #50), but has NOT yet been run
-against this project's own scanner. The validation above is what makes that
-acceptable -- a wrong read can no longer masquerade as a good one.
+STATUS: the sequence is read from disassembly (docs/69 §5.1) -- triage-tier
+evidence, not a bit-exact confirmation -- and matches a third-party live read
+on another unit (issue #50), but has NOT yet been run against this project's
+own scanner. The validation above is what makes that acceptable -- a wrong
+read can no longer masquerade as a good one.
 
 Run it with the scanner power-cycled and NOT yet loaded (04b4:8613).
 """
@@ -73,6 +75,16 @@ def select_chip(dev, n, timeout=4000) -> None:
                         WINDEX, b"", timeout)
 
 
+class PartialRead(bytes):
+    """A read that stopped early because of a real USB error, not a clean
+    short read. Distinct from `bytes` in identity only, so a caller that
+    forgets to check for it still gets the (possibly incomplete) data rather
+    than a crash -- but callers that DO check can tell "the vendor's own
+    section headers say this is complete" apart from "a transient error cut
+    this off, whatever bytes happen to be in it may end mid-section"."""
+    error: str = ""
+
+
 def read_one(dev, n, length, timeout=4000):
     """Read `length` bytes from device index `n`, the way the vendor does.
 
@@ -90,7 +102,11 @@ def read_one(dev, n, length, timeout=4000):
             if len(got) < want:            # short read: stop, don't pad
                 break
     except usb.core.USBError as exc:
-        return f"ERROR: {exc}" if not out else bytes(out)
+        if not out:
+            return f"ERROR: {exc}"
+        partial = PartialRead(bytes(out))
+        partial.error = str(exc)
+        return partial
     return bytes(out)
 
 
@@ -135,9 +151,17 @@ def main() -> int:
         if isinstance(first, str):
             print(f"  n={n} I2C {i2c7:#04x}: {first}")
             continue
+        if isinstance(first, PartialRead):
+            print(f"  n={n} I2C {i2c7:#04x}: USB ERROR after {len(first)}/"
+                  f"{args.length} bytes -- {first.error}")
+            print("      keeping the partial data; validation below decides "
+                  "whether it's enough of a backup, not this byte count.")
         time.sleep(0.05)
         second = read_one(dev, n, args.length)
-        stable = isinstance(second, bytes) and second == first
+        stable = (isinstance(second, bytes)
+                  and not isinstance(first, PartialRead)
+                  and not isinstance(second, PartialRead)
+                  and second == first)
         md5 = hashlib.md5(first).hexdigest()
         digests.setdefault(md5, []).append(n)
         results[n] = first
@@ -150,10 +174,16 @@ def main() -> int:
         print("\n  nothing read.")
         return 1
 
-    if len(digests) == 1 and len(results) > 1:
+    # If every address reads back the same bytes, the read is not addressing
+    # individual devices -- CRC-valid or not, a file saved under this
+    # condition would mislabel one real device's content as another's, so
+    # every file gets forced to .SUSPECT regardless of its own CRC result.
+    not_addressing = len(digests) == 1 and len(results) > 1
+    if not_addressing:
         print("\n  WARNING: every address returned identical bytes.")
         print("  That means the read is not addressing individual devices;")
-        print("  do NOT treat these files as a backup.")
+        print("  every file below is forced to .SUSPECT -- do NOT treat")
+        print("  these as a backup, no matter what the CRC check below says.")
     else:
         print(f"\n  {len(digests)} distinct content(s) across {len(results)} "
               f"address(es) -- addressing is working.")
@@ -163,18 +193,19 @@ def main() -> int:
     saved = kept_suspect = 0
     for n, data in results.items():
         good = check.report(data, f"  n={n} I2C 0x{n | 0x50:02x}")
-        if not good and not args.force:
+        keep_as_backup = good and not not_addressing
+        if not keep_as_backup and not args.force:
             print("     NOT SAVED -- re-run with --force to keep it for "
                   "diagnosis.")
             continue
-        suffix = "" if good else ".SUSPECT"
+        suffix = "" if keep_as_backup else ".SUSPECT"
         path = os.path.join(args.out,
                             f"eeprom_n{n}_i2c{(n | 0x50):02x}.bin{suffix}")
         with open(path, "wb") as fh:
             fh.write(data)
         print(f"     saved {path}")
-        saved += good
-        kept_suspect += not good
+        saved += keep_as_backup
+        kept_suspect += not keep_as_backup
 
     print("\n  Nothing was written to the scanner.")
     if not saved:

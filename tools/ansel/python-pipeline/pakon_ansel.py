@@ -842,11 +842,12 @@ class AnselEngine:
         preference_apply = self.setshifts_out is not None
         if preference_apply:
             # Preference OUT is the channel balance — skip median roll_scale
-            # (it cancels R/G/B ratios from setShifts).
+            # (it cancels R/G/B ratios from setShifts). The shift is applied
+            # in the LINEAR domain by f135_rom12_to_rpd12 (scene_rpd12 passes
+            # setshifts_out and the shift runs BEFORE the log — docs/74 SS60),
+            # so `rpd12` already arrives balanced; re-applying apply_balance_shifts
+            # here would shift the density a second time.
             x = rpd12.astype(np.float64)
-            x = sba_apply.apply_balance_shifts(
-                x.astype(np.int32), self.setshifts_out
-            ).astype(np.float64)
             balanced = x
             # FUGC: ebp14 = setShifts OUT @ +0x4b6; ebp18 = SceneContext
             # "dmin" bag (path+0x3c, getCnContext find("dmin") —

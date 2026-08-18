@@ -15172,3 +15172,193 @@ hand", and item 3 above says plainly that it is not. The only files edited
 by this pass are `docs/74-…md` (this section) and `docs/76`'s step 5.
 Scratch scripts live in `/tmp/pakon_re/` and are not committed, per this
 doc's convention.
+
+## 77 — The Unicorn harness for `0x1028b8d0` exists and executes the real
+DLL, but is not yet golden: it early-exits on a bounds check whose input
+falls **four bytes** past the end of v22's own dump. The constant term of
+§76's decomposition is confirmed exactly; v24 built to close the gap
+
+§76 derived `orderFpo`'s three outputs as `fos_opening_axes(arg5)` plus a
+per-scene residual, and named the inputs it could not resolve. This section
+records the first real execution of the function under Unicorn, what it
+proved, what it did not, and the precise, measured reason — not an estimate
+— that a further capture is required.
+
+### 77.1 — The harness
+
+`tools/ansel/python-pipeline/pakon_orderfpo_golden.py` (new this pass) loads
+`PakonIMAu.dll` (`md5 eea9dcf78ee21d4f7c515a6c2512242d`) and executes
+`fcn.1028b8d0` on the real argument buffers captured off the real scanner in
+v22 (`live_hooks_20260817-115157.jsonl`, `md5
+59911173a97f99a25f461768e2594774`, 33,012,376 bytes).
+
+One design decision is load-bearing and worth stating: **captured buffers are
+mapped at the addresses they really had in the vendor process**, not
+relocated into a synthetic heap. Every real address involved
+(`0x08dc…`/`0x0939…`/`0x08d0…`) lies below this harness's `IMAGE_BASE`, so
+this is straightforward — and it means that if any captured structure holds
+a pointer to another, it resolves to the right place instead of silently
+reading poison. Unmapped-but-touched pages are filled with `0xCD`, not
+zeros, on the same principle every other golden harness in this project
+uses: an under-supplied buffer must fail loudly rather than read as a
+plausible zero.
+
+Nothing in the harness models or re-implements the vendor's arithmetic. The
+real DLL bytes execute; the value the real code writes to `pref_data+0/+2/+4`
+is compared against the value the real hardware was observed to write for
+the same scene. There is no tuning parameter anywhere in the loop.
+
+### 77.2 — First run: clean execution, zero faults, and a loud, correct
+failure
+
+All 12 real `arg3 == 0` calls executed to completion with **zero memory
+faults** — the PE load, the real-address buffer mapping, the stack frame and
+the calling convention are all right, which is itself worth banking. But
+every one returned `0x18bd` and wrote nothing, leaving the triple `(0,0,0)`
+against expected values like `(1983, 65, 444)`.
+
+`0x18bd` is one of the four early-exit codes §72.3 catalogued. Tracing it
+back: it is reached from the four-way bounds check at
+`0x1028b928`/`938`/`945`/`94e`, which compares `word [esi+0xc]` and
+`word [esi+0xe]` against the range `[word [edx+0x104], word [edx+0x106]]`.
+Resolving the two registers by stack-delta arithmetic from their real load
+sites (`0x1028b8ea`, `0x1028b902`, displacements `0x2dc` under 0 and 1
+pushes respectively) gives `edx == arg 6` and `esi == arg 5`.
+
+**v22 dumped `0x100` bytes of arg 6. The check reads offsets `0x104` and
+`0x106`.** The harness therefore read `0xCD` poison, `cx` came back as
+`-12851`, and `ax = word[arg5+0xc] = 70 > -12851` took the `jg` to the
+failure exit. The observed failure is fully explained, instruction by
+instruction, with no residual mystery.
+
+**Measured, not estimated:** the arg 6 dump spans
+`0x08d04880`–`0x08d04980`; the check needs `0x08d04984`–`0x08d04988`.
+**Four bytes past the end.** A scan of every readable `buffer_dump` in the
+whole 33 MB capture confirms no other row covers that window either.
+
+This is exactly the size v22's own table comment flagged as a guess
+(*"`arg6_unknown`'s size in particular is an honest guess… a truncated or
+unreadable result there is itself information"*). It was, and the poison-fill
+convention did its job: the harness produced an unmistakable failure rather
+than a plausible wrong number.
+
+### 77.3 — What IS confirmed: the constant term, exactly
+
+§76's decomposition is
+
+```
+orderFpo.Y = fos_opening_axes(arg5).Y  + L[-0x200]
+orderFpo.U = fos_opening_axes(arg5).C1 + out[+4]
+orderFpo.V = fos_opening_axes(arg5).C2 + out[+8]
+```
+
+Two parts of this are checkable right now against data already in hand:
+
+1. **`arg5` really is constant.** Across both captures — 24 calls in v21 and
+   24 in v22, two separate scans — the `arg5_blob` dump reads
+   `(879, 1250, 1386)` every single time, with no exceptions. §72.4 predicted
+   this from a static trace of `fcn.10214e30`; §73.4 confirmed it live for
+   v21; it now holds across an independent second scan.
+2. **The constant term is exactly `(2029, 96, 359)`.** This project's own
+   `pakon_fos.fos_opening_axes` — an already-ported, already-Unicorn-verified
+   function (`pakon_fos_golden.py`, re-run green this pass) — returns
+   precisely `(2029, 96, 359)` for `(879, 1250, 1386)`, matching §76's
+   independently-derived claim to the digit.
+
+So the first term of all three outputs is settled, using a function whose
+own equivalence to the real DLL was established long before this thread
+existed.
+
+### 77.4 — The residuals, across twelve real scenes
+
+Subtracting the confirmed constant from the twelve real captured triples
+(six scenes × two independent scans):
+
+| | Y residual | U residual | V residual |
+|---|---|---|---|
+| v21 | +50, +12, −115, −298, +204, +27 | −38, −24, −48, −42, −31, −29 | +106, +88, +96, +92, +72, +85 |
+| v22 | −46, +231, −309, −114, −3, +89 | −31, −32, −41, −49, −24, −37 | +85, +74, +93, +96, +92, +107 |
+
+The shape is informative and corroborates §76's structural reading without
+being confused for proof of it: **the U and V residuals occupy tight bands**
+(−24…−49 and +72…+107 across all twelve, two scans, both captures) while
+**the Y residual swings by more than 500 codes** (−309…+231). That is
+precisely the signature §76's derivation predicts — U and V are a bounded
+chroma correction computed from a weighted mean, whereas Y carries a
+per-scene luma term. It is consistent evidence, not a verification; the
+verification is §77.5's, and it has not been done.
+
+The two scans do **not** produce identical triples for corresponding scenes
+(v21 scene 1 `(2079, 58, 465)` vs the nearest v22 value `(2118, 59, 466)`),
+which is expected — they are separate physical scans of the same strip with
+slightly different transport/framing — and is a useful reminder that
+"reproduces the captured value" must always be checked per-capture, never
+across captures.
+
+### 77.5 — Not golden yet, stated plainly
+
+**The harness has not reproduced a single `orderFpo` triple.** It executes
+the real code correctly and fails for a fully-diagnosed, four-byte reason,
+which is a much better position than a mysterious mismatch — but it is not
+the Tier-1 result this thread is aiming at, and nothing in §77.3/§77.4
+substitutes for it. Until the harness runs to completion on complete inputs
+and reproduces the captured triples exactly, `orderFpo` is **not** golden.
+
+### 77.6 — v23 and v24
+
+**v23** (`hookdll` `md5 384cdf135fbab29da39bee58f4bfd8be`) sized every
+pointer argument from a mechanical scan of the function's real memory
+operands. One methodology note that materially changed the answer: the scan
+had to exclude `lea`, because this function uses `lea` with very large
+constants (`+0x11436`, `+0x1524a`, `+0x1de6a`) as **plain arithmetic on
+values, touching no memory at all** — a naive grep for large displacements
+would have sized several buffers by roughly 100 KB each for no reason.
+Real deepest accesses: `[edx+0x106]`, `[edi+0x158]`, and a dword block
+spanning `[esi+0xb7c]…[esi+0xbac]`.
+
+**v24** (`hookdll` `md5 6cac66dbad1782e7fdc048beda988c89`, `injector`
+`md5 4d88b3e7d42e97211337b3d53af65d44`) supersedes v23 **before v23 was ever
+run**, on §76's own finding that v23's `arg0` and `arg7` rows were still
+roughly two orders of magnitude too small for what the U/V path actually
+reads (`arg0+0x1440`, `arg7+0x1036`, `arg11+0xc20+0x360`). Corrected.
+
+v24 additionally adds hook 31, `sba_order_fpo_helper` (`0x1028ae00`), for
+the one term §76 could not derive statically: `L[-0x200]`, an `int32` read
+from a stack slot that **nothing in `0x1028b8d0`'s own 912 instructions ever
+writes**, traced instead to this helper's own arg 9. The engine already logs
+the first 16 raw stack dwords on every entry and this function's 15 args all
+fall inside that window, so that dword is captured **with no extra dump row
+at all**, and the same log line cross-checks §76's entire 15-argument
+reconstruction for free.
+
+Safety audited to this table's own standard before adding: exactly one real
+CALL-type xref (`fcn.1028b8d0 @ 0x1028c023`), zero CODE-type `jmp`/`jcc`
+entries, `af` resolving to `0x1028ae00` itself, and a position-independent
+prologue (`sub esp,0x5c` + `movsx eax, word [esp+0x70]`) with no `rel32` in
+the first five bytes. `HOOKCORE_MAX_HOOKS` 30→31, `extern Thunk_30`,
+`DEFTHUNK 30` and `thunks[30]` all in the same commit, appended at the END
+of `table[]` — the §46.8/§47 "bumped the count without the thunk" bug class
+re-checked once more. Build gates all green: KERNEL32-only imports, XP 5.1
+subsystem stamp, 31/31 sync against `agent.js`, `selftest ALL PASS`
+including the 32,000-call concurrency stress.
+
+### 77.7 — What closes this
+
+A single v24 capture. With it, every input on the live `arg3 == 0` path is
+real captured data: the previously-missing arg 6 bounds words, the properly
+sized `arg0`/`arg7`/`arg11` buffers the U/V path reads, and Y's term direct
+from the helper's arg 9. The harness then either reproduces all six of that
+capture's own `orderFpo` triples bit-exactly — golden, Tier 1, no knob — or
+it diverges at a specific, nameable point.
+
+One risk stated in advance rather than discovered later, carried forward
+from §75.3 and still not excluded: if any of the eight helpers dereferences
+a pointer *stored inside* one of these buffers, that memory is not in the
+capture either. The harness's `0xCD` poison and `UC_HOOK_MEM_INVALID` fault
+handler mean this would surface as a fault at a specific named address
+rather than as a wrong number — which is precisely what a v25 would need to
+dump. Tractable, and instrumented for.
+
+**No production or port file was changed by this pass.** New:
+`pakon_orderfpo_golden.py`. Modified: the hook table/stub/`agent.js` (v23,
+v24) and `docs/74-…md` (this section).

@@ -172,11 +172,28 @@ ok(len(partial) == 3 * B.CHUNK,
 print("\nthe guard permits the whole sequence")
 guard._selected_device = None
 try:
-    guard.check(0x40, B.SELECT, ((2 | 0x50) << 1) | 1, 0x1234, True)
-    guard.check(0xC0, B.READ, 0x000, 0x1234, False)
+    guard.check(0x40, B.SELECT, ((2 | 0x50) << 1) | 1, 0x1234)
+    guard.check(0xC0, B.READ, 0x000, 0x1234)
     ok(True, "select + data phase both pass the allow-list")
 except guard.TransferDenied as e:
     ok(False, f"denied: {e}")
+
+print("\nwrite_backup never silently overwrites a prior file")
+import tempfile                              # noqa: E402
+
+with tempfile.TemporaryDirectory() as tmp:
+    target = os.path.join(tmp, "eeprom_n2_i2c52.bin")
+    B.write_backup(target, b"first capture")
+    ok(open(target, "rb").read() == b"first capture",
+       "first write lands at the plain path")
+    B.write_backup(target, b"second capture")
+    ok(open(target, "rb").read() == b"second capture",
+       "second write still lands at the plain path")
+    siblings = [f for f in os.listdir(tmp) if f != "eeprom_n2_i2c52.bin"]
+    ok(len(siblings) == 1 and siblings[0].startswith("eeprom_n2_i2c52.bin.pre-"),
+       f"the first capture was kept as a timestamped file, not lost ({siblings})")
+    ok(open(os.path.join(tmp, siblings[0]), "rb").read() == b"first capture",
+       "and it still holds exactly the first capture's bytes")
 
 print(f"\n{PASS}/{PASS + FAIL} checks passed")
 sys.exit(0 if FAIL == 0 else 1)

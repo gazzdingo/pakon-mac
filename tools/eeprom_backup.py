@@ -116,6 +116,25 @@ def read_one(dev, n, length, timeout=4000):
     return bytes(out)
 
 
+def write_backup(path: str, data: bytes) -> None:
+    """Write `data` to `path`, timestamping any prior file out of the way
+    first instead of overwriting it.
+
+    This project's own rule for calibration data (CLAUDE.md: "Never
+    overwrite calibration/* -- only timestamp") applies at least as strongly
+    here: EEPROM 0x52 is the one thing on this scanner that cannot be
+    re-derived, so a second run of this tool must never silently replace a
+    previously-saved copy, verified or not, with whatever this run produced.
+    """
+    if os.path.exists(path):
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        prior = f"{path}.pre-{stamp}"
+        os.rename(path, prior)
+        print(f"     (kept prior file as {prior})")
+    with open(path, "wb") as fh:
+        fh.write(data)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -235,8 +254,7 @@ def _read_all(dev, args) -> int:
         suffix = "" if keep_as_backup else ".SUSPECT"
         path = os.path.join(args.out,
                             f"eeprom_n{n}_i2c{(n | 0x50):02x}.bin{suffix}")
-        with open(path, "wb") as fh:
-            fh.write(data)
+        write_backup(path, data)
         print(f"     saved {path}")
         saved += keep_as_backup
         kept_suspect += not keep_as_backup

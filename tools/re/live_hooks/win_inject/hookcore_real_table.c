@@ -912,5 +912,36 @@ const ExtraDumpSpec g_extraDumps[] = {
     { "sba_order_fpo_calc", "pref_data_before", EXTRA_DUMP_STACK_PTR, 12, 0, 0, 0x64 },
     { "sba_order_fpo_calc", "arg5_blob", EXTRA_DUMP_STACK_PTR, 5, 0, 0, 0x48 },
     { "sba_order_fpo_calc", "fos_dmin", EXTRA_DUMP_STACK_PTR, 11, 0, 0, 0x10 },
+    /* v22 (docs/74 SS73/SS74) -- the remaining six POINTER arguments, so a
+     * Unicorn harness can execute 0x1028b8d0 on real captured inputs and be
+     * diffed bit-exact against the six known-good orderFpo triples SS73.2
+     * already recorded. v21 dumped only args 5/11/12; args 0/1/2/6/7/10 are
+     * pointers whose CONTENTS have never been captured, and a Unicorn run
+     * cannot be built without them (SS72.6 refused to build one precisely
+     * because inventing them is forbidden).
+     *
+     * Sizes are deliberately generous-but-bounded; every row is
+     * IsBadReadPtr-guarded like the rest, so an over-large request degrades
+     * to `"readable":false` rather than crashing. Total added ~1.5 KB per
+     * call x 24 calls ~= 37 KB per capture -- negligible next to the
+     * existing 0x84000-byte poly_input_r row.
+     *
+     * Arg->offset mapping below is LIVE-CONFIRMED from v21's own raw
+     * stack_dwords (docs/74 SS73.4 and the scene-base arithmetic in SS75):
+     * deriving the scene base from arg12 (= scene+0x38a2) and subtracting
+     * shows args 0/1/2/7/11/12 land exactly on SS72.2's claimed offsets
+     * (+0x1a, +0x3bc8, +0x388c, +0x3c34, +0x290c, +0x38a2). **arg 6 does
+     * NOT** -- SS72.2 claimed scene+0x5978, but the real pointer sits
+     * ~0xc65f0 BELOW the scene base, i.e. a separate allocation entirely.
+     * It is dumped here as an unknown buffer rather than as a scene field,
+     * and its size is a guess (0x100) for that reason -- if it comes back
+     * truncated or unreadable, that is itself information.
+     * args 5 and 10 are adjacent caller locals (arg10 == arg5 + 0x64). */
+    { "sba_order_fpo_calc", "arg0_dens", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x40 },
+    { "sba_order_fpo_calc", "arg1_cbank", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x400 },
+    { "sba_order_fpo_calc", "arg2_388c", EXTRA_DUMP_STACK_PTR, 2, 0, 0, 0x20 },
+    { "sba_order_fpo_calc", "arg6_unknown", EXTRA_DUMP_STACK_PTR, 6, 0, 0, 0x100 },
+    { "sba_order_fpo_calc", "arg7_3c34", EXTRA_DUMP_STACK_PTR, 7, 0, 0, 0x40 },
+    { "sba_order_fpo_calc", "arg10_local2", EXTRA_DUMP_STACK_PTR, 10, 0, 0, 0x64 },
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0 }, /* sentinel */
 };

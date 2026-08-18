@@ -14613,3 +14613,119 @@ open search.
 
 **No production, golden, or port file was changed by this pass.** Only
 `docs/74-…md` (this section) and `docs/76`'s own step 4 were edited.
+
+## 75 — §72.2's thirteen-argument table checked against the live pointers
+themselves: six of seven scene-relative claims confirmed exactly, **arg 6
+refuted** (it is not `scene+0x5978`, it is a separate allocation), and v22
+built to dump the six argument buffers a Unicorn run still needs
+
+§73.4 confirmed three of §72.2's argument mappings live (args 5, 11, 12) by
+comparing dumped *contents* against known values. That method only reaches
+arguments whose contents were dumped. This section checks the rest a
+different way — by arithmetic on the raw pointer values the engine logs for
+every call regardless of dumps — and finds one real error in the table.
+
+### 75.1 — Method: derive the scene base, then subtract
+
+The v21 capture logs all 13 raw argument values in every
+`sba_order_fpo_calc` `call` row's own `stack_dwords` array, independent of
+any extra dump. §73.4 established `arg 12 == pref_data == scene+0x38a2`
+exactly (its value equals the `pref_data_before` dump's own reported `addr`
+on all 24 calls, and §74.2 independently corroborated the same mapping via
+the `+0/+2/+4` vs `+6/+8/+0xa` duplication holding 12/12). That gives a
+scene base for free: `scene = arg12 − 0x38a2`. Every other argument's
+claimed scene offset is then a subtraction, checkable with no disassembly
+at all.
+
+Taking the first live `arg3 == 0` call (`scene = 0x08dc60b0`):
+
+| arg | live value | derived offset | §72.2 claim | |
+|---|---|---|---|---|
+| 0 | `0x08dc60ca` | `scene+0x001a` | `scene+0x1a` | confirmed |
+| 1 | `0x08dc9c78` | `scene+0x3bc8` | `scene+0x3bc8` | confirmed |
+| 2 | `0x08dc993c` | `scene+0x388c` | `scene+0x388c` | confirmed |
+| 5 | `0x09399570` | — | (caller local) | not scene-relative, as claimed |
+| 6 | `0x08cffac0` | `scene−0xc65f0` | `scene+0x5978` | **REFUTED** |
+| 7 | `0x08dc9ce4` | `scene+0x3c34` | `scene+0x3c34` | confirmed |
+| 10 | `0x093995d4` | — | (caller local) | not scene-relative, as claimed |
+| 11 | `0x08dc89bc` | `scene+0x290c` | `scene+0x290c` | confirmed |
+| 12 | `0x08dc9952` | `scene+0x38a2` | `scene+0x38a2` | confirmed (by construction) |
+
+**Six of the seven scene-relative claims land exactly**, to the byte, which
+is strong independent corroboration of §72.2's hand-rebuilt argument order
+generally — that table was reconstructed from caller push order plus manual
+stack-delta tracking after r2's own `arg_XXXh` names proved unusable, and
+it holds up.
+
+**Arg 6 does not.** §72.2 recorded it as `scene+0x5978`; the real pointer
+sits roughly `0xc65f0` bytes *below* the scene base — not a scene field at
+all, but a separate allocation in an unrelated region. This is the third
+correction to §72's static reading (after §73.3's `arg3` refutation and
+§74's write-site correction), and it lands the same way as the others: the
+static reconstruction was right about structure and wrong about one
+specific value that only live data could settle.
+
+Args 5 and 10 are confirmed adjacent caller locals — `arg10 − arg5 ==
+0x64` exactly, consistent with §72.2's description of two small structs in
+the caller's own frame (and with `pref_data` itself being a `0x64`-byte
+blob, suggesting these two locals are the same shape).
+
+### 75.2 — v22: dumping the six argument buffers a Unicorn run still needs
+
+§72.6 refused to build a Unicorn harness for `0x1028b8d0` because doing so
+would have required inventing load-bearing inputs. §73/§74 removed two of
+the three named unknowns (the switch selector's live value; the write
+site's location). The remaining obstacle is concrete and mechanical: **v21
+dumped only args 5, 11 and 12; args 0, 1, 2, 6, 7 and 10 are pointers whose
+contents have never been captured**, and no harness can execute the real
+function without the real memory behind them.
+
+v22 adds exactly those six `EXTRA_DUMP_STACK_PTR` rows to the existing
+`sba_order_fpo_calc` hook. No new hook, so no `HOOKCORE_MAX_HOOKS` bump, no
+new thunk, and none of the append-only/positional hazards §46.8/§47/§73
+document — the hook table is byte-for-byte unchanged and
+`check_table_sync.py` still reports 30/30 identical against `agent.js`.
+
+Sizes are generous-but-bounded (`0x40`, `0x400`, `0x20`, `0x100`, `0x40`,
+`0x64` respectively, ~1.5 KB/call, ~37 KB per capture — negligible beside
+the existing `0x84000`-byte `poly_input_r` row), and every row is
+`IsBadReadPtr`-guarded like the rest, so an over-large or wrong-shaped
+request degrades to `"readable": false` rather than crashing the real box.
+`arg6_unknown`'s size in particular is an honest guess, flagged as such in
+the table's own comment, precisely because §75.1 just showed nobody knows
+what that buffer actually is — a truncated or unreadable result there is
+itself information.
+
+Build gates, all passing: KERNEL32-only imports (no CRT), XP 5.1 subsystem
+stamp, 30/30 hook-table sync, and `selftest ALL PASS` including the
+32,000-call 8-thread concurrency stress. `hookdll.dll` `md5
+88de396ab7527a5af63644221a44aa60`, `injector.exe` `md5
+ca21753e048f4e6e211fcaf2ac0684c5`, both uploaded to the drop server as
+`hookdll_v22.dll` / `injector_v22.exe` and confirmed present in its own
+listing.
+
+### 75.3 — What a v22 capture unlocks
+
+With args 0/1/2/5/6/7/10/11/12's real contents plus the already-known
+immediates (arg 3 = 0, arg 4 = 0, args 8/9 = 0, all live-confirmed in
+§73.3/§73.4), every input to `0x1028b8d0` on the live `arg3==0` path is
+real captured data rather than an assumption. That is exactly the
+precondition §72.6 said was missing, and it makes the harness §66 originally
+called for buildable to this project's Tier-1 standard — executed on real
+input, diffed bit-exact against the six known-good `orderFpo` triples
+§73.2 already recorded ((2079,58,465), (2041,72,447), (1914,48,455),
+(1731,54,451), (2233,65,431), (2056,67,444)), with no tuning knob anywhere
+in the loop.
+
+Caveat stated plainly rather than discovered later: a Unicorn run of this
+function also executes its eight helper subroutines, and if any of them
+dereferences a pointer *stored inside* one of these buffers, that memory
+will not be in the capture either. Whether that happens is not known yet —
+it is a real possibility this section does not pretend to have excluded,
+and if it occurs the harness will fault on a specific unmapped address,
+which names precisely what a v23 would need to dump. That is a tractable
+next step, not a dead end.
+
+**No production, golden, or port file was changed by this pass.** The only
+files edited are `hookcore_real_table.c` (six additive dump rows, no hook
+table change) and `docs/74-…md` (this section).

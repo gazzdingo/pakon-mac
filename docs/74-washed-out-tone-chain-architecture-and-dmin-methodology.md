@@ -18294,3 +18294,81 @@ pointer arguments and only arg 1 has ever been dumped (`arg2 = 0x8ca9f88`,
 `arg3 = 0x8ca9f8c` in the v28 trace) — those are the cheapest unexplored
 inputs. Failing that, `k` is computed inside the function from data it derives
 itself, and the answer is in its code rather than in any capture.
+
+## 106 — Reading `cn_enhanced_driver`: the gate found, two of my own readings
+corrected, and the spurious-separator trap avoided
+
+Static, `PakonIMAu.dll` md5 `eea9dcf78ee21d4f7c515a6c2512242d`.
+
+### 106.1 The function, and where it touches the shift
+
+`cn_enhanced_driver` (`fcn.10069490`, 1911 B) =
+**`AnsCnEnhancedPath::CnEnhanced_analyzeSceneSpecific`** (from its own string
+table, `CN-Enhanced.cpp`).
+
+It references the shift address — `esi + 0x4b6`, the same slot
+`balance_shift_4b6` reads — at exactly one place, `0x10069896`, where it is
+marshalled as an argument (pushed twice) alongside two byte flags from
+`esi+0x29` and `esi+0x4c`. That region is **gated**:
+
+```
+  0x10069854  call fcn.10102b20            ; balance_area_image
+  0x1006985c  push eax
+  0x10069864  call fcn.10001580            ; -> var_14h_5
+  0x10069875  mov edx, dword [0x106b5bd4]  ; a global, 0 in the file image
+  0x1006987b  cmp edx, dword [var_14h_5]
+  0x1006987e  jne 0x10069b48               ; skip the whole block
+```
+
+So the block runs only when a global matches something derived from
+`balance_area_image`'s result — which is the right *shape* for §105's
+conditionality (21 of 39 frames uncorrected), though not yet tied to it.
+
+### 106.2 Two readings of mine, corrected
+
+**`fcn.10006880` is not the shift writer.** It appears eight times in this
+function and is 29 bytes:
+
+```
+  mov eax,[esp+4] / mov eax,[eax] / mov [esi],eax / lea ecx,[eax+4] / call AddRef
+```
+
+— a refcounted smart-pointer copy constructor. The `&shift` pushes around it
+are argument marshalling; the real callee is `fcn.100e16d0`, immediately after.
+Reading `call fcn.10006880` as "writes the shift" was wrong.
+
+**`cn_enhanced_driver` does not call `apply_lut`.** `fcn.100d9340` does not
+appear in its disassembly at all, so the 3305→3306 adjacency in the trace is
+call-ordering, not containment.
+
+### 106.3 The byte flags, and a trap declined
+
+The two flags the gated block reads are **constant across all 39 frames**:
+
+```
+  esi+0x29 = 1 on 39/39      esi+0x4c = 1 on 39/39
+```
+
+so neither explains why 18 frames are corrected and 21 are not.
+
+A byte-wise scan for a field that perfectly separates corrected from
+uncorrected frames returned three candidates — `+0x002`, `+0x026`, `+0x4b8`.
+**All three are artefacts** and were discarded: each has 38–39 *distinct*
+values across 39 frames, so any partition of the frames separates them
+trivially. (`+0x4b8` is additionally circular — it is the G channel of the
+shift being predicted.) With 1280 offsets and 39 points, chance separators are
+expected; reporting one as a finding would have been the §94.4 numerology error
+in a new costume.
+
+### 106.4 Standing
+
+**Known:** where the shift is touched, that the block is gated on a global vs a
+`balance_area_image`-derived value, and that the two obvious flags are constant.
+
+**Not known:** what `fcn.100e16d0` does with the shift pointer, and what the
+global at `0x106b5bd4` holds at run time (it is 0 in the file image, so it is
+set during initialisation — a capture could read it directly).
+
+The cheapest next evidence is still `cn_enhanced_driver`'s **arg 2 and arg 3**,
+never dumped, plus the global at `0x106b5bd4`. Both ride along on any future
+capture; neither needs a new hook, only rows.

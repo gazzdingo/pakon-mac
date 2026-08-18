@@ -16585,3 +16585,39 @@ WHAT THIS MEANS FOR THE PORT. Bounded, but larger than "port 50 handlers": the p
 Next capture worth having (not blocking): the same v27 build on a DIFFERENT roll, to establish whether the 264 programs are roll-dependent or fixed. That single fact changes the size of the port substantially and only a second roll can answer it.
 
 No production file changed.
+
+
+## 87 - Second roll proves the VM programs are STATIC, not generated per scene (correcting sec86)
+sec86 concluded from one roll that "the bytecode is generated/parameterised per scene, NOT one static program". That was wrong, and wrong in a way one roll cannot detect: with a single capture, "a fixed program set exercised in a scene-dependent order" and "programs generated per scene" produce identical evidence. The second roll separates them.
+
+THE MEASUREMENT. Two v27 captures, different rolls:
+
+  roll A (live_hooks_20260817-212408.jsonl, md5 cf67eec3...): 3168 calls, 264 distinct programs
+  roll B (live_hooks_20260817-213026.jsonl, md5 b7b02a79...): 3168 calls, 264 distinct programs
+
+  shared by both : 264
+  only in A      : 0
+  only in B      : 0
+
+100% overlap. Byte-identical program sets.
+
+THE SCANS ARE GENUINELY DIFFERENT, checked rather than assumed -- their per-scene orderFpo triples share no values:
+
+  roll A: (2154,59,465) (2059,70,448) (1927,47,456) (1733,53,453) (2252,64,433) (2093,66,446)
+  roll B: (1843,59,461) (1985,75,450) (2027,82,456) (2021,77,454) (2067,76,452) (2154,63,457)
+
+So the identical program sets are not an artefact of rescanning the same film.
+
+WHAT THIS MEANS. The 264 programs are STATIC configuration -- a fixed instruction repertoire the interpreter selects from. The per-scene variation lives entirely in the CONTEXT (3168 distinct contexts per capture), i.e. the data the programs read, not in the code.
+
+Consequences for the port, all favourable:
+
+1. There is NO generator to port. sec86 flagged "a port needs the generator as well as the interpreter" as the thing that made this bigger than porting 50 handlers. That concern is retired -- the programs are fixed data, and both captures already contain all 264 of them.
+2. Only the interpreter needs porting, against a small opcode set (sec86.4 recovered the encoding for 262 of 264 programs; finishing it is static work).
+3. The 264 programs plus their contexts are a ready-made test corpus, now doubled and cross-roll: any ported handler can be validated against two independent rolls rather than one.
+
+Also worth recording: the call count is identical (3168) across two different rolls, consistent with the interpreter being driven by fixed pipeline structure rather than by scene content.
+
+CORRECTION DISCIPLINE. sec86's claim is superseded, not quietly amended -- it was a reasonable read of one roll and a wrong read of the system, and the specific reason one roll could not distinguish the two cases is recorded above so the same inference is not made again from a single capture.
+
+No production file changed.

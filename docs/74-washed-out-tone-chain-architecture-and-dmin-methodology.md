@@ -17391,3 +17391,78 @@ coincidence is easy to manufacture, so no match is claimed — recorded as
 **Open:** where `k` comes from (not `orderFpo`), and whether `A` is vendor data
 or emergent. The hardware step that would settle `A` independently is a dump
 row on `sba_set_shifts` arg 1, which currently logs only pointers.
+
+## 95 — The producer of `k` located: `sba_preference`. Every offline candidate
+ruled out, and the reason the search could not have succeeded
+
+§94 left `k` unexplained. This finds where it is made, rules out the remaining
+offline candidates, and prepares the one capture row that can close it.
+
+### 95.1 The shifts confirmed a second, independent way
+
+`balance_area_image`'s `balance_shift_4b6` dump carries the shift as raw
+`int16`:
+
+```
+  [800, 388, 136]  [829, 402, 167]  [798, 360, 130]
+  [889, 458, 221]  [833, 405, 169]  [766, 351,  96]
+```
+
+**Identical** to the six triples §93 decoded from `lut[i] − i`. Two independent
+routes — a stored field and the applied table — agreeing exactly, so the shift
+extraction underpinning §93/§94 is not in question. It also shows the shift is
+a *stored* value read at `arg4 + 0x0a`, not something `apply_lut` computes.
+
+### 95.2 The producer, from the call trace
+
+```
+  3290-3299  sba_vm_interp          the VM runs
+  3300       sba_order_fpo_helper   computes L
+  3301       sba_preference         <- consumes the triple, produces the shift
+  3302       sba_set_shifts         the shift is now set
+  3303-3304  sba_get_shifts
+  3305       cn_enhanced_driver
+  3306       area_image_apply_lut   applied
+  3307+      fugc_analyze, analyze_auto_tone
+```
+
+Two things follow. **`k` is born in `sba_preference`**, one call after `L` and
+one before the shift exists. And **`k` cannot come from the tone chain**:
+`apply_lut` runs *before* `fugc_analyze` and `analyze_auto_tone`, so autoTone
+is downstream of the shift and is ruled out as its source by ordering alone.
+
+### 95.3 Everything offline, tested and ruled out
+
+* `Y`, `U`, `V` from the §79-golden triple (§94.1) — best residual rms 33.0
+  against a `k` spread of 118.
+* `L` itself — identical to `Y` (`Y = fos.Y + L`), corr −0.460.
+* **Every** `int16`/`int32`/unsigned field in the `pref_data` window, tested
+  systematically: **zero** fields above `|corr| = 0.95`.
+
+### 95.4 Why that search could not have succeeded
+
+The scene structs are contiguous with a stride of **25 820 bytes**
+(`cn_enhanced_driver` arg 1: 150139080, 150164900, 150190720, …). `pref_data`
+dumps **0x64** of that — **0.4 %**. So §95.3's negatives bound where `k`
+*isn't*; they cannot locate it. Worse, `sba_preference`'s arg 0 sits ~`0x3888`
+into the same scene struct `fpo_calc`'s arg 0 addresses, and `orderFpo` writes
+its triple at `scene+0x38a2` — *past* the `0x3000` that `arg0_big` reaches. The
+region where Preference actually works is in a gap between two dumps.
+
+### 95.5 v29, built and staged
+
+One row, on a pointer already being dumped:
+
+```c
+{ "sba_preference", "pref_scene_big", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x800 },
+```
+
+`0x800` covers the triple at `+0x38a2` and the fields around it. No new hook,
+no `DEFTHUNK`, no `HOOKCORE_MAX_HOOKS` change; if the buffer is shorter than
+requested the row returns `readable=false` while the existing `0x64` row still
+carries its data. `check_table_sync.py` before and after: `OK: 32 hooks`.
+Built; `pref_scene_big` verified present in the emitted `hookdll.dll`
+(md5 `d4c629ee3652e463a8daca499ccf5bc9`).
+
+**Staged, not uploaded** — the drop server was unreachable at the time of
+writing. Upload and one scan closes this.

@@ -912,6 +912,39 @@ const ExtraDumpSpec g_extraDumps[] = {
     { "sba_get_shifts", "mode_5074", EXTRA_DUMP_THIS_DEREF_OFFSET, 0x10, 0x5074, 0, 2 },
     { "sba_preference", "pref_data", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x64 },
     { "sba_preference", "blob", EXTRA_DUMP_STACK_PTR, 3, 0, 0, 0x48 },
+    /* v29 (docs/74 SS95) -- the inputs that produce the per-frame balance
+     * scalar `k`.
+     *
+     * SS93/SS94 established the vendor's shift is `A[c] + k[f]`: A is a
+     * per-channel constant stable across two rolls (agrees to 5 codes on G),
+     * k is a per-scene scalar. Every offline candidate for k has been tested
+     * and ruled out -- Y, U and V from the SS79-golden orderFpo triple (best
+     * residual rms 33.0 against a k spread of 118), L itself, and every
+     * int16/int32 field in this 0x64 pref_data window (nothing above |0.95|).
+     *
+     * WHY THE SEARCH COULD NOT HAVE SUCCEEDED. The call trace puts the
+     * producer exactly here:
+     *
+     *     3300 sba_order_fpo_helper   (computes L)
+     *     3301 sba_preference         <- consumes the triple, produces the shift
+     *     3302 sba_set_shifts         (the shift is now set)
+     *     3306 area_image_apply_lut   (applied; balance_shift_4b6 confirms
+     *                                  the same six triples independently)
+     *
+     * but the scene structs are contiguous with a stride of 25820 bytes
+     * (cn_enhanced_driver arg1: 150139080, 150164900, 150190720, ...), and
+     * pref_data dumps 0x64 of them -- 0.4 %. The inputs driving k are almost
+     * certainly outside that window, so the negative results above bound
+     * where k ISN'T, not what it is.
+     *
+     * arg0 here sits ~0x3888 into the same scene struct fpo_calc's arg0
+     * addresses, and orderFpo writes its triple at scene+0x38a2 -- just past
+     * it, in a region fpo_calc's own arg0_big (0x3000) does not reach. 0x800
+     * covers the triple and the fields around it. Same pointer already being
+     * dumped, only larger: no new hook, no thunk, no HOOKCORE_MAX_HOOKS
+     * change, and if the buffer is shorter than asked the row comes back
+     * readable=false while the 0x64 row above still carries its data. */
+    { "sba_preference", "pref_scene_big", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x800 },
     /* docs/74 sec68: balanceAreaImage reads the three ramp-shift words from
      * arg4+0x0a (0x10102f85..fa3). Dump them directly to pin scene+0x4b6 --
      * the setShifts OUT plus the per-frame uniform luma offset Delta that is

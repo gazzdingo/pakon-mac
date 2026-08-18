@@ -30,6 +30,12 @@ WHAT THIS MODULE ENFORCES
 -------------------------
 **No transfer routed through here can write EEPROM 0x52.**
 
+"Routed through here" is load-bearing, not throat-clearing: ``i2c_raw_scan.py``
+and the stage-1-loader download (``Fx2.vendor_out``, used by every EEPROM tool
+before any guarded call) are NOT routed through here and this module gives
+them no protection at all -- see "LIMITS" below before treating this
+guarantee as covering the whole codebase.
+
 Stated as what the code does, not as a claim about the hardware: this wrapper
 refuses every write-direction request on the device-addressed path, for every
 caller, with no override. What the *firmware* would do with a request that
@@ -61,8 +67,9 @@ exactly that asymmetry:
 THE REQUEST PATHS
 -----------------
 Recovered from ``TLB.dll`` (md5 ``193d9b2ce0a4b77ae9b78262bd06c0fc``)
-``fcn.100160a0`` = ``FN_bEEPromRead``, and re-confirmed by disassembly when
-this allow-list was reviewed:
+``fcn.100160a0`` = ``FN_bEEPromRead`` by static disassembly -- triage-tier
+evidence (CLAUDE.md's evidence hierarchy), re-read when this allow-list was
+last reviewed but not independently confirmed bit-exact against a live run:
 
 1. **Device-addressed path** -- ``wIndex 0x1234``, and it takes *two*
    requests, not one::
@@ -212,6 +219,19 @@ def check(bm_request_type: int, b_request: int, wvalue: int, windex: int,
              f"wIndex=0x{windex:04X}")
     if _selected_device is not None:
         where += f" [selected 0x{_selected_device:02X}]"
+
+    # bmRequestType's bit 7 is the authoritative direction (USB spec); is_write
+    # is supposed to be derived from it (see ctrl_transfer below). A caller
+    # that passes the two inconsistently gets refused here rather than judged
+    # on whichever one happens to be wrong -- this parameter exists for that
+    # cross-check, not just to be threaded through unused.
+    bmrt_is_write = not (bm_request_type & 0x80)
+    if bmrt_is_write != is_write:
+        _log(f"DENIED (bmRequestType/is_write mismatch, "
+             f"bmRequestType=0x{bm_request_type:02X}): {where}")
+        raise TransferDenied(
+            f"bmRequestType=0x{bm_request_type:02X} direction bit disagrees "
+            f"with is_write={is_write}: {where}")
 
     # --- the hard rule: no write-direction traffic on the device path -----
     # 0xA4 is host-to-device but is a *select*, not a data phase, so it is

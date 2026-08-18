@@ -17755,3 +17755,75 @@ established well past argument; the exact expression is not.
 **And the luma axis is still open.** `k` is untouched by all of this — a 3×3
 fit gives diagonal chroma rows at rms 0.43 while the Y row is junk at rms 56.
 `k` remains what v29 is for.
+
+## 100 — Correcting §98: the 384 un-captured bytes **do not affect the shift**.
+They are copied, never computed with — so v29's `pref_scene_big` would not have
+fixed the 3/6, and the residual is luma-only, exactly as §99 predicts
+
+§98 found `sba_preference` reads to `arg0+0x1e4` while the capture holds `0x64`,
+and concluded those 384 poisoned bytes explained §97's three failing frames. It
+is a tidy story and it is **wrong**. Establishing that before the capture was
+taken is the point of this section.
+
+### 100.1 Only three instructions read the region, and none of them computes
+
+Attributing every read of the un-captured window to its instruction address:
+
+```
+  0x1028c8f4   x143   mov dx, word [edi + ecx*2 + 0x62]   <- the copy SOURCE
+  0x1028c8ff   x144   loop bound (arg2+0x54, the internal temp of §98.2)
+  0x1028c8eb   x1     the same bound, initial compare
+```
+
+The 144 offsets are all **even and evenly spaced** — one contiguous `int16`
+array, not scattered fields — and the only site that touches its *contents* is
+the copy at `0x1028c8f4`, feeding
+`mov word [esi + ecx*2 + 0x56], dx` directly. The data flows `arg0+0x62… →
+arg2+0x56…` verbatim and never enters the arithmetic.
+
+### 100.2 Tested, not argued
+
+Re-running each call with the whole `0x64…0x1e4` window overwritten with three
+very different fills:
+
+```
+  call 1951: fill00 (800,388,136)  fillCD (800,388,136)  fillFF (800,388,136)  INVARIANT
+  call 2221: fill00 (829,403,167)  fillCD (829,403,167)  fillFF (829,403,167)  INVARIANT
+  call 2491: fill00 (798,359,129)  fillCD (798,359,129)  fillFF (798,359,129)  INVARIANT
+  call 2761: fill00 (797,367,130)  fillCD (797,367,130)  fillFF (797,367,130)  INVARIANT
+  call 3031: fill00 (768,340,103)  fillCD (768,340,103)  fillFF (768,340,103)  INVARIANT
+  call 3301: fill00 (727,312, 56)  fillCD (727,312, 56)  fillFF (727,312, 56)  INVARIANT
+```
+
+**The shift does not depend on the un-captured bytes.** `pref_scene_big`
+(§95.5) would have cost a scan and changed nothing. The row is harmless and
+still makes the capture self-describing, but it is no longer justified as the
+fix for §97, and this section supersedes that claim.
+
+### 100.3 What the residual actually is
+
+Frame 4, in the §99 basis:
+
+```
+  ours   (797, 367, 130)  ->  chroma (-78.8, -471.6)
+  vendor (889, 458, 221)  ->  chroma (-79.2, -472.4)
+```
+
+**The chroma already matches**, to well under a code. The entire residual is on
+the luma axis — independently consistent with §97.2 (the misses are uniform
+across channels), §99.3 (chroma is `−1.04 ×` `orderFpo`'s chroma, which we
+compute correctly), and §96 (`k` is the `(1,1,1)` component).
+
+So the emulation is not missing *data in its inputs*; it is missing whatever
+supplies the **luma term**, which is not reachable from a single call's
+arguments at all. §97.3's cross-frame-state reading survives; §98's
+missing-bytes reading does not.
+
+### 100.4 Method note
+
+Two corrections in a row (§98 correcting §97, this correcting §98) came from
+the same habit: a plausible mechanism was identified and then *not* tested
+against the cheap experiment that could refute it. Overwriting the suspect
+region with three fills costs one script and settles it outright. Both
+corrections were found by asking "what would make this wrong?" — and both times
+the answer was available offline, before any hardware was spent.

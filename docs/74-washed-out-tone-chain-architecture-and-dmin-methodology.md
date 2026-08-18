@@ -18247,3 +18247,50 @@ luma), that it is not per-strip, and that Preference's chroma is final.
 inputs properly rather than fit three points — and every per-frame quantity in
 this capture (`orderFpo` triples, `L`, the scene stats) can be tested against
 it offline.
+
+### 105.5 — What `k` is **not**: four candidates tested on 39 frames and closed
+
+With 39 frames and 18 non-zero values there is finally enough data to test
+candidates properly rather than fit three points. All four obvious stories are
+dead.
+
+**Not a function of the incoming shift.** The shift `cn_enhanced_driver`
+receives does not predict the correction it applies:
+
+```
+  corr(k, shift.R)    -0.016      corr(k, shift.G)    +0.055
+  corr(k, shift.B)    +0.056      corr(k, shift luma) +0.031
+```
+
+**Not a clamp.** A clamp would explain the zeros (in-band frames untouched) and
+pin the corrected values to a boundary. It does neither — the pre- and
+post-correction ranges are *identical* (`-265…1331`, luma `84…1665`), and
+zero/non-zero frames overlap across the whole luma range. A frame at luma 343
+gets `k = 0` while one at 313 gets `−40`, so there is no threshold.
+
+**Not any field in `cn_enhanced_driver`'s arg 1.** Scanning the whole `0x500`
+window as `int16`/`uint16`/`int32`/`float32` at every 2-byte offset:
+**zero fields** with `|corr| > 0.90` against `k`.
+
+**Not cross-frame smoothing.** The natural scene-balance story — pull each
+frame toward the running mean of its predecessors — fails on both tests:
+
+```
+  corr(k, prev-frame delta)   +0.112
+  corr(k, running mean)       +0.191
+  corr(k, pre - running mean) -0.024
+
+  9 of 17 non-zero corrections point toward the running mean  (chance is ~8.5)
+```
+
+**One structural observation, recorded as observation only.** The zeros are not
+evenly distributed — non-zero values *cluster*, with runs at frame indices
+22–27 and 29–33 and long all-zero runs at 13–17 and 34–38. Something changes
+partway through the roll. Whether that is film, scene content, or an internal
+mode is not determined, and with one roll it cannot be.
+
+**Next targets, in order of cost.** `cn_enhanced_driver` takes at least three
+pointer arguments and only arg 1 has ever been dumped (`arg2 = 0x8ca9f88`,
+`arg3 = 0x8ca9f8c` in the v28 trace) — those are the cheapest unexplored
+inputs. Failing that, `k` is computed inside the function from data it derives
+itself, and the answer is in its code rather than in any capture.

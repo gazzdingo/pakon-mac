@@ -16527,7 +16527,7 @@ the same DPI, shown rather than asserted. Every render number uses §31's
 parameters and the same `AA001.tif` as every other measurement in this doc.
 
 
-## 85 — Two clean negatives on Y's  term: it is neither a simple
+## 85 — Two clean negatives on Y's `L` term: it is neither a simple
 dens statistic nor a value read from any captured buffer
 sec84 established that the per-frame Preference wiring is THE fix (it replaces both halves of the fpo/setShifts coupled defect at once), and that the one thing blocking it is computing Y's L term outside a capture. Two cheap tests were worth running before accepting sec78.2's bytecode-interpreter conclusion as final.
 

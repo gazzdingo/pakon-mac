@@ -16096,3 +16096,166 @@ inverse uses `AnselEngine.to_srgb` itself, the stage taps wrap
 `setshifts_out` changed. The §61 simulation reproduces §61's own three
 described edits exactly and was cross-checked against the shared checkout's
 uncommitted implementation of them.
+
+## 82 — The vendor's own balance LUTs decoded (Δ appears in them directly),
+`7584903` reverted with the measurement that justifies it, and the residual
+error split into **two independent defects** — a ~500-code black-point lift
+and a channel-dependent span deficit that originates in the inversion, not
+the tone chain
+
+§81 localised the residual to a near-uniform RPD12 offset by inverting
+`AA001.tif` backwards through the vendor ICC pair. This section adds the
+forward-side evidence, resolves the `7584903` regression, and separates two
+defects that had been reading as one.
+
+### 82.1 — The vendor's real balance LUTs: §60 confirmed, and Δ falls out
+
+The v25 capture carries 18 `area_image_apply_lut` calls with all three
+4096-entry `int16` LUTs dumped. Decoding `lut[i] − i` over `i = 200…3800`:
+
+* **12 calls are exact identity** (delta 0 across the whole range) — the
+  preview/analysis passes.
+* **6 calls are the real per-frame renders**, and each is exactly
+  `clamp(i + shift, 0, 4095)`: a constant delta through the unclamped
+  middle, decaying as `4095 − i` in the tail where it saturates.
+
+Recovered shifts, per frame:
+
+| frame | R | G | B |
+|---|---|---|---|
+| 1 | 717 | 303 | 35 |
+| 2 | 818 | 400 | 162 |
+| 3 | 873 | 478 | 205 |
+| 4 | 990 | 591 | 330 |
+| 5 | 592 | 196 | −38 |
+| 6 | 774 | 364 | 122 |
+
+**This is direct, forward-side confirmation of §60** — the vendor's balance
+really is a per-channel additive ramp on the *linear* PolyPixel output, not
+a density-domain add. It is not inferred from a call site this time; it is
+the applied table itself.
+
+Subtracting the same capture's `shifts_3a38` (`+0x3a38`, the `A` term) from
+these gives, per frame: **−33, +30, +15, +34, −69, +11** — *uniform across
+R/G/B in every frame*. That is Δ, the per-frame luma offset §73.6 measured
+from the applied `+0x4b6` words, now recovered independently from the LUT
+side. **`applied = A + Δ` is confirmed from two directions**, and the LUT
+gives Δ without needing the `+0x4b6` dump at all.
+
+### 82.2 — `7584903` reverted, with the measurement that justifies it
+
+§61's re-order was finally committed (`7584903`) while §81 was in flight.
+Measured on `scan-20260812-091633.bin` frame 0 against `AA001.tif` — the
+check it was never run against:
+
+```
+with 7584903:  R −90  G +22  B +61     <- R is 0 at EVERY percentile through p99
+reverted:      R +50  G +98  B +99
+```
+
+G and B improve substantially, exactly as §60/§82.1's evidence predicts. R
+collapses to black. Reverted (`20dc7cf`) so the branch does not ship an
+unusable render; **this reverts the order, not the finding**, which §82.1
+independently confirms is correct.
+
+Two things worth recording rather than passing over:
+
+* The failure was reproduced independently before the revert — this pass
+  implemented the same change from §61's prose and got byte-identical
+  numbers (R −90, G +22, B +61), so the committed code does what §61
+  describes; the described change is what is incomplete.
+* **Neither test catches it.** `test_calib.py` (200/200) and
+  `test_render_f135.py` (PASS) stay green on both trees, because they check
+  correlation sign and overall mean, not per-channel level. An all-zero red
+  channel passes the suite. A real harness gap.
+
+Two candidate explanations were tested and both are **negative**: shifting
+`film_base` along with the pixels (a shifted population needs a shifted
+reference) leaves R at −90; and the port's shift magnitudes are not the
+problem — §82.1's real vendor R shifts (592…990) are *larger* than the
+port's 683, and feeding the vendor's own frame-1 triple through the port's
+arithmetic reproduces essentially the same R density (1070 vs 1077).
+
+### 82.3 — The residual is two defects, not one
+
+Instrumenting `render_scene`'s own input and output (RPD12, per channel,
+p1/p50/p95) against §81's back-inverted vendor reference:
+
+| | p1 | p50 | p95 | span (p1→p95) |
+|---|---|---|---|---|
+| ours, inversion out | 893 / 1266 / 1409 | 1267 / 1850 / 2145 | 1517 / 2102 / 2496 | **624 / 836 / 1087** |
+| ours, toned out | 1440 / 1436 / 1372 | 1676 / 1880 / 2093 | 1995 / 2101 / 2325 | 555 / 665 / 953 |
+| vendor | 936 / 952 / 936 | 1480 / 1512 / 1624 | 2008 / 2040 / 2088 | **1072 / 1088 / 1152** |
+
+Read together these separate cleanly:
+
+1. **Black-point lift (~500 codes).** Our black leaves the inversion at
+   893/1266/1409 and arrives at the tone stage's output at 1440/1436/1372 —
+   the density-domain `setShifts` add. The vendor's black is 936/952/936.
+   Our *white* point, by contrast, is already close (1995/2101/2325 vs
+   2008/2040/2088). A black point ~500 high with a correct white point is
+   precisely the "no real blacks" signature §1-§9 described. **This is the
+   defect §61 targets**, and its own direction is right.
+2. **Span deficit, and it originates in the inversion.** At
+   `render_scene`'s *input* — before any tone or balance — our spans are
+   already 624/836/1087 against the vendor's 1072/1088/1152. R carries only
+   **58%** of the vendor's tonal range, G 77%, B 94%. The tone chain then
+   compresses R a little further (624→555), but it is not the source. This
+   is a separate defect from (1), and fixing (1) alone — which is what
+   `7584903` did — leaves a too-narrow R sitting too low, which is exactly
+   how it produced a black channel.
+
+The channel-dependence explains why §80's per-channel numbers looked so
+uneven: B's span is nearly right, R's is barely half.
+
+### 82.4 — One hypothesis for the span deficit, tested and rejected
+
+Solving `1000·log10((lin_p95 − ped)/(lin_p5 − ped))` for the pedestal that
+would reproduce the vendor's span gives **(667.5, 592.9, 661.5)** — strikingly
+*near-uniform*, where the port subtracts the polynomial's own per-channel
+`c9 = (159.6, 444.7, 635.5)`. It also explains the pattern: B's `c9` (635.5)
+is already close to its solved value (661.5), and B is the channel whose
+span is nearly correct.
+
+Suggestive enough to test, so it was tested — a uniform pedestal, rendered
+and measured against `AA001.tif`:
+
+| pedestal | median delta R / G / B |
+|---|---|
+| `c9` (159.6, 444.7, 635.5) | +50 / +98 / +99 |
+| uniform 600 | +75 / +112 / +91 |
+| uniform 650 | +64 / +112 / +94 |
+| uniform 700 | +46 / +110 / +95 |
+
+**Rejected.** A uniform pedestal widens the span as predicted but moves the
+whole curve with it, and the medians get *worse*. Recorded as a negative
+rather than dropped: the span arithmetic that motivated it is still correct,
+so whatever fixes the span has to widen it *without* translating the curve —
+which a pedestal change cannot do.
+
+§81's separate finding stands and is consistent: `fpo`'s per-channel values
+are tier-2 confirmed and `c9`'s are a real NegMatrix read, but neither
+citation supports their *role* in this equation — `F135_INVERT_PORTED =
+False`, and no DLL call site computing this arithmetic has ever been found
+(§32/§51/§54/§55). The span deficit is the first quantitative evidence that
+the equation itself, not just its constants, is wrong.
+
+### 82.5 — What this leaves
+
+* **Confirmed, twice over:** the vendor's balance is a linear-domain additive
+  ramp, and `applied = A + Δ` (§82.1).
+* **Open, defect 1:** re-landing the linear-domain order needs the paired
+  downstream change so the black point drops without R collapsing.
+* **Open, defect 2, and now the sharper target:** the inversion produces only
+  58%/77%/94% of the vendor's per-channel tonal span. This is upstream of the
+  tone chain, is not a pedestal error (§82.4), and is the first hard evidence
+  against `f135_rom12_to_rpd12`'s own construction rather than its inputs.
+* **Harness gap:** add a per-channel level/span assertion to
+  `test_render_f135.py`; an all-zero channel currently passes.
+
+**Verification.** LUT deltas computed from the raw dumped bytes with the
+identity/clamp structure checked over `i = 200…3800`, not sampled at a few
+points. The revert's numbers come from two independent implementations of
+the same change. All render measurements use §31's own parameters against
+the same `AA001.tif`, re-fetched this session. Every hypothesis reported
+here as rejected was executed and measured, not argued down.

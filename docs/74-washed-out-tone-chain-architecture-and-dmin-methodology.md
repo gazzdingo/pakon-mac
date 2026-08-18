@@ -17079,3 +17079,92 @@ against the vendor's `1040/1072/1184`), and the c9 solve pointed at a linear
 shadow floor of ~735–780 rather than the colour maths. `L` was blocking the
 per-frame Preference chain (§84), which is a *different* route to the same
 problem; it is now unblocked, not resolved.
+
+## 91 — The vendor's AFE offset convergence, captured live: it settles at
+`(-19, -26, -19)`, which **settles §53** — the current calibration is the
+wrong one, by ~20 codes in the lifted direction
+
+§53 found two disagreeing historical `afe_offsets` and deliberately refused to
+choose between them without a live measurement. This is that measurement, and
+it needed no new hook: `tlb_afe_offset_write` was already in the table and
+fired 18 times during the v28 scan (`live_hooks_20260818-080318.jsonl`,
+md5 `a9ae1bd92698d0786cc9626601e3096f`).
+
+### 91.1 The curve
+
+```
+  write  0:  ( 10,  10,  10)    seed
+  write  2:  (-29, -38, -30)    first correction, overshoots
+  write  4:  (-21, -30, -22)    pulling back
+  write  6:  (-19, -25, -19)
+  write  8:  (-19, -26, -19)    converged
+  write 10..16: (-19, -26, -19) stable, five more writes
+```
+
+Seed → overshoot → damped approach → steady state, converged by round 4 and
+then held. Note the vendor's seed is `(10, 10, 10)` — **identical to this
+port's `LIVE_AFE_SEED`**, so the port's starting point was already right.
+
+### 91.2 What it settles
+
+```
+  vendor, measured live               (-19, -26, -19)
+  calibration/README.json  (in use)   (  0,  -6,   2)
+  README.pre-recapture-20260812       (-19, -26, -20)   <- within 1 code
+  README.pre-dutyfix / pre-recal /
+    pre-freshscan / pre-vendor-base8  (-18, -26, -20)   <- within 1-2 codes
+```
+
+**The older values were right.** Every pre-2026-08-15 backup sits within 1–2
+codes of the vendor on every channel; `README.pre-recapture-20260812`'s
+`(-19, -26, -20)` differs by one code on B alone. The value currently in use,
+`(0, -6, 2)`, is off by **+19 / +20 / +21** — and in the direction that leaves
+the sensor's black level *lifted*, which is exactly the additive-pedestal
+signature §89's `c9` solve pointed at (a flat linear floor of ~735–780 across
+all three channels, where R suffers most because its pedestal `c9` = 159.6 is
+smallest).
+
+This is a **measurement, not a proposal**. It is not wired anywhere by this
+section; promoting it is a calibration change and follows
+`docs/71-rebuilding-calibration.md`'s timestamp-never-overwrite rule.
+
+### 91.3 The port's own loop did NOT reproduce this
+
+`pakon_scan.py run --live-afe-converge --no-lamp --no-motor`, run on real
+hardware 2026-08-18 (film out, lamp and motor off, `stop` asserted after):
+
+- ran 352.9 s, wrote a 2 GB capture, and ended on `reason: time_limit` —
+  the run's own text: *"This is the backstop, not a detector."*
+- returned `(10, 10, 10)`: **the seed, unchanged**.
+
+So `converge_afe_offsets` remains UNPROVEN, exactly as its docstring says. Its
+seed is right and its target is reachable in ~4 rounds — the vendor does it in
+four — but the port's loop did not move off the seed at all. The failure is in
+the measure-and-decide step, not the starting point.
+
+### 91.4 Why the vendor is fast, and the column question
+
+The vendor is not fast because its loop is better; it converges *during* real
+acquisition. But the tempting explanation — "it reads the shielded optical-black
+pixels inline" — is **not supported**: the vendor programs `pixel_offset = 62`
+(`FN_bBeforeScan` 0x1002df4e, `FN_bDrvInitCcd` 0x1002d6f5, idx4 = 62,
+idx5 = 2062) and *"nothing in TLB ever reads a CCD pixel below the offset."*
+It digitises **fewer** low pixels than this port's 32, not more.
+
+That does surface a real asymmetry: our captures carry 30 columns
+(CCD pixels 32–61) the vendor never digitises, already flagged in
+`pakon_decode` as illumination roll-off needing 17–24× flat-field gain and
+*"not film and must not be in the histogram."* Checked whether that
+contaminated §89's percentiles — it does not:
+
+```
+                                     p1                span
+  all 2000 columns            901  1282  1419     691   826  1066
+  excluding first 30          911  1286  1420     683   824  1068
+```
+
+~10 codes on p1, ~8 on span. §89's conclusion stands on the vendor window too.
+
+**Open, and the right target for the next hook:** what the vendor *measures* to
+decide `-29 → -21 → -19`. `tlb_afe_offset_write` gives the outputs; the
+feedback signal driving them is what this port's loop is failing to compute.

@@ -154,6 +154,8 @@ import struct
 from dataclasses import dataclass, field
 from typing import Sequence
 
+import numpy as np
+
 
 
 def _at():
@@ -359,6 +361,14 @@ def i32(x: int) -> int:
     return x - 0x100000000 if x & 0x80000000 else x
 
 
+def _i16_vec(x: np.ndarray) -> np.ndarray:
+    """Elementwise ``i16`` over an int64 array (same masking, no per-scalar
+    branch): both operands stay in int64, well clear of overflow for the
+    magnitudes this subsystem's registers ever carry."""
+    x = x & 0xFFFF
+    return np.where(x & 0x8000, x - 0x10000, x)
+
+
 def idiv(a: int, b: int) -> int:
     """x86 ``idiv`` — quotient truncated toward zero."""
     q = abs(a) // abs(b)
@@ -558,23 +568,30 @@ def laplacian(lum: Sequence[int], width: int, height: int) -> list[int]:
 
     Output is dense: ``(height-2) * (width-2)`` entries, row-major.  Returns an
     empty list when either dimension is <= 2 (the vendor's ``jle`` guards).
+
+    Vectorized (docs/62 §6 perf follow-up, issue #54): every output pixel's
+    four register-level ``i16`` truncations depend only on that pixel's own
+    five neighbours, never on another output pixel, so the whole interior can
+    be computed as one elementwise numpy pass instead of a per-pixel Python
+    loop. Verified bit-identical against the original loop (all IMAGE_CASES
+    plus the signed/shifted golden fixtures, and a real end-to-end render).
     """
     if not CNA_LAPLACIAN_PORTED:
         _unported("CNA_LAPLACIAN_PORTED", CNA_LAPLACIAN, "laplacian")
-    out: list[int] = []
-    if height <= 2:
-        return out
-    for r in range(height - 2):
-        if width > 2:
-            base = (r + 1) * width
-            for c in range(1, width - 1):
-                centre = lum[base + c]
-                v = i16(lum[base + c - 1] - i16(centre * 4))
-                v = i16(v + lum[base - width + c])
-                v = i16(v + lum[base + width + c])
-                v = i16(v + lum[base + c + 1])
-                out.append(v)
-    return out
+    if height <= 2 or width <= 2:
+        return []
+    lum_arr = np.asarray(lum, dtype=np.int64).reshape(height, width)
+    centre = lum_arr[1:height - 1, 1:width - 1]
+    left = lum_arr[1:height - 1, 0:width - 2]
+    right = lum_arr[1:height - 1, 2:width]
+    up = lum_arr[0:height - 2, 1:width - 1]
+    down = lum_arr[2:height, 1:width - 1]
+
+    v = _i16_vec(left - _i16_vec(centre * 4))
+    v = _i16_vec(v + up)
+    v = _i16_vec(v + down)
+    v = _i16_vec(v + right)
+    return v.reshape(-1).tolist()
 
 
 # ---------------------------------------------------------------------------
@@ -1029,34 +1046,49 @@ def luminance_plane(img: CnaImage, p: CnaParams) -> list[int]:
     (``0x1022deea``..``0x1022def7``).  The port keeps both, because the
     unclamped branch is what lets an out-of-range value reach the histogram
     index at ``0x1022df80`` — an unchecked ``inc dword [edi + eax*4]``.
+
+    Vectorized (docs/62 §6 perf follow-up, issue #54): every pixel's
+    ``idiv``/clamp/``i16`` is independent of every other pixel, so the whole
+    plane is one elementwise numpy pass. Verified bit-identical against the
+    original per-pixel loop (shipped shift=0 path and the golden harness's
+    ``SHIFTED_PARAMS`` clamped path, plus a real end-to-end render).
     """
     shift = p.redShift + p.greenShift + p.blueShift
-    px = img.pixels
     n = img.width * img.height
-    out: list[int] = []
+    px = np.asarray(img.pixels, dtype=np.int64)[: 3 * n].reshape(n, 3)
+    s = px[:, 0] + 1 + px[:, 1] + px[:, 2]
     if shift != 0:
-        for i in range(n):
-            s = px[3 * i] + 1 + px[3 * i + 1] + px[3 * i + 2] + shift
-            v = idiv(s, 3)
-            if v < 0:
-                v = 0
-            elif v > K_LUT_MAX:
-                v = K_LUT_MAX
-            out.append(i16(v))
-    else:
-        for i in range(n):
-            s = px[3 * i] + 1 + px[3 * i + 1] + px[3 * i + 2]
-            out.append(i16(idiv(s, 3)))
-    return out
+        s = s + shift
+    # idiv(s, 3): x86 truncate-toward-zero division.
+    q = np.abs(s) // 3
+    v = np.where(s < 0, -q, q)
+    if shift != 0:
+        v = np.clip(v, 0, K_LUT_MAX)
+    return _i16_vec(v).tolist()
 
 
-def _interior_indices(width: int, height: int):
-    """The ``(height-2) x (width-2)`` walk both histogram loops perform."""
-    if height <= 2 or width <= 2:
-        return
-    for r in range(1, height - 1):
-        for c in range(1, width - 1):
-            yield r * width + c
+def _bin_hist(values: np.ndarray, n_bins: int) -> list[int]:
+    """Histogram build where the index *is* the value — the vendor's raw,
+    unchecked ``inc dword [edi + eax*4]`` at ``0x1022df80``.
+
+    Real captures and every golden-harness fixture keep ``values`` inside
+    ``[0, n_bins)`` — the shipped DPI leaves the luminance shifts at 0 (the
+    *unclamped* branch), but real RGB averages never leave that range, and
+    the golden harness only drives negative/out-of-range luminance through
+    ``SHIFTED_PARAMS``, which forces the *clamped* branch specifically
+    because the unclamped OOB write is genuine vendor memory corruption, not
+    a defined case (see ``make_signed``'s docstring). This raises rather
+    than silently miscounting if that ever stops being true.
+    """
+    if values.size == 0:
+        return [0] * n_bins
+    lo, hi = int(values.min()), int(values.max())
+    if lo < 0 or hi >= n_bins:
+        raise RuntimeError(
+            f"cna histogram index {[lo, hi]} outside [0, {n_bins}) -- the "
+            "vendor's unchecked hist write is only defined for real-capture "
+            "/ golden-harness ranges (see luminance_plane docstring)")
+    return np.bincount(values, minlength=n_bins)[:n_bins].astype(np.int64).tolist()
 
 
 def analyze_image_threshold(img: CnaImage, p: CnaParams) -> ThresholdStage:
@@ -1099,20 +1131,22 @@ def analyze_image_threshold(img: CnaImage, p: CnaParams) -> ThresholdStage:
 
     st.lum = luminance_plane(img, p)
 
-    st.lum_hist = [0] * n_bins
-    for k in _interior_indices(w, h):
-        st.lum_hist[st.lum[k]] = i32(st.lum_hist[st.lum[k]] + 1)
+    lum_arr = np.asarray(st.lum, dtype=np.int64)
+    if w > 2 and h > 2:
+        interior_lum = lum_arr.reshape(h, w)[1:h - 1, 1:w - 1].reshape(-1)
+    else:
+        interior_lum = np.empty(0, dtype=np.int64)
+    st.lum_hist = _bin_hist(interior_lum, n_bins)
 
     st.lap = laplacian(st.lum, w, h)
     n_lap = len(st.lap)
+    lap_arr = np.asarray(st.lap, dtype=np.int64)
 
     half = idiv(n_bins, 2)
     st.half = half
-    st.lap_hist = [0] * n_bins
     lo, hi = i16(-half), i16(n_bins - half - 1)
-    for v in st.lap:
-        if lo <= v <= hi:
-            st.lap_hist[half + v] = i32(st.lap_hist[half + v] + 1)
+    in_range = (lap_arr >= lo) & (lap_arr <= hi)
+    st.lap_hist = _bin_hist(lap_arr[in_range] + half, n_bins)
 
     smoothed = gauss_smooth([float(v) for v in st.lap_hist], n_bins,
                             p.laplacianHistSmoothingSigma,
@@ -1125,17 +1159,10 @@ def analyze_image_threshold(img: CnaImage, p: CnaParams) -> ThresholdStage:
                                       * f32(p.minLapPixelRatio))
 
     while True:
-        st.edge_hist = [0] * n_bins
-        k = 0
-        for idx in _interior_indices(w, h):
-            v = st.lap[k]
-            k += 1
-            if v > threshold or v < -threshold:
-                j = st.lum[idx]
-                st.edge_hist[j] = i32(st.edge_hist[j] + 1)
-        n_edge = 0
-        for v in st.edge_hist:
-            n_edge = i32(n_edge + v)
+        edge_mask = (lap_arr > threshold) | (lap_arr < -threshold)
+        edge_vals = interior_lum[edge_mask]
+        st.edge_hist = _bin_hist(edge_vals, n_bins)
+        n_edge = i32(int(edge_vals.size))
         st.n_edge = n_edge
         # 0x1022e1e0 / 0x1022e1e6 publish nEdgePixels and threshold for the
         # pass that just ran, BEFORE the sufficiency test -- so on the bail-out

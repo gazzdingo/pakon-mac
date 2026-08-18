@@ -966,7 +966,14 @@ def f135_rom12_to_rpd12(lin12: np.ndarray,
     §12). As on the F-235 path, the logarithm is what turns a negative the
     right way up (docs/58 §3.5, §5).
 
-        rpd12 = fpo + 1000 * ( log10(filmBase - c9) - log10(lin - c9) )
+        rpd12 = fpo + 1000 * ( log10(filmBase - c9) - log10(lin' - c9) )
+        where lin' = clamp(lin + setShifts, 0, 4095)
+
+    The setShifts ramp is applied to the LINEAR domain **before** the log —
+    the vendor's area_image_apply_lut balance runs on the linear PolyPixel
+    output, not on the density (bit-exact live capture, docs/74 SS60), so
+    the log comes after the shift, not before it. ``setshifts=None`` skips
+    the shift (the caller already balanced, or no balance).
 
     This no longer applies the SRA forward LUT. That is a binary result, not
     taste: ``AnsSraCapabilityImpl::analyze`` (PakonIMAu.dll:0x101a7080) always
@@ -1014,6 +1021,13 @@ def f135_rom12_to_rpd12(lin12: np.ndarray,
                   f"(film area; clipped "
                   f"{win['clip_pct'][0]:.3f}/{win['clip_pct'][1]:.3f}/"
                   f"{win['clip_pct'][2]:.3f}% against FindDmin's 0.1%)")
+    # The balance shift is applied in the LINEAR domain, BEFORE the log --
+    # not after it. docs/74 SS60 proved (bit-exact live capture) that the
+    # vendor's area_image_apply_lut input is the linear PolyPixel output, so
+    # the SBA/setShifts ramp (clamp(i+shift, 0, 4095)) runs on the linear
+    # ROM12 and the density log comes only later, downstream of the balance.
+    if setshifts is not None:
+        lin = np.clip(lin + np.asarray(setshifts, dtype=np.float64), 0.0, 4095.0)
     base_log = np.log10(np.maximum(base - ped, 1.0))
     dens = 1000.0 * (base_log - np.log10(np.maximum(lin - ped, 1.0)))
     out = np.clip(np.asarray(fpo, dtype=np.float64) + dens, 0, ansel.SHASTA_MAX)

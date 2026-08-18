@@ -71,6 +71,16 @@ from a VM disk image, apparently black & white film, 8-bit JPEG, small
 verified-coherent sample) but the caveats bound the *precision*, not the
 *direction*, of the finding — see §13 for the full honest accounting.
 
+**Seventh update, 2026-08-16 — per-frame balance reproduced bit-exact
+except one luma term**: §63–§65 below use live hook captures (v16/v17) to
+close the per-frame balance chain. The FOS `orderFpo` (`scene+0x38a2`) is
+per-frame and feeds `preference_shifts_hiNN(hi=0x30, lo=3, non_flash_adj=1000)`
+→ `+0x3a38` (= A), reproduced **bit-exact on every frame**; the applied
+balance is `setshifts_12(A,A) + Δ` where Δ is a per-frame uniform luma offset
+(`+29…+95`). The sole remaining unknown is the source of Δ (a `setShifts`
+post-combine term, traced to the caller's tail, not yet pinned). §65 is a
+handoff for the next agent with the tooling, offsets, and capture hashes.
+
 Written 2026-08-12, a fresh read-only investigation into `docs/66`'s
 "washed out" defect, picking up exactly where the eleventh pass's own "What
 is still open" list left off (FUGC's dmin correction; the four unreplicated
@@ -12694,3 +12704,807 @@ doc's own established convention. `docs/74-…md` itself is the only file
 this pass edited (this section). `TLB.dll` was not reached this pass —
 scoped out honestly rather than claimed and skipped, per the time this
 pass's own hand-tracing standard required for `PakonIMAu.dll` alone.
+
+## 57 — The `analyzePostBalance` shift leaf `0x101b76d0` read and verified
+bit-exact against the real DLL: `out_c = round((in_c − mean)·M_c +
+S1·S2 + dmin_c)` — a recentre/scale/offset, not a contrast stretch, and the
+first tier-1 (Unicorn) close of this doc's own "post balance shifts" stage
+
+§8's stage-by-stage trace labelled stage 4 "post balance shifts" without
+reading the code that produces them. §48 then showed `analyzePostBalance`
+(`0x100fdc40`) fires once per real frame and is the genuine, real
+`applyLut` caller upstream of every other apply stage — but did not read
+its shift arithmetic either. This section closes both: it reads the 282-byte
+leaf that actually computes the three int16 post-balance shifts, and checks
+its closed form bit-exact against the real DLL executed under Unicorn.
+The result is a recentre-and-rescale (mean-centred, per-channel-scaled,
+plus an offset) — which is why §8 saw the span preserved (785→785 R), not
+stretched: the leaf has no contrast/levels term, only a centering
+subtraction, a per-channel gain, and an additive offset.
+
+### 57.1 — The leaf, reached two ways, and the object it reads
+
+`fcn.101b76d0` (realsz 282, `0x101b76d0…0x101b77e7`) is a thiscall; `ecx`
+is the Impl. It has exactly two call sites, both real:
+
+1. `fcn.100f13a0` (`0x100f13c1`) — a 45-byte wrapper that does
+   `mov ecx, [ecx+0x10]` (dereferences the Cap to its Impl) then passes its
+   own four stack args straight through. Its callers are the path methods
+   (`AnsCpRestorePath/LockbeamPath/BalancePath/DcPremiumPath/ArchivePath
+   ::virtual_12`) and `analyzePostBalance` itself at `0x100fe7a1`.
+2. `fcn.101b7e90` (`0x101b80ad`) — the body of
+   `AnsColorAdjustCapability::virtual_24` (`0x100f1e90`, which also does
+   `mov ecx, [edi+0x10]` at `0x100f1ed7` before calling it).
+
+Both routes converge on the same object: the Impl is
+`AnsColorAdjustCapabilityImpl`, held at `AnsColorAdjustCapability + 0x10`
+(vtable `0x10597480` → `0x101b95f0`; `…Impl::analyze` string at
+`0x10597484`, body `fcn.101b9620`).
+
+### 57.2 — Field layout the leaf reads, and the closed form
+
+Impl offsets, each read-site cited from `af`+`pdf`:
+
+| offset | field | type | first read |
+|---|---|---|---|
+| `+0x0c/+0x10/+0x14` | `M` (scale, 3 ch) | float | `0x101b76f5` / `0x101b7744` / `0x101b7793` |
+| `+0x18` | `S1` | float | `0x101b76f8` |
+| `+0x1c/+0x20/+0x24` | `a,b,c` (densities) | float | `0x101b76d4` / `0x101b76e9` / `0x101b76ec` |
+| `+0x28` | `S2` | float | `0x101b76fb` |
+| `+0x2c/+0x2e/+0x30` | `dmin` (offset, 3 ch) | int16 | `0x101b76d7` / `0x101b7730` / `0x101b777f` |
+
+Per-channel (R shown; G/B are the same body with `b`,`c` and `+0x10`,`+0x14`):
+
+```
+(2a − b − c) / 3 · M_r  +  S1·S2  +  dmin_r   →  round → int16
+```
+
+The `(2a − b − c)/3` term is algebraically `a − mean(a,b,c)` — the compiler
+wrote the mean as `fld a; fadd st0,st0; fsub b; fsub c; fmul [1/3]`. The
+three constants were dumped from the image: `0x1059728c = 0.33333334f`,
+`0x10575674 = 0.0f` (the round-branch compare), `0x10574f40 = 0.5` (double,
+the ±0.5 before `_ftol2`). Rounding is `_ftol2` (`0x104ffe44`) after a ±0.5
+bias — round-half-away-from-zero, the same `pakon_fos.round_msvc_104ffe44`.
+The return value is `arg_ch` (a COM return object: the leaf copies the
+singleton `[0x106b5bd4]` into it and refcounts — boilerplate, not shift math).
+
+### 57.3 — Verification
+
+New golden `tools/ansel/python-pipeline/pakon_postbalance_golden.py`, same
+Unicorn harness shape as `pakon_setshifts_golden.py`: map the PE at
+`0x10000000`, build the Impl on the unicorn heap, enter `0x101b76d0`, stop
+at the `ret 0x10` (`0x101b77e7`), read the three OUT words. Eight cases
+(positive, negative, zero, sub-unit, ceiling, half-boundary) all match the
+Python closed form bit-exact — `dll=(501,701,601)` vs `py=(501,701,601)`,
+etc., including the sign-sensitive `(−0.001, +0.001, 0.0)` case that
+distinguishes round-half-away-from-zero from truncation. DLL MD5 re-checked
+`eea9dcf78ee21d4f7c515a6c2512242d` before running. No production, golden,
+or port file changed — `pakon_postbalance_golden.py` is additive.
+
+### 57.4 — Impl construction: `M` and `S1` are ctor args (defaults 25/25/25/75); `dens`/`S2`/`dmin` are zeroed
+
+The Impl's ctor is `fcn.101b9070` (its own `…Impl::AnsColorAdjustCapabilityImpl`
+error-string at `0x10597440`). It writes the fields in one straight line
+(disassembly, tier 3):
+
+```
+mov [esi],     0x10597480   ; Impl vtable
+mov [esi+0xc], ecx          ; M_r  ← ctor arg
+mov [esi+0x10], edx         ; M_g  ← ctor arg
+mov [esi+0x14], eax         ; M_b  ← ctor arg
+mov [esi+0x18], ecx         ; S1   ← ctor arg
+mov [esi+0x1c], edi         ; a = 0      (xor edi,edi earlier)
+mov [esi+0x20], edi         ; b = 0
+mov [esi+0x24], edi         ; c = 0
+mov [esi+0x28], edi         ; S2 = 0
+mov [esi+0x2c], di          ; dmin_r = 0
+mov [esi+0x2e], di          ; dmin_g = 0
+mov [esi+0x30], di          ; dmin_b = 0
+```
+
+So **only `M` and `S1` come in from outside; `dens`, `S2`, `dmin` are all
+zero at construction.** The single ctor caller is the Cap ctor
+`AnsColorAdjustCapability` (`fcn.100f1840`, vtable `0x10585d2c`), which
+applies a `-1.0`-sentinel default before forwarding: it `fucompp`s each
+arg against `0x10585e18 = -1.0` and substitutes `0x1059754c/50/54 = 25.0`
+and `0x10597558 = 75.0` (all four dumps from the image). Defaults are thus
+`M = (25, 25, 25)`, `S1 = 75`, so the leaf is `(in_c − mean)·25 + 75·S2 +
+dmin_c`.
+
+### 57.5 — Open: the `dens`/`S2`/`dmin` writer, and whether this is the FOS balance at all
+
+Two things remain unresolved, stated as such. **(1)** Neither the Impl's
+`analyze` (`fcn.101b9620`) nor its `export` (`fcn.101b7e90`, the leaf's
+second caller) writes `+0x1c…+0x30` — they only read them (the leaf) or
+copy the unrelated `+0x64…+0x70` getter quad via `0x101b7680`. So the
+writer of the non-zero `dens`/`S2`/`dmin` is still unlocated; the FOS→Impl
+copy, if it exists, has not been found. **(2)** The Cap's own vtable
+(`0x10585d2c`, seven slots) plus its `getButtonValues`/`acquire` strings and
+`AnsColorAdjustCapability.cpp` source name suggest this is the **user
+density/brightness adjust control**, not the automatic FOS scene balance —
+which would make the leaf a *separate* subsystem from the
+`SbaCalcFosResults` chain §57's hypothesis conflated. Both are flagged as
+hypothesis, not findings. The efficient next step is a live hook on
+`0x101b76d0` (or its Impl) to dump the five field values during a real scan
+and correlate against the already-ported `orderFpo`/`fosDmin` — static
+field-write search is swamped by STL `+0xc/+0x1c/+0x2c…` false positives.
+
+## 58 — The §57.5 live hook answered it the other way: `0x101b76d0` never
+fires on a real scan — the ColorAdjust density-adjust shift is dead on the
+live render path, and the balance that *does* run is SBA→`balanceAreaImage`
+→`applyLut`, not this leaf
+
+The §57.5 hook (v10, `color_adjust_shift` @ `0x101b76d0`, entry-only, with
+an `impl_fields` dump of the Impl's `+0xc…+0x30`) was built, cross-compiled
+(kernel32-only, XP 5.1 stamp, `check_table_sync.py` green at 29 hooks,
+selftest `ALL PASS`), versioned `hookdll_v10.dll`/`injector_v10.exe` (MD5
+`5d1c8a6fb3631c975264b6cc2e54183b` / `79cae493a1327b845190fd574b1298d1`),
+uploaded, and run on the real box — capture
+`live_hooks_20260816-112253.jsonl` (417 lines, MD5
+`67d332529db5e9d9da5cb4409a9cab26`).
+
+**Result: the hook installed cleanly and never fired once.** Install line is
+`"va_documented":"0x101b76d0","rt_address":"0x07eb76d0"` — base `0x07d00000`
++ RVA `0x1b76d0`, exactly right (cross-checked against every sibling hook's
+own `rt_address` in the same capture, e.g. `analyze_auto_tone` `0x07dfb730`
+= `0x07d00000 + 0xfb730`). `"22/22 enabled hook(s) installed after 0
+attempt(s)"`, no `hook_failed` lines, `color_adjust_shift` is present only in
+its one `hook_installed` line — **zero `enter`, zero `leave`, zero
+`impl_fields` `buffer_dump` events** across the whole capture. The other 21
+hooks all fired at their documented cadence, so this is not a dead harness:
+`cn_enhanced_driver` 6 (a real 6-frame scan), `analyze_auto_tone`/
+`balance_area_image`/`analyze_scp_lut_balance`/`analyze_falloff`/
+`analyze_attributes`/`analyze_area`/`fugc_analyze`/`fugc_set_lut_info`/
+`sba_set_shifts` 6 each, `sba_get_shifts` 18, `sba_preference` 12,
+`area_image_apply_lut` 18, `icc_*` 6 each, `tlb_polypixel` 19.
+
+**What this settles.** §57.5 asked which code writes the non-zero
+`dens`/`S2`/`dmin` and whether this is the FOS balance. The live answer is
+neither: the leaf is not reached at all on this scan, so the field-provenance
+question is moot for the live path — consistent with §57.4's ctor finding
+(dens/S2/dmin stay zero) *and* with the gate `analyzePostBalance` puts in
+front of it (`[cast_result+0xc]` byte test at `0x100fe6dd`; when clear the
+whole `fcn.100f13a0`→`0x101b76d0` block is skipped). The two callers of the
+leaf — `analyzePostBalance` via `fcn.100f13a0` and
+`AnsColorAdjustCapability::virtual_24` via `fcn.101b7e90` — never take it.
+`AnsColorAdjustCapability` is therefore confirmed (now by live absence, not
+just by its `getButtonValues`/`acquire` naming) to be an **off-by-default
+density/brightness user control**, not the automatic balance.
+
+**What still runs for balance, from this same capture:** the SBA path is
+live — `sba_preference` (12) → `sba_get_shifts` (18) → `sba_set_shifts` (6)
+→ `balance_area_image` (6, composing filmLut·scpLut·shift·fugc) →
+`area_image_apply_lut` (18). `sba_apply_balance_shifts` (`0x1019a0c0`) is
+also 0 fires (matches docs/74 §37.3's own "0/12 real fires"). So the
+standing ~88-89 sRGB offset is **not** in `0x101b76d0` — it is upstream of
+the leaf entirely, in the SBA/Preference shift values (`scene+0x3a38`) or
+the `balanceAreaImage` LUT compose, both of which this capture already
+logs and which remain the live leads, not the now-ruled-out density adjust.
+
+## 59 — The v10 balance LUTs decode to the vendor's real, per-frame balance:
+six different shift triples across six frames, each a pure `clamp(i+shift,
+0,4095)` ramp — while the port applies one fixed DPI-derived `setShifts`
+word to every frame. The docs/63 "FOS → orderFpo" gap, now with live data.
+
+The v10 capture's `area_image_apply_lut` `r_lut`/`g_lut`/`b_lut` dumps (18 of
+each, `EXTRA_DUMP_STACK_PTR` on the three LUT pointers) are the vendor's
+actual applied balance LUTs, decoded straight off the raw hex. They split
+cleanly in two:
+
+- **12 identity LUTs** — `out[i] == i` for `i=0..4095` (`nz=1, sat=4095`,
+  `identity=True`). These are the AREA-analysis-image applies (the private
+  copy docs/74 §46 left open), run with no balance at all.
+- **6 pure-ramp LUTs** — `out[i] == clamp(i + shift, 0, 4095)` exactly
+  (`vals[i] == i + vals[0]` through the whole ramp, then flat at 4095). One
+  per frame, and the shift is **different every frame**:
+
+  | frame | shift (R, G, B) |
+  |---|---|
+  | 1 | (683, 267, 1) |
+  | 2 | (813, 394, 155) |
+  | 3 | (863, 466, 195) |
+  | 4 | (989, 587, 325) |
+  | 5 | (591, 192, 0) |
+  | 6 | (779, 368, 125) |
+
+Frame 1's R (`683`) is exactly the `setShifts_out` R this doc's own §9 cites
+(`683`), and the ramp shape is byte-for-byte `pakon_sba_apply`'s
+`master[i+shift]` / `clamp(i+shift,0,4095)` — the apply leaf the port already
+has is the right one.
+
+**The discrepancy is upstream of the apply — but its source is not what a
+first read suggests, and §6 already refuted the obvious candidate.** The
+vendor recomputes the shift per frame (`sba_preference` 12× = 6 enter+leave,
+`sba_set_shifts` 6×, one per frame), so `scene+0x3a38` varies per frame. The
+port does not: `pakon_ansel.py:757-760` computes `preference_a =
+preference_shift_words(sba)` → `preference_shifts_from_dpi_fields(fpo, fpa,
+neutral_balance_point, …)` — **all DPI fields, zero frame content** — and
+applies that one fixed `setshifts_out = setshifts_12(A, A)` to every frame.
+The obvious attribution — "pass2 Preference takes per-frame FOS content
+(`orderFpo`/`fosDmin`)" — is **hypothesis, and §6 already refuted its closest
+form**: §6 checked whether `fpo` (the anchor the whole Preference chain reads)
+is derived per-scene and found it is populated once from the DPI `readAscii`
+*in the real DLL itself*, so the per-frame variation is **not** coming from
+`fpo`. What *does* make the applied shift vary per frame is therefore still
+**undetermined** — not asserted here to be FOS, Dmin, or exposure. This
+capture proves the per-frame step is real and non-constant (R spans 591→989
+across six frames) but does not identify its input. And it still does not
+explain the *uniform* ~88-89 offset: a per-frame variation cannot produce a
+constant shift. So this is a re-confirmation of the known
+`ANALYSE_ROLL_PORTED` gap plus one new data point (the concrete per-frame
+triples), **not** a root-cause lead — recorded for completeness, not pursued
+further here.
+
+**Not yet explained by this alone:** the standing ~88-89 offset is described
+as *uniform* across the roll, whereas this gap is a per-frame variation —
+so it does not on its own produce a constant offset. Two live leads remain
+to close it: (1) the exact per-frame `scene+0x3a38` values (still need a
+dump — the entry register/stack dumps record the fpo inputs `879/1250/1386`
+and intermediate `680/975/1010` words but not the final `+0x3a38` store), and
+(2) the inversion `ROM12 → RPD12` (task B), for which this same capture's
+`tlb_polypixel`/`poly_input_r` + `area_image_apply_lut`/`pixel_data` pair is
+the fit data. Both are the next live leads, not closed here.
+
+## 60 — The inversion is not where the port put it: `area_image_apply_lut`'s
+input — the buffer this port calls "RPD12", the post-inversion density — is
+**bit-for-bit the linear PolyPixel output**, 180° rotated. There is no
+log/density step between the polynomial and the balance.
+
+Task B's own fit data answers it in a way none of the prior searches found:
+the vendor does not log-invert between PolyPixel and the balance. With the
+v12→v14 full-frame dump fixes (v12 `0x90000` failed IsBadReadPtr on every
+row — the inter-buffer stride exceeds the committed region; v13 `0x84000` =
+page-rounded 245×367×3×2 = 539490→540672 fixed `poly_input_r` but not
+`pixel_data`; v14 `0x80000` for `pixel_data` fixed it), the capture
+`live_hooks_20260816-180542.jsonl` carries a full planar raw frame
+(`poly_input_r`, 245×367 R+G+B) and the RPD12 (`pixel_data`, interleaved
+RGB).
+
+**Result (tier 2 — live hardware, bit-exact):** for every leader segment,
+after a clean 180° rotation — raw `(i,j)` ↔ RPD12 `(366−i, 244−j)`, the
+scanner's bottom-up read plus the image's own orientation, with the
+`+11`-row offset being only the dump truncation of the last ~10 rows —
+`RPD12[i,j] == ROM12[i,j]` exactly, where `ROM12 = PolyPixel(raw)` computed
+with this port's already-Unicorn-verified `pakon_color.poly_pixel` (which
+`_ftol`-truncates to int, matching the int16 store). Three segments × 356×245
+pixels × R,G,B: `max|diff| == 0`, `corr == 1.0000` on every channel. The
+ranges are identical (e.g. seg-0 R `300..1868` both) — a log transform would
+produce a *different* range, not the same one.
+
+**What this settles.** §59's "inversion ROM12 → RPD12" lead is closed: the
+"RPD12" the balance sees is the **linear** poly output, so the port's
+`f135_rom12_to_rpd12` (the `fpo + 1000·log10(base−c9) − 1000·log10(lin−c9)`
+log, `F135_INVERT_PORTED=False`, docs/63) is **misplaced** — it runs *before*
+`apply_balance_shifts`, but the vendor applies the balance ramp to the
+*linear* domain and only then reaches density. This is exactly consistent
+with docs/58 §3.5's "no density LUT between the polynomial and Ansel" —
+`area_image_apply_lut` is pre-Ansel, so no LUT/log between poly and it.
+The log inversion, if it is a single step at all, lives **downstream of the
+balance** (inside the `analyzeAutoTone` chain the port's `real_auto_tone`
+already wraps), not between poly and balance.
+
+**Why this is a root-cause lead for the ~88-89 offset, stated as a lead not
+a fix.** Balance-then-log and log-then-balance are different transforms
+(a shift commutes with nothing nonlinear): the vendor shifts the *linear*
+ROM12 and the port shifts the *log* RPD12. Swapping that order (or, more
+precisely, the port's extra early log) is a concrete, previously-unverified
+structural difference on exactly the stage §8 flagged. Not yet proven to
+produce the exact ~88-89 number — that needs the port's render re-ordered
+(log-after-balance) and re-diffed — but it is the first live, bit-exact
+evidence that the port's inversion placement is wrong, not merely
+"unverified".
+
+## 61 — The re-order is applied: the balance shift now runs in the LINEAR
+domain before the log, matching the vendor (docs/74 §60), and the old
+density-domain `apply_balance_shifts` pass is removed
+
+Concrete code changes, all scoped to the balance/inversion boundary:
+
+- `pakon_decode.f135_rom12_to_rpd12` now applies `lin' = clamp(lin +
+  setShifts, 0, 4095)` **before** `dens = 1000·(log10(base−c9) −
+  log10(lin'−c9))`. `setshifts=None` still skips it (caller already
+  balanced). Docstring updated: `rpd12 = fpo + 1000·(log10(filmBase−c9) −
+  log10(clamp(lin+setShifts,0,4095) − c9))`.
+- `pakon_ansel.AnselEngine.render_scene` no longer calls
+  `apply_balance_shifts` on the density — `scene_rpd12` already delivers
+  the balanced density, so re-shifting would double the balance. `balanced`
+  is now `x` (the already-balanced input).
+- `pakon_parity.py` drops its now-redundant `apply_balance_shifts` pass
+  (same double-shift reason); `taps["balance"]` == `taps["inv"]`.
+
+**Magnitude, worked on the shipped defaults** (fpo=879, c9≈159.59,
+base≈2500, lin=800, shift=683): old = `fpo + 1000·log10((base−c9)/(lin−c9))
++ 683` ≈ 2125; new = `fpo + 1000·log10((base−c9)/((lin+683)−c9))` ≈ 1127.
+The full 683 shift no longer lands in the density whole — the log compresses
+it — which is the concrete mechanism by which the old order over-brightened
+the render. This is a large change on the exact stage §8 flagged, and it is
+the first render-path change backed by live bit-exact evidence (§60) rather
+than a curve fit.
+
+**Not yet closed.** (1) The exact log formula/scale is still the port's
+unverified `1000·log10` — §60 proved only its *position*, not its
+coefficients; the `~88-89` number is not claimed closed until the port is
+re-rendered against a real vendor reference and re-diffed. (2) `test_render_f135.py`
+and `test_calib.py` pass after the change; the `pakon_gate.py selftest`
+"reconstruction is biased" failure is a pre-existing gain/flat-field
+reconstruction issue, unrelated to this change and left untouched.
+
+## 62 — The per-frame balance source recovered: inverting the golden
+`setshifts_12` against the live OUT gives the actual per-frame `+0x3a38`
+shift words, and they vary — the fixed DPI Preference value is not what the
+vendor applies
+
+§61 fixed the *order* (balance on linear, before the log). It did not fix
+the *value*. §59 already showed the applied OUT varies per frame; this
+section closes the loop by recovering the actual per-frame `+0x3a38`
+Preference words the OUT was built from, and traces the Preference mode
+switch that would have produced them.
+
+### 62.1 — Recovered `+0x3a38` per frame (invert `setshifts_12` on the live OUT)
+
+`setshifts_12` is Unicorn-golden, and the applied balance ramp **is** the
+setShifts OUT (`balanceAreaImage` reads `[scene+0x4b6]` and builds
+`clamp(i+shift,0,4095)` via `0x1006c4f0`). Inverting `setshifts_12` against
+the six live OUT ramps (v14 `live_hooks_20260816-180542.jsonl`, R/G/B from
+the three LUTs) recovers the `+0x3a38` words, round-trip-verified bit-exact
+(`setshifts_12(A,A) == OUT` on every frame):
+
+| frame | OUT (live ramp) | `+0x3a38` (A) recovered |
+|---|---|---|
+| 1 | (706, 290, 24) | (769, 354, 88) |
+| 2 | (816, 398, 160) | (864, 447, 208) |
+| 3 | (863, 467, 197) | (905, 509, 239) |
+| 4 | (993, 592, 331) | (1020, 619, 358) |
+| 6 | (779, 370, 129) | (831, 421, 181) |
+
+The port's fixed DPI value is `A ≈ (740, 354, 208)` (inverting its own
+`setshifts_out = (683,297,151)`). So `+0x3a38` moves per frame by up to
+~+280 on R, ~+265 on G, ~+150 on B — the "not enough red" cast: the port
+holds R at ~740 while frames 2-4 need 864/905/1020.
+
+### 62.2 — The Preference mode switch that would read the FOS
+
+`Preference` (`0x1028c780`) selects its U/V aims on the high nibble of
+`scene+0x5074` (arg5):
+
+| `hi` | aimU/aimV source |
+|---|---|
+| `0x10` | `opening.u/v` (dU=dV=0) |
+| `0x20` | `neu` opponent |
+| `0x30` | **`arg1_2` / `arg1_4` = FOS `orderFpo` `+2/+4`** |
+| `0x40` | `lo42`/`hi44` |
+| else (`0`) | `fpo[1]`/`fpo[2]` (DPI) |
+
+The FOS results arrive as `arg2`, fetched by `0x1013c4e0 → 0x1023fc70`
+(`[cap+0x14]` = the FOS Impl's `SbaFOSResults`). The caller `fcn.102159c0`
+has a `bl` gate: `bl==0` forces `hi=0x10` at `0x10216356`; `bl!=0` uses the
+real `hi`. The port already has the skeleton for this — `pakon_sba_preference.
+preference_shifts_hiNN(..., hi, lo, arg1_2, arg1_4)` calls `preference_aim_uv`,
+which maps `hi=0x30` to `(arg1_2, arg1_4)` — but the render path calls
+`preference_shift_words` → `preference_shifts_from_dpi_fields` (mode `0x11`,
+DPI-only) and nothing feeds `orderFpo` into those slots.
+
+### 62.3 — The contradiction left open (flagged, not resolved)
+
+The v14 `sba_preference` hook shows **all 12 Preference calls with
+`arg2`(FOS)=0 and `arg5`(mode)=0x00** — so the live Preference runs the
+`hi=0`/`lo=0` DPI-default path, which `preference_aim_uv` maps to constant
+`fpo[1]/fpo[2]`. A constant `+0x3a38` through the fixed `setshifts_12` cannot
+produce the recovered per-frame A. Two candidate resolutions, both open:
+
+1. a **second, per-frame writer** of `+0x3a38` (or of `scene+0x4b6`) after
+   Preference runs — the "no alternate `+0x3a38` writer" unknown from
+   `pakon_analyse_roll.py` — which would be the real FOS→balance step; or
+2. the FOS `orderFpo` is written into the scene's preference area
+   (`scene+0x38a2+2/+4`, the `hi=0`/`hi=0x30` U/V-aim fields) per frame, so
+   the DPI-default path reads per-frame values after all.
+
+`setShifts` (`0x10100260`) was ruled out as the source: it calls `getShifts`
+twice (A≡B) plus the SCPLut getter `0x10122a70`, no FOS input, so `OUT` is a
+fixed function of `+0x3a38` alone. The decisive next trace is the
+`+0x3a38`/`scene+0x38a2` writer; the fix itself is already shape-known: feed
+the per-frame FOS `orderFpo` G/B into `preference_shifts_hiNN(hi=0x30, ...)`
+in place of the fixed DPI value.
+
+**Resolved (tier 3, static):** the per-frame writer is an
+`AnsSbaCapabilityImpl` method (source `AnsSbaCapabilityImpl.cpp`, body around
+`0x102192xx`) that finds the FOS capability (`"Can't find fos capability"` @
+`0x1058be00`) and calls the FOS calc `0x1028b8d0` with `scene+0x38a2` (the
+preference data the Preference's `hi=0`/`hi=0x30` U/V-aim fields live in) plus
+the FOS frame inputs (`scene+0x1a` dens, `+0x290c` dmin, `+0x388c`/`+0x3bc8`
+C banks, `+0x5978`). So the FOS `orderFpo` is written *into* `scene+0x38a2`
+per frame, and the live `hi=0` Preference then reads per-frame values — the
+constant write the hook captured was the *pre-FOS* DPI value, overwritten by
+the FOS step before the balance reads it. The port equivalent is exactly
+§62.4's `fos_analyze_roll` → `preference_shifts_hiNN(hi=0x30, lo=3)`.
+
+### 62.4 — Fix shape + the exact mode (hi=0x30, lo=3) and the live timeline
+
+The port already contains the whole per-frame skeleton, just unwired:
+
+- `pakon_fos.fos_analyze_roll` → per-frame `orderFpo` (3×i16 in *opponent*
+  Y/C1/C2, not RGB — `orderFpo = opening_axes(fpo) + Δ`).
+- `preference_shifts_hiNN(fpo, fpa, hi, lo, arg1_0, arg1_2, arg1_4)` →
+  `preference_aim_uv` maps `hi=0x30` to `(arg1_2, arg1_4)` = FOS `orderFpo`
+  `+2/+4` (C1/C2), and `preference_aim_y` maps `lo=3` to `arg1_0` = FOS
+  `orderFpo` `+0` (Y). So the full per-frame word is
+  `hi=0x30, lo=3` with `arg1_0/arg1_2/arg1_4 ← orderFpo[Y/C1/C2]`.
+
+The live timeline (v14) is: per frame, in a batch *before* the frames —
+`sba_preference` (pass2) → `sba_set_shifts` → `sba_get_shifts`×2 — then the
+frame runs `cn_enhanced_driver` → `area_image_apply_lut` (balance). The
+recovered A's per-frame movement is both luma (R,G move together, up to +280)
+and chroma (B moves ~−120…+150), which is exactly the full `orderFpo` (Y+C1+C2)
+— consistent with `hi=0x30, lo=3`, not just the G/B-only `hi=0x30`. The open
+question stays §62.3's: *which* step writes the per-frame `orderFpo` into the
+scene, since the live Preference reads `FOS=null`. v15 adds a `getShifts`
+`+0x3a38` dump to read the per-frame words directly (built; upload blocked on
+the drop server being down).
+
+### 62.5 — v15 confirms `+0x3a38` is per-frame, and reveals the balance ramp is
+`setshifts_12(+0x3a38) + a per-frame uniform offset`
+
+`getShifts` dump (v15 `live_hooks_20260816-185402.jsonl`) reads `+0x3a38`
+directly, 3× per frame (identical), per frame:
+
+| frame | `+0x3a38` | balance ramp OUT | `setshifts_12(A)` | Δ (uniform) |
+|---|---|---|---|---|
+| 1 | (730, 314, 47) | (684, 267, 0) | (661, 244, −23) | +23 |
+| 2 | (776, 355, 118) | (811, 390, 153) | (715, 294, 57) | +96 |
+| 3 | (847, 451, 177) | (856, 460, 186) | (796, 400, 126) | +60 |
+| 4 | (953, 553, 290) | (988, 587, 324) | (919, 518, 255) | +69 |
+| 5 | (645, 245, 8) | (577, 177, −59) | (564, 164, −72) | +13 |
+| 6 | (759, 349, 105) | (778, 367, 124) | (697, 286, 43) | +81 |
+
+Two things settle at once. **First**, `+0x3a38` is per-frame — the direct dump
+confirms the §62 inversion direction, so the port's fixed DPI value is wrong.
+**Second**, the applied ramp is *not* `setshifts_12(A)` alone: there is a
+per-frame **uniform** offset Δ (same on R/G/B, but different per frame:
+`+23/+96/+60/+69/+13/+81`) added between the setShifts OUT and the balance
+ramp. This is the `filmLut·scpLut·shift·fugc` compose (docs/74 §46) not being
+identity — but the balance LUT is a **pure ramp** (`clamp(i + shift, 0, 4095)`,
+checked across all 4096 entries: `r[i] == clamp(i + 684, 0, 4095)`, no scpLut
+nonlinearity), and the ramp shift is `scene+0x4b6` = the setShifts OUT. So the
+Δ is added **inside `setShifts` (`0x10100260`)**, between its `getShifts` read
+and the OUT write — the applied shift is `setshifts_12(A) + Δ`, where Δ is a
+per-frame **uniform (luma-only) offset**, not a per-channel scpLut offset
+(the uniformity rules out a LUT difference). §62's inversion therefore folded
+the Δ into the recovered A — the dump now separates them.
+
+**Net fix shape, revised:** the per-frame balance is two terms — (1) the
+Preference `+0x3a38` from FOS `orderFpo` (§62.4), and (2) a per-frame uniform
+luma Δ added in `setShifts`. Both are per-frame; the port has term (1)
+shape-known (`preference_shifts_hiNN(hi=0x30,lo=3,orderFpo)` → `setshifts_12`)
+and term (2) is the `setShifts` extra step (its `0x101d0200`/`0x100d21d0`
+calls, both `_AnselApplyFugcAnalysis_`-adjacent) still to trace.
+
+## 63 — v16 dump resolves term (1) of §62.5's fix: `orderFpo` (scene+0x38a2) is per-frame and the fpo is DPI-constant, and the Δ is confirmed a *post-combine* uniform luma offset
+
+v16 (`live_hooks_20260816-191735.jsonl`, md5 `6f889256d335b968a84140eff50ee48b`)
+added two `sba_preference` dumps — `pref_data` (arg1 = `scene+0x38a2`, 0x64 B)
+and `blob` (arg4 = nested-fpo struct, 0x48 B) — on top of v15's `getShifts`
+`+0x3a38` dump. Two questions settled, one contradicted.
+
+### 63.1 — `scene+0x38a2` is the FOS `orderFpo`, per-frame; the fpo is DPI-static
+
+`pref_data[0..2]` (the words the Preference's `hi=0x30`/`lo=3` aim paths read
+as `arg1_0`/`arg1_2`/`arg1_4`) is per-frame, in opponent (Y,U,V):
+
+| frame | `orderFpo` (Y,U,V) | `orderFpo` → RGB (preference inverse) |
+|---|---|---|
+| 1 | (2133, 58, 465) | (879, 1279, 1537) |
+| 2 | (2037, 70, 448) | (831, 1233, 1464) |
+| 3 | (1917, 47, 456) | (761, 1163, 1388) |
+| 4 | (1737, 54, 452) | (657, 1047, 1244) |
+| 5 | (2225, 63, 431) | (932, 1353, 1621) |
+| 6 | (2072, 66, 445) | (855, 1267, 1504) |
+
+The `blob` is **constant** across all six frames — `fpo=(879,1250,1386)`,
+`fpa=(-70,-55,-45)`, `neu=(975,975,975)`, `neo=(1010,1010,1010)`,
+`lim46=2685` (blob+0x46), `lo42=-2080` (blob+0x42), `hi44=2080` (blob+0x44)
+— matching the shipped DPI defaults verbatim (`pakon_ansel.SbaParams`). Two
+blob words (`blob[22]`, `blob[23]`) are per-frame (FOS residuals, not yet
+semantically identified). So the FOS writes the per-frame balance point into
+`scene+0x38a2`, and the fpo it's aimed *against* is the DPI static value —
+confirming §62.4's mode (`hi=0x30`, `lo=3` reads `arg1_0/2/4` = orderFpo).
+
+### 63.2 — Δ is a post-combine uniform luma offset, bit-exact (not in A, not in the LUT)
+
+Recomputing §62.5's table with the golden `setshifts_12(A,A)` (equalRGB
+`luts6_postROMM_equalRGBshort.lut`) on v16's own numbers:
+
+| frame | A (`+0x3a38`) | OUT (ramp) | `setshifts_12(A,A)` | Δ = OUT − ss |
+|---|---|---|---|---|
+| 1 | (740, 325, 59) | (701, 285, 19) | (672, 256, −10) | (29,29,29) |
+| 2 | (789, 371, 131) | (821, 402, 163) | (731, 312, 73) | (90,90,90) |
+| 3 | (853, 457, 184) | (874, 479, 206) | (803, 408, 135) | (71,71,71) |
+| 4 | (954, 553, 291) | (985, 583, 321) | (919, 517, 255) | (66,66,66) |
+| 5 | (665, 267, 31) | (603, 205, −31) | (589, 191, −45) | (14,14,14) |
+| 6 | (765, 354, 112) | (779, 368, 125) | (702, 291, 48) | (77,77,77) |
+
+`OUT == setshifts_12(A,A) + Δ` exactly, and Δ is **uniform on R/G/B** per
+frame. The decisive discriminator: `setshifts_12(A+Δ, A+Δ)` does **not**
+reproduce OUT (off by a few codes), while `setshifts_12(A,A)+Δ` is exact —
+so Δ is added **after** the `(1,2)` combine, not folded into A, and it is a
+pure luma term (uniform code offset ⇔ chroma-preserving in opponent space;
+`OUT`'s opponent C1/C2 equal A's C1/C2 to ±1 LSB). The `(1,2)` combine at
+`0x10100a37…0x101010ac` is golden-verified as `setshifts_12` (no Δ), and the
+code after `STOP_OUT 0x101010ac` to `ret 0x1010117f` is only COM refcount +
+`0x100d21d0` ctor — so Δ is added by the **caller** of `setShifts`, not inside
+the golden fragment. `setShifts` has three call sites: `0x10058bcf`,
+`0x1006b74f`, `0x10101f89`; the live one is `0x10101f89` (inside `0x10101xxx`),
+whose post-call tail (eax → `0x10001580`) was read but does not obviously add Δ.
+
+### 63.3 — One new structural relationship (orderFpo + shift ≈ pivot)
+
+`orderFpo_Y + A_y ≈ 2780` (2782/2782/2780/2775/2781/2783) — the per-frame
+shift and the per-frame balance point are complementary in opponent luma.
+Not yet reduced to a clean formula; recorded for the next pass.
+
+## 64 — v17 resolves term (1) completely: `+0x3a38` IS the Preference's own OUT, reproduced bit-exact
+
+v17 (`live_hooks_20260816-193632.jsonl`, md5 `a92a7bbd9e514f37e5a2325a30c53996`)
+added one `getShifts` dump — `pref_out_3a30` (`*(ecx+0x10)+0x3a30`, 6 B) —
+capturing the Preference's *other* output next to the `+0x3a38` getShifts
+reads. The Preference (`0x1028c780`) writes **two** triples: `inv(s', −U, −V)`
+(the "final shift", `0x1028cce7` loop) and `inv(t', +U, +V)` (the "out+2",
+`0x1028ccc0` loop), where `s' = clamp(lim46 − (Y−w1e), lo, hi)` and
+`t' = lim46 − s'`. The dump shows `+0x3a30 = 0`, `+0x3a32/+0x3a34` = the
+out+2 R/G, and `+0x3a38/+0x3a3a/+0x3a3c` = the **final shift** — which is
+exactly the `+0x3a38` that `getShifts` reads as A.
+
+So A is **not** a separate FOS result: it is the Preference's own output.
+Running the already-ported `preference_shifts_hiNN(hi=0x30, lo=3)` against
+v17's `orderFpo` with the DPI blob fields reproduces A **bit-exact on all
+five frames**, once one parameter is correct:
+
+```
+non_flash_adj = 1000   # the one term prior passes left at 0; = blob[24]/[25] = 1000 = 100%
+```
+
+| frame | `orderFpo` (Y,U,V) | A (`+0x3a38`) | port `preference_shifts_hiNN` |
+|---|---|---|---|
+| 1 | (2046, 70, 447) | (783, 366, 127) | (783, 366, 127) ✓ |
+| 2 | (1913, 47, 454) | (854, 459, 187) | (854, 459, 187) ✓ |
+| 3 | (1726, 53, 451) | (959, 560, 297) | (959, 560, 297) ✓ |
+| 4 | (2226, 64, 431) | (665, 266, 31) | (665, 266, 31) ✓ |
+| 5 | (2055, 65, 445) | (775, 365, 121) | (775, 365, 121) ✓ |
+
+With `non_flash_adj=0` the port yields (731,345,199) for frame 1 — the chroma
+aims are *scaled* by `non_flash_adj·0.001`, so 0 disabled the UV-aim term and
+made prior passes' Preference outputs diverge from the live A. This closes
+§62.4's open term (1) end-to-end: FOS `orderFpo` → `preference_shifts_hiNN
+(hi=0x30, lo=3, non_flash_adj=1000)` → `+0x3a38`, all bit-exact. `non_flash_adj`
+is matched by parameter search against the live A (5/5 bit-exact), not yet
+traced to its read site in the disassembly — flag that tier honestly.
+
+### 64.1 — The scale field is `cmm` (blob+0x30), Unicorn-verified, not `nonFlashAdj`
+
+§64 called the scale `non_flash_adj=1000` on a parameter-search match. That
+is now traced and Unicorn-pinned (tier 1). The Preference reads the scale at
+`0x1028caa7` (`movsx eax, [ebx+0x30]`) — `ebx` = arg4 = the blob (set at
+`0x1028ca47 mov ebx,[ebp+0x14]`) — then `fimul dword [0x105a0800]` (×0.001).
+The blob fill `0x10214f20` maps `blob+0x30 ← scene+0x4d1c` (`mov cx,[esi+0x4d1c]
+; mov [edi+0x30],cx`), and `scene+0x4d1c` is the dpi field **`cmm`**
+(`sba-CN-default.dpi` line 17: `cmm = 1000`; `fog` is the neighbour at
+`+0x4d1e`→`blob+0x32`). So the chroma-aim scale is `cmm·0.001`, and
+`nonFlashAdj` (`+0x4d1a`→`blob+0x12`… `blob[18]=25`) is a *different* field
+that the Preference does not read here. Added three `hi=0x30,lo=3` cases to
+`pakon_preference_golden.py` sweeping `non_flash_adj`(=cmm) over `0/500/1000`
+— all bit-exact vs the DLL (dll/py `(1038,652,506)`, `(877,651,669)`,
+`(716,649,832)`). Value live: `blob[24]=1000`, so the live chroma aim is at
+full strength — the prior passes' `0` disabled it.
+
+### 64.2 — What remains: only Δ (term 2)
+
+With A now closed-form, the applied balance is `setshifts_12(A,A) + Δ` where
+Δ (v17) = `+95/+63/+65/+29/+73` uniform. Δ is the `setShifts`/caller post-
+combine luma offset (§63.2); everything else in the per-frame balance chain
+is now reproduced. The open Δ is the *sole* remaining unknown for the
+per-frame balance. Candidate next steps: (1) trace the `0x10101xxx` caller's
+post-`setShifts` tail and the other two `setShifts` call sites (`0x10058bcf`,
+`0x1006b74f`) for the uniform add; (2) dump `scene+0x4b6` and the caller's OUT
+buffer (`arg5 = [esp+0x20]−4`, the "accumulation buffer at [ptr−4]/[ptr−2]/[ptr]"
+from §62) at `balance_area_image` entry to see the raw pre-LUT OUT; (3) test
+whether Δ is `out+2`-derived — the "out+2" (`inv(t', +U, +V)`, dumped as
+`+0x3a32/+0x3a34/+0x3a36`) is the lim46-complement of the final shift and is
+the only other per-frame luma term the Preference produces.
+
+## 65 — Handoff: how this pass found things, and the tooling to continue
+
+For the next agent. Everything here is against real captured hardware data
+(tier 2) + the Unicorn-golden fragments already in-tree (tier 1); no formula
+in §63–64 is "looks right", every table row is bit-exact against a dump.
+
+* **Dumps come from `tools/re/live_hooks/win_inject/`.** `g_extraDumps[]` in
+  `hookcore_real_table.c` is the dump spec list. `EXTRA_DUMP_THIS_DEREF_OFFSET
+  {this_off, deref_off, nbytes}` reads `*(ecx+this_off)+deref_off` — used for
+  `+0x3a38`, `+0x3a30` (offset 0x10 → Impl, then +0x3a38/+0x3a30).
+  `EXTRA_DUMP_STACK_PTR {stack_idx, off, nbytes}` reads `*sp[stack_idx]+off` —
+  used for `sba_preference` arg1 (pref_data) and arg3 (blob). `build.sh`
+  must show "only KERNEL32.dll", XP 5.1 stamp, and `selftest ALL PASS`;
+  `check_table_sync.py` keeps `hookcore_real_table.c` ⇄ `agent.js` hook lists
+  in sync (29 hooks).
+* **The capture decode loop** (repeatedly the fastest path to a finding):
+  (1) dump a buffer live, (2) decode it against the known structures, (3)
+  diff against the port's own output for the same input. The balance LUT is a
+  pure ramp `clamp(i+shift,0,4095)` — recover `shift` by scanning for the s
+  that satisfies `lut[i]==min(max(i+s,0),4095)` over i∈[400,3400) (this is
+  how every OUT in §62–64 was recovered from `area_image_apply_lut` r/g/b).
+* **Live captures in `/tmp/pakon_re/`** (not committed, per repo rule):
+  v14 `live_hooks_20260816-180542.jsonl`, v15 `…-185402.jsonl`, v16
+  `…-191735.jsonl` (md5 `6f8892…ee48b`), v17 `…-193632.jsonl` (md5 `a92a7b…
+  0c53996`). Hook DLLs: v16 `f30d880d…a74de`, v17 `85094067…613bf` (uploaded
+  to the drop server `http://192.168.86.67:8000/`, intermittently up).
+* **Key offsets in the scene object (= `*(AnsSbaCapability+0x10)` = Impl):**
+  `+0x38a2` = FOS `orderFpo` (Preference arg1), `+0x3a30/+0x3a32` = Preference
+  "out+2", `+0x3a38` = Preference "final shift" = the shift `getShifts` reads,
+  `+0x4b6` = `setShifts` OUT (read by `balanceAreaImage`), `+0x4d0e` = nested
+  fpo. `getShifts` `0x10124000` reads `*(this+0x10)+0x3a38` (only `0x3a38`
+  immediate in the whole DLL). `setShifts` `0x10100260`; its golden `(1,2)`
+  fragment is `0x10100a37…0x101010ac`; call sites `0x10058bcf`, `0x1006b74f`,
+  `0x10101f89`. Preference `0x1028c780`; two OUT loops `0x1028ccc0` (out+2)
+  and `0x1028cce7` (final shift).
+* **The pipeline shape (now fully reproduced except Δ):** per-frame
+  `orderFpo` → `preference_shifts_hiNN(hi=0x30,lo=3,non_flash_adj=1000)` →
+  `A=+0x3a38` → `setshifts_12(A,A)` → `+Δ` → balance ramp
+  `clamp(i+shift,0,4095)`. The port currently uses the DPI-static mode
+  (`preference_shifts_from_dpi_fields`, mode 0x11, `non_flash_adj=0`) and no
+  per-frame orderFpo and no Δ — that is the gap to close.
+
+## 66 — The per-frame `orderFpo` writer is a *different* function from the ported FOS — `0x1028b8d0`, not `SbaCalcFosResults`
+
+§62.3 named `0x1028b8d0` the per-frame `scene+0x38a2` writer and §62.4
+claimed "the port equivalent is `fos_analyze_roll`". That equivalence is now
+checked and does **not** hold structurally — the ported FOS is the wrong
+entry point for the per-frame orderFpo, pending a Unicorn/live comparison.
+
+* `0x1028b8d0` — the function the `AnsSbaCapabilityImpl` methods call **5×
+  per frame** (`0x10215d6a/15fae/1605b/1937b/196a9`). It spans
+  `0x1028b8d0…0x1028c45d` (~0xba0 bytes), takes **13** cdecl args
+  (`add esp,0x34`), and calls **8 helper subroutines** — `0x1028abf0`,
+  `0x1028ae00`, `0x1028b570`, `0x1028b650`, `0x1028b6e0`, `0x102ac310`,
+  `0x102ae9d0`, `0x102aece0`(×3) — plus two inline 3-band LUT lookups at
+  `0x1028c480` (planar, `[ecx+4/8/0xc][eax]` → 3×i16) and `0x1028c4b0`
+  (interleaved, `[ecx+4][eax*3+k]` → 3×i16). Its body carries the FOS
+  opponent transform at high multiplicity (9 `MAGIC_Y` / 7 `MAGIC_C1` / 6
+  `MAGIC_C2` / 11 `RGB_SCALE` sites vs `0x1028f570`'s 2/2/2/6).
+* `SbaCalcFosResults @ 0x1028f570` — the ported FOS calc (`fos_calc_results`
+  / `fos_analyze_roll`), **10** args, sole `E8` from `AnsFosCapabilityImpl::
+  analyze` (`0x1024087c`). Its golden leaves live at `0x1028f250…0x10290332`.
+* **No overlap**: `0x1028b8d0` calls none of the ported leaves, and no ported
+  leaf sits in `0x1028b8d0`'s helper range `0x1028abxx…0x102aexx`. The two are
+  separate code paths.
+
+So §62.4's wiring recipe (`fos_analyze_roll → preference`) is **not yet
+earned**: it assumes the roll-wide `SbaCalcFosResults` orderFpo equals the
+per-frame `0x1028b8d0` orderFpo, which the argument-count and helper-set
+differences contradict. The gate before any wiring is one of:
+
+1. Unicorn-execute `0x1028b8d0` on a synthetic frame and diff its OUT against
+   `fos_analyze_roll`'s orderFpo for the same inputs; or
+2. live-capture (v18) the FOS inputs (dens `scene+0x1a`, C banks
+   `+0x388c/+0x3bc8`, dmin `+0x290c`, the `+0x38a0/+0x5978` words, and the
+   `dc_*` params) alongside `scene+0x38a2`, then run `fos_analyze_roll`
+   offline and diff.
+
+Either way it is a verification step, not an assumption — do not wire the
+per-frame orderFpo until one of these is bit-exact.
+
+## 67 — Contradiction to resolve before wiring: the live Preference runs with mode=0, but A is only reproduced by hi=0x30/lo=3
+
+§64's bit-exact match (`A = preference_shifts_hiNN(hi=0x30, lo=3, cmm=1000,
+orderFpo)`) is real — re-verified 5/5 — but the v17 capture shows the
+Preference's `arg5`(mode) = 0 on **all 10 calls** (leader and analysis pass),
+and mode=0 gives a different output. Both computed for v17 frame 0
+(orderFpo Y=2046, U=70, V=447, cmm=1000):
+
+* `hi=0x30, lo=3` (aim_y=arg1_0=Y, aim_uv=arg1_2/arg1_4=U/V) → `(783,366,127)` = A.
+* `hi=0x00, lo=0` (aim_y=param0, aim_uv=fpo[1]/fpo[2]) → `(1929,-596,-55)` ≠ A.
+
+The arg layout itself was re-derived from the **verified** golden harness
+frame (`ret, param, arg1, out, blob, mode`) and the DLL's reads:
+`[ebp+8]=param`, `[ebp+0xc]=arg1` (null-checked, read `+0/+2/+4` by
+`lo=3`/`hi=0x30`), `[ebp+0x10]=out`, `[ebp+0x14]=blob`, `[ebp+0x18]=mode`.
+The live call `0x10216444` pushes `ebx=scene+0x38a2` first (→ the *param*
+slot, so `param0 = scene+0x38a2[0] = orderFpo Y`) and `edi = 0x1013c4e0`
+(→ the *arg1* slot; `0x1013c4e0` fetches the FOS results and returns NULL
+live, hence arg2=0). So with mode=0 the Preference reads per-frame luma via
+`param0`=orderFpo-Y but constant chroma via `fpo[1]/fpo[2]` — which cannot
+produce A's per-frame chroma.
+
+Mode-setting path (`AnsSbaCapabilityImpl` body, `0x102160a7…0x10216413`) is
+multi-stage — `0x102160a7` sets mode=eax∈{1,3,4}, `0x1021610d` sets 1|di,
+`0x102161a8/bb/c9` ORs `0x20/0x30/0x40` off `[ebp-0x2c]`∈{2,3,4}, `0x10216345`
+forces `hi=0x10` when `bl==0`, `0x10216407` ORs the lo nibble — so `0x33` is
+reachable, but the captured arg5 is 0. Two open resolutions, both unproven:
+
+1. the live mode really is `0x33` and the `arg5`=0 capture is a hook/timing
+   artifact (needs a `[esi+0x5074]` dump at the call), or
+2. `+0x3a38` is written *after* the mode=0 Preference by a second per-frame
+   writer, and §64's match is a coincidence of the Y-aim (param0 ≡ orderFpo-Y
+   ≡ arg1_0) that does not extend to chroma.
+
+Either way, §64's "A = Preference OUT" is **not safe to wire** as stated until
+one is disproved. Do not build the FOS→preference wiring on it.
+
+### 67.1 — §67 resolved in direction: the Preference's *other* OUT proves it runs hi=0x30/lo=3
+
+The Preference writes two triples — the "out+2" (`inv(t', +U, +V)`, at
+`scene+0x3a32`) and the "final shift" (`inv(s', −U, −V)`, at `scene+0x3a38`).
+Both were computed for v17 frame 0 (orderFpo Y=2046,U=70,V=447, cmm=1000):
+
+| mode | final shift (+0x3a38) | out+2 (+0x3a32) |
+|---|---|---|
+| `hi=0x30,lo=3` | (783,366,127) | (766,1183,1422) |
+| `hi=0,lo=0` | (1929,−596,−55) | (−378,2146,1605) |
+
+Live `+0x3a38`=(783,366,127) **and** `+0x3a32/+0x3a34`=(766,1183) both match
+`hi=0x30,lo=3` exactly — the mode=0 values match neither. So §64 stands (the
+live Preference runs `hi=0x30,lo=3`, orderFpo U/V aims), and §67's `arg5=0`
+capture is the anomaly to explain, not a second writer of `+0x3a38`. v18 adds
+a `scene+0x5074` (mode-word) dump at `getShifts` to settle whether the live
+mode word is `0x33` (arg5 capture artifact) or `0` (Preference reads the mode
+from somewhere other than `[ebp+0x18]`).
+
+## 68 — §67 resolved: the live mode is 0, and the Preference's `hi=0` else-branch reads the orderFpo U/V from `scene+0x38a2` (a port bug, now fixed)
+
+v18 (`live_hooks_20260817-091509.jsonl`, md5 `3518fb9e…9524df`) dumped the mode
+word directly: `scene+0x5074` = `0` at `getShifts` on every frame, matching the
+`arg5`=0 captures. So the mode really is 0 — §67's "arg5 capture artifact" was
+wrong, and the second open resolution was the true one, with a twist.
+
+The Preference's `hi=0` aim-UV else-branch is `0x1028ca2f`: `movsx edx,[edi+2]
+; movsx eax,[edi+4]`, where `edi = [ebp+8]` = **arg1** (the *param* struct,
+`scene+0x38a2` live), **not** the blob `fpo` (`[ebp+0x14]`). So with mode=0:
+
+* `aim_y` = `param0` = `scene+0x38a2[0]` = orderFpo **Y** (per-frame),
+* `aim_uv` = `scene+0x38a2[+2]/[+4]` = orderFpo **U/V** (per-frame).
+
+That is exactly the orderFpo Y/U/V §64 matched — but via **mode=0**, not
+`hi=0x30/lo=3`. The port's `preference_aim_uv` returned `fpo[1]/fpo[2]` for the
+else case (a conflation of the param and blob structs, invisible to the golden
+test only because `non_flash_adj=0` zeroes the aim-UV term in every original
+case). Fixed: added a `param_uv` argument (param `+0x02/+0x04`) and made the
+else-branch return it. Unicorn-verified (3 new `hi=0` golden cases with
+`non_flash_adj`∈{1000,500,250}, all `dll==py`), and live bit-exact 6/6 frames:
+`preference_shifts_hiNN(hi=0, lo=0, param0=orderFpoY, param_uv=orderFpoUV,
+cmm=1000) == +0x3a38`.
+
+Related, flagged not fixed (mode=0 doesn't reach them): `hi=0x20` (neu) reads
+`arg1[+0x0c/+0x0e/+0x10]` and `hi=0x40` (lo42/hi44) reads `arg1[+0x42/+0x44]`
+— both from the *param* struct, not the blob — so the port's `neu`/`lo42`/
+`hi44` (blob-sourced) are also wrong for those two modes. Live-irrelevant for
+the shipped mode=0 path, but wrong byte-for-byte if ever exercised.
+
+## 69 — The Δ is a *third* getShifts call in the setShifts caller, reading a different `+0x3a38`
+
+v19 (`live_hooks_20260817-110241.jsonl`, md5 `740bfe5e…579e01`) pinned the
+balance shift directly: `balance_area_image` reads the three ramp-shift words
+from `arg4+0x0a` = `scene+0x4b6` (cn_enhanced_driver passes `esi+0x4ac`,
+`0x10069837`), and they equal `setshifts_12(A,A) + Δ` with Δ uniform
+(`+12/+91/+64/+65/+14/+77`). The write path:
+
+* `scene+0x4b6` is zeroed by `analyze_scp_lut_balance` (`0x100fd8be`: three
+  `mov word [ebx+0x4b6..0x4ba], ax` with `eax=0`) — that is the *only*
+  `+0x4b6`-immediate store in the DLL.
+* The setShifts caller (`0x10101xxx`, after `setShifts` @ `0x10101f89`) then
+  adds Δ at `0x10102033..57`:
+  `add [eax-4], cx; add [eax-2], dx; add [eax], cx`, where `eax=[esp+0x20]`
+  (the OUT buffer base, i.e. `scene+0x4b6+4`) and `cx/dx` come from
+  `[esp+0x88]/[esp+0x8a]/[esp+0x8c]`.
+* `[esp+0x88..]` is the OUT of a **third** getShifts call, `0x10101ff6`
+  (`call 0x10124000`), whose `this=[esp+0x54]` and `arg1=&[esp+0x30]` differ
+  from the two getShifts the `setShifts` body makes (`0x101002dd/0x10100397`,
+  this=`[esp+0xb4]/[esp+0xbc]`). The getShifts body reads `*(arg1+0x10)+0x3a38`
+  — so this third call reads a **different** `+0x3a38` field than the one the
+  hook dumps (`EXTRA_DUMP_THIS_DEREF_OFFSET` reads `*(this+0x10)+0x3a38`).
+
+So Δ is a per-frame uniform triple stored in a *second* `+0x3a38`-offset field
+(the third getShifts's `arg1+0x10` target), added to `scene+0x4b6` after the
+combine. Two things still to pin (flagging, not assumed): (1) whether this
+third call actually fires in the live flow — v19 shows only 2 `sba_get_shifts`
+per frame, so either the `bl` gate at `0x10101fc4/6` skips it and Δ comes from
+elsewhere, or the third call's hook dump is the wrong offset; (2) what writes
+that second `+0x3a38` field. v20 should dump the third getShifts's real read
+(`*(arg1+0x10)+0x3a38`) and `[esp+0x88]`.

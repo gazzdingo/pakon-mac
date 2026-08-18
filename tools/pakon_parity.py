@@ -177,6 +177,9 @@ def run_python(raw14: np.ndarray, cfg) -> PyRun:
     meta["afilm_aim"] = list(engine.fugc_afilm_aim_dmin)
 
     # --- inversion, with the ROLL's film base ---
+    # The balance shift runs in the LINEAR domain inside f135_rom12_to_rpd12
+    # (docs/74 SS60), so `inv` already arrives balanced; the old separate
+    # apply_balance_shifts pass is gone to avoid shifting the density twice.
     ped = (coeffs[9], coeffs[19], coeffs[29])
     inv = dec.f135_rom12_to_rpd12(
         poly, ped, engine.sba.fpo, engine.setshifts_out,
@@ -184,9 +187,8 @@ def run_python(raw14: np.ndarray, cfg) -> PyRun:
     )
     taps["inv"] = inv
 
-    # --- balance apply ---
-    balanced = sba_apply.apply_balance_shifts(
-        inv.astype(np.int32), engine.setshifts_out).astype(np.float64)
+    # --- balance apply (now a no-op: already applied above) ---
+    balanced = inv.astype(np.float64)
     taps["balance"] = balanced
 
     # --- FUGC aim words: ebp18 is FindDmin on the post-balance, pre-Shasta

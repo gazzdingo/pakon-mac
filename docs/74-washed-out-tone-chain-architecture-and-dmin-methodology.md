@@ -17892,3 +17892,31 @@ which would show directly where the luma is added and by how much.
 
 `balance_shift_4b6` already gives the *final* value (§95.1). The missing half is
 the value *before* the per-render chain touches it.
+
+### 101.5 — Checked and closed: it is not an alternative pairing
+
+The obvious competing explanation for §101.3 is that our six shifts are the
+vendor's six in a different order. Tested by taking each vendor shift and
+finding its nearest neighbour among ours (L1 over the triple):
+
+```
+  vendor#1 (800,388,136) -> ours#1   L1 = 0      exact
+  vendor#2 (829,402,167) -> ours#2   L1 = 1
+  vendor#3 (798,360,130) -> ours#3   L1 = 2
+  vendor#4 (889,458,221) -> ours#2   L1 = 169    (already vendor#2's match)
+  vendor#5 (833,405,169) -> ours#2   L1 = 8      (collision)
+  vendor#6 (766,351,96)  -> ours#5   L1 = 20
+```
+
+No bijection exists. The identity pairing for 1–3 is unambiguous (L1 = 0, 1, 2)
+and **`(889, 458, 221)` has no near match at all** — across all 12 emulated
+calls only six distinct shifts are ever produced, and none is close to it. So
+frames 4–6 are a genuinely absent quantity, not a mis-assignment, and §101.3's
+downstream-correction reading survives this test.
+
+One observation deliberately left as an observation: the vendor stack processes
+film in strips of **4–6 frames** (documented in `pablonavarrob/pakon-tlx-macos`,
+which drives the same OEM binaries), and this capture's correction is zero for
+frames 1–3 and non-zero for 4–6. That is the right shape for per-strip state,
+and it is **not** evidence — the boundary could as easily be coincidence at six
+frames. Recorded so a capture spanning a known strip boundary can test it.

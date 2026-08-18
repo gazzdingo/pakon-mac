@@ -105,12 +105,22 @@ def suspected_off_by_one(data: bytes) -> bool:
     return len(data) >= 3 and data[0:3] == b"\x01\x00\x00"
 
 
+def _group(name: str) -> str:
+    """``"A"`` and ``"A-backup"`` are two copies of the SAME logical section;
+    ``"B"``/``"B-backup"`` are a different, non-redundant section. Group by
+    the letter so completeness is judged per logical section, not pooled."""
+    return name.split("-", 1)[0]
+
+
 def verify(data: bytes) -> tuple[bool, list[SectionResult], list[str]]:
     """``(good, per-section results, warnings)``.
 
-    ``good`` requires at least one section to pass CRC. The vendor itself
-    falls back to the backup copy, so one good copy is a real backup and
-    demanding all four would reject dumps the scanner considers healthy.
+    ``good`` requires EVERY logical section (A, B, ...) to have at least one
+    passing copy. The vendor falls back from primary to backup within a
+    section, so one good copy of a given section is a real backup of that
+    section -- but A and B hold different, non-redundant data (docs/69
+    §5.2), so a read that only ever reaches section A is not a backup of B,
+    no matter how many of A's copies verify.
     """
     warnings: list[str] = []
     if looks_like_bus_idle(data):
@@ -124,6 +134,17 @@ def verify(data: bytes) -> tuple[bool, list[SectionResult], list[str]]:
     results = [check_section(data, n, o, ln) for n, o, ln in SECTIONS]
     good = [r for r in results if r.ok]
 
+    groups: dict[str, list[SectionResult]] = {}
+    for r in results:
+        groups.setdefault(_group(r.name), []).append(r)
+    missing_groups = [g for g, rs in groups.items() if not any(r.ok for r in rs)]
+    if missing_groups:
+        warnings.append(
+            "no verified copy of logical section(s) "
+            f"{', '.join(sorted(missing_groups))} -- a read that never "
+            f"reaches a section is not a backup of it, even if other "
+            f"sections check out.")
+
     if not good and suspected_off_by_one(data):
         warnings.append(
             "no section verified, and the read starts 01 00 00 -- the "
@@ -135,7 +156,7 @@ def verify(data: bytes) -> tuple[bool, list[SectionResult], list[str]]:
             f"read is {len(data)} bytes; the vendor touches up to "
             f"{HIGHEST_BYTE} (0x{HIGHEST_BYTE:X}), so later sections were "
             f"not covered.")
-    return bool(good), results, warnings
+    return not missing_groups, results, warnings
 
 
 def report(data: bytes, label: str = "dump") -> bool:

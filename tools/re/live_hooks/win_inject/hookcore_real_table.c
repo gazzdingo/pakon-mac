@@ -996,14 +996,19 @@ const ExtraDumpSpec g_extraDumps[] = {
      * is not yet pinned (both are reassigned several times), so arg 5 and
      * arg 7 are both sized past 0xbb0/0x158 respectively rather than
      * asserting a mapping this pass has not established. */
-    { "sba_order_fpo_calc", "arg0_big", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x1500 },
+    /* v25: arg0 must reach 0x2880. docs/74 SS76.4's three dens arrays are at
+     * arg0+0x1440, +0x1b00 and +0x21c0, each 864 x int16 = 0x6c0 bytes, so the
+     * last one ends at 0x2880. v24's 0x1500 covered only the first ~96 of 864
+     * densY samples -- confirmed exactly by the harness faulting at arg0+0x1440
+     * and then arg0+0x1b00. 0x3000 leaves margin. */
+    { "sba_order_fpo_calc", "arg0_big", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x3000 },
     { "sba_order_fpo_calc", "arg1_big", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x1000 },
     { "sba_order_fpo_calc", "arg2_big", EXTRA_DUMP_STACK_PTR, 2, 0, 0, 0x200 },
     { "sba_order_fpo_calc", "arg5_big", EXTRA_DUMP_STACK_PTR, 5, 0, 0, 0xC00 },
     { "sba_order_fpo_calc", "arg6_big", EXTRA_DUMP_STACK_PTR, 6, 0, 0, 0x400 },
-    { "sba_order_fpo_calc", "arg7_big", EXTRA_DUMP_STACK_PTR, 7, 0, 0, 0x1100 },
+    { "sba_order_fpo_calc", "arg7_big", EXTRA_DUMP_STACK_PTR, 7, 0, 0, 0x1200 },
     { "sba_order_fpo_calc", "arg10_big", EXTRA_DUMP_STACK_PTR, 10, 0, 0, 0x200 },
-    { "sba_order_fpo_calc", "arg11_big", EXTRA_DUMP_STACK_PTR, 11, 0, 0, 0x1000 },
+    { "sba_order_fpo_calc", "arg11_big", EXTRA_DUMP_STACK_PTR, 11, 0, 0, 0x1200 },
     { "sba_order_fpo_calc", "arg12_big", EXTRA_DUMP_STACK_PTR, 12, 0, 0, 0x200 },
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0 }, /* sentinel */
 };

@@ -16525,3 +16525,26 @@ vendor data for channel-uniform fields in §83's band and then checked against
 it. The `NBP − fpo` identity is arithmetic on values already in the port and
 the same DPI, shown rather than asserted. Every render number uses §31's
 parameters and the same `AA001.tif` as every other measurement in this doc.
+
+
+## 85 — Two clean negatives on Y's  term: it is neither a simple
+dens statistic nor a value read from any captured buffer
+sec84 established that the per-frame Preference wiring is THE fix (it replaces both halves of the fpo/setShifts coupled defect at once), and that the one thing blocking it is computing Y's L term outside a capture. Two cheap tests were worth running before accepting sec78.2's bytecode-interpreter conclusion as final.
+
+TEST 1 -- is L a statistic of the dens arrays the port could compute itself? The v25 capture carries all 864x3 dens samples for six scenes, so this is answerable from data in hand. Regressing L against nine candidate statistics of densY:
+
+  mean(densY[selected])   corr 0.945   resid RMS 52
+  median(densY[selected]) corr 0.919   resid RMS 63
+  n_selected              corr 0.904   resid RMS 68
+  mean(densY)             corr 0.891   resid RMS 73
+  ... down to min(densY)  corr 0.204   resid RMS 156
+
+The best correlate is physically sensible -- L is a luma term and the selected-sample mean luma tracks it at r=0.945 -- but RMS 52 against an L range of -299..200 is roughly 10% error, nowhere near bit-exact, and it is a two-parameter fit on six distinct points. NEGATIVE: L is not a simple statistic of dens.
+
+TEST 2 -- is L simply read from a buffer rather than computed? sec76 traced L[-0x200] to a fill by fcn.102ac310 from a 16-byte-record list off arg 6, and arg 6 is captured. Searched every captured buffer (arg2/5/6/7/10/11/12, 512-4608 bytes each) for an int16 or int32 appearing at a consistent offset across all six scenes with the six L values. ZERO matches anywhere. NEGATIVE: L does not appear verbatim in any captured argument buffer.
+
+Together these close off the two cheap routes and leave sec78.2's finding standing: L is genuinely produced by the interpreted path, so obtaining it in production means either porting that path or capturing it per frame -- and capturing it per frame does not work in production, only in verification.
+
+What this does NOT block: U and V are fully derived and golden (sec79), the dens arrays needed to compute them are captured, and sec84 identified the anchor. The wiring is blocked on L alone.
+
+No production file changed.

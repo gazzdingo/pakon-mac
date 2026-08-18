@@ -57,11 +57,25 @@ def _clamp(v: int, lo: int, hi: int) -> int:
     return lo if v < lo else (hi if v > hi else v)
 
 
+def _ctrunc(a: int, b: int) -> int:
+    """C/x86 `idiv` semantics: quotient truncated toward zero."""
+    q = abs(a) // abs(b)
+    return q if (a < 0) == (b < 0) else -q
+
+
 def _rdiv(n: int, d: int) -> int:
-    """Round half away from zero, then truncating idiv (§76.4)."""
-    h = abs(d) >> 1
+    """Round half away from zero, then truncating idiv (§76.4).
+
+    The half-step is the DLL's own ``mov eax,d; cdq; sub eax,edx; sar eax,1``
+    at ``0x1028b27e``-``0x1028b285`` -- which is truncating division by two,
+    NOT ``abs(d) >> 1``. The two agree for every divisor that occurs here
+    (``N*100`` = 86400, or ``cnt*100`` with ``cnt > 0``, both positive) but
+    diverge for a negative divisor, so the faithful form is used rather than
+    the merely-equivalent one.
+    """
+    h = _ctrunc(d, 2)
     q = (n + h) if n >= 0 else (n - h)
-    return -((-q) // d) if (q < 0) != (d < 0) and q % d != 0 else q // d
+    return _ctrunc(q, d)
 
 
 def compute_uv(arg0: bytes, arg2: bytes, arg6: bytes, arg7: bytes,

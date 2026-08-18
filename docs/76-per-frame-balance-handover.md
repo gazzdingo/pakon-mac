@@ -191,26 +191,59 @@ hardware captures. Work to this standard, in this order:
 
 ## 5. Immediate next steps (in order)
 
-1. **v20 capture** (already built; un-captured at handoff) — the new
-   `shifts_3a38_arg1` dump (`*(arg1+0x10)+0x3a38`) settles whether the third
-   getShifts fires and reveals the Δ's value directly. Hookdll_v20
-   `553b05ee…`, injector_v20 `28c54e93…`.
-2. **Find the second `+0x3a38` writer** — answered (docs/74 §71): there is
-   no second field. The third `getShifts` call reads the identical
-   Preference-written OUT §64 already closed, through one more layer of
-   pointer indirection. Still open: whether that third call fires live at
-   all (v19 saw only 2 `sba_get_shifts`/frame) — gated on the v20 capture
-   from step 1.
-3. **§66 closed the other way (docs/74 §72)** — `0x1028b8d0`'s own
-   top-level code does not write the orderFpo triple on the case that
-   provably fires live (mode/arg 3 == 0 at both real call sites); it writes
-   one unrelated word at `pref_data+0x3e` instead. Whether one of its 8
-   unread helper subroutines is the real orderFpo writer is still open. No
-   Unicorn harness was built — doing so now would require inventing
-   load-bearing inputs (the helpers' semantics, which of two observed arg-5
-   provenances is "normal," arg 3/8/9's live value at one of the two call
-   sites). Next: the v21 live capture spec'd in docs/74 §72.7 (hook
-   `0x1028b8d0` entry+return, dump all 13 args + before/after `pref_data`).
-4. **Wire it** — `pakon_ansel.py` per-frame orderFpo → `preference_shifts_hiNN
-   (hi=0, lo=0, non_flash_adj=cmm)` → `setshifts_12` → `+Δ`, then re-render and
-   diff against the real vendor output.
+**Status as of the v21 capture (`live_hooks_20260817-112602.jsonl`, md5
+`98aa01dbad6014caf63425f14f8e487a`, docs/74 §73): steps 1-3 below are all
+answered. Step 4 is now gated on one new, well-scoped question.**
+
+1. ~~**v20 capture**~~ — **DONE.** v21 is a strict superset of v20 (v20's
+   source was merged before v21 was built on top of it, so the v21 binary
+   carries v20's own `shifts_3a38_arg1` dump — verified directly in the
+   compiled DLL). One capture answered both. Result: the third `getShifts`
+   **does** fire (18 calls / 6 frames = 3 per frame, where v19 saw only 2).
+2. ~~**Find the second `+0x3a38` writer**~~ — **CLOSED, negatively.**
+   §71 showed statically there is no second *writer*; §73.5 now shows
+   empirically that the field the third `getShifts` reads is **`(0,0,0)` on
+   all 12 calls where it is readable** (and unmapped on the other 6). It is
+   not Δ's source. The candidate is eliminated, not deferred.
+3. ~~**§66 closed the other way**~~ — **REOPENED AND RESOLVED THE OTHER WAY
+   AGAIN, live.** §73.2: `0x1028b8d0` **is** the per-frame orderFpo writer,
+   confirmed 12/12 with no counterexample (blob is `(0,0,0)` at every
+   `arg3==0` entry, non-zero and per-scene-distinct by the time Preference
+   reads the same address). §72's own top-level static read still stands —
+   the write happens inside one of the **8 helper subroutines** §72.3
+   explicitly flagged as unread. Also: §72.3's "arg 3 == 0 at both call
+   sites" is **refuted** — 12 of 24 real calls run `arg3 == 1` (§73.3), so
+   case 1 is live code, and a Unicorn harness built on that assumption
+   would have run the wrong switch case half the time.
+
+4. **NEW — find which of the 8 helpers writes the triple, and port it.**
+   This is the one thing now standing between here and wiring. The helpers
+   are `0x1028abf0`, `0x1028ae00`, `0x1028b570`, `0x1028b650`, `0x1028b6e0`,
+   `0x102ac310`, `0x102ae9d0`, `0x102aece0` (§66). Three of them are called
+   on the live `arg3==0` path (`0x1028b570` @ `0x1028c1fe`, `0x102ae9d0` @
+   `0x1028c369`, `0x1028b6e0` @ `0x1028c3b6`, per §72.3) — start there.
+   Two viable routes, either is legitimate:
+   * **Static:** read those three bodies looking for a write to
+     `[reg+0]/[reg+2]/[reg+4]` where `reg` traces back to `pref_data`.
+   * **Live (cheaper, decisive):** hook the three candidate helpers and dump
+     `pref_data` at each entry — same before/after keyed-by-address
+     technique §73.2 used, which pins the writer to a single call with no
+     disassembly at all. Note `0x102aece0` is called 3× and `0x102ae9d0`
+     sits on the live path, so volume is low (a few calls per scene).
+
+5. **Δ's source is open again** (§73.6). Δ is measured, real, per-frame, and
+   uniform to within one code (−43, +32, +7, +34, −68, +12 across the six
+   captured frames), but §73.5 eliminated the only nominated source. Worth
+   noting the shape for whoever picks this up: it is a *luma-only* offset
+   applied after `setshifts_12`, so its source is more likely a scene-level
+   brightness/exposure aim than anything in the `+0x3a38` chain.
+
+6. **Wire it** — `pakon_ansel.py` per-frame orderFpo →
+   `preference_shifts_hiNN(hi=0, lo=0, non_flash_adj=cmm)` → `setshifts_12`
+   → `+Δ`, then re-render and diff against the real vendor output. Gated on
+   4 (and on 5 for the Δ term specifically). **Architectural note from
+   §73.7 that affects how this is wired:** the whole balance chain is a
+   **roll-wide pre-pass** — every `orderFpo`/Preference/`getShifts` call in
+   the capture happens *before* the first per-frame render begins, with all
+   six scenes computed up front. The port should compute balance for the
+   whole roll first, then render, not interleave per frame.

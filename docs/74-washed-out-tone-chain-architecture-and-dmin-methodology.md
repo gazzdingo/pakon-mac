@@ -14236,3 +14236,245 @@ else entirely), and which of the 5 calls (if any) is responsible. This is
 a small, surgical addition to `g_extraDumps[]` (14 new entries, no new
 dump kind), fully consistent with the v14–v20 pattern already in the
 repo.
+
+## 73 — The v21 capture fired: `0x1028b8d0` IS the per-frame `orderFpo`
+writer (confirmed 12/12, inside a helper as §72 predicted), §72.3's
+"arg 3 == 0 at both call sites" is refuted by live data, and the second
+`+0x3a38` field §69/§71 chased as Δ's source is empirically all-zero
+
+§72 read `0x1028b8d0`'s full body statically, found its own top level does
+not write the `orderFpo` Y/U/V triple on the case it believed fires live,
+and — correctly, per this doc's own "never invent" rule — declined to build
+a Unicorn harness on three unverified assumptions, specifying a live capture
+(§72.7) instead. That capture now exists. It answers §72's own open
+question decisively, refutes one of §72's static claims, and closes the
+separate Δ-source thread §69/§71 left open, in a way no further disassembly
+could have.
+
+### 73.1 — Provenance
+
+Capture `live_hooks_20260817-112602.jsonl`, 32,921,564 bytes, `md5
+98aa01dbad6014caf63425f14f8e487a`, produced on the real XP box by the owner
+with the v21 build of this repo's own harness (`hookdll.dll` `md5
+8fe7dee368958f86f8d899533d873910`, `injector.exe` `md5
+c8116a2d119940a431751d652c0f3778`, commit `9033fdd`). 0 unparseable lines
+out of the whole file. Engine self-report: *"hookcore initialized, 30
+hook(s) defined"*, *"install pass complete: 23/23 enabled hook(s) installed
+after 0 attempt(s)"*, zero `hook_install_failed` rows — including the new
+`sba_order_fpo_calc` (`0x1028b8d0`), which installed and **fired 24 times**
+across the capture. One real scan, 6 frames (6 `cn_enhanced_driver` calls).
+
+### 73.2 — The decisive result: `0x1028b8d0` writes the `orderFpo` triple,
+12 times out of 12, with no counterexample
+
+The test §72.7 designed: dump `pref_data` (`scene+0x38a2`) at every
+`0x1028b8d0` entry, and compare against the same blob at the existing
+`sba_preference` dump, matched **by address** (not by ordering assumption —
+each scene has its own distinct `pref_data` allocation, so the address is an
+unambiguous key). Every `arg3 == 0` call, without exception:
+
+```
+addr 0x08dc9952: before=(0,0,0) -> Preference sees (2079, 58, 465)
+addr 0x08e0fc0a: before=(0,0,0) -> Preference sees (2041, 72, 447)
+addr 0x08e5b952: before=(0,0,0) -> Preference sees (1914, 48, 455)
+addr 0x08ea746a: before=(0,0,0) -> Preference sees (1731, 54, 451)
+addr 0x08ef4952: before=(0,0,0) -> Preference sees (2233, 65, 431)
+addr 0x08f3f952: before=(0,0,0) -> Preference sees (2056, 67, 444)
+```
+
+and then the identical six values again, on six *different* `pref_data`
+addresses, in the capture's second pass (`0x08dd52fa`, `0x08e1f752`,
+`0x08e4faf2`, `0x08eb6a6a`, `0x08ee8af2`, `0x08f33af2`) — **12 of 12,
+zero counterexamples.** The triple is `(0,0,0)` on entry to every single
+`arg3==0` call and non-zero, per-frame-distinct, by the time Preference
+reads the same address. Nothing else runs in between.
+
+**So §66's original identification was right, and §72's own stated
+possibility is the one that obtains:** the write happens inside one of the
+eight helper subroutines §72.3 explicitly flagged as unread ("whether the
+`pref_data+0/+2/+4` orderFpo triple is written *inside* one of them, with
+`ebp`/`pref_data` threaded in as a hidden argument, remains open"), not at
+`0x1028b8d0`'s own top level. §72's static reading was not wrong — its own
+top-level finding still holds exactly as written; the capture resolves the
+branch it correctly left open rather than overturning what it claimed.
+
+That the same six triples reproduce exactly across two independent passes
+over the same roll is itself worth stating: these are deterministic
+per-scene values, not noise, and the second pass's fresh `pref_data`
+allocations rule out "the blob was already populated and we misread the
+ordering."
+
+### 73.3 — §72.3's `arg 3 == 0` claim is refuted by live data, and case 1
+is not dead
+
+§72.2 recorded arg 3 as `0`, hedging honestly on one of the two call sites
+(*"the `edi` register at `fcn.102159c0`'s call, not independently
+re-derived to 0 at that exact point"*), and §72.3 concluded from it that
+*"case 0 is the switch case that fires at both real call sites"* and that
+case 1 is *"dead on both real call sites since mode is 0."* **The live
+`stack_dwords` say otherwise.** Of the 24 real calls: **12 fire with
+`arg3 == 1`** and 12 with `arg3 == 0`, in a strict, repeating structure —
+six consecutive `arg3==1` calls (one per scene, each on a different
+`pref_data`), then per-scene `arg3==0` calls interleaved with Preference
+and getShifts, and the whole shape repeated once. Case 1 is genuinely live
+code, executed once per scene per pass.
+
+This is exactly the failure mode §72.2's own methodology warning predicted
+for r2-derived argument values, and the reason §72.6 refused to build a
+harness on assumption (c) ("arg 3/8/9's exact live value at
+`fcn.102159c0`'s call site (assumed, not proven, to be 0)"). Had a Unicorn
+harness been built on that assumption, it would have executed the wrong
+switch case for half the real calls and produced a confident, wrong result.
+**The refusal was correct, and this is the evidence that it was correct** —
+worth recording plainly, because "we declined to guess and the guess would
+have been wrong" is a stronger justification for the standard than any
+argument from principle.
+
+`arg8` and `arg9` are `0` on all 24 calls, as §72.2 assumed — that part
+holds.
+
+### 73.4 — §72.2's Tier-3 argument table, live-confirmed on three of its
+thirteen entries
+
+The v21 dumps were deliberately designed (see `hookcore_real_table.c`'s own
+comment) to self-check §72.2's static mapping rather than trust it. Result:
+
+* **arg 12 = `pref_data` (`scene+0x38a2`)** — confirmed exactly: the raw
+  `stack_dwords[12]` value equals the `pref_data_before` dump's own `addr`
+  on every one of the 24 calls.
+* **arg 5 = the DPI-static blob copy** — confirmed: reads
+  `(879, 1250, 1386)` on all 24 calls, the exact `fpo` constant §63.1
+  already established as DPI-constant across every captured frame, and
+  precisely what §72.4 predicted from its own static trace of
+  `fcn.10214e30`. Its buffer address differs between the `arg3==1` pass
+  (`0x09399388`) and the `arg3==0` pass (`0x09399570`) — two distinct
+  buffers, consistent with §72.4's finding that the two call sites source
+  this argument differently.
+* **arg 11 = `fosDmin` (`scene+0x290c`)** — confirmed live and, usefully,
+  *phase-dependent*: `(0,0,0)` on every `arg3==1` call and
+  `(297, 734, 964)` on every `arg3==0` call. The FOS dmin is not yet
+  computed during the first pass and is populated by the second — a real,
+  previously unrecorded sequencing fact.
+
+Three of thirteen is not the whole table, but it is three entries moved
+from Tier 3 (static, cross-checked two ways) to Tier 2 (live), including
+the one (arg 12) the entire §73.2 result depends on.
+
+### 73.5 — The Δ thread: the second `+0x3a38` field is empirically zero, so
+it is not Δ's source
+
+§69 found the setShifts caller's *third* `getShifts` call reads a different
+`+0x3a38` (`*(arg1+0x10)+0x3a38`) and proposed it as the per-frame uniform
+Δ's source; §71 traced statically that no second *writer* exists and that
+this read reaches the same Preference-written field through one more layer
+of indirection, leaving open only whether the third call fires live. The
+v21 capture carries v20's own `shifts_3a38_arg1` dump (v21 is a strict
+superset — v20's source was merged before v21 was built on it), so both
+questions are answered by the one capture:
+
+* `sba_get_shifts` fired **18 times** across 6 frames — 3 per frame, not
+  the 2 per frame v19 observed. **The third call does fire.**
+* Its `shifts_3a38_arg1` dump is readable on 12 of those 18 and reads
+  **`(0,0,0)` on all 12**, from a single fixed address (`0x0939d0d0`) that
+  differs from the per-scene `pref_data` allocations. On the other 6 the
+  dump is `readable=false` with a nonsense address (`0x00003a38` — i.e.
+  the base pointer dereferenced to 0 and only the offset survived), meaning
+  `*(arg1+0x10)` was not a valid pointer at those call sites at all.
+
+**So the field §69 nominated as Δ's source is empirically all-zero
+wherever it is readable, and unmapped where it is not.** It cannot be Δ.
+This closes `docs/76` §5 step 1 and step 2's remaining sub-question
+together — negatively, which is still a real closure: two of the three
+things that thread was waiting on are now settled, and the nominated
+candidate is eliminated rather than left hanging.
+
+### 73.6 — Δ itself, measured directly: real, per-frame, uniform to within
+one code
+
+Pairing each scene's own `A` (`+0x3a38`, read at its own `getShifts`) with
+that frame's own applied balance shift (`+0x4b6`, the existing
+`balance_shift_4b6` dump at `balanceAreaImage`), in scene order:
+
+| frame | A (+0x3a38) | applied (+0x4b6) | Δ = applied − A |
+|---|---|---|---|
+| 1 | (772, 356, 90) | (729, 313, 47) | (−43, −43, −43) |
+| 2 | (787, 367, 131) | (819, 399, 163) | (+32, +32, +32) |
+| 3 | (854, 458, 186) | (861, 464, 193) | (+7, +6, +7) |
+| 4 | (957, 556, 295) | (991, 590, 329) | (+34, +34, +34) |
+| 5 | (661, 261, 27) | (593, 192, −41) | (−68, −69, −68) |
+| 6 | (774, 362, 122) | (786, 374, 134) | (+12, +12, +12) |
+
+Four of six are *exactly* uniform across all three channels; the other two
+differ by one code in a single channel — the signature of `setshifts_12`'s
+own rounding sitting between `A` and the applied value, exactly as
+`docs/76` §1's pipeline (`setshifts_12(A,A) + Δ`) already models it. **Δ is
+real, per-frame, of substantial magnitude (−68 … +34 here), and genuinely
+luma-uniform.** Its own source remains unidentified — §73.5 eliminates the
+one nominated candidate without supplying a replacement.
+
+**A methodology note worth recording, because it nearly produced a wrong
+table.** The first version of this pass's own analysis script paired every
+frame's applied shift with the *most recent* `getShifts` value in stream
+order, which — because all 18 `getShifts` calls occur **before** the first
+`cn_enhanced_driver` frame boundary (§73.7) — silently paired all six
+frames with scene 6's `A`, yielding six wildly non-uniform "Δ"s (spreads of
+8–31 codes) and would have read as evidence *against* `docs/76`'s
+uniform-Δ model. Caught by noticing every row printed the identical `A`.
+The corrected pairing is by scene position. Stream order is not frame
+order in this pipeline, and any future analysis of this capture has to
+pair by scene identity (address or index), never by "last seen."
+
+### 73.7 — Architecture: the whole balance chain runs roll-wide, before any
+per-frame render
+
+Read straight off the call ordering, and not previously recorded in this
+doc: **every** `sba_order_fpo_calc`, `sba_preference`, and `sba_get_shifts`
+call in this capture occurs *before* the first `cn_enhanced_driver` frame
+begins. The six `cn_enhanced_driver` frames then run afterward, each
+containing exactly one `balanceAreaImage` that applies the already-computed
+shift. So the vendor computes `orderFpo` → Preference → setShifts for
+**all six scenes up front, roll-wide**, then renders frame by frame. This
+corroborates §72.5's static sequencing finding (`0x1028b8d0` precedes
+Preference within a pass) and extends it: the whole balance stage is a
+roll-level pass, not a per-frame one interleaved with rendering.
+
+### 73.8 — Verdict, and what this leaves
+
+1. **`0x1028b8d0` is the per-frame `orderFpo` writer** — 12/12, live, no
+   counterexample (§73.2). §66 confirmed; §72's "one of the 8 helpers"
+   branch is the one that obtains. The remaining work on this specific
+   thread is identifying *which* helper, and porting its arithmetic.
+2. **§72.3's `arg3==0` claim is refuted** (§73.3): both switch cases fire
+   live, in a strict per-pass structure. §72.6's refusal to build a harness
+   on that assumption is vindicated by the very data that refutes it.
+3. **Three of §72.2's thirteen argument mappings are now live-confirmed**
+   (§73.4), including the one §73.2 depends on.
+4. **The Δ candidate field is eliminated** (§73.5): readable everywhere it
+   is mapped, and zero everywhere it is readable.
+5. **Δ is measured, real, and uniform to within one code** (§73.6), but its
+   source is now genuinely unknown again — this pass removed the only
+   nominated candidate without finding a replacement.
+6. **The balance chain is a roll-wide pre-pass** (§73.7).
+
+**What this does NOT establish, stated plainly:** nothing here shows that
+closing the balance chain closes the ~88-89 sRGB code brightness gap this
+doc has chased since §31. That remains a hypothesis — well-motivated
+(this is the stage that sets colour balance) but unproven. This pass moved
+a real blocker, it did not measure the gap.
+
+**No production, golden, or port file was changed by this pass.** The only
+file edited is `docs/74-…md` (this section). Analysis scripts are scratch,
+under the session's own tmp directory, not committed, per this doc's
+convention.
+
+**Verification.** Capture md5 recorded and stated above; 0 unparseable
+lines of 32.9 MB. Hook installation confirmed from the capture's own
+`status`/`hook_installed` rows, not assumed from the build. The §73.2
+before/after comparison is keyed on the `pref_data` **address** reported by
+the dump itself and cross-checked against the raw `stack_dwords[12]` arg
+value on every call, so the pairing cannot be an ordering artifact. The
+`arg3` values in §73.3 are read from the engine's own raw `stack_dwords`
+array (logged independently of any extra dump) rather than from a derived
+field. The §73.6 Δ table's own first version was wrong and is documented as
+such above rather than silently corrected. All six per-scene triples
+reproduce identically across the capture's two independent passes.

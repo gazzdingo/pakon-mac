@@ -67,12 +67,6 @@ and reimplements the host side in userspace on macOS.
 
 Active development. See [`docs/06-roadmap.md`](docs/06-roadmap.md) for where things stand.
 
-## Telemetry
-
-This application collects basic, anonymous telemetry (OS version, app version, and unhandled errors) to help identify bugs and crashes. It does **not** collect any personal data, IP addresses, capture imagery, or paths to your files.
-
-**To opt out:** Set the `PAKON_TELEMETRY_OPT_OUT=1` environment variable when running the app.
-
 ## Architecture & Pipelines
 
 This project includes two separate imaging pipelines for processing the raw scanner data:

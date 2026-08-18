@@ -17004,3 +17004,78 @@ this build yields the vector, and `pakon_vm.l_term()` can be checked against
 the 12 values both rolls already carry (A: 125, 30, −102, −296, 223, 64;
 B: −186, −44, −2, −8, 38, 125). Until that runs, §88's port remains validated
 for decode/termination only, **not** for arithmetic.
+
+## 90 — **`L` SOLVED, 12/12 bit-exact**: the v28 capture lands, the ported VM
+reproduces the vendor's own `L` on real hardware data
+
+§88 ported the interpreter and located `L` at `vars[133]`; §89 prepared the one
+capture row that could supply its input vector and proved no existing capture
+could. The v28 build was uploaded, a third roll scanned, and the result is the
+strongest evidence tier this project recognises.
+
+### 90.1 The capture
+
+`live_hooks_20260818-080318.jsonl`, md5 `a9ae1bd92698d0786cc9626601e3096f`,
+54 164 128 B, from `hookdll_v28.dll` md5 `02011f3e8fd5656cdf3713546f1f9a0a`
+(round-tripped off the drop server and re-hashed before use).
+
+The new row landed exactly as specified: `arg1_big_filled`, **12 dumps, 12
+readable, 4608 bytes each**. And it contains what §89 predicted it would and
+what every prior capture lacked:
+
+```
+              in[] region (arg1+0x3c, 736 u32)
+  v27 rolls A/B    0 non-zero   (48 dumps, both rolls)
+  v28              351 non-zero
+```
+
+So §89.1's diagnosis was right on both halves: the region was already being
+dumped, and it was empty for a *timing* reason, not a coverage one. Hooking
+the helper — which runs after the fill — populates it.
+
+The values are `int32`, not float (`nan` under a float read):
+`[-205, -59, 249, -7, -66, 321, -539, -487, -387, -815, -156, -80, …]`.
+
+### 90.2 The result
+
+`L` is the helper's **arg 9** (§76, already inside the 16 logged stack dwords —
+so the vendor's own answer and our input arrive in the *same* hook record, with
+no correlation step to get wrong). Running `pakon_vm.l_term()` on the recovered
+vector:
+
+```
+  call  0: vendor    -12   ported    -12   MATCH
+  call  1: vendor    -56   ported    -56   MATCH
+  call  2: vendor     11   ported     11   MATCH
+  call  3: vendor      7   ported      7   MATCH
+  call  4: vendor     54   ported     54   MATCH
+  call  5: vendor    121   ported    121   MATCH
+  call  6..11        (second pass, same six)      MATCH
+
+  12/12 bit-exact
+```
+
+Both signs, six distinct magnitudes, and the repeat across the two passes.
+Nothing was fitted: the port was written from disassembly in §88, before any
+of these numbers existed, and the only new input is the captured vector.
+
+### 90.3 What this closes, and what it does not
+
+**Closed.** `L` — open since §76.3 flagged it as the one term of `orderFpo.Y`
+that static analysis could not derive, and the subject of two clean negatives
+in §85. The interpreter, the encoding, the handler semantics on every path
+these 264 records reach, and the `vars[133]` identification are all confirmed
+together, because a wrong answer anywhere in that chain would not produce 12
+exact matches.
+
+**Not closed.** §88's caveat stands for everything else: the "1720/1720 records
+execute" figure was coverage on synthetic input, and this run validates the
+handlers *these* records reach on *this* path — not the 14 unimplemented
+opcodes, and not arithmetic equivalence for records outside the `L` closure.
+
+Also unchanged: the washed-out gap. §81.3's two defects reproduced on current
+code this same session (shadow offset `+524/+508/+459`, spans `575/672/924`
+against the vendor's `1040/1072/1184`), and the c9 solve pointed at a linear
+shadow floor of ~735–780 rather than the colour maths. `L` was blocking the
+per-frame Preference chain (§84), which is a *different* route to the same
+problem; it is now unblocked, not resolved.

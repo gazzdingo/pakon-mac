@@ -17996,3 +17996,67 @@ and V (§94.1); `L` (§93.3); every field in `pref_data`, captured and
 un-captured (§95.3, §100.2); an alternative frame pairing (§101.5); and now
 SCPLut composition. What survives is §101.3's reading: a genuine per-render
 luma term, applied downstream of Preference, zero on frames 1–3.
+
+## 103 — Names for the render chain, and the **order-wide** stage this port has
+never modelled
+
+Static, `PakonIMAu.dll` md5 `eea9dcf78ee21d4f7c515a6c2512242d`.
+
+### 103.1 `fcn.1006a160` names itself
+
+The function §102.1 found calling `set_shifts` identifies itself in its own
+error path:
+
+```
+  0x1006b627  push str."SCPLut capability not found."
+  0x1006b62c  push str."AnsCnEnhancedPath::analyzeSceneNoOrderWide"
+  0x1006b622  push str."\Atc\ansel\src\libPaths.ansel\CN-Enhanced.cpp"
+  0x1006b61d  push 0x2f4        ; line 756
+```
+
+So `fcn.1006a160` = **`AnsCnEnhancedPath::analyzeSceneNoOrderWide`**, and the
+branch polarity in §102.1 is the other way round from how it reads at first
+glance: the cast **succeeding** is the normal path to `set_shifts`; the cast
+**failing** falls through to log `"SCPLut capability not found."`. Corrected
+here.
+
+### 103.2 The CN Enhanced path's full method set
+
+```
+  AnsCnEnhancedPath::analyzeOrder
+  AnsCnEnhancedPath::analyzeScene
+  AnsCnEnhancedPath::analyzeSceneNoOrderWide          = fcn.1006a160
+  AnsCnEnhancedPath::CnEnhanced_analyzeOrderWide      = fcn.10068bd0 (2236 B)
+  AnsCnEnhancedPath::CnEnhanced_analyzeSceneSpecific
+  ...declare / initialize / match / verifyImage / exportParameterPack
+```
+
+The `NoOrderWide` suffix is not decoration: there is a matching **order-wide**
+method, and in photofinishing an *order* is the whole customer roll. So the
+vendor runs analysis at **two scopes** — per scene, and per roll — and the
+`orderFpo` family this project has spent so long on is the *order*-scope
+computation, exactly as its name says.
+
+**This port has only ever modelled the per-scene scope.** Every harness in
+`tools/ansel/python-pipeline/` takes one call's arguments and runs one
+function. Nothing runs a roll-level pass, and nothing carries state between
+frames.
+
+That is the right shape to explain §101.3: chroma is fixed per scene (and we
+reproduce it exactly, §100.3), while a luma term that is zero on the first
+frames and non-zero later is precisely what a roll-level pass would produce.
+
+### 103.3 What is NOT established
+
+`CnEnhanced_analyzeOrderWide` (`fcn.10068bd0`) does **not** call
+`sba_set_shifts` directly — its callee list is
+`{100012e0, 10001530, 10001580, 100065e0, 10006880, 1001ed90, 1001f650,
+1001ff80, 1001ffa0, 100215c0, 1003fd20, 1004fc20, 10059d00, 100d46a0,
+100d8d40, 100daac0, 100f8620, 100fcd70, 100fd190, 10100040}`, of which
+`10100040` is `ColorNegativePath::verifyImage`, not the shift setter.
+
+So "the order-wide stage supplies §101's luma term" is a **hypothesis with the
+right shape, not a demonstrated path**. It could reach the shift indirectly, or
+deposit a value the per-scene pass later reads. Tracing that is the next static
+step; asserting it now would be exactly the "structurally suggestive" error
+CLAUDE.md warns about.

@@ -1988,7 +1988,10 @@ def converge_afe_offsets(link: "Link", cfg: "ScanConfig", *,
     """
     import build_calibration as bcal  # noqa: E402  (opt-in only)
     log = log or (lambda *a, **k: None)
-    tgt = float(bcal.BLACK_TARGET_WIRE if target is None else target)
+    # docs/74 §92: the CONVERGENCE target, not the broad safety band. Aiming
+    # at BLACK_TARGET_WIRE (1300) would converge to ~2x the vendor's own black
+    # level -- measured at 637.7 on real silicon at the vendor's own offsets.
+    tgt = float(bcal.BLACK_CONVERGE_TARGET_WIRE if target is None else target)
 
     probe = tuple(int(v) for v in seed)
     caps: list[_ProbeCapture] = []
@@ -2014,8 +2017,14 @@ def converge_afe_offsets(link: "Link", cfg: "ScanConfig", *,
             black=[round(float(v), 1) for v in black],
             floored=cap.is_floored(), target=tgt)
 
+        # docs/74 §92: the CONVERGENCE window, not the safety band. The old
+        # test used BLACK_MIN_WIRE..BLACK_MAX_WIRE (400..4000), which contains
+        # both the vendor's ~638 and this port's lifted 1659 -- so `landed`
+        # was satisfied on round 1 and the loop returned its own seed without
+        # ever applying a correction (§91.3, observed on real hardware).
         landed = (not cap.is_floored()
-                 and all(bcal.BLACK_MIN_WIRE <= v <= bcal.BLACK_MAX_WIRE
+                 and all(bcal.BLACK_CONVERGE_MIN_WIRE <= v
+                         <= bcal.BLACK_CONVERGE_MAX_WIRE
                         for v in black))
         if landed:
             final = tuple(int(v) for v in probe)

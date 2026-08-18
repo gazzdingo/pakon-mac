@@ -14478,3 +14478,138 @@ array (logged independently of any extra dump) rather than from a derived
 field. The §73.6 Δ table's own first version was wrong and is documented as
 such above rather than silently corrected. All six per-scene triples
 reproduce identically across the capture's two independent passes.
+
+## 74 — Correction to §73.2 (and to §72.3): the `orderFpo` write is at
+`0x1028b8d0`'s own top level after all — three instructions at
+`0x1028c2b6`/`be`/`c2`, found by grepping the body for `[ebp+N]` writes and
+confirmed 12/12 by a prediction the live capture had already recorded
+
+§73.2 concluded, from the live before/after evidence, that `0x1028b8d0`
+writes the `orderFpo` triple — correct — and then inferred **that the write
+must therefore live inside one of the eight helper subroutines**, on the
+strength of §72.3's own statement that the function's top level writes only
+`pref_data+0x3e`. `docs/76` §5 step 4 was rewritten around that inference,
+proposing a static read of three helpers or a further live capture to find
+"which helper." **The inference was wrong, and it was wrong because it
+trusted §72.3's negative instead of re-deriving it.** The write is at the
+top level, in the case-0 shared body, and finding it took one `grep`.
+
+### 74.1 — The actual write site
+
+A mechanical grep of `0x1028b8d0`'s own full `af`+`pdf` disassembly for
+every `mov [ebp…], reg` — not a read of the tail, not a trace of any
+helper — returns **eleven** stores, all into the same struct:
+
+```
+0x1028c29d   mov word [ebp + 0x2a], cx
+0x1028c2b6   mov word [ebp + 2],    cx     <-- orderFpo U
+0x1028c2ba   mov word [ebp + 8],    cx
+0x1028c2be   mov word [ebp],        ax     <-- orderFpo Y
+0x1028c2c2   mov word [ebp + 4],    dx     <-- orderFpo V
+0x1028c2c6   mov word [ebp + 6],    ax
+0x1028c2ce   mov word [ebp + 0xa],  dx
+0x1028c2d9   mov word [ebp + 0x36], cx
+0x1028c2e8   mov word [ebp + 0x3a], dx
+0x1028c2f3   mov word [ebp + 0x38], cx
+0x1028c3c0   mov word [ebp + 0x3e], ax     <-- the ONE §72.3 reported
+```
+
+`ebp` is reloaded at `0x1028c208` (`mov ebp, dword [arg_2fch]`) — i.e. it
+holds a *different* value earlier in the body (it is used as a plain number
+at `0x1028c1f8`, `add eax, ebp`) and becomes the `pref_data` base only for
+this trailing store block. That reload is very plausibly why §72.3, reading
+the tail around `0x1028c3a1`-`0x1028c3c0`, saw the `+0x3e` store and
+reported it as the function's only `pref_data` write: the three orderFpo
+stores sit ~250 bytes earlier, inside the large body §72.3 described in
+prose ("computes several intermediate values via the same
+`MAGIC_Y`/`MAGIC_C1`/`MAGIC_C2` opening-axis transform") without
+enumerating its stores.
+
+The three values themselves are each the sum of two locals, computed
+immediately before:
+
+```
+eax = [var_28h] + [var_dch]      -> +0x00 and +0x06   (Y)
+ecx = [var_2ch] + [var_64h]      -> +0x02 and +0x08   (U)
+edx = [var_68h] + [var_30h]      -> +0x04 and +0x0a   (V)
+```
+
+### 74.2 — Independent confirmation, from data captured before the claim was
+made
+
+The disassembly above predicts something the live capture can check and
+that nothing in §73 relied on: **`pref_data+0/+2/+4` must equal
+`pref_data+6/+8/+0xa`**, because `ax`/`cx`/`dx` are stored to both triples
+without being reloaded in between (`0x1028c2b6`-`0x1028c2ce`).
+
+Checked against the existing `sba_preference` `pref_data` dumps in
+`live_hooks_20260817-112602.jsonl` — data recorded on real hardware before
+this section's claim existed, so it cannot have been fitted to it:
+
+| pref_data addr | +0/+2/+4 | +6/+8/+0xa | |
+|---|---|---|---|
+| `0x08dc9952` | (2079, 58, 465) | (2079, 58, 465) | match |
+| `0x08e0fc0a` | (2041, 72, 447) | (2041, 72, 447) | match |
+| `0x08e5b952` | (1914, 48, 455) | (1914, 48, 455) | match |
+| `0x08ea746a` | (1731, 54, 451) | (1731, 54, 451) | match |
+| `0x08ef4952` | (2233, 65, 431) | (2233, 65, 431) | match |
+| `0x08f3f952` | (2056, 67, 444) | (2056, 67, 444) | match |
+
+and the same six again on the second pass's own six distinct allocations —
+**12 of 12, no exceptions.** This confirms both that `ebp` at
+`0x1028c2b6`-`c2` really is `pref_data` (i.e. `arg_2fch` really is arg 12,
+independently corroborating §73.4's live confirmation of that mapping) and
+that these three instructions really are the writes §73.2 observed the
+effect of.
+
+`+0x2a` is also non-zero and per-scene-distinct in the same dumps
+(216/298/174/152/178/182), consistent with its own store at `0x1028c29d`.
+`+0x3e` — the one field §72.3 did report — reads **0** on every captured
+Preference observation, because its store at `0x1028c3c0` happens in the
+*tail* block, after this dump point.
+
+### 74.3 — What this changes
+
+* **§73.2's "the write happens inside one of the eight helper subroutines"
+  is withdrawn.** Its primary claim — that `0x1028b8d0` writes the triple,
+  12/12 — stands unchanged and is now corroborated by the exact
+  instructions. Only the localization was wrong.
+* **§72.3's "its own top-level code writes exactly ONE word at
+  `pref_data+0x3e`" is corrected**: the top level writes eleven fields,
+  including the orderFpo triple twice. §72.3's reading of the *tail* was
+  accurate as far as it went; it simply was not the whole function.
+* **`docs/76` §5 step 4 collapses.** There is no "which helper" to find,
+  and the further live capture it proposed is unnecessary. The porting
+  target is now three concrete instructions and the six locals feeding
+  them.
+* **The eight helpers are not exonerated in general** — they are simply not
+  needed to explain this particular write. Whether any of them also touches
+  `pref_data` through a different register is not something this section
+  tested.
+
+**Method note, worth recording as plainly as the finding.** §73 was written
+immediately after a decisive live result, and it carried one unverified
+static claim (§72.3's negative) straight through into its own conclusion
+because that claim was congenial to the new evidence rather than in tension
+with it. The live data was never wrong; the disassembly needed one grep
+that had not been run. This is the same class of error §72.2 warns about
+for r2's argument names, one level up: **an inherited negative is still an
+assumption, and "an earlier section already established this" is not a
+tier of evidence.** The correction cost one command; leaving it in place
+would have sent the next pass hunting through eight helper functions for a
+write that was never there.
+
+### 74.4 — What is still genuinely open on this thread
+
+Unchanged by this section: **Δ's source** (§73.5 eliminated the only
+nominated candidate; §73.6 measured Δ as real, per-frame, luma-uniform to
+within one code), and the **provenance of the six locals** (`var_28h`,
+`var_dch`, `var_2ch`, `var_64h`, `var_68h`, `var_30h`) that sum into the
+three written values — knowing where the write is does not yet mean knowing
+what it computes. That trace, back through the case-0 body's own
+opening-axis arithmetic to the function's real inputs, is the next
+concrete porting step, and it is now a bounded static task rather than an
+open search.
+
+**No production, golden, or port file was changed by this pass.** Only
+`docs/74-…md` (this section) and `docs/76`'s own step 4 were edited.

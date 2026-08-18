@@ -216,32 +216,52 @@ answered. Step 4 is now gated on one new, well-scoped question.**
    case 1 is live code, and a Unicorn harness built on that assumption
    would have run the wrong switch case half the time.
 
-4. **NEW — find which of the 8 helpers writes the triple, and port it.**
-   This is the one thing now standing between here and wiring. The helpers
-   are `0x1028abf0`, `0x1028ae00`, `0x1028b570`, `0x1028b650`, `0x1028b6e0`,
-   `0x102ac310`, `0x102ae9d0`, `0x102aece0` (§66). Three of them are called
-   on the live `arg3==0` path (`0x1028b570` @ `0x1028c1fe`, `0x102ae9d0` @
-   `0x1028c369`, `0x1028b6e0` @ `0x1028c3b6`, per §72.3) — start there.
-   Two viable routes, either is legitimate:
-   * **Static:** read those three bodies looking for a write to
-     `[reg+0]/[reg+2]/[reg+4]` where `reg` traces back to `pref_data`.
-   * **Live (cheaper, decisive):** hook the three candidate helpers and dump
-     `pref_data` at each entry — same before/after keyed-by-address
-     technique §73.2 used, which pins the writer to a single call with no
-     disassembly at all. Note `0x102aece0` is called 3× and `0x102ae9d0`
-     sits on the live path, so volume is low (a few calls per scene).
+4. ~~**Find which of the 8 helpers writes the triple**~~ — **CLOSED. There
+   is no helper to find: the write is at `0x1028b8d0`'s own top level**
+   (docs/74 §74). Three instructions, in the case-0 shared body:
 
-5. **Δ's source is open again** (§73.6). Δ is measured, real, per-frame, and
-   uniform to within one code (−43, +32, +7, +34, −68, +12 across the six
-   captured frames), but §73.5 eliminated the only nominated source. Worth
-   noting the shape for whoever picks this up: it is a *luma-only* offset
-   applied after `setshifts_12`, so its source is more likely a scene-level
-   brightness/exposure aim than anything in the `+0x3a38` chain.
+   ```
+   0x1028c2be   mov word [ebp],     ax    ; orderFpo Y   ax = [var_28h]+[var_dch]
+   0x1028c2b6   mov word [ebp + 2], cx    ; orderFpo U   cx = [var_2ch]+[var_64h]
+   0x1028c2c2   mov word [ebp + 4], dx    ; orderFpo V   dx = [var_68h]+[var_30h]
+   ```
 
-6. **Wire it** — `pakon_ansel.py` per-frame orderFpo →
+   `ebp` is reloaded from arg 12 (`pref_data`) at `0x1028c208` just before
+   this block. The same three values are also stored to `+6/+8/+0xa`, which
+   is how this was confirmed: that duplication is a prediction the existing
+   v21 capture already answers, and it holds **12/12** on real Preference
+   observations. §73.2's "it must be in a helper" inference is withdrawn —
+   it had inherited §72.3's static negative without re-deriving it, and one
+   grep of the function body for `[ebp+N]` stores refuted it. No further
+   capture is needed for this question.
+
+5. **NEXT — trace the six locals into real inputs.** Knowing *where* the
+   write is does not yet give the arithmetic. The porting target is now
+   bounded and fully static: find where `var_28h`, `var_dch`, `var_2ch`,
+   `var_64h`, `var_68h`, `var_30h` are computed in the case-0 body, back
+   through its `MAGIC_Y`/`MAGIC_C1`/`MAGIC_C2` opening-axis arithmetic
+   (docs/74 §72.3 describes the shape) to the function's real inputs —
+   which, per §73.4, are now live-confirmed for arg 5 (the DPI blob,
+   `(879,1250,1386)`), arg 11 (`fosDmin`, `(297,734,964)` on the live
+   `arg3==0` path) and arg 12 (`pref_data`). Then port and Unicorn-verify
+   against the six known-good per-scene triples the v21 capture already
+   recorded: (2079,58,465), (2041,72,447), (1914,48,455), (1731,54,451),
+   (2233,65,431), (2056,67,444). **Those six values are a ready-made
+   golden test** — a port that reproduces them from real inputs is correct
+   by this project's own Tier-1 standard, with no new hardware needed.
+
+6. **Δ's source is open** (docs/74 §73.5/§73.6). Δ is measured, real,
+   per-frame, and uniform to within one code (−43, +32, +7, +34, −68, +12
+   across the six captured frames), but the field §69/§71 nominated reads
+   `(0,0,0)` on every readable observation and is eliminated. Shape hint
+   for whoever picks it up: it is a *luma-only* offset applied after
+   `setshifts_12`, so a scene-level brightness/exposure aim is a likelier
+   source than anything remaining in the `+0x3a38` chain.
+
+7. **Wire it** — `pakon_ansel.py` per-frame orderFpo →
    `preference_shifts_hiNN(hi=0, lo=0, non_flash_adj=cmm)` → `setshifts_12`
    → `+Δ`, then re-render and diff against the real vendor output. Gated on
-   4 (and on 5 for the Δ term specifically). **Architectural note from
+   5 (and on 6 for the Δ term specifically). **Architectural note from
    §73.7 that affects how this is wired:** the whole balance chain is a
    **roll-wide pre-pass** — every `orderFpo`/Preference/`getShifts` call in
    the capture happens *before* the first per-frame render begins, with all

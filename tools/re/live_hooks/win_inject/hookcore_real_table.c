@@ -1055,8 +1055,28 @@ const ExtraDumpSpec g_extraDumps[] = {
      * walked offline) and an over-read degrades to "readable":false rather
      * than truncating silently. If it comes back unreadable at 0x1000 the
      * smaller ctx dump still lands and the size can be stepped down. */
-    { "sba_vm_interp", "vm_ctx", EXTRA_DUMP_STACK_PTR, 2, 0, 0, 0x40 },
-    { "sba_vm_interp", "vm_program", EXTRA_DUMP_DEREF_PTR, 2, 4, 0, 0x1000 },
-    { "sba_vm_interp", "vm_program_small", EXTRA_DUMP_DEREF_PTR, 2, 4, 0, 0x200 },
+    /* v27 CORRECTION: v26 used stackIndex 2 and every dump came back
+     * readable=false because sp[2] is 0. The prologue has TWO pushes before
+     * the load, not one:
+     *     0x102aadf3  push ebx
+     *     0x102aadf4  push ebp        <- missed in the v26 derivation
+     *     0x102aadf5  mov ebp,[esp+0x3c]
+     * so esp = entry-0x2c-8 and [esp+0x3c] = entry+8 = ARG 1. The live
+     * capture confirms it: sp[1] = 0x08e0e7c8 (a real pointer) while
+     * sp[2] = 0x00000000.
+     *
+     * All four low indices are dumped rather than just the derived one.
+     * This arg-index arithmetic has now been got wrong three times across
+     * v22/v24/v26, each costing a hardware round trip; four small dumps cost
+     * ~1 KB per call and remove the class of error entirely. Whichever index
+     * is right lands, the rest come back readable=false and are ignored. */
+    { "sba_vm_interp", "vm_ctx0", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x40 },
+    { "sba_vm_interp", "vm_ctx1", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x40 },
+    { "sba_vm_interp", "vm_ctx2", EXTRA_DUMP_STACK_PTR, 2, 0, 0, 0x40 },
+    { "sba_vm_interp", "vm_ctx3", EXTRA_DUMP_STACK_PTR, 3, 0, 0, 0x40 },
+    { "sba_vm_interp", "vm_prog0", EXTRA_DUMP_DEREF_PTR, 0, 4, 0, 0x800 },
+    { "sba_vm_interp", "vm_prog1", EXTRA_DUMP_DEREF_PTR, 1, 4, 0, 0x800 },
+    { "sba_vm_interp", "vm_prog2", EXTRA_DUMP_DEREF_PTR, 2, 4, 0, 0x800 },
+    { "sba_vm_interp", "vm_prog3", EXTRA_DUMP_DEREF_PTR, 3, 4, 0, 0x800 },
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0 }, /* sentinel */
 };

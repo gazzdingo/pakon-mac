@@ -213,32 +213,27 @@ def _log(msg: str) -> None:
         print(line, file=sys.stderr)
 
 
-def check(bm_request_type: int, b_request: int, wvalue: int, windex: int,
-          is_write: bool) -> None:
+def check(bm_request_type: int, b_request: int, wvalue: int,
+          windex: int) -> None:
     """Raise ``TransferDenied`` unless this exact transfer is allow-listed.
 
     Separated from :func:`ctrl_transfer` so it can be unit-tested without a
-    device attached -- see ``tools/test_usb_guard.py``.
+    device attached -- see ``tools/test_usb_guard.py``. Direction is derived
+    here, once, from ``bm_request_type`` (bit 7, per the USB spec) rather
+    than accepted as a second, separately-computed parameter: an earlier
+    version took both and cross-checked them, but ``ctrl_transfer`` is the
+    only production caller and it always derives the same way one line
+    before calling this, so the two could never actually disagree -- a
+    single source of truth for direction is simpler and equally safe.
     """
     global _selected_device
+
+    is_write = not (bm_request_type & 0x80)
 
     where = (f"bRequest=0x{b_request:02X} wValue=0x{wvalue:04X} "
              f"wIndex=0x{windex:04X}")
     if _selected_device is not None:
         where += f" [selected 0x{_selected_device:02X}]"
-
-    # bmRequestType's bit 7 is the authoritative direction (USB spec); is_write
-    # is supposed to be derived from it (see ctrl_transfer below). A caller
-    # that passes the two inconsistently gets refused here rather than judged
-    # on whichever one happens to be wrong -- this parameter exists for that
-    # cross-check, not just to be threaded through unused.
-    bmrt_is_write = not (bm_request_type & 0x80)
-    if bmrt_is_write != is_write:
-        _log(f"DENIED (bmRequestType/is_write mismatch, "
-             f"bmRequestType=0x{bm_request_type:02X}): {where}")
-        raise TransferDenied(
-            f"bmRequestType=0x{bm_request_type:02X} direction bit disagrees "
-            f"with is_write={is_write}: {where}")
 
     # --- the hard rule: no write-direction traffic on the device path -----
     # 0xA4 is host-to-device but is a *select*, not a data phase, so it is
@@ -253,6 +248,16 @@ def check(bm_request_type: int, b_request: int, wvalue: int, windex: int,
 
     # --- the chip select: direction lives in bit 0 of wValue --------------
     if b_request == REQ_SELECT:
+        # The select itself is always a host-to-device (OUT) control
+        # transfer -- that's `is_write` here, the USB transfer direction,
+        # NOT the I2C read/write intent encoded in wValue bit 0 below. An
+        # IN-direction 0xA4 is not the vendor's protocol shape at all and
+        # was previously allowed through unchecked.
+        if not is_write:
+            _log(f"DENIED (chip select must be host-to-device): {where}")
+            raise TransferDenied(
+                f"bRequest 0xA4 (chip select) must be a host-to-device "
+                f"(OUT) transfer: {where}")
         dev = device_from_wvalue(wvalue)
         if windex != WINDEX_DEVICE or dev is None:
             _log(f"DENIED (malformed chip select): {where}")
@@ -319,7 +324,6 @@ def check(bm_request_type: int, b_request: int, wvalue: int, windex: int,
 def ctrl_transfer(dev, bm_request_type: int, b_request: int, wvalue: int,
                   windex: int, data_or_length, timeout: int | None = None):
     """``dev.ctrl_transfer`` with the allow-list in front of it."""
-    is_write = not (bm_request_type & 0x80)
-    check(bm_request_type, b_request, wvalue, windex, is_write)
+    check(bm_request_type, b_request, wvalue, windex)
     return dev.ctrl_transfer(bm_request_type, b_request, wvalue, windex,
                              data_or_length, timeout)

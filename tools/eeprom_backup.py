@@ -37,6 +37,8 @@ import sys
 import time
 
 import usb.core
+
+import pakon_usb_guard as guard
 import usb.util
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -51,8 +53,8 @@ def read_one(dev, n, length, wvalue=None, windex=WINDEX, timeout=4000):
     if wvalue is None:
         wvalue = ((n | 0x50) << 1) | 1
     try:
-        return bytes(dev.ctrl_transfer(VENDOR_IN, READ, wvalue, windex,
-                                       length, timeout))
+        return bytes(guard.ctrl_transfer(dev, VENDOR_IN, READ, wvalue,
+                                         windex, length, timeout))
     except usb.core.USBError as exc:
         return f"ERROR: {exc}"
 

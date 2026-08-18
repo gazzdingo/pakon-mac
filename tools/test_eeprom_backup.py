@@ -122,6 +122,53 @@ ok(check.suspected_off_by_one(shifted),
    "a dump shifted by one is recognised (docs/69 sec5.5)")
 ok(not check.verify(shifted)[0], "and is still rejected, not auto-repaired")
 
+print("\na read that never reaches section B is not a valid backup")
+# Section A is 0x000-0x18E, its backup 0x400-0x59E -- both well inside a
+# truncated read that stops before section B (0x800). Before this fix,
+# `good` only needed ONE of the four copies (of anything) to pass CRC, so a
+# read that stopped here -- e.g. read_one() cut short by a real USB error, or
+# --length passed too small -- was reported USABLE despite section B (a
+# different, non-redundant payload, not a spare copy of A) never having been
+# read at all.
+truncated_before_b = IMAGE[:0x600]
+good_trunc, results_trunc, warn_trunc = check.verify(truncated_before_b)
+ok(not good_trunc,
+   "a read covering only section A (+ its backup) is rejected")
+ok(any(r.ok for r in results_trunc if r.name.startswith("A")),
+   "section A itself still verifies fine -- it's B that's the problem")
+ok(any("section(s) B" in w for w in warn_trunc),
+   f"and the reason names section B specifically ({warn_trunc})")
+
+print("\nread_one surfaces a mid-read USB error instead of masking it")
+import usb.core                              # noqa: E402
+
+
+class FlakyDev(FakeDev):
+    """Like FakeDev, but the data phase throws after `fail_after` chunks."""
+
+    def __init__(self, image, fail_after):
+        super().__init__(image)
+        self.fail_after = fail_after
+        self.reads_done = 0
+
+    def ctrl_transfer(self, bmrt, req, wval, widx, data_or_len, timeout=None):
+        if req == B.READ:
+            if self.reads_done >= self.fail_after:
+                raise usb.core.USBError("simulated mid-read stall")
+            self.reads_done += 1
+        return super().ctrl_transfer(bmrt, req, wval, widx, data_or_len, timeout)
+
+
+guard._selected_device = None
+flaky = FlakyDev(IMAGE, fail_after=3)
+partial = B.read_one(flaky, 2, len(IMAGE))
+ok(isinstance(partial, B.PartialRead),
+   "a mid-read USBError comes back as PartialRead, not plain bytes")
+ok(bool(getattr(partial, "error", "")),
+   f"and carries the error text ({getattr(partial, 'error', None)!r})")
+ok(len(partial) == 3 * B.CHUNK,
+   "and keeps exactly the bytes read before the error, not padded/discarded")
+
 print("\nthe guard permits the whole sequence")
 guard._selected_device = None
 try:

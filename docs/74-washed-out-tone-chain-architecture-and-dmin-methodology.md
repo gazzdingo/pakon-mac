@@ -16259,3 +16259,139 @@ points. The revert's numbers come from two independent implementations of
 the same change. All render measurements use §31's own parameters against
 the same `AA001.tif`, re-fetched this session. Every hypothesis reported
 here as rejected was executed and measured, not argued down.
+
+## 83 — The inversion curve derived empirically from vendor ground truth:
+the log form survives, but the port's per-channel `fpo` anchor does not —
+the real mapping anchors all three channels **near-uniformly**
+
+Seven DLLs have been searched for the log instruction
+`f135_rom12_to_rpd12` needs (§32.3, §51, §54, §55), every one a clean
+negative, and `F135_INVERT_PORTED` is `False` — no call site computing that
+arithmetic has ever been found. §82.3 then produced the first quantitative
+evidence against the *equation* rather than its inputs: at `render_scene`'s
+own input, before any tone or balance, our per-channel spans are only
+58%/77%/94% of the vendor's.
+
+This section stops looking for the equation and derives it instead, from
+data already in hand.
+
+### 83.1 — Method: quantile matching against the back-inverted vendor render
+
+§81 established how to obtain the vendor's own RPD12 — invert `AA001.tif`
+backwards through the same vendor ICC pair the render uses
+(`Rpd2Pcs_HR200_QS_v5s10.pf` → `Srgb_v2.pf`). Paired with our own linear-12
+input for the same frame, that is ground truth for the mapping itself.
+
+The inversion is monotonic per channel, so the curve can be recovered by
+**quantile matching** — which sidesteps the pixel-alignment problem between
+our 500×740 preview and the vendor's 1960×2941 TIFF entirely.
+
+**One methodology correction, recorded because it inverted the first
+answer.** The mapping is monotonically *decreasing* (higher linear code =
+clearer negative = darker positive), so the p-th percentile of `lin`
+corresponds to the **(100−p)-th** percentile of the output, not the p-th.
+Pairing p↔p first produced a fitted `k` that was *negative* on all three
+channels — i.e. an apparently non-inverting vendor transform, which is
+physically impossible for a colour negative. That impossibility is what
+caught the error; the corrected p↔(100−p) pairing gives a well-behaved fit.
+
+### 83.2 — The recovered curve
+
+Fitting the port's own functional form,
+`rpd12 = fpo + k·log10((base − ped)/(lin − ped))`, with `k`, `ped` and `fpo`
+all free, over 15 quantiles per channel:
+
+| ch | port `k` | port `ped` (`c9`) | fitted `k` | fitted `ped` | fitted `fpo` | resid RMS |
+|---|---|---|---|---|---|---|
+| R | 1000 | 159.6 | 1379 | 210 | **975** | 50 |
+| G | 1000 | 444.7 | 791 | 595 | **1039** | 75 |
+| B | 1000 | 635.5 | 795 | 750 | **970** | 364 |
+
+Three readings, in decreasing order of confidence:
+
+1. **The log form itself survives.** Residual RMS of 50 and 75 codes on R
+   and G, over a 1000-code span, from a two-parameter fit — the vendor's
+   mapping really is a log of a `(base − ped)/(lin − ped)` ratio. B's 364 is
+   an artefact, not a refutation: B's own top quantile lands on the ICC's
+   saturated ceiling (the neutral ramp returns 4095 there), so that pair is
+   garbage and drags the fit.
+2. **The pedestal is close to `c9`, consistently a little higher**
+   (210 vs 160, 595 vs 445, 750 vs 636). Not obviously a different
+   quantity — plausibly the same constant with something small added, or
+   `c9` measured at a different point.
+3. **The anchor is near-uniform, and the port's is not.** The fitted `fpo`
+   is 975 / 1039 / 970 — within ~70 codes across all three channels — where
+   the port uses the live-confirmed `fpo = (879, 1250, 1386)`, a spread of
+   **507 codes**. This is the single largest structural disagreement, and it
+   independently corroborates §81's observation from the other side: the
+   vendor's own black point is 936/952/936, likewise near-uniform, while
+   ours arrives at 1440/1436/1372 only because `setShifts` happens to
+   partially cancel `fpo`'s spread.
+
+`fpo`'s *values* are not in question — §63.1 confirmed them live, constant
+across six frames. What this says is that its **role** in this equation is
+wrong: the vendor does not appear to use `fpo` as the per-channel anchor
+that `lin == base` maps to.
+
+### 83.3 — End-to-end validation: the fit is not a fix, and that is the
+useful part
+
+Feeding the fitted constants through the *real* render path (tone chain,
+ICC, everything downstream) and measuring against `AA001.tif`:
+
+| inversion | median delta R / G / B | p1 ours |
+|---|---|---|
+| port (`k=1000`, `ped=c9`, `fpo=(879,1250,1386)`) | +50 / +98 / +99 | 40 / 81 / 65 |
+| fitted | **+131 / +42 / +7** | 123 / 30 / 0 |
+| vendor target | 0 / 0 / 0 | 10 / 11 / 10 |
+
+**G improves from +98 to +42 and B from +99 to +7 — but R degrades from +50
+to +131.** So a curve that fits the vendor's own RPD12 to ~50 codes RMS does
+*not* reproduce the vendor's render when pushed through the rest of the
+pipeline.
+
+That is the informative result, and it is consistent with §82.3 rather than
+contradicting it: **the inversion is not the only defect.** The
+density-domain `setShifts` add (§82.3 defect 1) is still lifting the black
+point, and on R it now lifts a curve that the fit has already re-anchored,
+so R over-shoots. Two wrongs were partially cancelling; correcting one alone
+exposes the other. This is the same shape of failure `7584903` produced from
+the opposite direction (§82.2).
+
+**Explicitly not adopted.** These constants are a fit to one frame of one
+roll, not vendor evidence for their values, and CLAUDE.md's standard does
+not permit shipping them on that basis. No production file was changed by
+this pass. What the fit establishes is *structural*, and that part is solid:
+the functional form is right, and the per-channel anchor is wrong.
+
+### 83.4 — What this changes about the remaining work
+
+The two defects §82.3 identified are now both characterised well enough to
+be attacked together, which is the only way either can be fixed:
+
+* **Anchor (new, this section).** The real mapping anchors all three
+  channels near-uniformly (~970-1040); the port anchors them at `fpo`'s
+  507-code spread. Finding what the vendor actually anchors to is now a
+  bounded question with a numeric target, where before §82 it was "the
+  render looks washed out".
+* **Black-point lift (§82.3 defect 1).** `setShifts` must move into the
+  linear domain (§60/§82.1, confirmed twice from the applied LUTs) — but
+  only together with the anchor fix, or R collapses (`7584903`) or
+  over-shoots (§83.3).
+
+The next concrete step is to find the vendor's real anchor rather than fit
+it: the ~970-1040 band is close to `neutralBalancePoint`-adjacent territory
+(§1's 1550 mid-tone anchor, `paperMin` 1200 / `paperMax` 2000) and to the
+fitted values' own near-uniformity, which suggests a single scene- or
+DPI-level constant rather than three per-channel ones. That is a search with
+a target, and the live hook harness can dump any candidate field on a real
+scan.
+
+**Verification.** The quantile pairing direction was caught by a physical
+impossibility (a non-inverting fit), not assumed correct; the corrected form
+is reported. The fit is over 15 quantiles per channel with `ped` swept on a
+5-code grid and `k`/intercept solved by least squares at each step, not a
+three-parameter blind optimisation. The end-to-end validation uses §31's own
+render parameters and the same `AA001.tif` every other measurement in this
+doc uses. B's poor RMS is attributed to a specific, identified cause (ICC
+ceiling saturation at its top quantile) rather than left unexplained.

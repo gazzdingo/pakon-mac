@@ -18133,3 +18133,41 @@ Promoting it needs either the function emulated on real inputs (the
 `set_shifts` firing from this call site. `sba_set_shifts` fired 13 times in the
 v28 capture against 6 scenes — a count no one has yet accounted for, and one
 this two-route structure could explain.
+
+### 104.4 — Correction: `set_shifts` fires 6 times, not 13, and the order-wide
+route did **not** run in this capture
+
+§104.3 offered the "13 `sba_set_shifts` calls against 6 scenes" as an
+unaccounted count the two-route structure might explain. That figure is wrong —
+it counted the `hook_installed` record and both halves of each entry/exit pair.
+The real inventory:
+
+```
+  call 1952  tick 73045250   arg0=0x93a9740  arg3=0x8cb4500
+  call 2222  tick 73045359   arg0=0x93a9740  arg3=0x8d72b70
+  call 2492  tick 73045500   arg0=0x93a9740  arg3=0x8da5640
+  call 2762  tick 73045609   arg0=0x93a9740  arg3=0x8e0a980
+  call 3032  tick 73045703   arg0=0x93a9740  arg3=0x8e56118
+  call 3302  tick 73045781   arg0=0x93a9740  arg3=0x8ea26b0
+```
+
+**Exactly six**, one per scene, each immediately following its
+`sba_preference` (call id +1, same tick). Every one is the **per-scene** route
+of §103.1. Shared `arg0`, per-scene `arg3`.
+
+So there is no unaccounted count, and — more importantly —
+**`ColorNegativePath::analyzeBalanceOrder` did not call `set_shifts` in this
+capture at all.** §104's route exists in the binary and is reachable, but it
+did not execute here.
+
+That materially weakens the §103.3/§104.3 hypothesis as an explanation for
+§101's luma residual: whatever adds +92/+65/+39 to frames 4–6 did **not** do it
+through `sba_set_shifts`, because the only six calls to it are the per-scene
+ones whose outputs we already reproduce. The correction is applied by some
+other means — a direct write to the shift field, or a later stage entirely.
+
+`balance_area_image`'s `balance_shift_4b6` (§95.1) reads the *final* value at
+`arg4+0x0a` and already disagrees with what those six `set_shifts` calls
+produce for frames 4–6. So the write happens **between** `set_shifts` and
+`balance_area_image`, by something that is not `set_shifts`. That is a
+narrower and more useful target than "the order-wide stage".

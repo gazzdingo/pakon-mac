@@ -124,6 +124,15 @@ def main() -> int:
     # Its own bound is 0x2000 (0x100160bc: cmp eax, 0x2000).
     ap.add_argument("--length", type=int, default=0xC00)
     ap.add_argument("--stage1", default=None)
+    ap.add_argument("--no-load", action="store_true",
+                    help="read from an ALREADY-LOADED scanner instead of "
+                         "uploading stage 1. Verified on real hardware "
+                         "2026-08-18: stage 1 answers 0xA9 but does NOT "
+                         "honour the 0xA4 chip select, so every address "
+                         "returns the boot personality "
+                         "(c0 05 0f 35 f2 07 aa 04). #50's successful read "
+                         "used the vendor application firmware (Pakon7.hex) "
+                         "-- load it with pakon_load.py, then use this.")
     ap.add_argument("--force", action="store_true",
                     help="write a dump that FAILS validation, named .SUSPECT. "
                          "It is diagnostic output, not a backup.")
@@ -135,10 +144,25 @@ def main() -> int:
     if not os.path.exists(stage1_path):
         sys.exit(f"stage-1 loader not found at {stage1_path}")
 
+    if args.no_load:
+        from pakon_load import find_loaded
+        dev = find_loaded()
+        if dev is None:
+            sys.exit("no LOADED scanner found -- run pakon_load.py first, or "
+                     "drop --no-load to upload stage 1 here")
+        print(f"device {dev.idVendor:04x}:{dev.idProduct:04x} "
+              f"(already loaded; firmware untouched)")
+        return _read_all(dev, args)
+
     dev = find_unloaded()
     if dev is None:
-        sys.exit("no unloaded scanner (04b4:8613) found -- power-cycle it and "
-                 "do NOT load firmware first")
+        # 04b4:8613 is the bare-FX2 ID for a unit with NO EEPROM personality.
+        # A repaired unit boots its own C0 personality and shows 0f05:f235
+        # rev aa07 while COLD -- find_unloaded() accepts that; only this
+        # message used to suggest otherwise.
+        sys.exit("no unloaded scanner found (expect 04b4:8613, or "
+                 "0f05:f235 rev aa07 on a unit with a repaired boot EEPROM) "
+                 "-- power-cycle it and do NOT load firmware first")
 
     print(f"device {dev.idVendor:04x}:{dev.idProduct:04x}")
     fx2 = Fx2(dev)
@@ -147,7 +171,11 @@ def main() -> int:
     fx2.download(HexImage.load(stage1_path), False)
     fx2.reset_8051(False)
     time.sleep(0.4)
+    return _read_all(dev, args)
 
+
+def _read_all(dev, args) -> int:
+    """Read every address, validate, save only what verifies."""
     os.makedirs(args.out, exist_ok=True)
     digests, results = {}, {}
     print(f"\nreading with the vendor's parameters (wIndex {WINDEX:#06x}):")

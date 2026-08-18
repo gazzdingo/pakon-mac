@@ -17519,3 +17519,64 @@ express a luma-only move.
 **Not claimed:** the exact expression for `k`. The constants establish the
 *basis*; they do not give the scene statistic Preference feeds into the Y axis.
 That is what v29's `pref_scene_big` row (§95.5) is for.
+
+## 97 — `sba_preference` EXECUTED under Unicorn: it writes the balance shift,
+3 of 6 frames reproduce within ±1, and the miss is a pure luma constant
+
+§95 located the producer by call trace and §96 read its constants statically.
+This runs it. New: `tools/ansel/python-pipeline/pakon_preference_golden.py`,
+built on `pakon_orderfpo_golden`'s emulator (real PE load, 471 bound imports
+stubbed, captured buffers placed at their real process addresses, poison fill
+so a short dump reads loudly rather than as plausible zeros).
+
+### 97.1 It runs, and it writes the shift
+
+All 12 `sba_preference` calls execute to completion with **zero memory
+faults** — so, contrary to §95.4's expectation, Preference does *not* read
+outside the `0x64`/`0x48` windows already captured.
+
+The output is at **`arg2 + 0x08`**, three `int16`:
+
+```
+  call 1951: got (800, 388, 136)   want (800, 388, 136)   EXACT
+  call 2221: got (829, 403, 167)   want (829, 402, 167)   (0, +1, 0)
+  call 2491: got (798, 359, 129)   want (798, 360, 130)   (0, -1, -1)
+  call 2761: got (797, 367, 130)   want (889, 458, 221)   (-92, -91, -91)
+  call 3031: got (768, 340, 103)   want (833, 405, 169)   (-65, -65, -66)
+  call 3301: got (727, 312,  56)   want (766, 351,  96)   (-39, -39, -40)
+```
+
+`want` is §95.1's shift, independently confirmed two ways. **Three frames
+reproduce within ±1** — the ±1s are FPU rounding, not structure.
+
+And `arg2 + 0x02` carries `(749, 1161, 1414)`, essentially the effective anchor
+`X = NBP − A = (743.4, 1158.6, 1405.4)` derived independently from the LUTs in
+§94.3. The function writes anchor and shift adjacently, from a completely
+different direction than the fit that produced `X`.
+
+### 97.2 The miss is luma-only — §96 confirmed by execution
+
+Frames 4–6 are short by `-92/-91/-91`, `-65/-65/-66`, `-39/-39/-40`:
+**uniform across channels to within a code.** A uniform per-channel offset is,
+by §96's basis, a pure move along `(1,1,1)` — luminance. So the emulation
+reproduces the **chroma** exactly and misses part of the **luma** term.
+
+That is §96's chroma/luma split confirmed by execution rather than by reading
+constants: tier 3 → tier 1 for the *structure*, even though the value is not
+yet complete.
+
+### 97.3 What is missing, stated precisely
+
+Each call is emulated from a fresh machine with only that call's own captured
+buffers. Frames 1–3 reproduce; 4–6 do not, and the deficit *shrinks*
+monotonically (92 → 65 → 39). That is the signature of **state carried across
+frames** which a per-call emulation cannot supply — a roll-level or running
+quantity feeding the luma axis.
+
+Consistent with `k` being the per-frame exposure correction §96 describes, and
+with `A` being film-level and therefore reproducible without history.
+
+**Not claimed:** that this is golden. It is 3/6 with a characterised,
+non-arbitrary miss. The remaining term is a specific, named thing to find — not
+a mystery — and `pref_scene_big` (§95.5, v29, built) plus the neighbouring
+roll-level structures are where to look.

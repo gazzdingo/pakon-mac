@@ -1,349 +1,152 @@
 #!/usr/bin/env python3
-"""Golden Preference FPU (@ ``0x1028c780``) against PakonIMAu.dll via Unicorn.
+"""Golden attempt: emulate ``sba_preference`` and recover the balance shift.
 
-Builds a minimal blob + output block, enters Preference, reads shifts at
-``out+0x3a38−0x3a30`` (= ``out+8``). Compares to
-``pakon_sba_preference.preference_shifts_hi10`` / mode-``0x11``.
+WHAT THIS IS FOR
+----------------
+docs/74 §93–§95 established that the vendor's per-frame balance shift is
+``shift[f,c] = A[c] + k[f]`` — a per-channel constant plus a per-frame scalar —
+and §95.2 located the producer exactly: ``sba_preference`` (``fcn.1028c780``,
+``PakonIMAu.dll`` md5 ``eea9dcf78ee21d4f7c515a6c2512242d``) runs one call after
+``L`` is computed and one call before the shift exists.
 
-Usage
------
-``PYTHONPATH=tools/ansel/python-pipeline python3 tools/ansel/python-pipeline/pakon_preference_golden.py [dll]``
+§96 then read the function statically and found its FPU constants are the
+orthonormal opponent basis (``1/√3``, ``1/√2``, ``1/√6``, ``√3``), which
+explains the decomposition: ``k`` is a pure move along ``(1,1,1)`` (luminance)
+and ``A`` is chroma. **That is tier 3 — indicated by constants, not executed.**
+
+This promotes it, or fails loudly trying. The target is the six real shifts,
+which two independent routes already agree on (§95.1):
+
+    [800, 388, 136]  [829, 402, 167]  [798, 360, 130]
+    [889, 458, 221]  [833, 405, 169]  [766, 351,  96]
+
+WHY IT MAY NOT REACH THEM, STATED UP FRONT
+------------------------------------------
+The scene structs are 25 820 bytes (§95.4) and the capture dumps ``0x64`` of
+them at this call site. If Preference reads outside that window the emulation
+faults — and **that is still a useful result**: this harness reports every
+fault as ``argN+0xNNN`` (inherited from ``pakon_orderfpo_golden``'s reporter),
+which names exactly which dump row v29 needs to widen. A fault list is a
+capture spec, not a failure.
+
+No fitted parameters: every input is a real captured buffer at its real
+process address.
 """
 from __future__ import annotations
 
+import json
+import os
 import struct
 import sys
 from pathlib import Path
 
-from unicorn import Uc, UcError, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE
-from unicorn.x86_const import (
-    UC_X86_REG_EAX,
-    UC_X86_REG_EBP,
-    UC_X86_REG_ESP,
-    UC_X86_REG_EIP,
-)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import pakon_sba_preference as pref
+from pakon_orderfpo_golden import Emu, RET_MAGIC, STACK, STACK_SZ  # noqa: E402
+from unicorn import UcError                           # noqa: E402
+from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_ESP)  # noqa: E402
 
-IMAGE_BASE = 0x10000000
-PREF_ENTRY = 0x1028C780
-PREF_RET = 0x1028CD02
+PREFERENCE_VA = 0x1028C780
 
-STACK_ADDR = 0x0BF00000
-STACK_SIZE = 0x100000
-HEAP_ADDR = 0x0C000000
-HEAP_SIZE = 0x200000
+PE_PATH = "/Users/guy/pakon-windows-repair/COM-SERVER/PakonIMAu.dll"
 
-DEFAULT_DLL = Path(
-    "/Users/guy/Downloads/Pakon Update 3/fx35install/program files/"
-    "Pakon/F-X35 COM SERVER/PakonIMAu.dll"
-)
+DEFAULT_CAP = ("/Users/guy/.claude-account-1/jobs/5e3f6f65/tmp/"
+               "live_hooks_20260818-080318.jsonl")
 
-# CN-default dpi-ish scalars (sba-CN-default)
-CN_DEFAULT = dict(
-    fpo=(879, 1250, 1386),
-    fpa=(-70, -55, -45),
-    neu=(975, 975, 975),
-    neo=(1010, 1010, 1010),
-    pcls=0,
-    non_flash_adj=0,
-    nbp=1550,
-    neutral_button=130,
-    under=-16.0,
-    over=16.0,
-)
+#: §95.1, confirmed two independent ways (balance_shift_4b6 and lut[i]-i).
+EXPECTED = [(800, 388, 136), (829, 402, 167), (798, 360, 130),
+            (889, 458, 221), (833, 405, 169), (766, 351, 96)]
 
 
-def _align_up(n: int, a: int = 0x1000) -> int:
-    return (n + a - 1) & ~(a - 1)
-
-
-def load_pe_into_uc(uc: Uc, pe: bytes) -> None:
-    e_lfanew = struct.unpack_from("<I", pe, 0x3C)[0]
-    num_sec = struct.unpack_from("<H", pe, e_lfanew + 6)[0]
-    opt_size = struct.unpack_from("<H", pe, e_lfanew + 20)[0]
-    opt = e_lfanew + 24
-    size_image = struct.unpack_from("<I", pe, opt + 56)[0]
-    uc.mem_map(IMAGE_BASE, _align_up(size_image))
-    uc.mem_write(IMAGE_BASE, pe[:0x1000])
-    sec_off = opt + opt_size
-    for i in range(num_sec):
-        o = sec_off + i * 40
-        vsz, va, rsz, raddr = struct.unpack_from("<IIII", pe, o + 8)
-        if rsz == 0 or raddr == 0:
+def load_calls(cap: Path):
+    """Every ``sba_preference`` entry: its stack args and its dumped buffers."""
+    calls = {}
+    for line in open(cap):
+        d = json.loads(line)
+        if d.get("hook_id") != "sba_preference":
             continue
-        data = pe[raddr : raddr + rsz]
-        if len(data) < vsz:
-            data = data + b"\x00" * (vsz - len(data))
-        uc.mem_write(IMAGE_BASE + va, data[: max(vsz, rsz)])
+        cid = d.get("call_id")
+        if cid is None:
+            continue
+        e = calls.setdefault(cid, {"args": None, "bufs": {}})
+        if d.get("kind") == "call" and d.get("stack_dwords"):
+            e["args"] = [int(x, 16) for x in d["stack_dwords"]]
+        elif d.get("kind") == "buffer_dump" and d.get("readable"):
+            e["bufs"][d["label"]] = bytes.fromhex(d["hex"])
+    return {c: v for c, v in sorted(calls.items()) if v["args"]}
 
 
-def build_blob(
-    *,
-    fpo: tuple[int, int, int],
-    fpa: tuple[int, int, int],
-    neu: tuple[int, int, int],
-    neo: tuple[int, int, int],
-    pcls: int,
-    non_flash_adj: int,
-    lim46: int,
-    lo42: int,
-    hi44: int,
-) -> bytes:
-    """Preference input blob (``0x10214f20`` fill layout)."""
-    b = bytearray(0x80)
-    struct.pack_into("<hhh", b, 0x00, *fpo)
-    struct.pack_into("<hhh", b, 0x06, *fpa)
-    struct.pack_into("<hhh", b, 0x0C, *neu)
-    struct.pack_into("<hhh", b, 0x12, *neo)
-    struct.pack_into("<h", b, 0x1E, pcls)
-    struct.pack_into("<h", b, 0x30, non_flash_adj)
-    struct.pack_into("<h", b, 0x42, lo42)
-    struct.pack_into("<h", b, 0x44, hi44)
-    struct.pack_into("<h", b, 0x46, lim46)
-    return bytes(b)
+def run_one(pe: bytes, args, bufs, verbose=False):
+    emu = Emu(pe)
+    # Place every captured buffer at its REAL process address, so pointer
+    # arithmetic inside the function resolves the way it did on hardware.
+    label_arg = {"pref_data": 0, "blob": 3, "pref_scene_big": 0}
+    arg_bases = {}
+    for label, data in bufs.items():
+        idx = label_arg.get(label)
+        if idx is None or idx >= len(args):
+            continue
+        addr = args[idx]
+        if not addr:
+            continue
+        emu.place(addr, data)
+        arg_bases[idx] = addr
+    emu.arg_bases = arg_bases
+    emu.scene_base = args[0] if args else None
 
+    # cdecl: push args right-to-left, then the magic return address.
+    esp = STACK + STACK_SZ - 0x1000
+    n = min(len(args), 16)
+    for i, v in enumerate(args[:n]):
+        emu.uc.mem_write(esp + 4 + 4 * i, struct.pack("<I", v & 0xFFFFFFFF))
+    emu.uc.mem_write(esp, struct.pack("<I", RET_MAGIC))
+    emu.uc.reg_write(UC_X86_REG_ESP, esp)
 
-def build_param(
-    *,
-    param0: int = 0,
-    param_0x12: int = 0,
-    param_0x40: int = 0,
-    param_uv: tuple[int, int] = (0, 0),
-) -> bytes:
-    b = bytearray(0x80)
-    struct.pack_into("<h", b, 0x00, param0)
-    struct.pack_into("<hh", b, 0x02, param_uv[0], param_uv[1])
-    struct.pack_into("<h", b, 0x12, param_0x12)
-    struct.pack_into("<h", b, 0x40, param_0x40)
-    return bytes(b)
-
-
-def build_arg1(*, arg1_0: int = 0) -> bytes:
-    b = bytearray(0x20)
-    struct.pack_into("<h", b, 0x00, arg1_0)
-    return bytes(b)
-
-
-def run_preference(
-    uc: Uc,
-    *,
-    mode: int,
-    blob: bytes,
-    param: bytes | None = None,
-    arg1: bytes | None = None,
-    heap: int = HEAP_ADDR,
-) -> tuple[int, tuple[int, int, int]]:
-    """Execute Preference; return ``(eax, shifts_at_out+8)``."""
-    blob_addr = heap
-    out_addr = heap + 0x200
-    param_addr = heap + 0x800
-    arg1_addr = heap + 0xC00
-    uc.mem_write(blob_addr, blob)
-    uc.mem_write(out_addr, b"\x00" * 0x200)
-    uc.mem_write(param_addr, (param or b"\x00" * 0x80))
-    if arg1 is not None:
-        uc.mem_write(arg1_addr, arg1)
-
-    # cdecl call frame
-    ret_stub = heap + 0x1000
-    uc.mem_write(ret_stub, b"\xcc")  # int3 — stop
-    esp = STACK_ADDR + STACK_SIZE - 0x100
-    # cdecl: ret, param, arg1, out, blob, mode
-    frame = struct.pack(
-        "<IIIIII",
-        ret_stub,
-        param_addr,
-        arg1_addr if arg1 is not None else 0,
-        out_addr,
-        blob_addr,
-        mode & 0xFFFFFFFF,
-    )
-    uc.mem_write(esp, frame)
-    uc.reg_write(UC_X86_REG_ESP, esp)
-    uc.reg_write(UC_X86_REG_EBP, 0)
-    uc.reg_write(UC_X86_REG_EAX, 0)
-
-    stop = {"hit": False}
-
-    def _hook(uc_: Uc, address: int, size: int, _user: object) -> None:
-        if address == ret_stub:
-            stop["hit"] = True
-            uc_.emu_stop()
-
-    hh = uc.hook_add(UC_HOOK_CODE, _hook, begin=ret_stub, end=ret_stub + 1)
     try:
-        uc.emu_start(PREF_ENTRY, ret_stub + 1, timeout=5_000_000, count=500_000)
-    finally:
-        uc.hook_del(hh)
-
-    if not stop["hit"]:
-        eip = uc.reg_read(UC_X86_REG_EIP)
-        raise RuntimeError(f"Preference did not return; eip={eip:#x}")
-
-    eax = uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF
-    raw = bytes(uc.mem_read(out_addr + 8, 6))
-    shifts = struct.unpack("<hhh", raw)
-    return eax, shifts
+        emu.uc.emu_start(PREFERENCE_VA, RET_MAGIC, timeout=15_000_000,
+                         count=8_000_000)
+        ok, err = True, None
+    except UcError as exc:
+        ok, err = False, str(exc)
+    return emu, ok, err
 
 
-def py_hiNN(case: dict, mode: int) -> tuple[int, int, int]:
-    lim46 = pref.lim46_from_neutral_balance_point(case["nbp"])
-    lo42, hi44 = pref.clamp_limits_from_neutral_button(
-        case["neutral_button"], case["under"], case["over"]
-    )
-    hi = mode & 0xF0
-    lo = mode & 0x0F
-    return pref.preference_shifts_hiNN(
-        case["fpo"],
-        case["fpa"],
-        hi=hi,
-        lo=lo,
-        lim46=lim46,
-        lo42=lo42,
-        hi44=hi44,
-        pcls=case["pcls"],
-        neu=case["neu"],
-        neo=case["neo"],
-        non_flash_adj=case["non_flash_adj"],
-        param0=case.get("param0", 0),
-        param_0x12=case.get("param_0x12", 0),
-        param_0x40=case.get("param_0x40", 0),
-        arg1_0=case.get("arg1_0", 0),
-        arg1_2=case.get("arg1_2", 0),
-        arg1_4=case.get("arg1_4", 0),
-        param_uv=case.get("param_uv", (0, 0)),
-    )
-
-
-CASES_0x11: list[dict] = [
-    dict(CN_DEFAULT),
-    dict(CN_DEFAULT, fpo=(930, 1260, 1470), fpa=(0, 0, 0)),
-    dict(CN_DEFAULT, fpo=(100, 200, 300), fpa=(-10, -20, -30)),
-    dict(CN_DEFAULT, pcls=50),
-    dict(CN_DEFAULT, nbp=1400, neutral_button=100),
-    dict(CN_DEFAULT, fpo=(0, 0, 0), fpa=(0, 0, 0)),
-    dict(CN_DEFAULT, fpo=(2000, 1800, 1600), fpa=(100, -50, 25)),
-]
-
-# hi=0x10, lo≠1 — aimY from param/arg1 (docs/49 @ 0x1028c92f)
-CASES_HI10_LO: list[dict] = [
-    dict(CN_DEFAULT, lo=0, param0=1000),
-    dict(CN_DEFAULT, lo=2, param_0x12=800),
-    dict(CN_DEFAULT, lo=3, arg1_0=1500),
-    dict(CN_DEFAULT, lo=4, param_0x40=-100, arg1_0=0),  # arg1 required non-null
-    dict(CN_DEFAULT, lo=0, param0=500, pcls=25),
-    dict(CN_DEFAULT, lo=2, param_0x12=900, fpo=(100, 200, 300), fpa=(0, 0, 0)),
-]
-
-CASES_HINN: list[dict] = [
-    dict(CN_DEFAULT, lo=1, hi=0x20, neu=(900, 1000, 1100), fpo=(100, 200, 300)),
-    dict(CN_DEFAULT, lo=1, hi=0x30, arg1_2=100, arg1_4=-100),
-    dict(CN_DEFAULT, lo=1, hi=0x40, neutral_button=150, under=-20.0, over=20.0),
-    dict(CN_DEFAULT, lo=1, hi=0x00, fpo=(100, 200, 300)),  # else case
-    dict(CN_DEFAULT, lo=3, hi=0x20, arg1_0=500, neu=(800, 800, 800)),
-    # live mode hi=0x30, lo=3 with the non_flash_adj scale swept — pins the
-    # blob+0x30 (cmm) scale path (docs/74 sec64: cmm=1000 = 100%, not 0).
-    dict(CN_DEFAULT, lo=3, hi=0x30, arg1_0=1500, arg1_2=100, arg1_4=-100, non_flash_adj=0),
-    dict(CN_DEFAULT, lo=3, hi=0x30, arg1_0=1500, arg1_2=100, arg1_4=-100, non_flash_adj=500),
-    dict(CN_DEFAULT, lo=3, hi=0x30, arg1_0=1500, arg1_2=100, arg1_4=-100, non_flash_adj=1000),
-    # hi=0 else-branch reads arg1[2]/arg1[4] = the param struct (docs/74 sec68)
-    # — pinned with non_flash_adj≠0 so the aimU/aimV term is not zeroed out.
-    dict(CN_DEFAULT, lo=0, hi=0x00, param0=1500, param_uv=(100, -100), non_flash_adj=1000),
-    dict(CN_DEFAULT, lo=1, hi=0x00, param_uv=(80, -60), non_flash_adj=500),
-    dict(CN_DEFAULT, lo=0, hi=0x00, param0=1200, param_uv=(-30, 70), non_flash_adj=250),
-]
-
-def main(argv: list[str]) -> int:
-    dll_path = Path(argv[1]) if len(argv) > 1 else DEFAULT_DLL
-    if not dll_path.is_file():
-        print(f"DLL not found: {dll_path}", file=sys.stderr)
-        return 2
-
-    pe = dll_path.read_bytes()
-    uc = Uc(UC_ARCH_X86, UC_MODE_32)
-    load_pe_into_uc(uc, pe)
-    uc.mem_map(STACK_ADDR, STACK_SIZE)
-    uc.mem_map(HEAP_ADDR, HEAP_SIZE)
-
-    print(f"DLL  {dll_path}")
-    print(f"entry {PREF_ENTRY:#x}")
-    print(f"PREFERENCE_SHIFTS_PORTED={pref.PREFERENCE_SHIFTS_PORTED}")
-    print()
-
-    failures = 0
-    all_cases: list[tuple[str, dict]] = [
-        *(("0x11", dict(c, lo=1, hi=0x10)) for c in CASES_0x11),
-        *(("hi10", dict(c, hi=0x10)) for c in CASES_HI10_LO),
-        *(("hiNN", c) for c in CASES_HINN),
-    ]
-    for i, (tag, case) in enumerate(all_cases):
-        lim46 = pref.lim46_from_neutral_balance_point(case["nbp"])
-        lo42, hi44 = pref.clamp_limits_from_neutral_button(
-            case["neutral_button"], case["under"], case["over"]
-        )
-        blob = build_blob(
-            fpo=case["fpo"],
-            fpa=case["fpa"],
-            neu=case["neu"],
-            neo=case["neo"],
-            pcls=case["pcls"],
-            non_flash_adj=case["non_flash_adj"],
-            lim46=lim46,
-            lo42=lo42,
-            hi44=hi44,
-        )
-        lo = case.get("lo", 1)
-        hi = case.get("hi", 0x10)
-        mode = hi | (lo & 0xF)
-        need_arg1 = lo in (3, 4) or hi in (0x30, 0x40)
-        param = build_param(
-            param0=case.get("param0", 0),
-            param_0x12=case.get("param_0x12", 0),
-            param_0x40=case.get("param_0x40", 0),
-            param_uv=case.get("param_uv", (0, 0)),
-        )
-        arg1 = build_arg1(arg1_0=case.get("arg1_0", 0)) if need_arg1 else None
-        # We need arg1_2 and arg1_4 for hi=0x30
-        if hi == 0x30:
-            if arg1 is None:
-                arg1 = bytearray(0x20)
-            else:
-                arg1 = bytearray(arg1)
-            import struct
-            struct.pack_into("<h", arg1, 0x02, case.get("arg1_2", 0))
-            struct.pack_into("<h", arg1, 0x04, case.get("arg1_4", 0))
-            arg1 = bytes(arg1)
-        
-        try:
-            eax, dll_out = run_preference(
-                uc, mode=mode, blob=blob, param=param, arg1=arg1
-            )
-        except (UcError, RuntimeError) as e:
-            print(f"FAIL[{i}] emu: {e}")
-            failures += 1
-            continue
-        py_out = py_hiNN(case, mode)
-        ok = eax == 0 and dll_out == py_out
-        status = "OK" if ok else "FAIL"
-        if not ok:
-            failures += 1
-        print(
-            f"{status:4}[{i}] {tag} mode={mode:#x} lo={lo} fpo={case['fpo']} "
-            f"fpa={case['fpa']} pcls={case['pcls']}  "
-            f"dll={dll_out}  py={py_out}  eax={eax}"
-        )
-
-    print()
-    if failures:
-        print(f"{failures} mismatch(es) — PREFERENCE_SHIFTS_PORTED stays False")
+def main(argv):
+    cap = Path(argv[1]) if len(argv) > 1 else Path(DEFAULT_CAP)
+    pe = Path(PE_PATH).read_bytes()
+    calls = load_calls(cap)
+    print(f"capture : {cap.name}")
+    print(f"sba_preference calls with args: {len(calls)}")
+    if not calls:
         return 1
-    print(
-        "all cases (hi=0x10..0x40, lo∈{0,1,2,3,4}) match DLL — "
-        "safe to set PREFERENCE_HI_UV_PORTED=True"
-    )
+
+    faults_all = []
+    for i, (cid, e) in enumerate(list(calls.items())[:6]):
+        bufs = ", ".join(f"{k}={len(v)}B" for k, v in sorted(e["bufs"].items()))
+        print(f"\n  call {cid}: buffers [{bufs}]")
+        emu, ok, err = run_one(pe, e["args"], e["bufs"])
+        if ok:
+            print(f"    ran to completion, eax = "
+                  f"{emu.uc.reg_read(UC_X86_REG_EAX):#x}")
+        else:
+            print(f"    stopped: {err}")
+        for f in emu.faults[:6]:
+            print(f"      fault: {f}")
+            faults_all.append(f)
+        if len(emu.faults) > 6:
+            print(f"      ... {len(emu.faults) - 6} more faults")
+
+    print("\n--- verdict ---")
+    if faults_all:
+        print(f"{len(faults_all)} memory faults recorded. Each is reported "
+              f"arg-relative, so this IS the capture spec for the next hook "
+              f"build: widen the named dump rows and re-run.")
+        print("This is not a golden result and is not recorded as one.")
+        return 2
+    print("no faults. Compare eax//written fields against EXPECTED before "
+          "claiming anything.")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv))
+    sys.exit(main(sys.argv))

@@ -68,6 +68,16 @@ ARG_DUMP = {
     12: "pref_data_before",
 }
 
+# v24 added a second, larger row per pointer argument (docs/74 §75.2/§77.6).
+# Both are loaded when present: the small row first, then the big one over
+# the top, so a big row that came back unreadable degrades to the small
+# row's data rather than losing the argument entirely.
+ARG_DUMP_BIG = {
+    0: "arg0_big", 1: "arg1_big", 2: "arg2_big", 5: "arg5_big",
+    6: "arg6_big", 7: "arg7_big", 10: "arg10_big", 11: "arg11_big",
+    12: "arg12_big",
+}
+
 
 def _align_up(n: int) -> int:
     return (n + PAGE - 1) & ~(PAGE - 1)
@@ -199,6 +209,24 @@ class Emu:
                     e.alloc(e.r32(a), False), 0))
             elif short in ("free", "??3@YAXPAX@Z"):
                 self._hook_crt(addr, name, lambda e, a: (0, 0))
+            elif short in ("_setjmp3", "_setjmp", "setjmp"):
+                # setjmp returns 0 when called directly (non-zero only when
+                # reached via longjmp, which cannot happen here). The generic
+                # `ret`-only stub leaves whatever was in EAX, which this
+                # function reads as "an exception was caught" and turns into
+                # an early-exit error return -- observed as 0x18a9 before this
+                # case existed. Returning 0 is the C standard's own semantics,
+                # not a value invented to make the run succeed.
+                self._hook_crt(addr, name, lambda e, a: (0, 0))
+            elif short in ("longjmp", "_longjmp"):
+                # Must never be reached on a successful path. If it is, the
+                # emulated control flow has genuinely diverged and silently
+                # continuing would produce a meaningless result.
+                def _lj(e, a):
+                    raise RuntimeError("longjmp taken -- emulated control "
+                                       "flow diverged; result would be "
+                                       "meaningless")
+                self._hook_crt(addr, name, _lj)
             else:
                 self._hook_crt(addr, name, None)
 
@@ -339,7 +367,7 @@ def load_capture(path: Path):
             continue
         bufs = {}
         ok = True
-        for label in set(ARG_DUMP.values()):
+        for label in ARG_DUMP.values():
             r = dumps[d["call_id"]].get(label)
             if not r or not r.get("readable"):
                 ok = False
@@ -347,6 +375,11 @@ def load_capture(path: Path):
             bufs[label] = (int(r["addr"], 16), bytes.fromhex(r["hex"]))
         if not ok:
             continue
+        # overlay the larger v24 rows where they are present and readable
+        for label in ARG_DUMP_BIG.values():
+            r = dumps[d["call_id"]].get(label)
+            if r and r.get("readable"):
+                bufs[label] = (int(r["addr"], 16), bytes.fromhex(r["hex"]))
         pref_addr = dumps[d["call_id"]]["pref_data_before"]["addr"]
         exp = expected_by_addr.get(pref_addr)
         if exp is None:

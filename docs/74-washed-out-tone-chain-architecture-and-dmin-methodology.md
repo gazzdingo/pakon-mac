@@ -15362,3 +15362,128 @@ dump. Tractable, and instrumented for.
 **No production or port file was changed by this pass.** New:
 `pakon_orderfpo_golden.py`. Modified: the hook table/stub/`agent.js` (v23,
 v24) and `docs/74-…md` (this section).
+
+## 78 — v24 lands: **`orderFpo.Y` is verified bit-exact, 12/12, on real
+hardware data** — and the reason the full-function Unicorn run cannot
+complete is now known and is not a sizing problem: `0x1028b8d0` reaches a
+**bytecode interpreter**
+
+The v24 capture (`live_hooks_20260817-175818.jsonl`, `md5
+687ec517890358926c73e23eb6cddd32`, 34,167,081 bytes; 24/24 hooks installed,
+the new `sba_order_fpo_helper` firing 12 times, every large dump row
+readable) answers §77's open questions and produces this thread's first
+genuinely golden component.
+
+### 78.1 — `orderFpo.Y`, verified 12/12
+
+§76 derived `orderFpo.Y = fos_opening_axes(arg5).Y + L[-0x200]` and traced
+`L[-0x200]` — the one term it could not compute, an `int32` that nothing in
+`0x1028b8d0`'s own 912 instructions ever writes — to `fcn.1028ae00`'s own
+**arg 9**. v24 hooks that function; the engine already logs 16 raw stack
+dwords per entry, so arg 9 is captured directly.
+
+Against the constant term `fos_opening_axes(879, 1250, 1386) = (2029, 96,
+359)` — from this project's own already-Unicorn-verified
+`pakon_fos.fos_opening_axes`, not a re-derivation:
+
+| scene | observed Y | required `L` (= Y − 2029) | captured helper arg 9 | |
+|---|---|---|---|---|
+| 1 | 2134 | +105 | +105 | match |
+| 2 | 2036 | +7 | +7 | match |
+| 3 | 1912 | −117 | −117 | match |
+| 4 | 1728 | −301 | −301 | match |
+| 5 | 2217 | +188 | +188 | match |
+| 6 | 2069 | +40 | +40 | match |
+
+and the same six again across the capture's second pass — **12 of 12, exact,
+no tolerance, no fitted parameter.** The values span −301…+188, so this is
+not a degenerate match against near-zero numbers.
+
+Both halves of the claim come from independent sources: the constant from a
+function whose DLL-equivalence was established long before this thread, and
+`L` from a raw stack dword logged by the hook engine without any
+interpretation. **`orderFpo.Y` is golden.**
+
+### 78.2 — Why the whole-function Unicorn run still does not complete, and
+why it is not a buffer-sizing problem
+
+§77.7 flagged the risk that a helper might dereference pointers stored
+inside the captured buffers. It does, and the reason is more structural
+than "one more dump row":
+
+Three real blockers were cleared this pass, each diagnosed from the failure
+itself rather than guessed:
+
+1. **Bound imports.** This DLL ships with bound imports — its IAT already
+   holds real `MSVCR71`/`MSVCP71` addresses (`calloc` → `0x0068bd78`), so
+   the code calls straight into modules the harness never loads, faulting on
+   an *instruction fetch*. All 471 bound targets are now mapped and stubbed;
+   `calloc`/`malloc`/`free` get real implementations, and every stub records
+   its own name so an unimplemented CRT call surfaces as a named entry
+   rather than a silent wrong answer.
+2. **`_setjmp3`.** With a generic `ret`-only stub it returned whatever
+   happened to be in `EAX`, which the function reads as "an exception was
+   caught" and converts into an early-exit error return — observed as the
+   new code `0x18a9`. `setjmp` returns 0 when called directly; that is the C
+   standard's own semantics, not a value chosen to make the run succeed.
+   `longjmp` is stubbed to raise, since reaching it would mean the emulated
+   control flow had genuinely diverged.
+3. **The `arg6` bounds gate**, now settled with the real captured bytes:
+   `arg6+0x104 = −100` (min), `arg6+0x106 = +150` (max), against
+   `arg5+0xc = 70` and `arg5+0xe = 25`. Both inside the range, so the gate
+   **passes** on real data — retiring §77.2's blocker outright and
+   incidentally confirming the diagnostic probe's bracketing reasoning was
+   sound.
+
+With those cleared, execution runs far deeper and stops inside
+`fcn.102aadf0`, which — read in full — is **a bytecode interpreter**: it
+loads a program pointer (`mov edi, [ebp+4]`), reads a 16-bit opcode
+(`mov ax, word [edi]`), treats `0xff` as halt, dispatches through a
+**254-entry switch table at `0x102abf4c`** (with nested per-opcode tables,
+e.g. 7 cases at `0x102ac118`), and advances `edi` by 2 per operand.
+
+That fully explains the observed behaviour that no amount of buffer sizing
+would have fixed: the faulting addresses are scattered unpredictably across
+±200 KB of the scene base (`scene−0x36dd0`, `scene+0x20cd4`, …) and differ
+per scene, because they are operands of an interpreted program rather than
+fields of a fixed struct. It also explains, retrospectively, why §76's
+static trace could derive U and V but not Y: Y's term is produced by
+interpreted code, which no CFG walk over `0x1028b8d0` could ever have
+reached.
+
+**Emulating this path end-to-end would require capturing the bytecode
+program itself plus every buffer it references — a substantially larger
+surface than the argument buffers, and not merely a bigger dump.** That is
+recorded here as a real structural finding, not a to-do disguised as one.
+
+### 78.3 — What this changes about the goal
+
+The `Y` result shows the productive shape for this stage: **derive the
+decomposition statically, then verify each term against real captured data**
+— rather than emulate the entire function. That is exactly what §76's
+derivation plus one well-chosen hook achieved, and it sidesteps the
+interpreter completely.
+
+`U` and `V` are already fully derived by §76 (a weighted mean chroma
+residual over 864 dens samples, `50×83` `int8` weight table indexed by
+`(trunc(c1/16)+24, trunc(c2/16)+41)`, round-half-away-from-zero divide) and
+their remaining unknown is the same shape as Y's was: the helper's own OUT
+struct at its arg 6, which the helper *fills* — so an entry dump cannot see
+it. The required values are known exactly from the observed triples
+(U residuals −38, −26, −49, −42, −32, −30; V residuals +106, +88, +95, +92,
++70, +85), so this is a bounded, checkable target, not an open search.
+
+**Status, stated precisely: `orderFpo.Y` is golden (12/12, real data).
+`orderFpo.U` and `orderFpo.V` are derived but not yet verified. The
+whole-function Unicorn run is blocked on the interpreter, not on dump
+sizes.**
+
+**Verification.** Capture md5 recorded above; hook installation and the
+helper's 12 firings read from the capture's own `hook_installed`/`call`
+rows. The Y table's "observed" column is the real `pref_data` triple from
+the `sba_preference` dump, matched to its `order_fpo_calc` call **by
+`pref_data` address**, the same keying §73.2 established. The constant term
+was produced by running `pakon_fos.fos_opening_axes` directly, and
+`pakon_fos_golden.py` was re-run green this pass. The interpreter
+identification came from a full `af`+`pdf` read of `fcn.102aadf0` at its own
+real boundary, including the switch-table addresses cited.

@@ -16621,3 +16621,305 @@ Also worth recording: the call count is identical (3168) across two different ro
 CORRECTION DISCIPLINE. sec86's claim is superseded, not quietly amended -- it was a reasonable read of one roll and a wrong read of the system, and the specific reason one roll could not distinguish the two cases is recorded above so the same inference is not made again from a single capture.
 
 No production file changed.
+
+
+## 88 — The bytecode interpreter is ported, and the programs are not generated
+at all: all 264 are read verbatim out of the shipped `pcode-dls_1.7`. Encoding
+264/264, 36 of 50 handlers implemented, **`L` located exactly (`vars[133]`)** —
+and blocked on one uncaptured input array, not on the VM
+
+§87 established the 264 VM programs are static. This section finishes the job:
+it finds where they are stored, recovers the instruction encoding exactly,
+reads and ports the handlers, and traces `L` to a specific variable slot. It
+also states plainly the one thing that still stops `L` from being computed, and
+gives the single capture row that closes it.
+
+New file: `tools/ansel/python-pipeline/pakon_vm.py`. `PakonIMAu.dll` re-hashed
+first — `md5 eea9dcf78ee21d4f7c515a6c2512242d`, matching every prior citation;
+`radare2` 6.1.8 via `r2pipe`, `e asm.sub.var=false`, `af`+`pdf` at
+`fcn.102aadf0`'s own boundary (4423 bytes), `pD` never used. Live evidence is
+the two v27 captures of §87: roll A `live_hooks_20260817-212408.jsonl`
+(`md5 cf67eec3b4db03c78d93bc1ee9635f8e`) and roll B
+`live_hooks_20260817-213026.jsonl` (`md5 b7b02a79d13b4da321bbf92e0c092938`),
+3168 `sba_vm_interp` firings each.
+
+### 88.1 — The programs are a shipped data file, and this project already ports
+its stage 1
+
+The 264 captured programs were searched, as raw u16 sequences, against every
+`pcode-*` file under
+`vendor/ansel/anselinstalldir/dataPathItems/sba/Pcode/`. Result, byte-exact
+and unambiguous:
+
+| file | programs found (of 264) |
+|---|---|
+| **`pcode-dls_1.7`** (`md5 8e405c4672d2264d698af3235f37aaef`) | **264** |
+| `pcode-erimm_hr200_2.5`, `pcode-hr200_2.5` | 7 |
+| `pcode-hr200_noGrn_2.4` | 6 |
+| `pcode-hr200_2.6`, `pcode-hr200_2.7` | 4 |
+| `pcode-dsba`, `pcode-dsba.orig`, `pcode-dsbaRomm` | 2 |
+
+Only when the file is read **big-endian**; little-endian scores 0/264
+everywhere. That is exactly what `tools/ansel/python-pipeline/pakon_sba_pcode.py`
+already documents for stage 1 ("File is a stream of little-endian u16 on disk.
+The decoder checks word0; if it is not `0x00FB`, every word is byte-swapped") —
+so the interpreter's programs live in the same file whose stage-1 header that
+module has parsed since it was written, in the section it explicitly left
+alone: *"Bytes after that are the stage-2 program (parsed by `0x102a8f40`, not
+implemented here)."* §87's "there is no generator to port" is therefore not
+merely true, it is stronger than stated: **there is no generated data at all —
+the VM's whole program store is shipped configuration.**
+
+The stage-2 section is a record table: one count word (264), then that many
+records of `(index, tag, nwords, words…)` with `index` running 0…263. It
+consumes the file to its last word (5339 of 5340; the file ends on a lone
+`0x00ff`). `pakon_vm.load_pcode` anchors on exactly that — the count must
+parse **and** the parse must land at end-of-file, because a short table parses
+"successfully" at many offsets (a first cut without the end-of-file condition
+locked onto a 1-record false positive in all nine files).
+
+### 88.2 — The encoding, finished: 264/264, and §86.4's reading was wrong
+
+Per-handler CFG walks over `fcn.102aadf0` (worklist over r2's own
+`jump`/`fail` edges, summing `add edi, N` per path rather than over the whole
+handler) give an unambiguous instruction length for every one of the 50 real
+handlers:
+
+```
+opcode 1  (PUSH)    3 words, or 4 when its type operand is 4
+opcode 2  (STORE)   2 words
+every other opcode  1 word
+opcode 255          halt
+```
+
+Nothing but `PUSH` and `STORE` carries an operand. `PUSH`'s type selector
+drives the 7-entry inner table at `0x102ac118`
+(`0x102aae32`: `movsx eax, word [edi+2]` then two `add edi, 2`); type 4 alone
+is a 32-bit immediate assembled **high word first**
+(`0x102aaed4…0x102aaee8`: `mov cx,[edi]` → `[esp+0x22]`, `mov dx,[edi+2]` →
+`[esp+0x20]`, then `mov eax, dword [esp+0x20]`).
+
+**§86.4 is superseded, not amended.** It read the same three worked examples
+as opcodes with operand lists — `[1,6,15, 1,6,617, 4,2,3, 255]` as
+"`push(6,15) push(6,617) op4(2,3)`". It is `PUSH in[15] ; PUSH in[617] ; SUB ;
+STORE v3`: `4,2,3` is three instructions, not one. That misreading is why the
+greedy solve needed a per-opcode operand table at all, and why the exhaustive
+search over the six dominant opcodes did *worse* (151/264) — it was searching a
+parameter that does not exist.
+
+Two further recorded errors of the earlier pass, both mine to correct:
+
+* **The "two stragglers" were an extraction artefact, not an encoding gap.**
+  §86's extractor cut each program at the first `0x00ff` word in the dump. But
+  `STORE`'s operand can itself be `0x00ff` (`(1,3,3, 2,255, …)` is
+  `PUSH v3 ; STORE v255`), and records containing a conditional carry a second
+  `HALT` for the else-arm *after* the first. Decoding instruction-by-instruction
+  instead of scanning for a byte value gives **264/264 clean parses to halt on
+  both rolls**, with no residual.
+* **"51 distinct opcodes" was an upper bound and is now closed.** The real
+  reached set in `pcode-dls_1.7` is **19 opcodes**:
+  `1,2,3,4,5,6,16,27,28,29,30,31,32,33,36,55,56,64,254` (plus the label word
+  9191 and the `255` halt). Across all nine shipped `pcode-*` files — 1720
+  records — the union is **24 opcodes**, adding `34,35,61,68,253`.
+
+### 88.3 — What the machine actually is: a spreadsheet, not a program
+
+Reading the handlers in full settles the architecture. It is a 32-bit integer
+stack machine (`ebx+0x54` = `{base,top,limit}`, push/pop at `0x102a8c80` /
+`0x102a8c50`, both `longjmp`ing on over/underflow) whose *program store is a
+variable file*:
+
+```
+ebx = dword [esp+0x40] @ 0x102aae0b   (arg 0, the machine)
+ebp = dword [esp+0x3c] @ 0x102aadf5   (arg 1, ONE 16-byte record)
+edi = dword [ebp+4]    @ 0x102aadfb   (that record's program words)
+```
+
+The 16-byte record is `{int32 nwords, int32 words*, int32 value, int32 tag}`.
+`PUSH` type 3 reads `[ebx+0x30] + i*16 + 8` and `STORE` writes the same slot —
+i.e. record *i*'s **value** field. So record *k* is a cell: it evaluates an
+expression and stores the result into slot *k*. The interpreter is invoked once
+per cell.
+
+Five live confirmations, all counted across **both** rolls (each figure is
+per-roll):
+
+| claim | evidence | result |
+|---|---|---|
+| record *k* in memory == record *k* in the file, over its **full** declared length | `vm_prog1` (0x800 bytes) vs `pcode-dls_1.7` | **3168/3168** |
+| in-memory `{nwords, tag}` == the file's `{nwords, type}` | `vm_ctx1` (0x40 bytes at arg 1) | **3168/3168** |
+| calls walk the record array by 16 bytes, in index order | raw `stack_dwords[1]` | **3156/3156** consecutive |
+| `arg6+0x160` == 264 (the record count) | `arg6_big` | **24/24** |
+| `arg6+0x168` == a live machine's arg-1 base | `arg6_big` vs `stack_dwords[1]` | **24/24** |
+
+3168 = **12 machines × 264 records**, and the 12 machines are the 12
+`0x1028b8d0` invocations §76.5 already counted (6 scenes × 2 passes). The
+machine pointer is `ebx == arg6 + 0x138` — which is *why* §76.6's
+`fcn.102ac310` reads its record array from `arg6[0x168]` and its count from
+`arg6[0x160]`: those are `ebx+0x30` and `ebx+0x28`, the same two fields the
+interpreter uses.
+
+Two negative structural results worth recording:
+
+* **No record stores anywhere but its own slot** (264/264), and **no record
+  reads a slot at or above its own index** (0 forward references). So the table
+  is a topologically ordered DAG evaluated in one forward pass — no fixpoint,
+  no aliasing.
+* Because of the first of those, **no VM result is observable in either
+  capture**: `vm_ctx1` at call *k* covers records *k…k+3*, all of which are
+  still zero because they have not run yet, and nothing ever writes backwards
+  into an already-dumped record. This is the reason the port cannot be diffed
+  cell-by-cell against the hardware, and it is a property of the hook placement,
+  not of the port.
+
+### 88.4 — `L` located: it is `vars[133]`
+
+§76.6 established `L` = `((int32*)&buf_m258)[22]`, the 23rd value
+`fcn.102ac310` extracts by walking the record array and taking `[e+8]` wherever
+`[e+0xc] == 1` (`0x102ac3e8`). §88.3's third row makes the `+0xc` tag readable
+statically: it is the file's own per-record `type` field, confirmed 3168/3168
+on both rolls.
+
+In `pcode-dls_1.7` exactly **130 records carry tag 1** — records 134…263,
+contiguous. The 23rd of them is **record 156**, and its entire program is:
+
+```
+   0: PUSH v133
+   3: STORE v156
+   5: HALT
+```
+
+So **`L == vars[133]`**. The same shape holds in all nine shipped files —
+`extract[22]` is always a bare one-line copy cell (`pcode-dsba`: v67→v90;
+`pcode-hr200_2.7`: v101→v124; `pcode-hr200_noGrn_2.4`: v124→v147) — which is
+corroboration that §76.6's index-22 identification is picking out a real,
+deliberately-exported output and not landing on an arbitrary cell.
+
+### 88.5 — The port, and exactly what is not in it
+
+`tools/ansel/python-pipeline/pakon_vm.py`. **36 of the 50 real handlers are
+implemented** — every opcode reached by any of the 1720 records in the nine
+shipped files, plus every remaining handler whose body is a short unambiguous
+straight-line read (`NEG`, `SEL_GE`/`SEL_LE`, `HYPOT`, `DUP`, `SWAP`, the six
+comparisons, logical and bitwise `AND`/`OR`/`NOT`, `NOP`, and the unconditional
+skip). Transcription notes where the code is not what the mnemonic suggests:
+
+* Opcode **48** is `-|x|`, not `|x|`: `0x102ab121` `test eax,eax ; jge` →
+  the **non-negative** branch is the one that runs `neg`. Written as read.
+* Opcode **55** (`CSKIP`) is `neg/sbb/inc` (`0x102abd94`), i.e. it pushes 1 when
+  the popped condition is **zero**, then skips forward past that many
+  `254, 9191, 254` label triples. A true condition skips one triple, a false
+  one skips two — the emitter puts an empty block immediately after the branch,
+  which is why both arms skip at least once.
+* Opcode **54** additionally halts its scan on a `254, 9292, 254` triple and
+  leaves the cursor **on** the `9292` word, which the fetch then rejects as an
+  invalid opcode (handler 50, `return -110`). That is what the code does; it is
+  reproduced rather than smoothed over. No shipped record uses opcode 54.
+* Vendor error codes are carried through rather than invented: `-110` invalid
+  opcode (`0x102abf42`), `-101` divide by zero (`0x102abe17`), `-105` bad
+  count (`0x102abe37`), `-106` stack empty (`0x102abed3`), `-23`/`-24` the two
+  `longjmp` values from push/pop.
+* `TANH` (opcode 16) is `_ftol(tanh(x * f32(0x3a83126f)) * f32(0x447a0000))`,
+  both constants read from the DLL at `0x105a0800` / `0x105a882c`. The port
+  computes in IEEE double where the vendor used x87 80-bit; that is a stated
+  ±1-LSB risk on this one opcode, not a verified equivalence.
+
+**14 handlers are deliberately not implemented**, and every one of them is
+unreachable from any shipped record: opcodes 37–41, 44, 45, 51–53 and 67 all
+dereference machine sub-objects at `ebx+0x38`, `ebx+0x48` or `ebx+0x50` that
+nobody has captured or modelled; opcode 46 is pure but is a long piecewise
+ratio classifier with no consumer; opcodes 42 and 43 are pure and are visibly
+the `fos_opening_axes` RGB→Y/C1/C2 transform (same `0x186a0` scale, same
+`0x1524a/0x1de6a/0x11436` biases, same `0x306e8227/0x111f883d/0x3b510a6f`
+magics as `pakon_fos.fos_opening_axes`), but their four operands are aliased
+across three interleaved `esp` slots and a single unambiguous reading was not
+established, so they are **left out rather than guessed**. Likewise `PUSH`
+source types 0/1/2/5 (arrays at `ebx+0x24` and `ebx+0x1c`, stride 0x28) are
+unported; the shipped records only ever use types 3, 4 and 6.
+
+Self-check (`python3 tools/ansel/python-pipeline/pakon_vm.py`), across all nine
+shipped `pcode-*` files:
+
+```
+pcode-dls_1.7            264 records   decode to halt 264/264   run 264/264
+pcode-dsba               117 records   decode to halt 117/117   run 117/117
+pcode-dsba.orig          109 records   decode to halt 109/109   run 109/109
+pcode-dsbaRomm           103 records   decode to halt 103/103   run 103/103
+pcode-erimm_hr200_2.5    257 records   decode to halt 257/257   run 257/257
+pcode-hr200_2.5          255 records   decode to halt 255/255   run 255/255
+pcode-hr200_2.6          181 records   decode to halt 181/181   run 181/181
+pcode-hr200_2.7          181 records   decode to halt 181/181   run 181/181
+pcode-hr200_noGrn_2.4    253 records   decode to halt 253/253   run 253/253
+```
+
+1720 records, every one decoding to its own halt and executing to completion
+without touching an unimplemented opcode. Note precisely what that is and is
+not: the run uses a **synthetic** input vector (see §88.6), so it proves
+*coverage and termination*, not arithmetic equivalence. It is not a tier-1
+result and is not presented as one.
+
+### 88.6 — Why `L` still does not come out, stated plainly
+
+`vars[133]`'s dependency closure is **105 records reading 88 distinct `in[]`
+indices** (both arms of every conditional; 103/85 on the fall-through arms
+alone), the largest index being 732.
+
+`in[]` is `*(ebx+0x64)` = `sba_obj+0x19c`, and `fcn.102ac310` sets it from its
+own 4th argument (`0x102ac327`: `mov dword [eax+0x19c], edx` from
+`[ebp+0x14]`), which `0x1028b8d0` supplies at `0x1028bf9c` as
+`lea eax, [esi+0x3c]` — i.e. **`arg11 + 0x3c`**, ~740 `int32`.
+
+Every capture in hand hooks `0x1028b8d0` at **entry**. At entry `arg11+0x3c` is
+almost empty: **56 of ~740 entries non-zero** on the twelve `arg3 == 0` calls
+(indices 3–23, 476–499, 550–561, 612, 730), and entirely zero on the twelve
+`arg3 == 1` calls. It is filled later inside the same call, before the
+`fcn.102ac310` call at `0x1028bfa8`. Run against the entry snapshot the table
+does exactly what it should: record 93 computes `in[729] − in[728]` = 0 and
+record 94 divides by it, and the port raises the vendor's own `-101`.
+
+So the honest status is: **the interpreter is ported and `L`'s address inside
+it is known exactly; `L`'s numeric value is not reproducible, because the VM's
+per-scene input vector has never been captured.** The blocker moved from "port
+50 handlers" (§86) to "port a 720-entry statistics vector's producer, or
+capture it" — and the second of those is one line.
+
+For the record, the 12 `sba_order_fpo_helper` arg-9 values these captures do
+carry, which any future run must hit:
+
+```
+roll A:  125   30  -102  -296   223    64      (each appearing twice)
+roll B: -186  -44    -2    -8    38   125
+```
+
+**The capture that closes it.** `sba_order_fpo_helper` is *already installed*
+at `0x1028ae00`, which `0x1028b8d0` calls at `0x1028c023` — after
+`0x1028bfa8`, so `in[]` is fully populated by then — and its arg 1 is the same
+`arg11` (§76.4's fifteen-argument table, live-confirmed: the helper's
+`stack_dwords[1]` equals the calc's `stack_dwords[11]` on all 12 calls). One
+`EXTRA_DUMP` row on that existing hook — `arg1 + 0x3c`, `0xb80` bytes — yields
+the real input vector for all 12 machines on a roll, and `pakon_vm.l_term()`
+then produces `L` directly, checkable against the six values above on each of
+two independent rolls. No new hook, no new function, no re-derivation.
+
+### 88.7 — Verdict
+
+1. **Encoding: 264/264 on both rolls**, derived per-handler from `add edi` on
+   each path and cross-checked against every shipped `pcode-*` file (1720
+   records, all decoding to their own halt).
+2. **The programs are shipped data**, all 264 in `pcode-dls_1.7`, the same file
+   `pakon_sba_pcode.py` already decodes stage 1 of. §87's "no generator" is
+   confirmed and strengthened.
+3. **36 of 50 handlers ported**, 14 skipped with the reason recorded per
+   opcode; none of the 14 is reachable from any shipped record.
+4. **`L = vars[133]`**, via record 156 = the 23rd tag-1 record, with the tag
+   field's identity confirmed 3168/3168 on both rolls.
+5. **`L` does not yet reproduce**, and the reason is the uncaptured `in[]`
+   vector at `arg11+0x3c`, not the interpreter. §88.6 gives the one-row capture
+   that closes it.
+6. §86.4's operand-table reading is **superseded**; its two "stragglers" were an
+   extraction artefact (`STORE`'s operand can be `0x00ff`, and conditional
+   records carry a second halt), not an encoding gap.
+
+**No production, golden or existing port file was changed by this pass.** The
+only new file is `tools/ansel/python-pipeline/pakon_vm.py`; scratch scripts live
+in `/tmp/pakon_re/vm/` and are not committed, per this doc's convention.

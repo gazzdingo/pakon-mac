@@ -15621,3 +15621,112 @@ a plausible wrong number. `pakon_fos_golden.py` re-run green this pass, so
 the constant term's own DLL-equivalence is current, not historical. Y was
 additionally verified independently on the v24 capture (§78.1, a different
 scan with different values) before U/V existed.
+
+## 80 — §61's outstanding re-diff finally run: the brightness gap is **not**
+closed — and the re-measurement surfaced a real, separate film_base bug
+(auto-detection landing one code off the 4095 rail), now root-caused and
+fixed for a measured 37-code improvement in R
+
+§61 landed a large, live-evidence-backed brightness change (the balance
+shift moved into the linear domain before the log) and explicitly deferred
+its own verification: *"the ~88-89 number is not claimed closed until the
+port is re-rendered against a real vendor reference and re-diffed."* That
+re-diff was never run. Sections since have repeated "the ~88-89 gap remains
+open" as though it were current, when in fact **nobody had measured it after
+the fix**. This section measures it.
+
+### 80.1 — The re-diff
+
+§31's own parameters, verbatim, against the same real vendor reference
+(`AA001.tif`, downloaded fresh; `scan-20260812-091633.bin`), current code,
+`PAKON_COLOUR_ENGINE=python`, `film_path="ColNeg"`, frame 0,
+`scale="preview"`:
+
+| | p0.1 | p1 | p5 | **p50** | p95 | p99 |
+|---|---|---|---|---|---|---|
+| R ours | 16 | 40 | 72 | **140** | 233 | 251 |
+| R AA001 | 0 | 10 | 17 | **90** | 235 | 252 |
+| G ours | 42 | 81 | 99 | **201** | 241 | 253 |
+| G AA001 | 8 | 11 | 17 | **103** | 239 | 251 |
+| B ours | 36 | 65 | 81 | **238** | 254 | 254 |
+| B AA001 | 7 | 10 | 18 | **139** | 246 | 255 |
+
+**Median delta after the fixes below: R +50, G +98, B +99**, against §31's
+original **R +88, G +89, B +78**.
+
+**So the gap is not closed.** R improved substantially; G and B did not.
+Whatever remains is now largely channel-specific rather than the uniform
+excess §31 described. Stated plainly because several sections have carried
+the "~88-89" figure forward on the strength of a measurement taken before
+§60/§61 changed the render path: that figure was stale, and the honest
+current numbers are the ones above.
+
+### 80.2 — The film_base bug the re-diff exposed
+
+The first re-diff run produced R +87, and its auto-detected `film_base` was
+`[4094, 2534, 2448]` — where §31 had used `[3107, 2490, 2414]`. An R base of
+**4094**, one code below the 4095 ceiling, is not a plausible Dmin.
+
+Instrumenting §41's own combine (which takes whichever of the film-side and
+leader-side candidates is HIGHER) on this roll:
+
+| ch | kept (film) | excluded (leader) | chosen | leader ceiling-bin |
+|---|---|---|---|---|
+| R | 3210 | **4094** | 4094 | 98.7% |
+| G | 2534 | 2251 | 2534 | 99.9% |
+| B | 2448 | 0 (sentinel) | 2448 | 100.0% |
+
+**The mechanism.** `exclude_ceiling` zeroes the `>= 4095` bin, which removes
+the saturated pixels but *not the clipping shoulder immediately below it*.
+On this roll R's leader population is 98.7% ceiling; the surviving 1.3% is
+essentially all shoulder, occupying bins 4090-4094, and that is still far
+more than FindDmin's own `n/1000` threshold — so the walk halts at 4094.
+That is a **censored** measurement ("clear film reads at the very top of the
+linear range"), not a Dmin, and the `max()` then lets it override a
+perfectly good film-side 3210.
+
+G and B escaped only by luck: G's leader walk happened to land low (2251,
+losing the `max()`), and B's was saturated hard enough to trip the vendor's
+own all-clipped sentinel (0, which §41 already refuses to promote). R sat in
+the one regime that produces a high-but-wrong number.
+
+### 80.3 — The fix
+
+`film_base_combine` now rejects a leader candidate that lands within
+`FILM_BASE_LEADER_RAIL_GUARD` (= 2) codes of the ceiling, returning the
+kept/film code unchanged. Deliberately the smallest guard that covers the
+measured failure (R's 4094), and well clear of the ~4070-4090
+unsaturated-leader band this function's own docstring cites as genuinely
+informative — so the roll §41 added this path for is untouched.
+
+Effect, measured on the same frame and reference: R's auto `film_base` goes
+`4094 → 3210` (against §31's independently-chosen 3107), and R's median
+delta goes **+87 → +50**. G and B are byte-unchanged, as expected — their
+`film_base` never came from the leader path.
+
+`tools/test_calib.py` 200/200 and `tools/test_render_f135.py` pass.
+
+### 80.4 — What this does and does not settle
+
+* **Settled:** §61's deferred verification is done; the gap is measured, not
+  assumed. A real auto-detection bug is found, root-caused to a specific
+  mechanism, fixed, and the fix's effect quantified.
+* **Not settled:** G and B remain ~+98/+99. That is now the dominant
+  remaining error and it is *not* explained by film_base, by §61's re-order,
+  or by anything §31-§53 ruled out. It is a narrower, better-shaped target
+  than the original uniform-excess framing, but it is open.
+* **Unrelated to `orderFpo`:** §79's golden result addresses per-frame
+  *variation* (the real balance shift moves ~290 codes across frames while
+  the port's `preference_shift_words` takes only DPI parameters and emits an
+  identical shift for every frame). That is a different defect from this
+  section's channel-specific offset, and wiring it remains gated on Y's `L`
+  term, which §78/§79 verified by capture rather than computation.
+
+**Verification.** `AA001.tif` and `scan-20260812-091633.bin` fetched fresh
+from the drop server for this pass. The film_base candidate table comes from
+wrapping `film_base_combine` in-process and recomputing the excluded-side
+walk with the function's own `film_base_code_from_hist`, not from
+re-implementing the walk. Both re-diff runs (before and after the fix) used
+identical parameters, and the pre-fix run was additionally repeated with
+§31's explicit `film_base` to confirm the difference was attributable to
+detection rather than to any other change.

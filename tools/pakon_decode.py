@@ -584,6 +584,16 @@ def rpd12_to_u16(rpd12: np.ndarray) -> np.ndarray:
 # is the vendor's; the arrangement is ours. Rendered F-135 colour is provisional.
 F135_INVERT_PORTED = False
 
+# docs/74 §80. How many codes below the ceiling still count as "on the rail"
+# for the excluded/leader population's own FindDmin walk. 2 (i.e. 4094-4095 at
+# n_bins=4096) is deliberately the smallest guard that covers the measured
+# failure: R's leader walk on scan-20260812-091633 returns exactly 4094 with
+# 98.7% of that population in the ceiling bin. Kept tight on purpose -- the
+# ~4070-4090 unsaturated-leader band film_base_combine's docstring cites as
+# real information stays usable.
+FILM_BASE_LEADER_RAIL_GUARD = 2
+
+
 def film_base_code_from_hist(counts, n_pixels: int, n_bins: int = 4096,
                              exclude_ceiling: bool = False) -> int:
     """The shared FindDmin-from-histogram step (docs/74 §41).
@@ -652,6 +662,22 @@ def film_base_combine(kept_code: int, excl_counts, excl_pixels: int,
         return int(kept_code)
     leader_code = film_base_code_from_hist(
         excl_counts, excl_pixels, n_bins=n_bins, exclude_ceiling=True)
+    if leader_code >= n_bins - FILM_BASE_LEADER_RAIL_GUARD:
+        # docs/74 §80. Zeroing the ceiling bin removes the ">= 4095" pixels
+        # but NOT the clipping shoulder immediately below it. On a roll whose
+        # leader is almost entirely saturated, that shoulder is all that
+        # survives the walk, and FindDmin stops one or two codes off the rail
+        # — a CENSORED measurement ("clear film reads at the very top of the
+        # linear range"), not a Dmin. Measured on scan-20260812-091633: R's
+        # leader is 98.7% ceiling, its walk returns 4094, and that spurious
+        # value then wins the max() below against a perfectly good film-side
+        # 3210 — over-brightening the whole red channel of the render.
+        #
+        # Only the top FILM_BASE_LEADER_RAIL_GUARD codes are rejected, well
+        # clear of the ~4070-4090 unsaturated-leader band this function's own
+        # docstring cites as genuinely informative, so the case §41 added
+        # this path for is untouched.
+        return int(kept_code)
     return max(int(kept_code), int(leader_code))
 
 

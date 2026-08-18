@@ -103,6 +103,7 @@ void HookCore_BuildRealTable(HookEngine *eng) {
         (void *)&Thunk_21, (void *)&Thunk_22, (void *)&Thunk_23,
         (void *)&Thunk_24, (void *)&Thunk_25, (void *)&Thunk_26,
         (void *)&Thunk_27, (void *)&Thunk_28, (void *)&Thunk_29,
+        (void *)&Thunk_30,
         /* Thunk_23 fixes a real, latent NULL-entryThunk bug left by the
          * prior commit (6d2e36a) that inserted analyze_scp_lut_balance
          * mid-array without adding a matching thunk -- see hookstub.S's
@@ -712,6 +713,33 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "no exit hook is needed and none is taken.",
           "docs/74 SS66, SS72 (esp. SS72.2 arg table, SS72.3 case-0 read, "
           "SS72.7 capture spec); r2 af/axt safety audit 2026-08-17", 0, 0, 0, 0, 0 },
+
+        /* ---- orderFpo chroma helper (docs/74 SS76, v24) ---- */
+        { "PakonIMAu.dll", 0x1028ae00, "sba_order_fpo_helper",
+          "fcn.1028ae00 (1897 B, 15 cdecl args) -- the helper 0x1028b8d0 "
+          "calls at 0x1028c023 to compute the chroma residual that becomes "
+          "the orderFpo U/V terms. SS76 derived the U/V arithmetic in full "
+          "(a weighted mean over 864 dens samples, 50x83 int8 weight table, "
+          "round-half-away-from-zero divide) and needs no emulation of it -- "
+          "but could NOT statically derive the Y term, an int32 read from a "
+          "stack slot (L[-0x200]) that nothing in 0x1028b8d0's own 912 "
+          "instructions ever writes. SS76 traced it to this function's own "
+          "arg 9. Hooking here captures that dword directly: the engine "
+          "already logs the first 16 raw stack dwords on every entry, and "
+          "this function's 15 args all fall inside that window, so arg 9 is "
+          "captured with NO extra dump row at all -- and the same line "
+          "cross-checks SS76's whole 15-arg reconstruction for free. "
+          "SAFETY (r2 af+axt 2026-08-17, this table's own standard): exactly "
+          "ONE real CALL-type xref (fcn.1028b8d0 @ 0x1028c023) and zero "
+          "CODE-type jmp/jcc entries; `af` resolves to 0x1028ae00 itself, "
+          "its own entry, not a containing function. Prologue "
+          "`sub esp,0x5c` (3 B) + `movsx eax, word [esp+0x70]` (5 B) is "
+          "position-independent with no rel32 in the first 5 bytes -- a "
+          "clean MinHook relocation target. Entry-only (wantExitDefault=0): "
+          "the wanted value is an INPUT argument, so the return adds "
+          "nothing.",
+          "docs/74 SS76 (U/V derivation, and Y's L[-0x200] traced to this "
+          "function's arg 9); r2 af/axt safety audit 2026-08-17", 0, 0, 0, 0, 0 },
     };
 
     int i;
@@ -943,5 +971,39 @@ const ExtraDumpSpec g_extraDumps[] = {
     { "sba_order_fpo_calc", "arg6_unknown", EXTRA_DUMP_STACK_PTR, 6, 0, 0, 0x100 },
     { "sba_order_fpo_calc", "arg7_3c34", EXTRA_DUMP_STACK_PTR, 7, 0, 0, 0x40 },
     { "sba_order_fpo_calc", "arg10_local2", EXTRA_DUMP_STACK_PTR, 10, 0, 0, 0x64 },
+    /* v23 (docs/74 SS76) -- the v22 sizes were too small, proven by running
+     * the real function under Unicorn on v22's own data: it early-exits with
+     * return code 0x18bd at the bounds check at 0x1028b928/938/945/94e, which
+     * reads `word [edx+0x104]` and `word [edx+0x106]` where edx == arg 6.
+     * v22 dumped only 0x100 bytes of arg 6, so those two words fell outside
+     * the capture and the harness read poison. That was the one size v22's
+     * own comment flagged as a guess -- now measured, not guessed again.
+     *
+     * These rows are ADDITIVE alongside the v22 rows above, not replacements.
+     * A larger request is IsBadReadPtr-guarded as a whole range, so if a
+     * buffer turns out to be smaller than asked for, the big row comes back
+     * `"readable":false` while the original small row still carries its data.
+     * Belt and braces: cheap (~11.5 KB/call, ~276 KB per capture) against the
+     * cost of another hardware round trip.
+     *
+     * Sizes derived from a mechanical scan of the function's own disassembly
+     * for real memory operands (lea excluded -- it computes an address
+     * without touching memory, and this function does use lea with very large
+     * constants like +0x11436 as plain arithmetic, which would badly mislead
+     * a naive grep): the deepest real accesses are [edx+0x106] (arg 6),
+     * [edi+0x158], and a block of dword writes/reads spanning
+     * [esi+0xb7c]..[esi+0xbac]. Which argument esi/edi hold at those points
+     * is not yet pinned (both are reassigned several times), so arg 5 and
+     * arg 7 are both sized past 0xbb0/0x158 respectively rather than
+     * asserting a mapping this pass has not established. */
+    { "sba_order_fpo_calc", "arg0_big", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x1500 },
+    { "sba_order_fpo_calc", "arg1_big", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x1000 },
+    { "sba_order_fpo_calc", "arg2_big", EXTRA_DUMP_STACK_PTR, 2, 0, 0, 0x200 },
+    { "sba_order_fpo_calc", "arg5_big", EXTRA_DUMP_STACK_PTR, 5, 0, 0, 0xC00 },
+    { "sba_order_fpo_calc", "arg6_big", EXTRA_DUMP_STACK_PTR, 6, 0, 0, 0x400 },
+    { "sba_order_fpo_calc", "arg7_big", EXTRA_DUMP_STACK_PTR, 7, 0, 0, 0x1100 },
+    { "sba_order_fpo_calc", "arg10_big", EXTRA_DUMP_STACK_PTR, 10, 0, 0, 0x200 },
+    { "sba_order_fpo_calc", "arg11_big", EXTRA_DUMP_STACK_PTR, 11, 0, 0, 0x1000 },
+    { "sba_order_fpo_calc", "arg12_big", EXTRA_DUMP_STACK_PTR, 12, 0, 0, 0x200 },
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0 }, /* sentinel */
 };

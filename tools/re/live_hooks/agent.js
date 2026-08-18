@@ -494,6 +494,27 @@ const HOOKS = [
     cite: 'docs/74 §66, §72 (esp. §72.2 arg table, §72.3 case-0 read, ' +
           '§72.7 capture spec); r2 af/axt safety audit 2026-08-17',
   },
+  {
+    dll: 'PakonIMAu.dll', va: 0x1028ae00, id: 'sba_order_fpo_helper',
+    role: 'stage', pixelBuffer: false,
+    desc: 'fcn.1028ae00 (1897 B, 15 cdecl args) -- the helper 0x1028b8d0 ' +
+          'calls at 0x1028c023 to compute the chroma residual behind the ' +
+          'orderFpo U/V terms. §76 derived U/V in full and needs no ' +
+          'emulation of them, but could not statically derive the Y term: ' +
+          'an int32 read from a stack slot (L[-0x200]) that nothing in ' +
+          "0x1028b8d0's own 912 instructions ever writes. §76 traced it to " +
+          "this function's own arg 9. The engine already logs the first 16 " +
+          'raw stack dwords per entry and all 15 args fall inside that ' +
+          'window, so arg 9 is captured with no extra dump row, and the ' +
+          "same line cross-checks §76's whole 15-arg reconstruction. " +
+          'Safety (r2 af+axt 2026-08-17): exactly one real CALL xref ' +
+          '(fcn.1028b8d0 @ 0x1028c023), zero CODE-type jmp/jcc entries, ' +
+          '`af` resolves to its own entry, and the prologue ' +
+          '`sub esp,0x5c` + `movsx eax, word [esp+0x70]` is ' +
+          'position-independent with no rel32 in the first 5 bytes. ' +
+          'Entry-only: the wanted value is an input argument.',
+    cite: 'docs/74 §76; r2 af/axt safety audit 2026-08-17',
+  },
 ];
 
 // ---------------------------------------------------------------------

@@ -18060,3 +18060,76 @@ right shape, not a demonstrated path**. It could reach the shift indirectly, or
 deposit a value the per-scene pass later reads. Tracing that is the next static
 step; asserting it now would be exactly the "structurally suggestive" error
 CLAUDE.md warns about.
+
+## 104 — Two distinct routes to `set_shifts`, and the order-wide one is
+`ColorNegativePath::analyzeBalanceOrder`
+
+§103.3 left open whether the order-wide stage can reach the shift setter at
+all, having established it does not call it directly. Settled with the
+project's own tool rather than by inference (`tools/re/reachability.py walk`,
+CLAUDE.md's standard for this question).
+
+### 104.1 The walk
+
+Seeding at `CnEnhanced_analyzeOrderWide` (`fcn.10068bd0`):
+
+```
+  functions reached  : 284
+  code bytes (realsz): 134,867
+  indirect call sites: 402      (not followed)
+```
+
+Membership of a 284-function closure is weak evidence by itself, so the useful
+question is *which* of `sba_set_shifts`'s three direct callers is in it:
+
+```
+  fcn.100575e0                          NOT in closure
+  fcn.1006a160  analyzeSceneNoOrderWide NOT in closure
+  fcn.10101220                          in closure
+```
+
+**Exactly one**, and pointedly *not* the per-scene function of §103.1. So the
+two scopes reach the shift setter by **separate routes** — this is not one
+shared path reached twice.
+
+### 104.2 The order-wide route names itself
+
+`fcn.10101220`'s string table:
+
+```
+  str.ColorNegativePath::analyzeBalanceOrder
+  str.Atc_ansel_srclibPaths.ansel\cnMethods.cpp
+  str.afterSCPLutFos   str.afterSCPLutSba   str.scpLut   str.dmin
+  str."Fos capability not found."   str."Sba capability not found."
+```
+
+`fcn.10101220` = **`ColorNegativePath::analyzeBalanceOrder`** — *balance*, at
+*order* scope, i.e. roll-level balance analysis. That is precisely the function
+whose existence §103.2 inferred from the `NoOrderWide` suffix, and it is the
+one the order-wide stage reaches.
+
+So the architecture is:
+
+```
+  per scene :  AnsCnEnhancedPath::analyzeSceneNoOrderWide -> sba_set_shifts
+               (gated on dynamic_cast<AnsSCPLutCapability*>, §102.1)
+
+  per roll  :  CnEnhanced_analyzeOrderWide -> ... -> 
+               ColorNegativePath::analyzeBalanceOrder -> sba_set_shifts
+```
+
+### 104.3 Standing of the claim
+
+This **strengthens** §103.3's hypothesis without proving it. What is now
+established: a roll-scope balance function exists, it reaches the shift setter,
+and it does so by a route the per-scene function does not share. What is **not**
+established: that this is where §101's luma term comes from. Reachability is
+not a data-flow proof — the walk follows direct call edges only, ignores 402
+indirect sites, and says nothing about whether that path executes on this
+capture or what value it would write.
+
+Promoting it needs either the function emulated on real inputs (the
+`wine_host`/Unicorn route, which now has a named target) or a capture showing
+`set_shifts` firing from this call site. `sba_set_shifts` fired 13 times in the
+v28 capture against 6 scenes — a count no one has yet accounted for, and one
+this two-route structure could explain.

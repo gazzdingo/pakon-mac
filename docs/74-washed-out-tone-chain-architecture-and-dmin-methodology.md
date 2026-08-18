@@ -17652,3 +17652,106 @@ frames within ±1 — *while being fed 384 bytes of garbage*. That it gets any
 frame exactly right under those conditions is evidence the port of the
 surrounding structure is sound. The 3/6 is not a mystery to solve; it is a
 known-deficient input, with the deficit measured and the fix built.
+
+## 99 — **`A` is explained**: the shift's chroma IS `orderFpo`'s chroma, scaled
+by ≈ −1.04. Two engines agree the port is correct, and §96's axis labels were
+wrong
+
+Three results landed together: an independent execution engine, a correction to
+§96, and the closed form for `A`.
+
+### 99.1 The real DLL runs on this Mac — and confirms the Unicorn port
+
+New: `tools/re/live_hooks/wine_host/`. `pref_host.exe` loads the **real**
+`PakonIMAu.dll` under Wine 11.0 on macOS — no XP box, no scanner — and calls
+`fcn.1028c780` with the captured arguments.
+
+```
+              Wine (real DLL)        Unicorn (§97)
+  call 0   (800, 388, 136)        (800, 388, 136)
+  call 1   (829, 403, 167)        (829, 403, 167)
+  call 2   (798, 359, 129)        (798, 359, 129)
+  call 3   (797, 367, 130)        (797, 367, 130)
+  call 4   (768, 340, 103)        (768, 340, 103)
+  call 5   (727, 312,  56)        (727, 312,  56)
+```
+
+**Byte-identical on all 12 calls, anchors included.** One engine stubs 471
+bound imports by hand and sets its own FPU word; the other uses the real
+loader, real MSVCR71 and the DLL's own FPU state. Agreement at this level means
+**the Unicorn port is correct**, and §97's 3-of-6 miss is a *captured-data*
+deficit (§98's 384 poisoned bytes), not an engine defect. That was worth
+settling before building anything further on the emulator.
+
+`LoadLibrary` needs `MSVCR71`, `MSVCP71`, `ekjpegi`, `KODAKCMS`,
+`xerces-c_2_2_0` (else error 126); all ship in the vendor installer.
+
+### 99.2 §96's axis labels were wrong
+
+§96 named the chroma axes `U = (R−B)/√2` and `V = (R−2G+B)/√6`. Checked against
+`pakon_fos.py` — this project's own **Unicorn-verified** port of the DLL's axis
+transform (`0x1028f608`), lines 350–351:
+
+```python
+    c1 = ... (2 * g - b - r) ...
+    c2 = ... (b - r) ...
+```
+
+So the two chroma axes are in the **opposite order** and both **sign-inverted**
+from §96's text. The *basis* claim in §96 stands — the constants really are
+`1/√3`, `1/√2`, `1/√6`, and `k` really is the luma axis — but anyone using
+§96's formulae would get the chroma wrong. Corrected here.
+
+### 99.3 `A` is emergent, not vendor data
+
+With the axes right, the relationship falls out. Independently re-derived here
+from the six vendor shifts (§95.1) and the six §79-golden `orderFpo` triples:
+
+```
+         shift.C1  fpo.C1   ratio      shift.C2  fpo.C2   ratio
+   1      -65.32      62   -1.0535      -469.52    453   -1.0365
+   2      -78.38      74   -1.0592      -468.11    451   -1.0379
+   3      -84.92      82   -1.0356      -472.35    456   -1.0359
+   4      -79.20      76   -1.0421      -472.35    455   -1.0381
+   5      -78.38      75   -1.0451      -469.52    453   -1.0365
+   6      -65.32      62   -1.0535      -473.76    457   -1.0367
+
+  best fit:  C1 −1.04705 (rms 0.60)    C2 −1.03692 (rms 0.37 on ~470 = 0.08 %)
+```
+
+**The shift's chroma is `orderFpo`'s own chroma, negated and scaled by ≈1.04.**
+Against §94.1's best-of-anything correlation of `+0.44` and §95.3's "zero
+fields above `|corr| = 0.95`".
+
+**This answers §94.4's open question.** `A` is not in the shipped DPI because
+`A` was never *in* the DPI — it is emergent from `orderFpo`. It also corrects
+§94.2: the roll-to-roll move in `A` (v25 `[794.0, 388.7, 136.0]` → v28
+`[819.2, 394.0, 153.2]`) was read there as noise around a constant. It is not —
+`orderFpo`'s own roll means moved by the amount required, and the predicted `A`
+matches both rolls to within ±0.3.
+
+The correspondence is **pointer identity**, not a fitted permutation:
+`sba_set_shifts` arg 4 — called immediately after each `sba_preference` — is
+the same address `balance_area_image` later reads `balance_shift_4b6` from.
+Zero degrees of freedom. **§93.3's open item is closed**, and the recovered
+permutation is the identity that §94.1 already assumed.
+
+### 99.4 What is now actionable, and what is not
+
+`orderFpo` is already golden, so **the port can emit the vendor's chroma
+exactly, today**: v28 frame 1 gives `−1.047 × 62 = −64.9` against the vendor's
+−65, and `−1.037 × 453 = −470.0` against −470. The port currently emits
+`(655, −96, −359)` where the vendor emits `(k, −65…−85, −445…−482)` — red-blue
+~24 % short, green-magenta 13–48 % too large, matching §94.3's per-channel
+defect and §93.1's RPD floor from a third direction.
+
+**Not established:** the closed form of the ≈1.04 gain. A single exact gain is
+*refuted* at LSB level (the per-frame intervals do not intersect, by 0.3 %); an
+affine relation is *refuted* (no feasible `(a, b)`); the DLL's integer axis
+scaling is within 0.1 % of orthonormal and so is **not** the source; and
+`neo/neu = 1.0359` is outside frame 1's own interval. The dependence is
+established well past argument; the exact expression is not.
+
+**And the luma axis is still open.** `k` is untouched by all of this — a 3×3
+fit gives diagonal chroma rows at rms 0.43 while the Y row is junk at rms 56.
+`k` remains what v29 is for.

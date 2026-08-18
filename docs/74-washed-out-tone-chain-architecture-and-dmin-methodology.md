@@ -15487,3 +15487,137 @@ was produced by running `pakon_fos.fos_opening_axes` directly, and
 `pakon_fos_golden.py` was re-run green this pass. The interpreter
 identification came from a full `af`+`pdf` read of `fcn.102aadf0` at its own
 real boundary, including the switch-table addresses cited.
+
+## 79 — **`orderFpo` is GOLDEN**: all three components (Y, U, V) reproduce
+bit-exactly on real hardware data, 12/12, with no fitted parameter anywhere
+
+The v25 capture closes this thread. Every component of the per-scene
+`orderFpo` triple that `fcn.1028b8d0` writes into `pref_data`
+(`scene+0x38a2`) is now reproduced exactly by ported code, verified against
+the values the vendor's own binary produced on the real scanner.
+
+### 79.1 — The result
+
+Capture `live_hooks_20260817-181440.jsonl` (`md5
+7f048c8fecbd314ed7080a3c4756775c`, 34,535,042 bytes). Runner:
+`tools/ansel/python-pipeline/pakon_orderfpo_triple_golden.py`.
+
+```
+scene  1: got (2116, 58, 465)  want (2116, 58, 465)   PASS
+scene  2: got (2038, 70, 447)  want (2038, 70, 447)   PASS
+scene  3: got (1906, 47, 454)  want (1906, 47, 454)   PASS
+scene  4: got (1730, 53, 450)  want (1730, 53, 450)   PASS
+scene  5: got (2229, 63, 429)  want (2229, 63, 429)   PASS
+scene  6: got (2073, 65, 444)  want (2073, 65, 444)   PASS
+   ... and the same six again on the capture's second pass ...
+pass 12  fail 0  of 12
+```
+
+Six distinct scenes, each reproduced on both of the capture's independent
+passes. Y spans 1730…2229, U spans 47…70, V spans 429…465 — a real range,
+not a degenerate match near zero.
+
+### 79.2 — What is actually being verified
+
+```
+Y = fos_opening_axes(arg5).Y  + L                      (L = helper arg 9)
+U = fos_opening_axes(arg5).C1 + rdiv(num1, den)
+V = fos_opening_axes(arg5).C2 + rdiv(num2, den)
+```
+
+* `fos_opening_axes` is this project's own **already-Unicorn-verified**
+  port function (`pakon_fos`, `pakon_fos_golden.py` green), not a
+  re-derivation for this thread.
+* `L` is captured directly — the helper `fcn.1028ae00`'s own arg 9, logged
+  as a raw stack dword by the hook engine with no interpretation applied.
+* The U/V residual is §76.4's derived weighted-mean chroma computation over
+  864 dens samples, transcribed instruction by instruction and implemented
+  in `pakon_orderfpo_uv_golden.compute_uv`.
+
+**Every input is real captured data; every expected value is the real
+triple the vendor's binary wrote**, read from the `sba_preference` dump and
+matched to its producing call by `pref_data` address (the keying §73.2
+established). There is no tolerance, no tuning knob, and no fitted constant
+in the loop.
+
+### 79.3 — Why this is not a whole-function emulation, and why that is the
+right answer rather than a compromise
+
+§75.2/§77 pursued a full Unicorn run of `0x1028b8d0` on captured buffers.
+That path was carried far — PE load, real-address buffer mapping, 471 bound
+imports stubbed, `calloc`/`malloc`/`free` implemented, `_setjmp3` corrected
+to its C-standard return, the `arg6` bounds gate resolved with real bytes —
+and it still cannot complete, for a reason that is structural rather than
+incidental: §78.2 found the function reaches a **bytecode interpreter**
+(`fcn.102aadf0` — 16-bit opcodes, 254-entry dispatch table at `0x102abf4c`,
+`0xff` halt), whose operands scatter unpredictably across ±200 KB and differ
+per scene. Emulating that would mean capturing the interpreted program and
+every buffer it touches.
+
+The decomposition approach reaches the same standard by a shorter route:
+**derive the arithmetic statically, then verify each term against real
+captured data.** It is the pattern that closed Y in §78 and U/V here, and
+it produces exactly what a full emulation would have produced — the ported
+code's output, checked against the vendor's own output, on real inputs.
+
+### 79.4 — The corroboration that accumulated along the way
+
+Independent of the final numeric result, several predictions made from
+static reading alone were confirmed by data captured afterwards:
+
+* The helper's own arguments read `arg2 = 864` (sample count),
+  `arg4/arg5 = 50/83` (weight-table dimensions) — exactly the constants
+  §76.4 derived from the push sequence before any of this data existed.
+* The weight table at the derived offset is exactly `50 × 83 = 4150` bytes
+  with values in `0…100`, matching §76.4's reading of them as percentages.
+* The selection mask at `arg11+0xc20` contains exactly `{0, 1}`, matching
+  the `== 1` test.
+* The dens block at `arg0+0x1440` reads 1339…2949, clustered around the
+  derived `Yo = 2029` — real luma density codes at the predicted offset.
+* `i8[arg2+4] < 0` on every live call, triggering §76.4's documented
+  `R1sq = 2000²` special case.
+
+Each of these would have been garbage had an offset been wrong.
+
+### 79.5 — Two real errors found and corrected, recorded rather than buried
+
+1. **`_rdiv`'s half-step.** First transcribed as `abs(d) >> 1`; the DLL's
+   own `mov eax,d; cdq; sub eax,edx; sar eax,1` at `0x1028b27e` is
+   *truncating division by two*. The two agree for every divisor that
+   occurs here (`N*100` = 86400, `cnt*100`, both positive) so it would never
+   have surfaced — corrected to the faithful form anyway, and both
+   primitives then checked against C truncation semantics over ~16,000
+   cases including negative divisors, zero mismatches.
+2. **The dens buffer size.** §76's requirement "`arg0+0x1440` × `0x1440`"
+   was read as a total rather than an offset-plus-length; the three dens
+   arrays end at `0x2880`. v24's `0x1500` covered ~96 of 864 samples. The
+   harness had already been pointing straight at it, faulting first at
+   `arg0+0x1440` and then `arg0+0x1b00`.
+
+### 79.6 — Scope, stated precisely
+
+**What is now golden:** the per-scene `orderFpo` triple — the head of the
+per-frame balance chain, and the input `Preference` consumes.
+
+**What this does NOT yet establish:** that closing the balance chain closes
+the ~88-89 sRGB code brightness gap this doc has chased since §31. That
+remains the motivating hypothesis, well-supported (this is the stage that
+sets colour balance) but unproven. `docs/76`'s remaining steps — Δ's source
+(§73.6: measured, real, luma-uniform, source still unidentified after §73.5
+eliminated the nominated candidate) and the wiring itself — are unchanged
+by this section.
+
+**Portability.** Nothing here is specific to the owner's unit. `dens` is
+derived from the film image, not from per-unit calibration; `arg5` is
+DPI-static configuration constant across every capture taken. The live
+scanner was the *instrument* for verification, not a dependency of the
+result — the verified formula applies to any F-135 and any frame, exactly
+as the six-subsystem tone chain and the colour matrix do.
+
+**Verification.** Capture md5 recorded above. The runner reads only real
+captured buffers and real captured arguments; it refuses to compute on a
+truncated `arg0` (reporting the exact byte shortfall) rather than producing
+a plausible wrong number. `pakon_fos_golden.py` re-run green this pass, so
+the constant term's own DLL-equivalence is current, not historical. Y was
+additionally verified independently on the v24 capture (§78.1, a different
+scan with different values) before U/V existed.

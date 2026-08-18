@@ -116,6 +116,32 @@ def read_one(dev, n, length, timeout=4000):
     return bytes(out)
 
 
+# The vendor's own protocol bound (0x100160bc: cmp eax, 0x2000) -- a real
+# section's length field is always small (398 or 36 healthy, but even a
+# short/corrupted primary is still a plausible small value; a real live read
+# saw 346 -- docs/69, live run 2026-08-18). Junk reads decode to a length
+# field far outside this: the FX2 boot personality read back as length
+# 0x350F05C0, the unpopulated-address ramp (00 01 02 03...) as 0x03020100.
+VENDOR_LENGTH_BOUND = 0x2000
+
+
+def looks_like_populated(probe: bytes) -> bool:
+    """Cheap check on a short probe read: worth the full-length read?
+
+    Only says no on the two junk shapes actually seen on real hardware
+    (docs/69, live run 2026-08-18) plus bus-idle. Never says no just because
+    the length field is *wrong* -- a short/corrupted-but-real primary (as
+    section A was on this project's own unit) still has a small, plausible
+    length field, and probing must never be the reason a real chip gets
+    skipped. A wrong guess here is only allowed to cost time, never
+    correctness.
+    """
+    if len(probe) < 4 or len(set(probe)) <= 1:      # bus idle
+        return False
+    length = int.from_bytes(probe[0:4], "little")
+    return length <= VENDOR_LENGTH_BOUND
+
+
 def write_backup(path: str, data: bytes) -> None:
     """Write `data` to `path`, timestamping any prior file out of the way
     first instead of overwriting it.
@@ -155,6 +181,16 @@ def main() -> int:
     ap.add_argument("--force", action="store_true",
                     help="write a dump that FAILS validation, named .SUSPECT. "
                          "It is diagnostic output, not a backup.")
+    ap.add_argument("--full-scan", action="store_true",
+                    help="read every address at the full --length immediately, "
+                         "skipping the cheap single-chunk probe that normally "
+                         "decides whether an address is worth the full read. "
+                         "Only 0x52 and 0x51 are documented as populated; the "
+                         "other six read a recognisable junk pattern on real "
+                         "hardware (docs/69, live run 2026-08-18), so the "
+                         "probe skips those without reading them in full "
+                         "twice each. Use this if that heuristic is ever in "
+                         "doubt -- it costs time, never correctness either way.")
     args = ap.parse_args()
 
     here = os.path.dirname(os.path.abspath(__file__))
@@ -197,9 +233,21 @@ def _read_all(dev, args) -> int:
     """Read every address, validate, save only what verifies."""
     os.makedirs(args.out, exist_ok=True)
     digests, results = {}, {}
+    skipped = []
     print(f"\nreading with the vendor's parameters (wIndex {WINDEX:#06x}):")
     for n in range(8):
         i2c7 = n | 0x50
+
+        if not args.full_scan:
+            probe = read_one(dev, n, CHUNK)
+            if isinstance(probe, bytes) and not looks_like_populated(probe):
+                print(f"  n={n} I2C {i2c7:#04x}: probe ({len(probe)}B) "
+                      f"doesn't look populated, skipping the full "
+                      f"{args.length}B read -- {probe[:8].hex(' ')} "
+                      f"(--full-scan to force it anyway)")
+                skipped.append(n)
+                continue
+
         first = read_one(dev, n, args.length)
         if isinstance(first, str):
             print(f"  n={n} I2C {i2c7:#04x}: {first}")
@@ -223,8 +271,16 @@ def _read_all(dev, args) -> int:
               f"distinct {len(set(first))}")
         print(f"      {first[:16].hex(' ')}")
 
+    if skipped:
+        print(f"\n  {len(skipped)} address(es) skipped after a probe read: "
+              f"{skipped} (--full-scan to read them in full anyway).")
+
     if not results:
-        print("\n  nothing read.")
+        if skipped:
+            print("\n  every address's probe looked unpopulated -- nothing "
+                  "was worth a full read. --full-scan to double-check.")
+        else:
+            print("\n  nothing read.")
         return 1
 
     # If every address reads back the same bytes, the read is not addressing

@@ -178,6 +178,67 @@ try:
 except guard.TransferDenied as e:
     ok(False, f"denied: {e}")
 
+print("\nlooks_like_populated only rejects the junk shapes actually seen live")
+ok(not B.looks_like_populated(b"\xff" * 32), "bus idle (all 0xFF) rejected")
+ok(not B.looks_like_populated(bytes([0xC0, 0x05, 0x0F, 0x35] + [0] * 28)),
+   "the FX2 boot-personality junk shape (length 0x350F05C0) rejected")
+ok(not B.looks_like_populated(bytes(range(32))),
+   "the unpopulated-address ramp (length 0x03020100) rejected")
+ok(B.looks_like_populated(IMAGE[:32]),
+   "a real section header (length 398) accepted")
+ok(B.looks_like_populated((346).to_bytes(4, "little") + b"\x00" * 28),
+   "a short/corrupted-but-real primary (length 346, seen live) still "
+   "accepted -- probing must never be why a real chip gets skipped")
+
+print("\n_read_all's probe skips known junk without a full read, "
+      "never skips anything that looks real")
+import argparse                              # noqa: E402
+import tempfile                              # noqa: E402
+
+
+class MultiDev(FakeDev):
+    """One real image at 0x52, junk-ramp everywhere else -- like the live
+    2026-08-18 run (docs/69): every unpopulated address answered with the
+    same 00 01 02 03... ramp regardless of which one was selected."""
+
+    def ctrl_transfer(self, bmrt, req, wval, widx, data_or_len, timeout=None):
+        if req == B.READ and self.selected != 0x52:
+            n = data_or_len
+            return bytearray((i & 0xFF) for i in range(n))   # the ramp
+        return super().ctrl_transfer(bmrt, req, wval, widx, data_or_len,
+                                     timeout)
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    guard._selected_device = None
+    dev = MultiDev(IMAGE)
+    args = argparse.Namespace(out=tmp, length=len(IMAGE), force=False,
+                              full_scan=False)
+    rc = B._read_all(dev, args)
+    ok(rc == 0, f"a real 0x52 among seven junk addresses still succeeds "
+                f"(rc={rc})")
+    saved = os.listdir(tmp)
+    ok(saved == ["eeprom_n2_i2c52.bin"],
+       f"only the real device's backup was saved ({saved})")
+    # 1 select + 1 read for the probe, times 8 addresses, plus the full
+    # double-read (select-per-chunk) for just the one real one -- nowhere
+    # near 8 addresses' worth of full double-reads.
+    full_double_read_selects = 8 * 2 * ((len(IMAGE) + B.CHUNK - 1) // B.CHUNK)
+    ok(dev.selects < full_double_read_selects,
+       f"far fewer selects than reading all 8 in full twice each "
+       f"({dev.selects} vs {full_double_read_selects})")
+
+with tempfile.TemporaryDirectory() as tmp:
+    guard._selected_device = None
+    dev = MultiDev(IMAGE)
+    args = argparse.Namespace(out=tmp, length=len(IMAGE), force=False,
+                              full_scan=True)
+    B._read_all(dev, args)
+    full_double_read_selects = 8 * 2 * ((len(IMAGE) + B.CHUNK - 1) // B.CHUNK)
+    ok(dev.selects == full_double_read_selects,
+       f"--full-scan bypasses the probe and reads every address in full "
+       f"({dev.selects} vs {full_double_read_selects})")
+
 print("\nwrite_backup never silently overwrites a prior file")
 import tempfile                              # noqa: E402
 

@@ -758,22 +758,32 @@ class AnselEngine:
             setshifts_out = sba_apply.setshifts_12(
                 preference_a, preference_a, band3.planar, band3.num_lut
             )
-            # EXPERIMENT (docs/74 SS99.4), opt-in via PAKON_VENDOR_CHROMA=1.
-            # The vendor's per-channel shift base A, measured on two rolls, is
-            # ~(806.6, 391.4, 144.6) against this port's NBP-fpo of
-            # (671, 300, 164) -- R short ~136, G short ~91, B right within ~20.
-            # SS99.3 showed A's chroma IS orderFpo's chroma scaled by ~-1.04,
-            # so this is vendor data, not a fit. It does NOT include the
-            # per-frame luma term k (SS105, still unknown), so this tests the
-            # CHROMA half alone. Default behaviour is unchanged.
+            # EXPERIMENT (docs/74 SS110), opt-in via PAKON_VENDOR_CHROMA=1.
+            #
+            # SS109 substituted the vendor's per-channel base A in RGB space and
+            # made the render WORSE. That test was flawed: adding
+            # (135.6, 91.4, -19.4) in RGB also moves luma by ~120, so it
+            # conflated the chroma change with an unintended luma shift.
+            #
+            # This does it in the vendor's own basis instead, using the port's
+            # byte-faithful transform pair (0x1028c7f7 and its inverse at
+            # 0x1028cc33): decompose our shift, REPLACE ONLY THE CHROMA with
+            # the vendor's measured A, and put our own luma back unchanged.
+            # SS96 established k is the pure-(1,1,1) term, so holding Y fixed
+            # is exactly "apply the half we know and leave the half we do not".
             if os.environ.get("PAKON_VENDOR_CHROMA") == "1" and setshifts_out:
-                _A = (806.6, 391.4, 144.6)
-                _port = (671.0, 300.0, 164.0)
-                _d = tuple(a - p for a, p in zip(_A, _port))
-                setshifts_out = tuple(int(round(v + dv))
-                                      for v, dv in zip(setshifts_out, _d))
-                print(f"  [EXPERIMENT] vendor-chroma delta {tuple(round(x,1) for x in _d)}"
-                      f" -> setShifts {setshifts_out}")
+                _A = (806.6, 391.4, 144.6)          # SS94.2, two rolls
+                _ours = sba_pref.preference_rgb_to_opponent(*setshifts_out)
+                _vend = sba_pref.preference_rgb_to_opponent(
+                    int(round(_A[0])), int(round(_A[1])), int(round(_A[2])))
+                _r, _g, _b = sba_pref.preference_opponent_to_rgb(
+                    _ours.y, _vend.u, _vend.v)      # our luma, vendor chroma
+                _new = (int(round(_r)), int(round(_g)), int(round(_b)))
+                print(f"  [EXPERIMENT] opponent-space chroma swap: "
+                      f"{setshifts_out} -> {_new}   "
+                      f"(Y kept {_ours.y:.1f}; U {_ours.u:.1f}->{_vend.u:.1f}, "
+                      f"V {_ours.v:.1f}->{_vend.v:.1f})")
+                setshifts_out = _new
 
         print(
             f"  Ansel map: path={scene.ansel_path} src={scene.source_type} "

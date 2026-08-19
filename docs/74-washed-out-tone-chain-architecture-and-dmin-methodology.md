@@ -18578,3 +18578,77 @@ of what "wire the verified work" means here.
 
 The experiment is left in place behind its environment variable, and is **not**
 enabled by default.
+
+## 110 — The opponent-space rewrite also degrades the render — so the shift is
+**not separable from the inversion**, and the defect is upstream
+
+§109 substituted the vendor's `A` in RGB space and made things worse. That test
+was flawed — adding `(135.6, 91.4, −19.4)` moves luma by ~120 as a side effect,
+conflating two changes. This repeats it correctly.
+
+### 110.1 Method
+
+The shift is decomposed with the port's byte-faithful copies of the vendor's own
+transforms (`preference_rgb_to_opponent` @ `0x1028c7f7`, inverse @
+`0x1028cc33`), its **chroma replaced** with the vendor's measured `A`, and **our
+own luma restored unchanged**:
+
+```
+  (683, 297, 151) -> (736, 320, 74)
+  Y kept 653.0    U -98.0 -> -69.4    V -376.2 -> -468.1
+```
+
+Since §96 established `k` is exactly the `(1,1,1)` term, holding Y fixed is
+precisely "apply the half we know, leave the half we do not". Same capture,
+frame and parameters as the baseline.
+
+### 110.2 Result
+
+```
+  TONED RPD p1        baseline        1452 1452 1387   spread  65
+                      RGB swap §109   1543 1499 1323   spread 220
+                      opponent swap   1509 1479 1313   spread 196
+                      vendor (AA001)   928  944  928   spread  16
+
+  sRGB p50            baseline         142  199  234
+                      opponent swap    166  207  227
+                      vendor            90  103  139
+```
+
+Doing it in the correct basis **helped slightly** (spread 220 → 196), which
+confirms §109's diagnosis of its own flaw. But it is still **worse than
+baseline on every measure**. The chroma is not independently applicable.
+
+### 110.3 What this establishes: the defect is upstream of the shift
+
+`A` is correct — measured on two rolls, equal to `orderFpo`'s chroma to 0.08 %
+(§99.3). It is correct *for the vendor's pipeline*, measured downstream of the
+vendor's inversion. Ours produces a different RPD, so their shift does not
+compose with our upstream.
+
+§93.1 shows the same thing from the other direction: our floor sits at
+`fpo + ~40` on every channel, while the vendor's `928/944/928` is **nowhere
+near** its own `fpo` of `879/1250/1386`. The vendor's inversion simply does not
+land where ours does.
+
+So the washed-out defect is **in the inversion, upstream of the balance
+shift** — and three independent experiments now demonstrate it by failing to
+fix it downstream: the AFE offsets (§93.1, real +1022-code error, floor
+unmoved), the RGB chroma substitution (§109), and this.
+
+### 110.4 Consequence
+
+**Finishing `k` will not fix the render**, and neither will rewriting the shift
+computation in opponent space — the shift is downstream of the thing that is
+wrong. v32 remains worth capturing, because `k` is the last unknown in a chain
+that is otherwise fully reproduced and it completes the RE, but it should not
+be expected to change a pixel.
+
+The washed-out question returns to the inversion: `f135_rom12_to_rpd12`,
+`film_base`, `fpo`, and why the vendor's floor is uniform at ~930 while ours
+tracks a non-uniform `fpo`. §84's anchor work is the closest prior thread, and
+§109/§110 now supply the evidence its successors lacked: substituting vendor
+constants downstream cannot work, because the disagreement is upstream of them.
+
+Both experiments remain behind `PAKON_VENDOR_CHROMA=1` and are **off by
+default**.

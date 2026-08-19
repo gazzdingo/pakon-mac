@@ -19362,3 +19362,72 @@ Eliminated for R: ICC position/clipping (§120.1), capture dynamic range
 shift (§120.1). The remaining lead is §120.3's dependency itself — why an
 additive density-domain term changes R's transfer *shape* — which is a
 question about what else in the chain consumes `setShifts`, not about its value.
+
+## 121 — What else consumes `setShifts`: **FUGC**, as a per-channel LUT offset —
+which explains §120.3 and is the per-channel mechanism §118.4 predicted
+
+§120.3 found R only becomes log-shaped when a shift is present, which a purely
+additive density-domain term cannot explain. The explanation is that
+`setShifts` has a **second consumer**.
+
+### 121.1 The two consumers
+
+```python
+  preference_apply = self.setshifts_out is not None
+  x = sba_apply.apply_balance_shifts(x, self.setshifts_out)   # 1 — the balance
+  # FUGC: ebp14 = setShifts OUT @ +0x4b6 ; ebp18 = SceneContext "dmin" bag
+  # mode != 2 -> setLutInfo ; mode == 2 -> bias @ 0x101f79b0 + plane LUT
+```
+
+`setShifts` is not only added to the pixels — it is also handed to **FUGC**,
+which uses it to build a per-channel LUT.
+
+### 121.2 The mechanism, traced to the arithmetic
+
+`pakon_fugc.py:439`, ported from `0x101f79b1`:
+
+```python
+  v = int(np.int16(int(word_60ec[i]) + int(arg_ebp14[i])))   # arg_ebp14 = setShifts
+```
+
+and that feeds `aim_offset` → `set_lut_info_channel`, which shifts a seed LUT by
+a **per-channel offset** (`out[:offset] = offset` plus a clamp loop) — the
+fragment at `0x101f82c0`, Unicorn-verified bit-exact from int16-min to +5000.
+
+So the full path is:
+
+```
+  setShifts -> FUGC work bias -> per-channel setLutInfo offset -> per-channel LUT
+```
+
+### 121.3 What this explains
+
+**§120.3's anomaly.** `PAKON_ZERO_SHIFT=1` set `setshifts_out = (0, 0, 0)`,
+which is *truthy* — so `preference_apply` stayed on, the balance added nothing,
+**and FUGC received zeros**. R's shape collapse (`-0.96 → -0.65`) was FUGC being
+fed a wrong bias, not the missing balance. The experiment changed two things
+while appearing to change one.
+
+**§118.4's prediction.** A uniform anchor cannot produce three different slopes,
+and `neu` is uniform (`975 975 975`), so a per-channel element had to exist
+somewhere else in the chain. This is it — and it is driven by the very quantity
+this investigation has spent §93–§113 characterising.
+
+### 121.4 Consequence for R
+
+R's transfer *shape* is set by FUGC's per-channel LUT, whose offset is
+`word_60ec + setShifts` per channel. That makes R's shape defect a question
+about **FUGC's inputs**, not about the balance value — and FUGC's other inputs
+are the `dmin` bag (`word_60f8`) and the aim words (`word_60f2`), neither of
+which this investigation has examined.
+
+Worth noting against expectations: docs/66 recorded that "FUGC is very close to
+a no-op for this specific file". §120.3 shows it is not — removing its
+`setShifts` input measurably changes R's transfer. That note should be treated
+as file-specific rather than general.
+
+**Not claimed:** that correcting FUGC's inputs fixes R. The mechanism is
+identified and the arithmetic is already golden; what is untested is whether
+this port feeds it the same `word_60ec`, `dmin` and aim words the vendor does.
+That is now the specific question, and it is answerable from the existing
+captures rather than needing new hardware.

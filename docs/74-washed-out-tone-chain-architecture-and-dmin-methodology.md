@@ -19210,3 +19210,80 @@ somewhere in the vendor's chain, and since `neu` is uniform
 That is the next question, and it is a search for a *mechanism*, not a
 constant: §109-§112 and now §118 have all failed by substituting values into a
 pipeline whose stages differ from the vendor's.
+
+## 119 — Every component is golden and the composition is not; an INTEGRATION
+golden now states the defect as a number, and G passes
+
+### 119.1 "Can we Unicorn this and golden it?" — it already is
+
+There are **36** `*_golden.py` files in `tools/ansel/python-pipeline/`, and the
+tone chain is among the most thoroughly covered:
+`pakon_autotone_assembled_golden.py` calls the real `analyzeAutoTone`
+(`0x100fb730`) **with no subsystem hooked or stubbed** and diffs the whole fall-
+through against this port's Python chain. `orderFpo`, the VM (§90), the balance
+shift, `fos_opening_axes` and the Shasta leaves each have their own.
+
+**And the render is still wrong** — §116 measured ~62 % of the vendor's contrast
+slope. So the components are bit-exact and the *composition* is not. That is the
+one failure mode no per-component golden can catch, and it is exactly what
+§109–§118 kept running into: every substitution of a correct vendor value into
+an incorrectly-composed pipeline made things worse.
+
+### 119.2 The missing test, now written
+
+New: `tools/ansel/python-pipeline/pakon_transfer_golden.py`. It emulates
+nothing. It measures what the port actually produces end to end and compares it
+against what the vendor actually produced, using §116's per-pixel curve from the
+`rawAA00N`/`AA00N` pairs as ground truth. Slope per decade is scale-invariant,
+which is what makes a 14-bit port linear comparable with an 8-bit vendor export.
+
+It asserts two things: the transfer is log-*shaped* (`|corr| ≥ 0.97`) and its
+slope is within 10 % of the vendor's, per channel.
+
+```
+  baseline (render_aa001b)
+   ch      slope     vendor    err %   log corr
+    R     -156.9     -248.4     36.8      -0.62   shape and slope fail
+    G     -156.0     -252.8     38.3      -0.93   shape and slope fail
+    B     -151.2     -229.3     34.1      -0.94   shape and slope fail
+   0/3 channels within tolerance
+
+  PAKON_UNIFORM_ANCHOR=975 (render_both)
+    R     -188.1     -248.4     24.3      -0.96   shape 0.96 < 0.97; slope 24.3 %
+    G     -265.3     -252.8      4.9      -0.99   PASS
+    B     -266.1     -229.3     16.0      -0.99   slope 16.0 %
+   1/3 channels within tolerance
+```
+
+**G passes** — within 5 % of the vendor's slope with a −0.99 log fit. The first
+channel in this investigation to reach the vendor's transfer.
+
+### 119.3 The linear-domain placement, tested a second time and failing again
+
+§112 moved the shift to the linear domain with *our* shift value and slopes got
+worse. §118.4 suggested the value had to be the vendor's. Tested with the
+vendor's `A = (807, 391, 145)` applied whole, in the linear domain, with the
+uniform anchor:
+
+```
+  baseline                 R -156.9   G -156.0   B -151.2
+  anchor975 + chroma       R -188.1   G -265.3   B -266.1   <- best
+  faithful (A+linear+975)  R -148.1   G -207.9   B -222.9
+  vendor                   R -248.4   G -252.8   B -229.3
+```
+
+Worse on every channel than the density-domain configuration. The linear
+placement is correct for the *vendor's* pipeline (§60/§82.1, bit-exact) and
+wrong for *ours* — our other stages compensate for the density-domain
+placement, and removing that compensation costs more than the correct placement
+gains. It should not be revisited until the stages around it match.
+
+### 119.4 Standing configuration and next target
+
+Best known: **`PAKON_UNIFORM_ANCHOR=975` with the opponent-space chroma swap**,
+1/3 channels passing. R is the outlier on both metrics (shape 0.96, slope
+24 %), consistent with every prior section finding R worst.
+
+The integration golden is the target to work against from here: it turns "the
+render looks washed out" into three numbers that either pass or do not, and it
+would have caught this defect at any point in the last hundred sections.

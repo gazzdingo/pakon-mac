@@ -771,6 +771,17 @@ class AnselEngine:
             # the vendor's measured A, and put our own luma back unchanged.
             # SS96 established k is the pure-(1,1,1) term, so holding Y fixed
             # is exactly "apply the half we know and leave the half we do not".
+            # PAKON_VENDOR_A=1 (docs/74 SS119): use the vendor's measured
+            # per-channel base A directly, whole, rather than swapping only its
+            # chroma. Intended to run WITH PAKON_LINEAR_SHIFT and
+            # PAKON_UNIFORM_ANCHOR -- the vendor applies this shift in the
+            # linear domain (SS60/SS82.1), so it must not be added to the
+            # density-domain RPD.
+            if os.environ.get("PAKON_VENDOR_A") == "1" and setshifts_out:
+                _A = (807, 391, 145)
+                print(f"  [EXPERIMENT] vendor A applied whole: "
+                      f"{setshifts_out} -> {_A}")
+                setshifts_out = _A
             if os.environ.get("PAKON_VENDOR_CHROMA") == "1" and setshifts_out:
                 _A = (806.6, 391.4, 144.6)          # SS94.2, two rolls
                 _ours = sba_pref.preference_rgb_to_opponent(*setshifts_out)

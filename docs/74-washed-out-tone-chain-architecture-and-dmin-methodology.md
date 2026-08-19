@@ -18448,3 +18448,68 @@ already reads its output. Its *return* value is what the gate tests, and
 `LogExtraDumps` fires on entry only — so an exit-side capture, or emulation
 under the `wine_host` (which already runs real vendor functions on captured
 inputs), is the route.
+
+## 108 — Emulating `balance_area_image` is blocked on its inputs, and §107.1's
+gate reading is corrected: it is a null test, not a numeric comparison
+
+### 108.1 The emulation cannot run
+
+`wine_host` places captured buffers at their real process addresses and calls
+the real function. `balance_area_image` (`fcn.10102b20`) is called with
+
+```
+  (0x939fd38, 0x87e5278, 1, 0xf8404cc, 0, 0x6d13d50, 0xf840020, 1)
+```
+
+— at least four distinct pointers — and the **only** dump on that hook is
+`balance_shift_4b6`: **6 bytes** at `arg3+0x0a`. Nothing else has ever been
+captured from it.
+
+Six bytes of one argument is not enough to execute anything; the run would
+fault on the first dereference of arg 1, exactly as `chain_host` did (§ in
+`wine_host/README.md`). **Emulation of this function needs its arguments
+dumped first** — `arg1`, `arg3` and `arg6` at minimum, all reachable with
+ordinary `EXTRA_DUMP_STACK_PTR` rows on a hook that already exists.
+
+### 108.2 §107.1's reading of the gate was wrong
+
+§107.1 described the gate as *"run the shift write only when the
+`balance_area_image`-derived value is zero"*, treating `0x106b5bd4` as a
+numeric constant. Reading the code around its other uses shows the idiom:
+
+```
+  0x101039cf  mov eax, [0x106b5bd4]
+  0x101039d4  cmp eax, dword [var_14h]
+  0x101039de  jne 0x10103a11
+  ...
+  0x10103a11  mov eax, [0x106b5bd4]
+  0x10103a1d  mov dword [edi], eax        ; assign to an out-param
+  0x10103a21  lea ecx, [eax + 0x74]       ; AddRef
+```
+
+Assignment into out-parameters, and a refcount increment at `+0x74`, is
+**refcounted smart-pointer** handling — the same shape as `fcn.10006880`
+(§106.2). So `0x106b5bd4` is a **global null/empty smart pointer**, not an
+integer, and `cn_enhanced_driver`'s gate
+
+```
+  mov edx, [0x106b5bd4] ; cmp edx, [var_14h_5] ; jne <skip>
+```
+
+is a **null test**: the shift is written only when the object obtained around
+`balance_area_image` is *null*. The measured fact from §107.1 is unchanged —
+the global is zero on 39/39 frames — but "zero" there means *the null pointer*,
+which is why it never varies.
+
+That also explains why it could never have been the discriminator: a global
+null sentinel is constant by construction. §106.4's prediction that a constant
+global would point at `balance_area_image` still holds; the mechanism is a
+null/non-null object test rather than a numeric threshold.
+
+### 108.3 What would actually settle it
+
+An entry-side dump of `balance_area_image`'s `arg1`/`arg3`/`arg6` serves both
+purposes at once: it makes the `wine_host` emulation possible, and it captures
+the state that decides which of the function's five return paths is taken. No
+new hook and no new dump kind — three `EXTRA_DUMP_STACK_PTR` rows on
+`fcn.10102b20`, which has been hooked since v20.

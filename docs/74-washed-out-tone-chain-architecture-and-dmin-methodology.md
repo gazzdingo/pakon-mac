@@ -18726,3 +18726,67 @@ telling us it is not.
 
 Both experiments remain behind their environment variables and are **off by
 default**.
+
+## 112 — The three-way combination is **also** refuted: patching the inversion
+constant by constant does not converge
+
+§111 proposed the one untried pairing — uniform anchor plus §61's linear-domain
+shift placement. Run with the vendor chroma as well, all three together:
+
+```
+                        p1 spread      span              sRGB p50
+  baseline                  65      575  672  924      142 199 234
+  anchor+chroma            869      649  890 1233      236 196 159
+  anchor+chroma+linear     778      416  635 1105      206 150 145
+  vendor (AA001)            16     1040 1072 1184       90 103 139
+```
+
+**It does not converge.** The floor spread stays at 778 against the vendor's
+16, and the linear placement makes **R worse** — span `649 -> 416`, the same
+direction §61 saw when R rendered black.
+
+### 112.1 Why the linear placement hurts R
+
+Adding a constant in the *linear* domain before the log compresses the
+resulting range, and the compression scales with the constant. R carries the
+largest shift (736 of the `(736, 320, 74)` triple), so R loses the most
+contrast. This is not a defect in the placement — §60/§82.1 prove the vendor
+applies its shift there — it means **the shift value being moved must be the
+vendor's, not ours**. Moving our shift into the vendor's domain is not the same
+change as computing the vendor's shift.
+
+One positive signal worth recording: **B is close on both measures** — sRGB 145
+against the vendor's 139, span 1105 against 1184. R and G are not. That is the
+same channel ordering every prior section found (§94.3: B right within ~20, R
+and G short), reached here from a completely different direction.
+
+### 112.2 The pattern across four experiments
+
+| experiment | result |
+|---|---|
+| §109 chroma in RGB space | worse |
+| §110 chroma in opponent space | worse (slightly less) |
+| §111 uniform anchor + chroma | span fixed, floor much worse |
+| §112 + linear-domain shift | floor still wrong, R degraded |
+
+Every one substitutes a **correct vendor value** into this port's formula, and
+every one fails. §111.1's span improvement is real and is the only gain, and
+even it came with a worse floor.
+
+The conclusion §110.3 reached now has four independent confirmations:
+**the port's inversion is not the vendor's inversion with wrong constants — it
+is a different computation.** Constants cannot be transplanted into it
+individually, in any combination tried, because each is correct only in the
+context of the others *and* of the surrounding arithmetic.
+
+### 112.3 What this means for the next attempt
+
+Deriving `f135_rom12_to_rpd12` from the vendor's own code is the remaining
+route, as §110.4 said — not further substitution. The relevant target is
+whatever the vendor runs between PolyPixel's linear output and the RPD the
+balance shift is applied to, and unlike the balance chain (now essentially
+reproduced) that function has never been identified, let alone emulated.
+
+All experiment flags (`PAKON_VENDOR_CHROMA`, `PAKON_UNIFORM_ANCHOR`,
+`PAKON_LINEAR_SHIFT`) remain **off by default**. Nothing in the render path has
+changed.

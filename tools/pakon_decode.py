@@ -1040,6 +1040,25 @@ def f135_rom12_to_rpd12(lin12: np.ndarray,
                   f"(film area; clipped "
                   f"{win['clip_pct'][0]:.3f}/{win['clip_pct'][1]:.3f}/"
                   f"{win['clip_pct'][2]:.3f}% against FindDmin's 0.1%)")
+    # EXPERIMENT (docs/74 SS112), opt-in via PAKON_LINEAR_SHIFT=1.
+    #
+    # This is SS61 / commit 7584903 -- the balance shift applied in the LINEAR
+    # domain, before the log -- which SS60 and SS82.1 proved is what the vendor
+    # does (area_image_apply_lut's input is the linear PolyPixel output). It was
+    # committed, broke R to solid black, and was reverted.
+    #
+    # SS111.3's reading of that failure: it was reverted while the per-channel
+    # fpo anchor was still in place, and the anchor had been compensating for
+    # the density-domain shift. Each change is wrong alone. This flag exists so
+    # it can be run TOGETHER with PAKON_UNIFORM_ANCHOR, which has never been
+    # tried.
+    if os.environ.get("PAKON_LINEAR_SHIFT") == "1" and setshifts is not None:
+        _ss = np.asarray(setshifts, dtype=np.float64)
+        if not quiet:
+            print(f"  [EXPERIMENT] linear-domain shift {_ss.round(0)} applied "
+                  f"BEFORE the log (SS61 placement)")
+        lin = np.clip(lin + _ss, 0.0, 4095.0)
+
     base_log = np.log10(np.maximum(base - ped, 1.0))
     dens = 1000.0 * (base_log - np.log10(np.maximum(lin - ped, 1.0)))
     # EXPERIMENT (docs/74 SS111), opt-in via PAKON_UNIFORM_ANCHOR=<value>.

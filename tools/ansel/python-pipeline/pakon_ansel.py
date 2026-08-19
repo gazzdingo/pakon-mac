@@ -777,6 +777,17 @@ class AnselEngine:
             # PAKON_UNIFORM_ANCHOR -- the vendor applies this shift in the
             # linear domain (SS60/SS82.1), so it must not be added to the
             # density-domain RPD.
+            # PAKON_ZERO_SHIFT=1 (docs/74 SS120): drop the density-domain
+            # shift entirely. The vendor's floor is uniform (928/944/928,
+            # spread 16) while ours spreads by 869 -- and the spreader is the
+            # shift, added after the log. The vendor's shift is spread too but
+            # is applied in the LINEAR domain, where it does not translate the
+            # floor per channel. With a uniform anchor and no density-domain
+            # shift, our floor should be uniform for the same reason.
+            if os.environ.get("PAKON_ZERO_SHIFT") == "1" and setshifts_out:
+                print(f"  [EXPERIMENT] density-domain shift dropped: "
+                      f"{setshifts_out} -> (0, 0, 0)")
+                setshifts_out = (0, 0, 0)
             if os.environ.get("PAKON_VENDOR_A") == "1" and setshifts_out:
                 _A = (807, 391, 145)
                 print(f"  [EXPERIMENT] vendor A applied whole: "

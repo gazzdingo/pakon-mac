@@ -19287,3 +19287,78 @@ Best known: **`PAKON_UNIFORM_ANCHOR=975` with the opponent-space chroma swap**,
 The integration golden is the target to work against from here: it turns "the
 render looks washed out" into three numbers that either pass or do not, and it
 would have caught this defect at any point in the last hundred sections.
+
+## 120 — Fixing R: position ruled out, capture ruled out, and the shift turns
+out to be load-bearing for R's *shape*
+
+§119 left R the sole failing channel on both metrics (slope 24 % off, log
+correlation 0.96). This attacks it directly. R is not fixed; three candidate
+causes are eliminated and one non-obvious dependency is found.
+
+### 120.1 Position: ruled out
+
+R's whole RPD distribution sat above the ICC's saturation knee under
+`anchor975 + chroma` — p1 1713, p50 2009, **12.9 % of pixels clipped high** —
+where the transfer delivers ~0.02 codes/RPD instead of ~0.2. That looked
+sufficient to explain everything.
+
+Dropping the density-domain shift (`PAKON_ZERO_SHIFT=1`) fixes the positioning
+outright:
+
+```
+                       RPD p1              spread   >2200
+  anchor975+chroma   1713  1196   844        869    13/2/1 %
+  anchor975 no-shift 1180  1111  1002        178     0/0/1 %
+  vendor              928   944   928         16
+```
+
+Floor spread 869 → 178, clipping 13 % → 0 %. **And R got worse**: slope
+`-188 → -148`, log correlation `-0.96 → -0.65`. Position was not the cause.
+
+### 120.2 Capture-side dynamic range: ruled out
+
+If R's linear data occupied less of its range than the vendor's, no colour-side
+change could recover it. Measured, in decades from p1 to the channel's own
+film base:
+
+```
+          ours    vendor
+  R       1.10     1.15
+  G       1.12     1.10
+  B       1.29     1.37
+```
+
+Essentially identical. **R is not capture-limited** — this is not an AFE gain,
+lamp duty or exposure problem, and the colour chain is the right place to look.
+
+### 120.3 The non-obvious result: the shift is load-bearing for R's shape
+
+R's log-fit correlation across configurations:
+
+```
+  baseline (fpo anchor, our shift)      -0.62
+  anchor975 + chroma-swapped shift      -0.96
+  anchor975, no shift                   -0.65
+  anchor975 + vendor A, linear domain   -0.93
+```
+
+R only becomes log-shaped when a uniform anchor **and** a shift are both
+present. Removing the shift returns R to its baseline shape defect even though
+the anchor is unchanged and the positioning is better.
+
+That is the reverse of the hypothesis this section set out to test, and it is
+not yet explained. It does say the shift is not merely a colour-balance
+translation for R — something about its presence changes the *shape* of R's
+transfer, which a pure additive term in the density domain should not do.
+
+### 120.4 Standing
+
+Best configuration is unchanged: `PAKON_UNIFORM_ANCHOR=975` with the
+opponent-space chroma swap, **1/3 channels passing** (G at 4.9 %), R 24.3 % and
+B 16.0 % out.
+
+Eliminated for R: ICC position/clipping (§120.1), capture dynamic range
+(§120.2), the linear-domain shift placement (§119.3, twice), and dropping the
+shift (§120.1). The remaining lead is §120.3's dependency itself — why an
+additive density-domain term changes R's transfer *shape* — which is a
+question about what else in the chain consumes `setShifts`, not about its value.

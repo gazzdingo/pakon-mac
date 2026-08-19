@@ -19002,3 +19002,77 @@ from that same scan**. That yields raw → vendor-final, pixel-aligned, same
 frames — after which the transfer curve is read off directly instead of fitted
 from percentiles, and log placement, floor, span and `k` all become direct
 measurements. No new hook build; only that the TIFFs are saved.
+
+## 116 — **The vendor's transfer curve, measured directly**: it is logarithmic,
+and this port has ~62 % of its slope — the washed-out look, quantified
+
+§115.4 asked for one thing: the vendor's output and the matching raw for the
+*same* frames. `rawAA001.tif` … `rawAA006.tif` alongside `AA001.tif` … are
+exactly that — same dimensions (2941 × 1960), same subject, pixel-aligned.
+Every comparison before this section was distribution-to-distribution; this one
+is per-pixel.
+
+### 116.1 The vendor's curve
+
+Median output for each raw value, fitted `out = m·log10(raw) + c`:
+
+```
+  R: out = -248.42 * log10(raw) + 554.92    corr -0.9881   rms 10.9
+  G: out = -252.77 * log10(raw) + 525.73    corr -0.9935   rms  8.1
+  B: out = -229.31 * log10(raw) + 465.87    corr -0.9916   rms  9.0
+```
+
+against a linear fit's `-0.913 / -0.931 / -0.914`. **The vendor's end-to-end
+transfer is logarithmic**, and the negative sign confirms the inversion
+directly rather than by inference — settling the question §115.2 showed
+percentile fitting could not answer (both pairings correlated 0.90–0.99 and
+disagreed per channel).
+
+### 116.2 This port's curve, measured identically
+
+Our `raw14` and `srgb` outputs are pixel-aligned with each other, so the same
+fit applies. **Slope per decade is scale-invariant** — `log10(k·x)` shifts the
+intercept, not the slope — so the two are directly comparable despite our
+linear being 14-bit and the vendor's raw export 8-bit:
+
+```
+              slope/decade      log-fit corr
+  vendor R      -248.42            -0.9881
+  vendor G      -252.77            -0.9935
+  vendor B      -229.31            -0.9916
+
+  ours   R      -156.93            -0.6163
+  ours   G      -156.02            -0.9325
+  ours   B      -151.17            -0.9404
+```
+
+### 116.3 What this establishes
+
+**We have ~62 % of the vendor's contrast slope**: `157/248 = 0.63`,
+`156/253 = 0.62`, `151/229 = 0.66`. Strikingly uniform across channels. That
+deficit is the washed-out look — not inferred from floors or spans, but
+measured end to end on the same photograph.
+
+It is also consistent with everything measured indirectly: §81.3's span
+`555/665/953` against the vendor's `1072/1088/1152` is the same ~60 % ratio
+seen in the RPD domain instead of sRGB.
+
+**And our R is not log-shaped at all** — `corr -0.62` against the vendor's
+`-0.99`, while our G and B reach `-0.93/-0.94`. R has been the worst channel in
+every measurement in this document (§94.3 "R short ~136", §99.4 "red-blue ~24 %
+short", §112.1 "R degraded"); this says why. R's transfer has the wrong
+*shape*, not merely the wrong slope, so no gain correction can fix it.
+
+### 116.4 Why this changes the work
+
+Every experiment in §109–§112 adjusted *constants* — anchor, chroma, shift
+placement. This says the defect is the **slope of the transfer**, roughly a
+factor of 1.6, plus a shape defect specific to R. Those are properties of the
+inversion and tone chain together, not of any single substituted value, which
+is exactly why constant substitution kept failing.
+
+**Caveat.** `rawAA001.tif` is an 8-bit export; quantisation limits precision at
+the dark end, and the fit windows exclude out-of-range medians. The slopes are
+stable across three channels and two independent images, so the ~62 % figure is
+robust, but it should be re-derived from a 16-bit export before being treated
+as exact.

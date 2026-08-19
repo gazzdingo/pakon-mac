@@ -945,6 +945,67 @@ const ExtraDumpSpec g_extraDumps[] = {
      * change, and if the buffer is shorter than asked the row comes back
      * readable=false while the 0x64 row above still carries its data. */
     { "sba_preference", "pref_scene_big", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x800 },
+    /* v30 (docs/74 SS105) -- the ONE row that brackets where the luma is added.
+     *
+     * SS101 showed the vendor's shift differs from Preference's output on
+     * frames 4-6 by a uniform per-channel amount (+92/+65/+39 -- pure luma),
+     * and SS104.4 showed sba_set_shifts fires only SIX times, all per-scene,
+     * so the correction is NOT delivered through set_shifts. SS100 killed the
+     * pref_scene_big theory outright: those bytes are copied, never computed
+     * with, and the shift is invariant to them under three different fills.
+     *
+     * The window is now four calls wide. From the v28 capture's own pointers:
+     *
+     *     set_shifts   3302   arg1=0x8ea25a0 arg3=0x8ea26b0
+     *     get_shifts   3303   arg2=0x8ea25a0        (= set_shifts arg1)
+     *     cn_driver    3305   arg1=0x8f2f0c8
+     *     apply_lut    3306   arg4=0x8f2f0cc        (= cn arg1 + 4)
+     *     balance      3309   arg3=0x8f2f574        (= cn arg1 + 0x4ac)
+     *
+     * and balance_shift_4b6 reads arg3+0x0a, i.e. **cn_driver arg1 + 0x4b6** --
+     * which is where the row's own name came from. So the final shift is
+     * readable from cn_enhanced_driver's arg 1, and apply_lut's LUTs (which
+     * already carry the final value) are built one call later.
+     *
+     * Dumping arg 1 at cn_enhanced_driver's ENTRY therefore discriminates
+     * exactly:
+     *   - if +0x4b6 already holds the vendor's final shift, the luma was added
+     *     BEFORE cn_driver, i.e. inside get_shifts or between it and here;
+     *   - if it holds what our emulation of Preference produces, the luma is
+     *     added INSIDE cn_driver or later.
+     *
+     * One row, one pointer already passed on the stack, and a yes/no answer
+     * either way. 0x500 covers +0x4b6 with margin. */
+    { "cn_enhanced_driver", "cn_shift_before", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x500 },
+    /* v31 (docs/74 SS106.4) -- the three cheapest unexplored inputs to `k`.
+     *
+     * v30 established that the luma correction is applied inside
+     * cn_enhanced_driver and is pure luma on 39/39 frames, but SS105.5 then
+     * closed every candidate that could be tested from arg 1: not the incoming
+     * shift, not a clamp, not any field in the 0x500 window (int16/uint16/
+     * int32/float32 at every offset), and not cross-frame smoothing. The two
+     * byte flags the gated block actually reads -- esi+0x29 and esi+0x4c --
+     * are constant 1 across all 39 frames, so they do not discriminate either.
+     *
+     * arg 2 and arg 3 have NEVER been dumped (arg2=0x8ca9f88, arg3=0x8ca9f8c
+     * in the v28 trace -- adjacent, so probably one small struct and a pointer
+     * into it). They are the only inputs left that a row can reach.
+     *
+     * The third row is the gate itself. SS106.1: the block that writes the
+     * shift is skipped unless a global at 0x106b5bd4 matches a value derived
+     * from balance_area_image. That global is ZERO in the file image, so it is
+     * written during initialisation and its run-time value has never been
+     * observable -- no existing dump kind can reach a static. Hence
+     * EXTRA_DUMP_MODULE_ABS, added in this same build: base + RVA 0x6b5bd4
+     * (0x106b5bd4 at the preferred base 0x10000000), 0x40 bytes to catch its
+     * neighbours too.
+     *
+     * If the global turns out to vary per frame it is the discriminator; if it
+     * is constant, the gate's other operand is, and the answer is in
+     * balance_area_image. Either outcome halves the search. */
+    { "cn_enhanced_driver", "cn_arg2", EXTRA_DUMP_STACK_PTR, 2, 0, 0, 0x200 },
+    { "cn_enhanced_driver", "cn_arg3", EXTRA_DUMP_STACK_PTR, 3, 0, 0, 0x200 },
+    { "cn_enhanced_driver", "cn_gate_global", EXTRA_DUMP_MODULE_ABS, 0, 0x6b5bd4, 0, 0x40 },
     /* v29b (docs/74 SS98) -- arg 2, kept for its WRITE targets, not its reads.
      *
      * An earlier justification for this row claimed the function reads

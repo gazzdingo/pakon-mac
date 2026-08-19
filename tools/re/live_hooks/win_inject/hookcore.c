@@ -472,6 +472,7 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp, 
          * stackIndex -- it reads from regs->ecx -- so its rows use 0.) */
         if (spec->kind != EXTRA_DUMP_THIS_OFFSET &&
             spec->kind != EXTRA_DUMP_THIS_DEREF_OFFSET &&
+            spec->kind != EXTRA_DUMP_MODULE_ABS &&
             (spec->stackIndex < 0 || spec->stackIndex >= STACK_DWORDS_LOGGED)) continue;
 
         numBytes = spec->numBytes;
@@ -512,6 +513,17 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp, 
             if (!IsBadReadPtr((BYTE *)base + spec->derefOffset, sizeof(void *))) {
                 srcPtr = *(void **)((BYTE *)base + spec->derefOffset);
                 srcPtr = (void *)((DWORD_PTR)srcPtr + spec->derefOffset2);
+                readable = !IsBadReadPtr(srcPtr, numBytes);
+            }
+        } else if (spec->kind == EXTRA_DUMP_MODULE_ABS) {
+            /* module base + derefOffset -- a GLOBAL, reached by RVA rather
+             * than through any argument (docs/74 SS106.4). Resolved from the
+             * hook's own module handle so a relocated load stays correct;
+             * a failed GetModuleHandleA leaves srcPtr NULL and the row
+             * reports readable=false rather than reading address 0. */
+            HMODULE mod = GetModuleHandleA(d->dll);
+            if (mod) {
+                srcPtr = (void *)((BYTE *)mod + spec->derefOffset);
                 readable = !IsBadReadPtr(srcPtr, numBytes);
             }
         } else { /* EXTRA_DUMP_PLANAR_PLANE: PolyPixel planar R/G/B,

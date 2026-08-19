@@ -343,11 +343,29 @@ typedef enum ExtraDumpKind {
                                     field inside the arg's struct (e.g.
                                     balanceAreaImage reads the shift at
                                     arg4+0x0a)                                 */
-    EXTRA_DUMP_STACK_DEREF2_OFFSET = 6 /* dump N bytes from
+    EXTRA_DUMP_STACK_DEREF2_OFFSET = 6, /* dump N bytes from
                                     *(stack_dwords[idx] + derefOffset) +
                                     derefOffset2 -- a double deref then offset
                                     (e.g. getShifts reads *(arg1+0x10)+0x3a38,
                                     arg1 = stack_dwords[0])                    */
+    EXTRA_DUMP_MODULE_ABS = 7      /* dump N bytes from the module base plus
+                                    derefOffset -- i.e. a GLOBAL, addressed by
+                                    its RVA rather than through any argument.
+                                    stackIndex is ignored.
+
+                                    Every kind above reaches memory via a stack
+                                    argument or `this`, so a static/global has
+                                    been uncapturable. docs/74 SS106.1 needs
+                                    exactly that: the gate on the balance-shift
+                                    write compares against a global whose file
+                                    image is 0, so its run-time value is only
+                                    observable live.
+
+                                    RVA-relative, NOT absolute, so it stays
+                                    correct if the DLL is relocated -- the
+                                    engine resolves the module base at dump
+                                    time from the same HookDef.dll the hook was
+                                    installed against.                          */
 } ExtraDumpKind;
 
 typedef struct ExtraDumpSpec {

@@ -18790,3 +18790,61 @@ reproduced) that function has never been identified, let alone emulated.
 All experiment flags (`PAKON_VENDOR_CHROMA`, `PAKON_UNIFORM_ANCHOR`,
 `PAKON_LINEAR_SHIFT`) remain **off by default**. Nothing in the render path has
 changed.
+
+## 113 — v32: `balance_area_image`'s inputs do not predict `k` either. Every
+capturable input is now eliminated, so `k` is derived from pixel content
+
+`live_hooks_20260818-191932.jsonl`, md5 `a041a3b23398403e45cba216ab76a483`,
+362 MB. All rows landed **40/40 readable** (`bai_arg1` 1024 B, `bai_arg3`
+512 B, `bai_arg6` 1024 B, plus the v30/v31 rows).
+
+> An earlier upload (`…185349`) ran a **v20-era build** — none of the v26/v28/
+> v30/v31/v32 labels were present, though the hooks themselves fired 88 times.
+> Recorded because "the capture is fine but the build is old" is not obvious
+> from the file, and the JSONL's own label list is the quickest check.
+
+### 113.1 The test
+
+Each `cn_enhanced_driver` call paired with its following `balance_area_image`
+call (40 pairs, 17 with non-zero `k`), and all three new buffers scanned as
+`int16`/`int32`/`float32` at every 2-byte offset, plus byte-wise for a clean
+separator of corrected from uncorrected frames:
+
+```
+  bai_arg1 (1024 B):  |corr| > 0.90 -> 0    clean separators -> 0
+  bai_arg3 ( 512 B):  |corr| > 0.90 -> 0    clean separators -> 0
+  bai_arg6 (1024 B):  |corr| > 0.90 -> 0    clean separators -> 0
+```
+
+The separator search again required ≤ 6 distinct values, per §106.3's lesson.
+
+### 113.2 The elimination is now complete
+
+| candidate | section | result |
+|---|---|---|
+| `orderFpo` Y, U, V | §94.1 | no |
+| `L` | §93.3 | no |
+| `pref_data`, captured and un-captured | §95.3, §100.2 | no |
+| alternative frame pairing | §101.5 | no |
+| SCPLut composition | §102.2 | no |
+| incoming shift; clamp; cross-frame smoothing | §105.5 | no |
+| `cn_enhanced_driver` arg 1, 2, 3 | §105.5, §107.2 | no |
+| the gate global | §107.1 | constant |
+| `balance_area_image` arg 1, 3, 6 | **here** | no |
+
+**Every input reachable by a dump row has been tested and eliminated.** `k` is
+not a function of any argument, any struct field, or any global.
+
+### 113.3 What follows
+
+`k` must be derived from the **pixel data** — the one input none of these rows
+carries, and precisely what `balance_area_image` exists to analyse. That is
+consistent with every prior observation: it explains why 23 of 40 frames are
+uncorrected (a content-dependent condition), why the zeros cluster (adjacent
+frames of similar content), and why no field anywhere predicts it.
+
+It also reclassifies `k`: it is a **measurement of the image**, not a parameter
+looked up or carried. Reproducing it means reproducing that measurement, which
+is `balance_area_image`'s own arithmetic over the frame — a substantially
+larger job than any remaining dump row, and one the `wine_host` can now attempt,
+since v32 finally supplies the arguments §108.1 said it lacked.

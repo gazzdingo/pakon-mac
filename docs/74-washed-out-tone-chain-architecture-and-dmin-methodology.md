@@ -19493,3 +19493,78 @@ blocker on R"**. That reorders the priorities set out after §113.
 **Still open and unchanged:** why B is 16 % short with a clean −0.99 shape. A
 pure scale error on a correctly-shaped channel is a different defect from R's,
 and nothing in this section speaks to it.
+
+## 123 — FUGC's inputs confirmed against the vendor's **runtime** state, from the
+existing v32 capture — and what that says about needing new captures
+
+§122.1 verified FUGC's inputs against the vendor's shipped *files*
+(`fugc-defaultParams.dpi`, the seed LUT header). That leaves an obvious gap: a
+file value is only the value the program actually uses if nothing overwrites it
+at runtime. This closes that gap without new hardware.
+
+### 123.1 The `this` pointer was already in the capture
+
+A v33 capture was built and uploaded to read FUGC's Cap state. It was not
+needed, and the reason is worth recording because it generalises.
+
+Every hook row already logs the full register file — `eax/ebx/ecx/edx/esi/edi/
+ebp/eflags` and `retaddr`. For a `__thiscall`, **`ecx` is the `this` pointer**.
+So the object's address is present for every call ever hooked, at no extra
+cost, and has been since the register logging landed.
+
+What was missing was only the object's *contents* — and those turn out to be
+largely present too, because dumps are generous:
+
+```
+  FUGC this-pointers in v32 falling inside an already-dumped buffer:  42 / 80
+```
+
+Mostly inside `vm_prog1` (which grabs 0x800 from its pointer) and `bai_arg1`.
+A capture routinely contains **more than the rows that requested it** — a dump
+taken for one hook covers neighbouring objects on the same heap.
+
+### 123.2 The reading
+
+Two `fugc_set_lut_info` calls had their `this` covered. At `this+0x0e0`:
+
+```
+  call 21829   aTableDmin = (500, 500, 500)
+  call 21982   aTableDmin = (500, 500, 500)
+
+  this port                (500, 500, 500)      MATCHES
+```
+
+The vendor's live `aTableDmin` is exactly what this port uses. §122.1's
+file-derived value is confirmed as the runtime value.
+
+`fugc_analyze`'s `this+0xe0` reads as garbage — `(-30112, 2265, 8)`,
+`(25888, 24942, 27746)` — which is the expected result of a *different class*
+with a different layout, and is reported here as the negative control it is,
+not suppressed. Only `set_lut_info`'s reading is claimed.
+
+### 123.3 Consequence
+
+Every FUGC input is now verified at the strongest tier available without an
+emulation: `aFilmAimDmin` and the seed-LUT selection from the vendor's shipped
+files (§122.1), `aTableDmin` from the vendor's own runtime memory (above). The
+arithmetic consuming them is already Unicorn-verified bit-exact (§121.2).
+
+This **tightens** §122.2 rather than loosening it. `setShifts` is not merely the
+last unverified FUGC input — it is now the only one that can be wrong at all.
+`k` is confirmed as the sole remaining blocker on R.
+
+### 123.4 A capture-methodology note
+
+Before requesting new hardware time, check what the existing capture already
+contains — specifically:
+
+  1. `ecx` on `__thiscall` hooks gives you object addresses for free.
+  2. Buffers dumped for hook A frequently contain hook B's structures; test
+     containment against **every** dump, not the ones whose label matches.
+
+Both applied here, and between them they answered the question v33 was built
+for. v33 remains on the server, unused. This is not an argument that captures
+are never needed — §108.1's missing `balance_area_image` args were real, and
+v32 is what supplied them — only that "we need another scan" deserves a check
+against the existing data first.
+

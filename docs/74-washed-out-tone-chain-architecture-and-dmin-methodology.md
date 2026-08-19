@@ -19431,3 +19431,65 @@ identified and the arithmetic is already golden; what is untested is whether
 this port feeds it the same `word_60ec`, `dmin` and aim words the vendor does.
 That is now the specific question, and it is answerable from the existing
 captures rather than needing new hardware.
+
+## 122 — FUGC's inputs verified correct against the vendor's own files, which
+leaves `setShifts` as the only unverified one — and that **revives `k`**
+
+§121 identified FUGC as the second consumer of `setShifts` and the per-channel
+mechanism §118.4 predicted. This checks whether this port feeds it the right
+inputs.
+
+### 122.1 Every input except `setShifts` is vendor-sourced and correct
+
+```
+  cap_params_aim  (500, 1000, 1000)   shipped fugc-defaultParams.dpi:
+                                      "aFilmAimDmin = 500 1000 1000"
+  a_table_dmin    (500,  500,  500)   read from the seed LUT's own header
+                                      (both NoShift_fugc-generic0225.lut and
+                                       fugc-generic0225.lut carry 500 500 500)
+  seed LUT        NoShift_fugc-generic0225.lut, selected via
+                  fugc-defaultParams.dpi `mode = RGB` -> AnsFugcMapping
+                  (0x101fb140) -> fugc-rgb-lutMap.map -> the 2.25 catch-all
+```
+
+The resulting per-channel offsets, `aim_offset = w60ec − w60f8 + w60f2`:
+
+```
+  R:  500 - 500 + 736 = 736
+  G: 1000 - 500 + 320 = 820
+  B: 1000 - 500 +  74 = 574
+```
+
+R's outlier position comes from the **vendor's own** `aFilmAimDmin` asymmetry
+(R 500, G/B 1000) combined with a uniform `aTableDmin` — correctly applied.
+**No input defect found.** The hypothesis this section set out to test is
+refuted.
+
+### 122.2 The consequence: `k` matters after all
+
+If every other FUGC input is right, the only way FUGC's per-channel LUT can be
+wrong is if **`setShifts` is wrong** — and `setShifts = A + k` (§93).
+
+`A` is now understood (§99.3: `orderFpo`'s chroma × −1.04, matched on two
+rolls). **`k` is not** (§105–§113: located inside `cn_enhanced_driver`, pure
+luma, conditional, every capturable input eliminated).
+
+**This contradicts §110.4**, which concluded "finishing `k` will not fix the
+render… it should not be expected to change a pixel." That conclusion was drawn
+when `setShifts` was believed to be *only* an additive balance term, where a
+luma error shifts the picture uniformly and the tone chain largely absorbs it.
+It is not only that: it also sets FUGC's per-channel curve **offset**, where a
+luma error becomes a per-channel *shape* change. §120.3 demonstrated exactly
+that — zeroing `setShifts` collapsed R's log-fit from −0.96 to −0.65.
+
+§110.4 is superseded on this point. `k` is on the critical path for R.
+
+### 122.3 What this makes of the v32 work
+
+Emulating `balance_area_image` (now possible — v32 supplied the arguments
+§108.1 said were missing) moves from "completes the RE" to **"the remaining
+blocker on R"**. That reorders the priorities set out after §113.
+
+**Still open and unchanged:** why B is 16 % short with a clean −0.99 shape. A
+pure scale error on a correctly-shaped channel is a different defect from R's,
+and nothing in this section speaks to it.

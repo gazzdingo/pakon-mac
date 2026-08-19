@@ -758,6 +758,22 @@ class AnselEngine:
             setshifts_out = sba_apply.setshifts_12(
                 preference_a, preference_a, band3.planar, band3.num_lut
             )
+            # EXPERIMENT (docs/74 SS99.4), opt-in via PAKON_VENDOR_CHROMA=1.
+            # The vendor's per-channel shift base A, measured on two rolls, is
+            # ~(806.6, 391.4, 144.6) against this port's NBP-fpo of
+            # (671, 300, 164) -- R short ~136, G short ~91, B right within ~20.
+            # SS99.3 showed A's chroma IS orderFpo's chroma scaled by ~-1.04,
+            # so this is vendor data, not a fit. It does NOT include the
+            # per-frame luma term k (SS105, still unknown), so this tests the
+            # CHROMA half alone. Default behaviour is unchanged.
+            if os.environ.get("PAKON_VENDOR_CHROMA") == "1" and setshifts_out:
+                _A = (806.6, 391.4, 144.6)
+                _port = (671.0, 300.0, 164.0)
+                _d = tuple(a - p for a, p in zip(_A, _port))
+                setshifts_out = tuple(int(round(v + dv))
+                                      for v, dv in zip(setshifts_out, _d))
+                print(f"  [EXPERIMENT] vendor-chroma delta {tuple(round(x,1) for x in _d)}"
+                      f" -> setShifts {setshifts_out}")
 
         print(
             f"  Ansel map: path={scene.ansel_path} src={scene.source_type} "

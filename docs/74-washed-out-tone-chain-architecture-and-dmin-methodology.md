@@ -18513,3 +18513,68 @@ purposes at once: it makes the `wine_host` emulation possible, and it captures
 the state that decides which of the function's five return paths is taken. No
 new hook and no new dump kind — three `EXTRA_DUMP_STACK_PTR` rows on
 `fcn.10102b20`, which has been hooked since v20.
+
+## 109 — The chroma experiment: substituting the vendor's measured `A` makes
+the render **worse**, and the reason is §96's basis mismatch
+
+§99.4 observed that the port could emit the vendor's chroma "today", since `A`
+is measured rather than fitted. This runs that as a controlled experiment
+before anything is wired.
+
+### 109.1 Method
+
+Opt-in via `PAKON_VENDOR_CHROMA=1` (default behaviour untouched). The port's
+`setshifts_12` output was offset by the measured difference between the
+vendor's per-channel base `A ≈ (806.6, 391.4, 144.6)` — §94.2, stable across
+two rolls — and the port's `NBP − fpo = (671, 300, 164)`:
+
+```
+  setShifts (683, 297, 151)  ->  (819, 388, 132)
+```
+
+Same capture, same frame, same parameters as the baseline
+(`scan-20260812-091633`, frame 5), so this is a controlled A/B and not the
+cross-scene comparison §93.1 had to warn about.
+
+### 109.2 Result: worse on both measures
+
+```
+  TONED RPD p1        baseline        1452 1452 1387    spread  65
+                      vendor-chroma   1543 1499 1323    spread 220
+                      vendor (AA001)   928  944  928    spread  16
+
+  sRGB p50            baseline         142  199  234
+                      vendor-chroma    178  212  228
+                      vendor (AA001)    90  103  139
+```
+
+The floor moved **away** from the vendor's on every channel, its inter-channel
+spread more than trebled, and all three sRGB medians moved further from target.
+Span barely moved (575→574, 672→666, 924→915), so this is a translation, not a
+change of contrast.
+
+### 109.3 Why this is informative rather than merely negative
+
+`A` is not in doubt. It is measured on two independent rolls and equals
+`orderFpo`'s own chroma scaled by −1.04 to within 0.08 % (§99.3). The vendor's
+shift base really is ≈`(806, 391, 145)`. Substituting it nevertheless degrades
+our render — which is the **same signature** as §84.2's anchor substitution and
+the §61 fix that had to be reverted: *a correct vendor value dropped into this
+port's formula makes things worse.*
+
+§96 predicts exactly that. The port computes its shift in **RGB space**
+(`NBP − fpo`, then `setshifts_12`); the vendor computes in the **orthonormal
+opponent basis** and rotates back. A correct chroma in the wrong basis cannot
+help, and the spread result shows why: our floor is near-uniform (65) only as
+an accident of `NBP − fpo`, while the vendor reaches its near-uniform floor
+(16) by a different route. Perturbing one term of our formula toward the
+vendor's value breaks the accident without buying the mechanism.
+
+**Consequence for the washed-out question.** Finishing `k` will not, on this
+evidence, fix the render by itself — the balance chain has to be computed the
+vendor's way, in the vendor's basis, not have vendor constants substituted into
+ours. That is a larger change than one term, and it is now the honest statement
+of what "wire the verified work" means here.
+
+The experiment is left in place behind its environment variable, and is **not**
+enabled by default.

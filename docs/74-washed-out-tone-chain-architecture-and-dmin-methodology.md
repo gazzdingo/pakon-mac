@@ -19568,3 +19568,79 @@ are never needed — §108.1's missing `balance_area_image` args were real, and
 v32 is what supplied them — only that "we need another scan" deserves a check
 against the existing data first.
 
+## 124 — Emulating `balance_area_image` offline: **blocked**, and the blocker is
+a capture-depth defect, not an engine defect
+
+§122.3 made emulating `balance_area_image` the critical path for R, on the
+grounds that v32 finally supplied its arguments (§108.1). The host is built
+(`tools/re/live_hooks/wine_host/bai_host.c`) and does not work. This records
+why, because the reason is specific and fixable.
+
+### 124.1 What was built
+
+`bai_host.exe` loads the real `PakonIMAu.dll` under Wine and calls
+`fcn.10102b20` on captured arguments. It differs from `pref_host` in one
+deliberate respect: it does **not** relocate buffers and rewrite pointers.
+It reserves `0x06000000..0x10000000` and lays every captured buffer down at its
+**captured address**, because `balance_area_image`'s `arg5` (`0x6d13d50`) is not
+dumped in its own right — it lies *inside* a `vm_prog1` dump at `0x6d13830`.
+Relocation would destroy that containment.
+
+That much works: 43,697 buffers load, and every pointer argument on all 40 calls
+resolves — `args covered = [1, 3, 5, 6]` on each.
+
+### 124.2 It faults on the first call
+
+The process hangs at 0 % CPU on call 21785. `sample(1)` on the live process
+shows the reason: unbounded recursion inside `ntdll.so`'s exception dispatcher —
+the classic signature of a fault raised while handling a fault. The function's
+own prologue installs an SEH frame (`push -1; push 0x10521740; mov eax, fs:[0]`),
+so its handler runs, faults again, and never terminates.
+
+### 124.3 Two causes, both capture-depth
+
+**(a) The `this` object is not captured at all.** Of the pointer arguments,
+`arg0` is the only one no dump covers — 0 bytes available. §123.1's trick does
+not rescue it here: `ecx` gives the *address*, but nothing in the capture
+contains that object's *contents*.
+
+An early reading that a zeroed `this` would be survivable — "the entire
+disassembly contains exactly one `this`-relative access, `[esi+0x74]`" — was
+**wrong, and wrong for a methodological reason worth naming**: it came from
+grepping three registers (`esi/ecx/edi`) for positive hex offsets. That pattern
+cannot see `arg_8h` being loaded into some other register and dereferenced,
+which is what actually happens. A grep over a register subset is not a
+reachability argument. This is the same class of error as §98's "zero faults
+means all inputs captured".
+
+**(b) The argument list is truncated.** radare2 reports the function
+referencing `arg_68h` — `ebp+0x68`, argument **#24** — and referencing it 12
+times, more than any other argument. So its signature is ~25 dwords wide. The
+v32 hook captured **16**. Args 16–24 are unavailable.
+
+Calling convention is not at issue: the epilogue is a bare `c3` (caller-cleans,
+`__cdecl`), so passing a wider prototype is safe, and arg0's stack slot is
+genuine rather than a `__thiscall` `ecx` artefact. Re-running with all 16
+captured dwords instead of the first 8 changed nothing — same hang, same
+0.32 s of CPU.
+
+### 124.4 What this actually costs
+
+`k` remains unrecovered, and R remains the failing channel. But the blocker is
+now **specific and cheap to clear**, where before it was "emulate a 4020-byte
+function". A capture needs to:
+
+  1. raise `stack_dwords` depth for this hook from 16 to at least 25, and
+  2. dump `ecx` (the `this` object) for `balance_area_image` — a
+     `EXTRA_DUMP_THIS`-style row, the object being at most a few hundred bytes.
+
+Both are hook-table edits of the kind §46.8/§47 already govern. Note the
+contrast with §123: there the answer was already latent in the existing capture
+and a new scan would have been waste; here it genuinely is not, and the
+distinction is which pointers other dumps happen to contain.
+
+**Not claimed:** that clearing these two makes the function run. A zeroed `this`
+plus zeroed args 16–24 is fabricated input, and the run produced no numbers —
+correctly, since numbers from that configuration would have been worthless.
+Whether the object has further pointer-valued fields needing their own dumps is
+unknown until (1) and (2) are done.

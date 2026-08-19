@@ -19142,3 +19142,71 @@ linear domain (§117.3).
 shortfall (`-188` against `-248`) may be telling us the value is wrong even
 though the *uniformity* is right — R was also the channel whose `fpo` sits
 closest to 975, so it has moved least.
+
+## 118 — Solving for the anchor: the fit is refuted by its own verification, and
+the vendor's shipped `neu = 975` remains the best value
+
+§117 left one question: is 975 the *right* uniform anchor, given R's residual
+shortfall? This solves for it, and the answer is a lesson about fitting.
+
+### 118.1 The solve
+
+Modelling `anchor → log → ICC` over the frame's own per-pixel linear data,
+scanning anchors 300…1800 against §116's measured vendor slopes:
+
+```
+  anchor    R        G        B      max|err| vs vendor
+    975   -226.6   -280.0   -239.3        27.2
+   1180   -270.7   -273.7   -244.2        22.3   <- model's best
+   1200   -269.2   -269.8   -253.1        23.8
+  vendor  -248.4   -252.8   -229.3
+```
+
+Two things were already visible before verification. **No uniform anchor
+matches all three slopes** — the best residual is ~22 codes/decade (~9 %),
+because the anchor translates every channel equally while each lands on a
+different part of the ICC's S-curve. And the model disagreed with the real
+render at 975 (model `-227/-280/-239`, actual `-188/-265/-266`), so it was
+known to be missing stages.
+
+### 118.2 Verification refutes it
+
+Rendering at the model's best anchor, through the real pipeline:
+
+```
+                    R                G                B
+  anchor 975   -188.1 (-0.96)   -265.3 (-0.99)   -266.1 (-0.99)
+  anchor 1180   -92.8 (-0.89)   -190.0 (-0.97)   -226.2 (-0.98)
+  vendor       -248.4 (-0.99)   -252.8 (-0.99)   -229.3 (-0.99)
+```
+
+The model predicted `-271/-274/-244` for 1180. The pipeline produces
+`-93/-190/-226` — **R collapses below baseline**. The model was not merely
+imprecise but directionally wrong, because it omitted the balance and tone
+stages that sit between the log and the ICC.
+
+**`neu = 975` remains the best anchor found**, and it is the vendor's own
+shipped constant (§84.1) rather than a fitted one.
+
+### 118.3 The lesson, recorded because it nearly became a finding
+
+A cheap surrogate model was built to avoid a 6-minute render per candidate, it
+produced a plausible optimum, and that optimum is worse than the value it was
+meant to improve on. Had it been adopted without rendering, §117's genuine gain
+would have been reversed and recorded as progress.
+
+The surrogate's failure mode is instructive: it was *self-consistent* and its
+error against the vendor decreased smoothly toward 1180. Nothing inside the fit
+signalled that it was wrong; only running the real pipeline did.
+
+### 118.4 What remains open
+
+**A uniform anchor cannot match all three slopes**, in the model or the
+pipeline — and the vendor's own slopes are not equal either
+(`-248 / -253 / -229`, B ~9 % shallower). So a per-channel element exists
+somewhere in the vendor's chain, and since `neu` is uniform
+(`975 975 975`), it is not the anchor supplying it.
+
+That is the next question, and it is a search for a *mechanism*, not a
+constant: §109-§112 and now §118 have all failed by substituting values into a
+pipeline whose stages differ from the vendor's.

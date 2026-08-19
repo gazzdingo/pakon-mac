@@ -1042,7 +1042,30 @@ def f135_rom12_to_rpd12(lin12: np.ndarray,
                   f"{win['clip_pct'][2]:.3f}% against FindDmin's 0.1%)")
     base_log = np.log10(np.maximum(base - ped, 1.0))
     dens = 1000.0 * (base_log - np.log10(np.maximum(lin - ped, 1.0)))
-    out = np.clip(np.asarray(fpo, dtype=np.float64) + dens, 0, ansel.SHASTA_MAX)
+    # EXPERIMENT (docs/74 SS111), opt-in via PAKON_UNIFORM_ANCHOR=<value>.
+    #
+    # SS110 established the washed-out defect is in THIS function, not the
+    # balance shift downstream: our floor lands at fpo + ~40 on every channel
+    # (fpo = 879/1250/1386, spread 507) while the vendor's is 928/944/928,
+    # spread 16 -- nowhere near its own fpo. A uniform vendor floor cannot come
+    # from a per-channel anchor.
+    #
+    # SS84.1 found the uniform candidate in the shipped DPI: neu = 975 975 975,
+    # which matches the vendor's measured floor to ~45 codes. SS84.2 tried it
+    # and broke R -- but SS84.3 explained why, and the explanation is now
+    # actionable: substituting a uniform anchor while leaving setShifts at
+    # NBP-fpo is internally inconsistent, because the shift's per-channel
+    # spread is DERIVED from fpo's. Both halves have to move together, and
+    # PAKON_VENDOR_CHROMA (SS110) supplies the other half.
+    _anchor = os.environ.get("PAKON_UNIFORM_ANCHOR")
+    if _anchor:
+        _a = float(_anchor)
+        if not quiet:
+            print(f"  [EXPERIMENT] uniform anchor {_a:g} replaces "
+                  f"fpo{np.asarray(fpo).round(0)}")
+        out = np.clip(_a + dens, 0, ansel.SHASTA_MAX)
+    else:
+        out = np.clip(np.asarray(fpo, dtype=np.float64) + dens, 0, ansel.SHASTA_MAX)
     if not quiet:
         ss = np.array(setshifts if setshifts is not None else (0, 0, 0),
                       dtype=np.float64)

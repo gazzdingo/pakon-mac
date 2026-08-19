@@ -18652,3 +18652,77 @@ constants downstream cannot work, because the disagreement is upstream of them.
 
 Both experiments remain behind `PAKON_VENDOR_CHROMA=1` and are **off by
 default**.
+
+## 111 — The uniform anchor **fixes the span deficit**, and the residual floor
+spread is the density-domain shift — which §60/§82.1 already said is wrong
+
+§110 established the defect is in the inversion. This runs §84.3's prescribed
+experiment — uniform anchor **and** vendor chroma together, the pairing §84.2
+lacked — and it separates the washed-out defect into two independent halves.
+
+### 111.1 Result
+
+```
+  TONED RPD          p1 spread        span (p1 -> p95)
+  baseline              65            575   672   924
+  chroma only          196            575   670   922
+  anchor + chroma      869            649   890  1233
+  vendor (AA001)        16           1040  1072  1184
+```
+
+**The uniform anchor largely closes the span deficit.** B goes `924 -> 1233`
+against the vendor's `1184`; G `672 -> 890` against `1072`; R `575 -> 649`
+against `1040`. That deficit — §81.3's "our R is contrast-starved" — has been
+open since §81 and nothing until now has moved it.
+
+Note the chroma swap alone changed span not at all (`575/670/922`). The span is
+the **anchor's** doing, not the shift's.
+
+### 111.2 The residual floor spread is arithmetic, and it identifies the cause
+
+With a uniform anchor the floor should be uniform. It is not — `1713/1196/844`,
+spread 869. The shift explains it exactly:
+
+```
+  975 + (736, 320, 74) = (1711, 1295, 1049)   vs observed (1713, 1196, 844)
+```
+
+**Our shift is spreading the floor**, because this port adds it in the
+*density* domain, after the log.
+
+The vendor does not. §60 and §82.1 established from the applied LUTs
+themselves that *"the vendor's balance really is a per-channel additive ramp on
+the **linear** PolyPixel output, not a density-domain add"* — which is how the
+vendor can hold a spread shift `(806, 391, 145)` **and** a uniform floor
+`928/944/928` at the same time. In the density domain those two are
+incompatible; in the linear domain they are not.
+
+### 111.3 The two halves, and where each stands
+
+| defect | cause | status |
+|---|---|---|
+| span deficit (contrast) | per-channel `fpo` anchor | **fixed here** by a uniform anchor |
+| floor spread / lift | shift applied in the density domain | known since §60/§82.1; §61 attempted it |
+
+`git show 7584903` is §61 — *"apply the SBA balance shift in the LINEAR domain,
+before the log"* — reverted because R rendered solid black. That revert was
+correct at the time: with a per-channel `fpo` anchor still in place, moving the
+shift to the linear domain removes the compensation the anchor was providing.
+The two changes have the same relationship §84.3 described for the anchor and
+`setShifts`: **each is wrong alone and they must move together.**
+
+### 111.4 What to try next, and the honest caveat
+
+The combination not yet tested is **uniform anchor + linear-domain shift** —
+§111.1's anchor with §61's shift placement. Both halves exist in the codebase's
+history; neither has been tried with the other.
+
+**Caveat, stated plainly:** the anchor value 975 is `neu` from the shipped DPI
+(§84.1) and is *not* itself verified as the vendor's inversion anchor — it is a
+uniform candidate that matches the vendor's measured floor to ~45 codes. This
+section shows a uniform anchor fixes span; it does not establish that 975 is the
+right uniform value, and the remaining R shortfall (649 against 1040) may be
+telling us it is not.
+
+Both experiments remain behind their environment variables and are **off by
+default**.

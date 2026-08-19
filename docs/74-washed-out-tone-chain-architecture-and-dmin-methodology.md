@@ -19076,3 +19076,69 @@ the dark end, and the fit windows exclude out-of-range medians. The slopes are
 stable across three channels and two independent images, so the ~62 % figure is
 robust, but it should be re-derived from a 16-bit export before being treated
 as exact.
+
+## 117 — Correcting §111/§112: measured against the vendor's real curve, the
+uniform anchor is a **large improvement**, not a regression
+
+§116 finally supplied the vendor's own transfer curve. Re-scoring the earlier
+experiments against it — rather than against floor spread and sRGB medians —
+reverses the verdict.
+
+### 117.1 End-to-end slope per decade, same frame
+
+```
+                     R                 G                 B
+  baseline      -156.9 (-0.62)   -156.0 (-0.93)   -151.2 (-0.94)
+  anchor+chroma -188.1 (-0.96)   -265.3 (-0.99)   -266.1 (-0.99)
+  +linear shift -144.7 (-0.95)   -199.4 (-0.99)   -230.6 (-0.99)
+  vendor        -248.4 (-0.99)   -252.8 (-0.99)   -229.3 (-0.99)
+```
+
+**The uniform anchor moves G and B onto the vendor's slope** — G `-265` against
+`-253`, B `-266` against `-229` — from a baseline that was ~62 % short. R
+improves from `-157` to `-188`, still short of `-248` but no longer the worst
+kind of wrong.
+
+**And it fixes the shape defect §116.3 identified.** R's log-fit correlation
+goes `-0.62 → -0.96`; every channel reaches `-0.96` or better, against a
+baseline where R was not log-shaped at all. That was the defect no gain
+correction could address, and the anchor addresses it.
+
+### 117.2 My earlier verdict was wrong, and why
+
+§111 and §112 scored these runs on **floor spread** and **sRGB medians** and
+called the anchor "worse". Both statements were true as measured, and both used
+the wrong yardstick: the washed-out defect is a *slope* deficit (§116.3), and
+neither metric measures slope. The floor did get worse; the thing that actually
+produces the washed-out appearance got substantially better.
+
+This is a straightforward case of judging an experiment before having the
+reference to judge it against. §116's per-pixel curve is that reference, and it
+only became available with the `rawAA001…rawAA006` uploads.
+
+### 117.3 The linear-shift placement is wrong as implemented
+
+Adding §61's linear-domain shift on top **reduces** the slope again
+(`-188 → -145` on R, `-265 → -199` on G). §112.1 attributed that to the shift
+value being ours rather than the vendor's; the slope measurement confirms the
+effect is real and substantial, not marginal. That combination should not be
+pursued further until the shift itself is the vendor's.
+
+### 117.4 Where this leaves the washed-out problem
+
+Two defects, now separately measured:
+
+| defect | metric | status |
+|---|---|---|
+| contrast slope + log shape | slope/decade vs vendor | **largely fixed** by a uniform anchor |
+| floor level and spread | RPD p1 vs vendor's 928/944/928 | still wrong, worsened by the anchor |
+
+They are not the same defect and do not have the same cause. The anchor is the
+right shape of fix for the first; the second remains the density-domain shift
+placement (§111.2), which cannot be fixed by moving our own shift into the
+linear domain (§117.3).
+
+**Not yet established:** that 975 is the correct uniform anchor. R's residual
+shortfall (`-188` against `-248`) may be telling us the value is wrong even
+though the *uniformity* is right — R was also the channel whose `fpo` sits
+closest to 975, so it has moved least.

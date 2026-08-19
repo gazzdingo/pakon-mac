@@ -18848,3 +18848,77 @@ looked up or carried. Reproducing it means reproducing that measurement, which
 is `balance_area_image`'s own arithmetic over the frame — a substantially
 larger job than any remaining dump row, and one the `wine_host` can now attempt,
 since v32 finally supplies the arguments §108.1 said it lacked.
+
+## 114 — The vendor's "inversion function" does not exist as a function, and
+the ICC pair is not the log — but it explains the washed-out look quantitatively
+
+Asked to find the vendor's inversion, the answer is that §60 already settled it
+and no such function is there to find.
+
+### 114.1 §60, restated because it is easy to lose
+
+Tier 2, live hardware, bit-exact: `RPD12 == ROM12` with `max|diff| == 0` over
+three segments × 356×245 pixels × R/G/B, where `ROM12 = PolyPixel(raw)`. **The
+vendor does not log-invert between PolyPixel and the balance.** The "RPD12" the
+balance operates on *is* the linear poly output.
+
+Checked on this port's side: the **only** `log10` in the entire render path is
+`f135_rom12_to_rpd12` (`pakon_decode.py:1062-1063`). The ported tone chain —
+`pakon_autotone` and every `pakon_shasta_*` module — contains no explicit log.
+
+```
+                    vendor                    this port
+  poly -> balance   linear, no log            LOG APPLIED HERE
+  balance domain    linear                    density
+  log location      inside analyzeAutoTone    absent from the tone chain
+```
+
+So the port performs the log **once, in the wrong place**, and its tone chain
+lacks the log the vendor's has.
+
+### 114.2 The ICC pair is not the log
+
+If RPD at balance time is linear, the obvious candidate for the missing log is
+the `Rpd2Pcs` profile. Driving a neutral ramp through the render's own pair:
+
+```
+  RPD      sRGB(G)          correlation of out vs:
+     0 ->     0               linear      0.979
+  1024 ->    15               log10       0.953
+  1536 ->   113               x^(1/2.2)   0.967
+  2048 ->   242
+  2560 ->   254  (saturated)
+```
+
+None dominates — it is an S-curve, not a log. **The ICC pair is not where the
+inversion lives**, which leaves §60's answer standing: the log is inside the
+tone chain, most likely baked into the Shasta curve as a LUT rather than
+computed.
+
+### 114.3 What the ramp does give us: the ~88-code offset, quantified
+
+The profile saturates near RPD 2200 and is very steep between 1000 and 2200 —
+roughly **0.2 sRGB codes per RPD code** through that band.
+
+Our toned floor sits at **1452**; the vendor's at **928** (§93.1). Through this
+transfer that ~500-code RPD gap becomes on the order of **100 sRGB codes** of
+lift — the same order as the ~88–89 code offset that opened this whole
+investigation (§8), now traced end to end: *wrong floor in RPD, amplified by
+the steepest part of the vendor's own profile.*
+
+This does not identify what makes our floor wrong — §112 showed constants
+cannot be transplanted to fix it — but it does close the loop between the RPD
+measurements this log has been accumulating and the visible defect.
+
+### 114.4 The standing hypothesis
+
+Consistent with **all** the evidence rather than contradicted by one experiment:
+remove the early log entirely, keep the balance in the linear domain (§60/§82.1),
+and let the tone chain supply the log. §61 did only the middle third — it moved
+the balance to linear while leaving the log in `f135_rom12_to_rpd12` — which is
+why R broke.
+
+That is a restructure of the render path, not a constant change, and it should
+be attempted as one change with all three parts together, on the evidence of
+§84.3, §111.3 and §112.2 that partial substitutions in this pipeline
+consistently make things worse.

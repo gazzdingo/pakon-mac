@@ -18922,3 +18922,83 @@ That is a restructure of the render path, not a constant change, and it should
 be attempted as one change with all three parts together, on the evidence of
 §84.3, §111.3 and §112.2 that partial substitutions in this pipeline
 consistently make things worse.
+
+## 115 — Why this is hard to see directly, tested; and the vendor's own pixels
+through its own ICC confirm the tone stage does the lifting
+
+### 115.1 The framing doubt, raised and closed
+
+Our renders are not frames:
+
+```
+  our frame 05   1599 x 2000   aspect 0.799
+  our frame 03   1340 x 2000   aspect 0.670
+  AA001.tif      2941 x 1960   aspect 1.501   <- a real 35mm frame (3:2)
+```
+
+Framing never locks (`frame pitch: not measured` on every render), so our
+"frames" are line-cuts that may include inter-frame gaps and film base, which
+would raise a measured floor and could have manufactured the whole discrepancy.
+
+**Tested and refuted.** Toned RPD over central 3:2 crops:
+
+```
+  full                 p1 1452 1452 1387   spread 65
+  central 3:2 @90%     p1 1468 1460 1389   spread 79
+  central 3:2 @80%     p1 1463 1456 1386   spread 77
+  central 3:2 @70%     p1 1460 1457 1384   spread 76
+  central 3:2 @60%     p1 1456 1461 1384   spread 77
+  vendor (AA001)       p1  928  944  928   spread 16
+```
+
+Flat to ±16 codes across every crop. **The +500 discrepancy is not a framing
+artefact**, and today's measurements stand. Span does improve on tighter crops
+(575 → 693 on R), so framing is worth fixing, but it is a separate defect.
+
+### 115.2 Why the comparison cannot be made directly
+
+**This project has never had the vendor's final output and its own raw data for
+the same physical scan.** `AA001.tif` is vendor output from a session with no
+raw; our renders are from scans the vendor never processed. Every comparison in
+this document is therefore distribution-to-distribution, never pixel-to-pixel.
+
+That cannot discriminate. Fitting our linear percentiles against AA001's, both
+pairings correlate strongly and they **disagree per channel**:
+
+```
+              p <-> p            p <-> 100-p
+  R      lin +0.987 log +0.941   lin -0.912 log -0.975   -> inverted
+  G      lin +0.969 log +0.991   lin -0.907 log -0.971   -> same-order
+  B      lin +0.900 log +0.966   lin -0.953 log -0.981   -> inverted
+```
+
+A monotone curve correlates with almost any other monotone curve, so neither
+the direction nor the shape of the vendor's transfer is recoverable this way.
+
+### 115.3 A different angle: the vendor's own pixels through its own ICC
+
+The captures dump `pixel_data` at `apply_lut`, and §60 proved that data **is**
+the linear ROM12 — an aligned input needing no new capture. Fed straight to the
+shipped `Rpd2Pcs → Srgb_v2` pair:
+
+```
+  vendor pixel_data:  308..2529   (97.2 % of the frame captured)
+  through the vendor ICC pair -> sRGB mean  R 6   G 27   B 62
+```
+
+**Nearly black.** So the vendor's chain cannot be *linear → ICC*: the tone stage
+performs substantial lifting and is not optional. Independent confirmation of
+§60's placement — the vendor lifts inside `analyzeAutoTone`, after the balance —
+reached from the pixel side rather than the code side.
+
+Our port performs that lifting with its early `f135_rom12_to_rpd12` log instead.
+**Both chains lift; they do not lift the same way**, and the ~500-code floor
+difference is born there.
+
+### 115.4 The capture that would end the guessing
+
+One scan on the XP box with hooks installed **and the vendor's output TIFFs kept
+from that same scan**. That yields raw → vendor-final, pixel-aligned, same
+frames — after which the transfer curve is read off directly instead of fitted
+from percentiles, and log placement, floor, span and `k` all become direct
+measurements. No new hook build; only that the TIFFs are saved.

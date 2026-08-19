@@ -18372,3 +18372,79 @@ set during initialisation — a capture could read it directly).
 The cheapest next evidence is still `cn_enhanced_driver`'s **arg 2 and arg 3**,
 never dumped, plus the global at `0x106b5bd4`. Both ride along on any future
 capture; neither needs a new hook, only rows.
+
+## 107 — v31: every captured input to `k` eliminated, and the gate resolves to
+"is `balance_area_image`'s derived value zero?"
+
+`live_hooks_20260818-170547.jsonl`, md5 `a51f9159eb9a5e9b502263d53252c00e`,
+352 MB. All four rows landed **39/39 readable** — including the new
+`EXTRA_DUMP_MODULE_ABS` kind, which is therefore proven on real hardware, not
+just under the Wine selftest.
+
+### 107.1 The gate global is constant — which resolves the gate
+
+```
+  cn_gate_global, 39 frames: 1 distinct value
+    00 00 00 00 90 b5 3c 00
+```
+
+The global at `0x106b5bd4` is **zero on every frame**. §106.1's gate is:
+
+```
+  mov edx, dword [0x106b5bd4]     ; always 0
+  cmp edx, dword [var_14h_5]
+  jne  <skip the shift write>
+```
+
+so it reduces to **"run the shift write only when the `balance_area_image`-derived
+value is zero."** The global is not a discriminator; it is a constant being
+compared against. That was the outcome §106.4 predicted would point at
+`balance_area_image`, and it does.
+
+### 107.2 arg 2 and arg 3: nothing
+
+Both dumped (`0x200` each), scanned as `int16`/`int32`/`float32` at every
+2-byte offset, and byte-wise for a clean separator of the 18 corrected frames
+from the 21 uncorrected:
+
+```
+  arg2 (512 B):  |corr| > 0.90 vs k : 0      clean separators : 0
+  arg3 (512 B):  |corr| > 0.90 vs k : 0      clean separators : 0
+```
+
+The separator search this time required **≤ 6 distinct values** — the check
+that would have caught §106.3's three artefacts, applied up front rather than
+after the fact.
+
+### 107.3 What this establishes
+
+Every input to `cn_enhanced_driver` that a dump row can reach has now been
+tested against `k` and eliminated:
+
+| input | result |
+|---|---|
+| arg 1 (`0x500`) | nothing (§105.5) |
+| arg 2 (`0x200`) | nothing |
+| arg 3 (`0x200`) | nothing |
+| gate global | constant |
+| incoming shift | corr ≤ 0.06 (§105.5) |
+| cross-frame terms | chance (§105.5) |
+
+`k` is therefore **not a function of anything passed into the function**. It is
+computed from data the function derives itself — and the gate says explicitly
+what that is: a value from `balance_area_image`, which analyses the image.
+
+**So `k` depends on image content.** That is consistent with everything
+observed and explains what no input-based story could: why 21 frames are
+uncorrected (their derived value is non-zero), why the zeros cluster (adjacent
+frames of similar content behave alike), and why no field anywhere predicts it.
+
+### 107.4 Next
+
+The question is now well-posed and does not need another capture of
+`cn_enhanced_driver`: **what does `balance_area_image` compute, and when is it
+zero?** It is `fcn.10102b20`, already hooked, and its `balance_shift_4b6` row
+already reads its output. Its *return* value is what the gate tests, and
+`LogExtraDumps` fires on entry only — so an exit-side capture, or emulation
+under the `wine_host` (which already runs real vendor functions on captured
+inputs), is the route.

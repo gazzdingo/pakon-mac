@@ -1027,6 +1027,39 @@ const ExtraDumpSpec g_extraDumps[] = {
      * the setShifts OUT plus the per-frame uniform luma offset Delta that is
      * still unlocated (added between setShifts and this read). */
     { "balance_area_image", "balance_shift_4b6", EXTRA_DUMP_STACK_PTR_OFFSET, 3, 0xa, 0, 6 },
+    /* v32 (docs/74 SS108.3) -- balance_area_image's own inputs, which serve two
+     * purposes at once.
+     *
+     * SS107 eliminated every input to cn_enhanced_driver as a predictor of `k`
+     * (arg1, arg2, arg3, the gate global, the incoming shift, cross-frame
+     * terms), leaving only data the function derives itself -- and SS106.1's
+     * gate names the source: an object obtained around balance_area_image.
+     * SS108.2 then corrected what that gate is: 0x106b5bd4 is a global NULL
+     * SMART POINTER (assignment to out-params, AddRef at [eax+0x74]), so the
+     * test is null / non-null, not a numeric threshold. Which of this
+     * function's five return paths runs is therefore the discriminator.
+     *
+     * Only 6 bytes of this hook have ever been captured (balance_shift_4b6, at
+     * arg3+0x0a), which is why SS108.1 could not emulate it: wine_host places
+     * captured buffers at their real addresses and would fault on the first
+     * dereference of arg 1.
+     *
+     * These three rows fix both problems together -- they capture the state
+     * that decides the return path, AND they are exactly what the wine_host /
+     * Unicorn harnesses need to execute the function on real inputs.
+     *
+     * Args from the v31 trace: (0x939fd38, 0x87e5278, 1, 0xf8404cc, 0,
+     * 0x6d13d50, 0xf840020, 1). arg1 varies per frame (the scene/image), arg3
+     * is the struct balance_shift_4b6 already reads 6 bytes of, arg6 varies
+     * per frame and is adjacent to arg3's region. Sizes are deliberately
+     * modest: an over-large row that comes back readable=false costs nothing,
+     * but a fault-inducing one costs a scan.
+     *
+     * No new hook, no new dump kind, no thunk change -- fcn.10102b20 has been
+     * hooked since v20. */
+    { "balance_area_image", "bai_arg1", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x400 },
+    { "balance_area_image", "bai_arg3", EXTRA_DUMP_STACK_PTR, 3, 0, 0, 0x200 },
+    { "balance_area_image", "bai_arg6", EXTRA_DUMP_STACK_PTR, 6, 0, 0, 0x400 },
     { "color_adjust_shift", "impl_fields", EXTRA_DUMP_THIS_OFFSET, 0, 0x0c, 0, 0x28 },
     /* docs/74 SS72.7 (v21) -- sba_order_fpo_calc (0x1028b8d0) extra dumps.
      *

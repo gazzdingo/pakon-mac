@@ -1,0 +1,92 @@
+# hooks.cfg.everything -- THE ONE SCAN that closes every remaining gap.
+#
+# Colour reference set (scene brackets, sba_measure, apb_scene for delta)
+# PLUS all three framing hooks (positions + the 8-bit per-line array).
+# One scan of one roll captures, together and correctly paired:
+#   * the per-frame statistics vector (sba_measure object, +0x3c)
+#   * delta's writer (apb_scene entry/exit on scene+0x4b6)
+#   * framing positions (framing_slots) and the vendor line array (framing_lines)
+# Expect ~110-180 MB. Pair it with PSI's raw+finished TIFF export of the SAME
+# frames so the result can be checked byte-for-byte. See CAPTURE-PLAN.
+#
+# hooks.cfg — CAPTURE 2 of 2: THE FULL REFERENCE TRACE
+#
+# Copy to the XP box as `hooks.cfg`, next to hookdll.dll.
+#
+# WHAT THIS CAPTURE IS FOR
+# ========================
+# Two things at once, and they are different kinds of thing.
+#
+# (1) THE BYTE-FOR-BYTE REFERENCE. Every stage of the colour chain captured
+#     at BOTH its input and its output, so each can be checked in isolation.
+#     That was impossible before v46: LogExtraDumps fired on ENTRY ONLY, and
+#     the vendor's chain is a series of IN-PLACE transforms, so no stage's
+#     output could be seen at all (§189.2).
+#
+#     The centrepiece is the scene struct — 0x64DC (25,820) bytes, confirmed
+#     three independent ways. One 52 KB dump per side per frame subsumes every
+#     narrow per-frame row (+0x4b6, +0x3a38, +0x3a30, +0x5074, +0x38a2,
+#     +0x290c, +0x64d0), and diffing adjacent stage brackets attributes each
+#     per-frame scalar change to the stage that made it — the measurement
+#     §168 could not make.
+#
+# (2) PROVENANCE FOR B1 (new in v47). sba_measure = fcn.102aece0, the
+#     per-sample statistics engine. Its 864-byte mask feeds U and V; its
+#     720-slot vector is the p-code VM's in[], which reproduces L. Both the
+#     mask and the packer are now ported BIT-EXACT — but tier 1 for
+#     EQUIVALENCE and tier 4 for PROVENANCE, because no capture has ever
+#     hooked either and their inputs are synthetic (§196).
+#
+#     B1 asks "what are the real per-frame values?". Only a capture answers
+#     that. This is the row that converts it.
+#
+# EXPECTED SIZE: ~175 MB, ~45 MB gzipped.
+#   110 MB dumps + 64 MB baseline call lines. All 39 frames for every scalar
+#   and scene row; 6 frames for the full-frame pixel planes. That split is
+#   deliberate — the scalar work needs many frames, stage bit-exactness needs
+#   a handful, and six is the set §157–§181 already uses.
+#   tlb_lut_apply alone is 52 MB of bare call lines (81 % of all calls); that
+#   is the price of having the inversion boundary at all.
+#
+# RUN THE FRAMING CAPTURE FIRST (hooks.cfg.framing). It is cheap, it closes
+# the last render-affecting gap, and it shakes out the injector before this
+# one is committed to.
+
+# Built-in defaults are already right for the reference trace: every
+# confirmed address on, entry+exit. This file states the exceptions.
+
+# --- deliberately OFF: cost, with the question already answered ---------
+#
+# sba_vm_interp fires 185,329 times in one reference scan — more than every
+# other hook combined, ~90 MB of bare enter lines — and docs/74 §88 already
+# ported the interpreter. NOTE it was silently absent from every v41–v45 DLL
+# anyway, through the table-truncation bug §189.1 records; turning it on now
+# would re-introduce that volume for the first time, not restore a status quo.
+sba_vm_interp=off
+
+# tlb_polypixel is a confirmed real per-pixel hot path with no remaining
+# diagnostic value.
+tlb_polypixel=off
+
+# --- deliberately OFF: this is the colour trace, not the framing one -----
+# All three are confirmed real entries; they belong to hooks.cfg.framing.
+tlb_framing_entry=on
+tlb_framing_driver=on
+tlb_framing_line_reduce=on
+
+# --- ON, and the reason this file exists (v47) --------------------------
+# Entry AND exit. Exit gives the mask, the vector and the headers together,
+# because the tail callee writes the same object before this returns. Entry
+# is NOT redundant: the cross-call read of [obj+0x7b8] at 0x102b0da5 is live,
+# so call N consumes what call N-1 wrote, and only the entry side shows what
+# it read. Dump rows are capped at 18 = 3 calls/frame x 6 frames.
+sba_measure=on
+sba_measure.exit=on
+
+# The CALLER is already hooked and stays on — it carries the stack_dwords
+# array and the 720..732 vector tail that sba_measure itself does not write.
+# §192.1: this is the caller, 2,958 B; sba_measure is 24,516 B. Having both
+# is what lets a later invocation's input be matched to an earlier one's
+# output.
+sba_order_fpo_calc=on
+sba_order_fpo_helper=on

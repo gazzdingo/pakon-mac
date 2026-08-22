@@ -143,7 +143,31 @@ extern "C" {
  * §46.8/§47 "forgot the matching thunk" bug class this file's own comment
  * above documents was explicitly re-checked before committing.
  * --------------------------------------------------------------------- */
-#define HOOKCORE_MAX_HOOKS 32
+/* v46 (2026-08-21): 32 -> 40, fixing a REAL, SILENT, ALREADY-SHIPPED BUG.
+ *
+ * The v41-v45 working tree inserted four hooks into the MIDDLE of
+ * hookcore_real_table.c's table[] (shift_lut_builder, analyze_post_balance,
+ * scp_lut_worker, tlb_lut_apply) without bumping this number. table[] is
+ * declared `HookDef table[HOOKCORE_MAX_HOOKS]`, so 36 initialisers into a
+ * 32-element array is only a WARNING in C ("excess elements in array
+ * initializer", emitted four times by this repo's own build.sh and not
+ * treated as an error) -- the last four entries were silently DISCARDED at
+ * compile time:
+ *
+ *     color_adjust_shift  0x101b76d0    sba_order_fpo_calc    0x1028b8d0
+ *     sba_order_fpo_helper 0x1028ae00   sba_vm_interp         0x102aadf0
+ *
+ * check_table_sync.py did not catch it because it compares SOURCE TEXT
+ * against agent.js and never looks at HOOKCORE_MAX_HOOKS; a count check
+ * against this constant is added there in the same pass. table[] is also
+ * changed to an unsized `table[]` plus a compile-time assert, so an
+ * over-long table can never again be silently truncated -- it becomes a
+ * build failure instead.
+ *
+ * 40 rather than 36 leaves four spare slots so the next append does not
+ * have to touch hookstub.S; Thunk_32..39 are defined there in this same
+ * pass, per the Thunk_23 discipline documented in hookcore_real_table.c. */
+#define HOOKCORE_MAX_HOOKS 48
 
 /* Must exactly match the PUSHAD+PUSHFD+index+retaddr stack layout that
  * hookstub.S's SharedEntryHandler builds -- see that file's header
@@ -368,6 +392,44 @@ typedef enum ExtraDumpKind {
                                     installed against.                          */
 } ExtraDumpKind;
 
+/* v46 -- WHEN a row fires. Until v46 every row fired on ENTRY only, because
+ * LogExtraDumps was called solely from HookEntryC. That made it structurally
+ * impossible to capture any stage's OUTPUT: the vendor's chain is a sequence
+ * of in-place transforms (PolyPixel is in-place; area_image_apply_lut rewrites
+ * this->0x20 in place; the shift-LUT builder writes through out-pointers), so
+ * "the buffer at the boundary" only exists after the call returns. Entry-only
+ * gave inputs and nothing else, and the whole reason a reference trace was
+ * asked for is to have BOTH sides of each stage on the same frame.
+ *
+ * HOW THE EXIT DUMP READS ITS POINTERS -- and why it does NOT re-read the
+ * stack. At the instant OnReturnThunk runs, the hooked function's own
+ * `ret`/`ret N` has already executed. For a cdecl callee (`ret`) ESP still
+ * points at the argument block, but for a stdcall/thiscall callee (`ret N`)
+ * ESP is N bytes ABOVE it -- and OnReturnThunk's own prologue plus LogExitC's
+ * ~700-byte frame are written BELOW that ESP, i.e. straight through the
+ * argument block. Re-reading argsPtr at exit would therefore hand back this
+ * harness's own stack garbage for every stdcall/thiscall hook, silently, and
+ * this engine is deliberately calling-convention-agnostic so there is no
+ * per-hook way to know which is which.
+ *
+ * Instead, HookEntryC SNAPSHOTS the stack dwords and ECX into the shadow-stack
+ * frame at entry, and the exit dump resolves its pointers from that snapshot.
+ * The pointer VALUES are the entry-time ones (correct: they are the caller's
+ * arguments, which the callee cannot change) and the BUFFER CONTENTS are the
+ * exit-time ones (which is the point). The buffers live in the heap, so
+ * nothing OnReturnThunk does can touch them.
+ *
+ * An EXIT/BOTH row only fires when this call was actually exit-hooked -- i.e.
+ * `wantExitDefault`/hooks.cfg enabled it AND LooksLikeCodeAddress accepted the
+ * return-address swap AND the shadow stack had room. If any of those declined,
+ * the ENTRY half still lands and the EXIT half is simply absent; it never
+ * degrades into a wrong reading. */
+typedef enum ExtraDumpWhen {
+    EXTRA_DUMP_ON_ENTRY = 0,   /* default -- the pre-v46 behaviour           */
+    EXTRA_DUMP_ON_EXIT  = 1,
+    EXTRA_DUMP_ON_BOTH  = 2
+} ExtraDumpWhen;
+
 typedef struct ExtraDumpSpec {
     const char    *hookId;      /* matches HookDef.id                       */
     const char    *label;       /* short JSON field name, e.g. "r_lut"      */
@@ -379,7 +441,51 @@ typedef struct ExtraDumpSpec {
     DWORD          numBytes;    /* must be <= HOOKCORE_EXTRA_DUMP_MAX_BYTES,
                                      enforced defensively at the call site
                                      too, not just by convention here        */
+    ExtraDumpWhen  when;        /* v46; 0 == ENTRY == the historical default */
+    DWORD          maxDumps;    /* v46. 0 = unlimited (the historical
+                                     behaviour). Otherwise this row stops
+                                     emitting after this many dumps, counted
+                                     per ROW over the whole process lifetime
+                                     with an InterlockedIncrement.
+
+                                     WHY THIS EXISTS. Dump VOLUME, not hook
+                                     count, is what kills a capture, and the
+                                     two failures that cost real scans were
+                                     both volume or index errors on a hot
+                                     function: v45 hung ~96 KB of dumps on
+                                     tlb_lut_apply, which fires 52,877 times
+                                     in one scan (~5 GB), and the log was
+                                     truncated to uselessness. Before v46 the
+                                     only lever was all-or-nothing -- either
+                                     the hot function carried its big dump on
+                                     every call, or it carried none.
+
+                                     That is exactly backwards for a trace:
+                                     the interesting content of a hot function
+                                     is the FIRST few calls (the first frames),
+                                     and everything after is the same shape
+                                     again. A per-row cap turns "impossible"
+                                     into "N frames", and it is what makes the
+                                     0x84000 full-frame rows affordable at all
+                                     (39 frames x 2 planes x 0.5 MB, hex-
+                                     encoded, is ~160 MB from ONE row).
+
+                                     ENTRY and EXIT halves of a BOTH row share
+                                     one counter, so `maxDumps = 2*N` gives N
+                                     matched pairs; ENTRY-only and EXIT-only
+                                     rows on the same hook count separately.
+
+                                     A capped row that has stopped emits
+                                     NOTHING -- no line at all -- so a consumer
+                                     must not treat "fewer dumps than calls" as
+                                     an error. check_v46.py knows the caps. */
 } ExtraDumpSpec;
+
+/* Upper bound on the number of rows in g_extraDumps[], used only to size the
+ * per-row `maxDumps` counter array in hookcore.c. Checked at run time (a row
+ * index past the end is treated as uncapped and logged loudly) rather than at
+ * compile time, because g_extraDumps[] lives in another translation unit. */
+#define HOOKCORE_MAX_EXTRA_DUMP_ROWS 128
 
 /* Defined in hookcore_real_table.c, terminated by a {NULL,...} sentinel
  * row (checked by hookId == NULL, not by array length). */
@@ -493,6 +599,19 @@ extern void Thunk_23(void); extern void Thunk_24(void);
 extern void Thunk_25(void); extern void Thunk_26(void); extern void Thunk_27(void);
 extern void Thunk_28(void); extern void Thunk_29(void);
 extern void Thunk_30(void); extern void Thunk_31(void);
+/* v46: Thunk_32..39 added alongside the HOOKCORE_MAX_HOOKS 32 -> 40 bump
+ * and the matching DEFTHUNK 32..39 in hookstub.S -- all in the SAME pass,
+ * re-checked against the Thunk_23 "forgot the matching thunk" bug that
+ * hookcore_real_table.c's own header documents. */
+extern void Thunk_32(void); extern void Thunk_33(void);
+extern void Thunk_34(void); extern void Thunk_35(void);
+extern void Thunk_36(void); extern void Thunk_37(void);
+extern void Thunk_38(void); extern void Thunk_39(void);
+/* v47: 40..47, added with the sba_measure hook. Bumping the constant,
+ * declaring the thunks, DEFTHUNK-ing them and listing them in thunks[]
+ * are FOUR edits that must happen together -- the compile-time assert in
+ * hookcore_real_table.c fails the build if they do not. */
+extern void Thunk_40(void); extern void Thunk_41(void); extern void Thunk_42(void); extern void Thunk_43(void); extern void Thunk_44(void); extern void Thunk_45(void); extern void Thunk_46(void); extern void Thunk_47(void);
 
 #ifdef __cplusplus
 }

@@ -196,6 +196,23 @@ const HOOKS = [
     cite: 'docs/62 line ~201-202; docs/74 §11',
   },
   {
+    dll: 'PakonIMAu.dll', va: 0x1006c4f0, id: 'shift_lut_builder',
+    role: 'stage', pixelBuffer: false,
+    desc: 'The vendor shift-LUT builder, out[i] = master[i + shift]. Hooked ' +
+          'for its ARGUMENTS: stack_dwords[4..6] are the three post-rewrite ' +
+          'shifts (docs/74 SS168, SS175.4).',
+    cite: 'docs/74 SS167.5, SS168, SS175.4; r2 af+pdf 2026-08-20',
+  },
+  {
+    dll: 'PakonIMAu.dll', va: 0x100fdc40, id: 'analyze_post_balance',
+    role: 'stage', pixelBuffer: true,
+    desc: 'ColorNegativePath::analyzePostBalance -- builds the per-frame ' +
+          'shift LUTs via 0x1006c4f0 and applies them via ' +
+          'area_image_apply_lut. Entry pinned via the DLL own error string; ' +
+          'cdecl, not __thiscall (docs/74 SS167.3).',
+    cite: 'docs/74 SS167.3, SS168; r2 af+pdf 2026-08-20',
+  },
+  {
     dll: 'PakonIMAu.dll', va: 0x10102b20, id: 'balance_area_image',
     role: 'stage', pixelBuffer: true,
     desc: 'balanceAreaImage -- opens with find("area") idempotency guard ' +
@@ -233,6 +250,16 @@ const HOOKS = [
     desc: 'analyzeAttributes -- one of the four unreplicated stages between ' +
           'FUGC and autoTone, real call order per docs/74 §11.',
     cite: 'docs/74 §11',
+  },
+
+  // ---- SCPLut analyze worker (v36) ----
+  {
+    dll: 'PakonIMAu.dll', va: 0x10287eb0, id: 'scp_lut_worker',
+    role: 'stage', pixelBuffer: false,
+    desc: 'AnsSCPLutCapabilityImpl analyze worker -- computes the per-channel ' +
+          'slope/offset (and visualGamma) that AnsSCPLutResults carries. The ' +
+          'last unported step between tone and ICC; see docs/74 §141.',
+    cite: 'docs/74 §139-§141',
   },
 
   // ---- ICC transform ----
@@ -297,6 +324,14 @@ const HOOKS = [
     cite: 'docs/66 "6.2 -- golden fleet, colneg_1px remap TLA"',
   },
 
+  {
+    dll: 'TLB.dll', va: 0x10022a60, id: 'tlb_lut_apply',
+    role: 'stage', pixelBuffer: true,
+    desc: 'The per-pixel transfer-LUT loop applied immediately before ' +
+          'PolyPixel; out[i] = *(uint16 *)(table + in[i]*4). Candidate ' +
+          'site of the F-135 inversion (docs/74 §162-§163).',
+    cite: 'docs/74 §162, §163, §163.5; r2 af+pdf 2026-08-20',
+  },
   {
     dll: 'TLB.dll', va: 0x10034b9b, id: 'tlb_f135_poly_remap',
     role: 'stage', pixelBuffer: true,
@@ -536,6 +571,127 @@ const HOOKS = [
           'is exactly 5 position-independent bytes with no rel32. ' +
           'Entry-only: the program and context are inputs.',
     cite: 'docs/74 §78.2, §86; r2 af/axt safety audit 2026-08-17',
+  },
+
+  // -------------------------------------------------------------------
+  // v46 -- TLB.dll FRAMING cascade. ALL THREE RE-DERIVED, and now ON.
+  //
+  // They were first shipped OFF (approximate) on two stated premises, and
+  // BOTH WERE FALSE. Recording that here because the correction is more
+  // instructive than the result.
+  //
+  // (1) "TLB.dll is not on this machine." It is, at /tmp/pakon_re/TLB.dll --
+  // the scratch dir CLAUDE.md designates for RE work, and the FIRST entry in
+  // pakon_framing_golden.py's own DEFAULT_DLL_CANDIDATES. md5
+  // 193d9b2ce0a4b77ae9b78262bd06c0fc, exactly the hash that harness expects.
+  // The `find` behind the claim was scoped to the repo; `mdfind` does not
+  // index /tmp. An absence of evidence needs verifying as carefully as a
+  // presence -- "I could not find X" is a claim about the search, not X.
+  //
+  // (2) "The `or` sites span a range containing 0x100072c0, so the entry may
+  // be interior to fcn.10006e70." Read it and it dissolves: fcn.10006e70 is
+  // 0x10006e70-0x100072b5, fcn.100072c0 is 0x100072c0-0x100079b1 -- adjacent,
+  // 11 bytes of padding, not nested. Three `or` sites (0x1000708b,
+  // 0x10007193, 0x1000729f) are inside the driver; 0x10007d35 is in
+  // fcn.100079c0, the outer caller. No repeat of sba_set_shifts_12 or v41's
+  // 0x100fe4f0 here.
+  //
+  // Verified this pass with r2 `af`+`afi`+`axt` against that md5: every one
+  // is a real function boundary, every prologue takes a 5-byte patch without
+  // splitting an instruction, and nothing jumps into the patched bytes. The
+  // entry is __thiscall (`mov esi,ecx`), and the highest this-relative offset
+  // it touches is esi+0x6cbc -- last byte 0x6cbf -- so the 0x6CC0 dump size
+  // is exact rather than assumed.
+  //
+  // tlb_framing_line_reduce alone stays off by default, on log volume: it is
+  // per-LINE, and a ~9,000-line roll with a re-running threshold search adds
+  // tens of MB even with dumps capped. One hooks.cfg line turns it on.
+  {
+    dll: 'TLB.dll', va: 0x100072c0, id: 'tlb_framing_entry',
+    role: 'stage', pixelBuffer: false,
+    desc: 'Framing entry point, per ROLL. Reported as the caller of the ' +
+          'five-stage cascade (LookForNicePictures 0x10006930, ' +
+          'FramingLookInBetweenEnds 0x100063d0, LookAtEnd 0x10006ae0, ' +
+          'LookAtBeginning 0x10006ca0, FramingBlindlyPlacePictures ' +
+          '0x10006720) and as the owner of the threshold search that ' +
+          're-binarises and re-runs the run extractor, stepping +-2 ' +
+          'between 25 and 256 until the bins settle -- a search this port ' +
+          'reads but has never ported. CONFIRMED real entry: fcn.100072c0, ' +
+          '1777 bytes, 0x100072c0-0x100079b1.',
+    cite: 'framing pass 2026-08-21 (xref from TLB.dll log strings at file ' +
+          'offsets 0x5b890/0x5b8b8/0x5b8d4/0x5b8ec/0x5b944); RE-DERIVED ' +
+          '2026-08-21 vs md5 193d9b2ce0a4b77ae9b78262bd06c0fc, r2 af/afi/axt',
+  },
+  {
+    dll: 'TLB.dll', va: 0x10006e70, id: 'tlb_framing_driver',
+    role: 'stage', pixelBuffer: false,
+    desc: 'Framing cascade driver, per ROLL. Sets the warning bits the ' +
+          'cascade stages report through (or eax,0x100 @ 0x1000708b; ' +
+          'or eax,0x200 @ 0x10007193; or [ebp+0x6ca8],0x400 @ 0x1000729f; ' +
+          'or edi,0x800 @ 0x10007d35). The [ebp+0x6ca8] site is the one ' +
+          'structural fact available about the framing object without the ' +
+          'DLL in hand: it is at least 0x6cac bytes, and the per-line ' +
+          'trace fcn.10006870 consumes starts at +0x6c -- so a 0x6CC0 dump ' +
+          'from the object base covers the trace, the warning word, and ' +
+          'the threshold-search state in one row. CONFIRMED: fcn.10006e70, ' +
+          '0x10006e70-0x100072b5; 0x1000729f disassembles to exactly ' +
+          '`or dword [ebp + 0x6ca8], 0x400`.',
+    cite: 'framing pass 2026-08-21; RE-DERIVED 2026-08-21 vs md5 ' +
+          '193d9b2ce0a4b77ae9b78262bd06c0fc',
+  },
+  {
+    dll: 'TLB.dll', va: 0x10006870, id: 'tlb_framing_line_reduce',
+    role: 'stage', pixelBuffer: false,
+    desc: 'Per-LINE reduction: reads three bytes per line from this+0x6c ' +
+          'and returns 255 - (r+g+b)/3 -- 8-bit and INVERTED. This is the ' +
+          'domain gap that currently makes the ported framing cascade ' +
+          'untestable: this port runs on float 14-bit non-inverted data, ' +
+          'so the two cascades are not comparable until the vendor\'s own ' +
+          'array is seen. Hooked as the CONSUMER, deliberately: the array ' +
+          'is already filled when this runs, so an entry-side dump of it ' +
+          'is the finished trace -- whereas the driver\'s entry dump is ' +
+          'the array before it exists. PER-LINE, so its dump row is capped ' +
+          'at 6 and exit-hooking is off. CONFIRMED: fcn.10006870, 181 bytes, ' +
+          'called from fcn.100072c0 @ 0x100073b3 -- all three framing ' +
+          'hooks are ONE call tree. Off by default on VOLUME alone.',
+    cite: 'framing pass 2026-08-21; RE-DERIVED 2026-08-21 vs md5 ' +
+          '193d9b2ce0a4b77ae9b78262bd06c0fc',
+  },
+
+  // v47 -- the SBA statistics ENGINE, hooked for PROVENANCE.
+  //
+  // docs/74 §192/§196. fcn.102aece0 produces every variable term of the
+  // per-frame orderFpo triple: the 864-byte mask at obj+0xc20 feeds U and V,
+  // and the 720-slot vector at obj+0x3c is the p-code VM's in[], which
+  // reproduces L. Both the mask and the packer (fcn.102b7440) are now ported
+  // bit-exact -- but tier 1 for EQUIVALENCE and tier 4 for PROVENANCE, because
+  // no capture hooks either and their inputs are synthetic. B1 is a question
+  // about real per-frame values; this row is what answers it.
+  //
+  // NOTE the already-hooked sba_order_fpo_calc (0x1028b8d0) is the CALLER, not
+  // this. §192.1 corrected an earlier reading that named it the producer: it
+  // is 2,958 B and this is 24,516 B.
+  {
+    dll: 'PakonIMAu.dll', va: 0x102aece0, id: 'sba_measure',
+    role: 'stage', pixelBuffer: false,
+    desc: 'The per-sample SBA statistics engine (24,516 B; ONE function, ' +
+          'four rets sharing one 0xfac frame -- §192.1 corrected the ' +
+          'earlier reading that its body ended at the first ret, which is ' +
+          'an early calloc-failure return). Reads a 24x36x6 sample grid; ' +
+          'writes the 864-byte selection mask at obj+0xc20, ten header ' +
+          'words, and via its pure tail callee fcn.102b7440 the whole ' +
+          '720-slot int32 vector at obj+0x3c. Hooked ENTRY+EXIT on the ' +
+          'object: exit captures mask+vector+headers together (the callee ' +
+          'writes the same object before this returns), and entry is NOT ' +
+          'redundant because the cross-call read of [obj+0x7b8] at ' +
+          '0x102b0da5 is live, so call N consumes what N-1 wrote.',
+    cite: 'docs/74 §192 (mapped; three corrections to §76.6), §196 (run as ' +
+          'one function under Unicorn: 74/74 cases to the success exit ' +
+          '0x102b4c93, mask bit-exact 63,936/63,936 bytes, 17 mutations ' +
+          'caught / 2 provably inert / 0 NOT CAUGHT). Address and prologue ' +
+          're-derived 2026-08-21 vs PakonIMAu.dll md5 ' +
+          'eea9dcf78ee21d4f7c515a6c2512242d: single 6-byte `sub esp,0xfac`, ' +
+          'no jump target in the patched bytes',
   },
 ];
 

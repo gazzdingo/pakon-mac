@@ -22,6 +22,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 AGENT_JS = HERE.parent / "agent.js"
 TABLE_C = HERE / "hookcore_real_table.c"
+HEADER_H = HERE / "hookcore.h"
 
 
 def parse_agent_js(text: str) -> list[tuple[str, int, str]]:
@@ -57,9 +58,17 @@ def parse_agent_js(text: str) -> list[tuple[str, int, str]]:
     return entries
 
 
+def parse_max_hooks(text: str) -> int:
+    """Read HOOKCORE_MAX_HOOKS out of hookcore.h."""
+    m = re.search(r"^#define\s+HOOKCORE_MAX_HOOKS\s+(\d+)\s*$", text, re.M)
+    if not m:
+        raise SystemExit("could not find #define HOOKCORE_MAX_HOOKS in hookcore.h")
+    return int(m.group(1))
+
+
 def parse_table_c(text: str) -> list[tuple[str, int, str]]:
     """Extract (dll, va, id) triples from hookcore_real_table.c's `table[]`."""
-    decl = "static const HookDef table[HOOKCORE_MAX_HOOKS] = {"
+    decl = "static const HookDef table[] = {"
     start = text.index(decl) + len(decl)  # skip the outer '{' itself so
     # brace-depth counting below stays balanced within `body`
     end = text.index("\n    };", start)
@@ -91,8 +100,30 @@ def parse_table_c(text: str) -> list[tuple[str, int, str]]:
 def main() -> int:
     js_entries = parse_agent_js(AGENT_JS.read_text(encoding="utf-8"))
     c_entries = parse_table_c(TABLE_C.read_text(encoding="utf-8"))
+    max_hooks = parse_max_hooks(HEADER_H.read_text(encoding="utf-8"))
 
     ok = True
+    # v46: the check that would have caught the silent four-hook drop.
+    # table[] used to be declared `HookDef table[HOOKCORE_MAX_HOOKS]`, so
+    # 36 initialisers against a constant of 32 was a mere GCC warning
+    # ("excess elements in array initializer") and the last four hooks --
+    # color_adjust_shift, sba_order_fpo_calc, sba_order_fpo_helper,
+    # sba_vm_interp -- were dropped from every DLL built. This script passed
+    # throughout, because it only ever compared source text to agent.js.
+    # table[] is unsized now and hookcore_real_table.c carries a compile-time
+    # assert, but the same check is cheap here and fails with a readable
+    # message instead of a template-style typedef error.
+    if len(c_entries) > max_hooks:
+        print(
+            f"MISMATCH: hookcore_real_table.c has {len(c_entries)} hooks but "
+            f"HOOKCORE_MAX_HOOKS is {max_hooks}. HookEngine.defs[]/rt[] and "
+            f"thunks[] are sized by that constant, so the excess entries "
+            f"would be dropped. Raise HOOKCORE_MAX_HOOKS, add the matching "
+            f"`extern void Thunk_NN` (hookcore.h), `DEFTHUNK NN` (hookstub.S) "
+            f"and thunks[] entry (hookcore_real_table.c) -- all four."
+        )
+        ok = False
+
     if len(js_entries) != len(c_entries):
         print(
             f"MISMATCH: agent.js has {len(js_entries)} hooks, "
@@ -108,7 +139,11 @@ def main() -> int:
             ok = False
 
     if ok:
-        print(f"OK: {len(js_entries)} hooks, identical (dll, va, id) in identical order.")
+        print(
+            f"OK: {len(js_entries)} hooks, identical (dll, va, id) in "
+            f"identical order; {len(c_entries)}/{max_hooks} HOOKCORE_MAX_HOOKS "
+            f"slots used."
+        )
         return 0
     return 1
 

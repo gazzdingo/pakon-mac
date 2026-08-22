@@ -4,9 +4,16 @@
 # address enabled with entry+exit, EXCEPT:
 #   - the two `approximate: true` addresses -- fugc_mode_dispatch,
 #     tlb_f135_poly_remap -- disabled until you've verified them live;
-#   - tlb_polypixel, disabled by default for a DIFFERENT reason (confirmed
-#     real, but a demonstrated hot path with no remaining diagnostic value
-#     -- see below);
+#   - tlb_polypixel -- SEE THE CORRECTION BELOW. This list used to say it is
+#     "disabled by default"; IT IS NOT, and never has been. Its flags are
+#     0,1,0,0,0 (HEAD: 0,0,0,0,0) -- hotPathDisabled is not set on it, unlike
+#     sba_vm_interp which really does carry it. The intent was clearly that it
+#     should be off, and the reasoning below still holds, but the flag was
+#     never added, so the built-in default ENABLES it. It is a per-PIXEL hot
+#     path, so if you want it off you must say so explicitly in hooks.cfg;
+#     both shipped capture configs (hooks.cfg.framing, hooks.cfg.reference)
+#     do. Found 2026-08-21 by check_hooks_cfg.py, which resolves the real
+#     defaults out of the table rather than trusting this comment.
 #   - five `notCallReachable` addresses -- sba_set_shifts_12,
 #     icc_effect_op_ctor, tla_baddscene, tla_colneg_planar_scan,
 #     tla_colneg_mmx_kernel -- disabled because a 2026-08-15 r2 audit found
@@ -46,3 +53,60 @@
 #
 # tlb_polypixel=on
 # tlb_polypixel.exit=off
+#
+# v46 UPDATE to the paragraph above: tlb_polypixel is ON by default again
+# (it was re-enabled 2026-08-16 for the poly_input_r dump) and as of v46 it
+# is exit-hooked too, because the reference scan measures it at only 77
+# calls for a whole roll -- the "per-pixel hot path" reading was about the
+# loop INSIDE the call, not the call rate. The entry+exit pair of its
+# 0x84000 buffer is stage 2's input and output, in place.
+
+# ---------------------------------------------------------------------
+# v46 additions
+# ---------------------------------------------------------------------
+#
+# sba_vm_interp is now OFF by default (hotPathDisabled). It fires 185,329
+# times in one reference scan -- more than every other hook combined -- and
+# the question it was hooked for is answered (docs/74 SS88 ported the
+# interpreter). Its dump rows are capped at 4 each in v46, so re-enabling it
+# is survivable now, but it will still add ~90 MB of bare enter lines:
+#
+# sba_vm_interp=on
+#
+# ---- TLB.dll framing hooks -------------------------------------------
+#
+# CORRECTED 2026-08-21 (docs/74 SS189.4). An earlier version of this block told
+# you NOT to enable these, on two stated premises. BOTH WERE FALSE:
+#
+#   "TLB.dll is not present on the build machine" -- it is, at
+#   /tmp/pakon_re/TLB.dll, md5 193d9b2ce0a4b77ae9b78262bd06c0fc. The search
+#   behind that claim was scoped to the repo, and mdfind does not index /tmp.
+#
+#   "the warning-bit sites imply a range containing the framing entry, so
+#   0x100072c0 may be interior" -- reading the DLL dissolves it. The driver
+#   fcn.10006e70 is 0x10006e70-0x100072b5 and the entry fcn.100072c0 is
+#   0x100072c0-0x100079b1: ADJACENT, 11 bytes of padding, NOT nested. Three
+#   of the four `or` sites are inside the driver; the fourth (0x10007d35) is
+#   in fcn.100079c0, the outer caller.
+#
+# All three are now re-derived (r2 af/afi/axt against that md5), confirmed as
+# real function entries with prologues that take a 5-byte patch without
+# splitting an instruction and no jump targets in the patched bytes, and are
+# approximate=0 -- i.e. tlb_framing_entry and tlb_framing_driver are ON by
+# default. The cascade below them is bit-exact at 1,429 checks (SS194).
+#
+# tlb_framing_line_reduce remains OFF by default, on LOG VOLUME alone --
+# hotPathDisabled, not doubt. It is per-LINE: its dump row is capped at 6, but
+# every call still costs one enter line and the threshold search re-runs the
+# extractor, so budget tens of MB. Turn it on with:
+#
+# tlb_framing_line_reduce=on
+#
+# THAT ROW IS THE POINT OF A FRAMING CAPTURE. It dumps the vendor's own 8-bit
+# per-line RGB summary at this+0x6c -- the one input the ported cascade cannot
+# be fed from anything currently in the tree, and therefore the only thing
+# still standing between FRAMING_PORTED and True (SS194.5).
+#
+# Still worth running framing as its own scan rather than alongside the colour
+# reference trace -- not for safety now, but for volume: the reference trace is
+# ~175 MB before line_reduce adds to it.

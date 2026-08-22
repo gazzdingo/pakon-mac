@@ -241,3 +241,25 @@ _Thunk_\sfx:
     DEFTHUNK 29, 29
     DEFTHUNK 30, 30
     DEFTHUNK 31, 31
+    /* v46 (2026-08-21): 32..39, added in the SAME pass as the
+     * HOOKCORE_MAX_HOOKS 32 -> 40 bump, the `extern void Thunk_32..39`
+     * declarations in hookcore.h, and the thunks[] entries in
+     * hookcore_real_table.c. That bump exists because 36 table entries were
+     * being compiled into a 32-element array and the last four hooks were
+     * SILENTLY DISCARDED -- see hookcore.h's own comment on the constant. */
+    DEFTHUNK 32, 32
+    DEFTHUNK 33, 33
+    DEFTHUNK 34, 34
+    DEFTHUNK 35, 35
+    DEFTHUNK 36, 36
+    DEFTHUNK 37, 37
+    DEFTHUNK 38, 38
+    DEFTHUNK 39, 39
+    DEFTHUNK 40, 40
+    DEFTHUNK 41, 41
+    DEFTHUNK 42, 42
+    DEFTHUNK 43, 43
+    DEFTHUNK 44, 44
+    DEFTHUNK 45, 45
+    DEFTHUNK 46, 46
+    DEFTHUNK 47, 47

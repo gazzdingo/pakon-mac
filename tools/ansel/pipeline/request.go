@@ -176,10 +176,39 @@ type RenderRequest struct {
 	// legitimate value, not "unset" (docs/62 §4.3).
 	UserOffsets [3]float64
 
+	// OutToneLut is ColorNegativePath::analyzeAutoTone's composed tone curve
+	// for THIS FRAME — the array AnsCitrasOperand::setToneLut copies, 4096
+	// entries for CN-Enhanced. When it is present the render applies it
+	// through the vendor's real apply driver (citrasdriver, ImaCitrasOpBase::
+	// virtual_40); when it is empty the render falls back to the ShastaToneRpd
+	// stand-in and the provenance banner says which one ran.
+	//
+	// WHY THIS CROSSES THE ABI INSTEAD OF BEING COMPUTED HERE. analyzeAutoTone
+	// has two halves. The APPLY half is ported (citrasdriver, verified
+	// bit-exact against the Python reference by
+	// tools/test_citras_driver_ports.py). The ANALYSIS half that BUILDS this
+	// curve — cna → dra → toneHelper → contrast → ast → citras-analyze — is
+	// ~3,800 lines of Python across six separately Unicorn-verified
+	// subsystems, and is not ported. Rather than let Go invent a curve, the
+	// caller that already has the verified chain hands the real one across.
+	//
+	// This is a stopgap with a real cost, stated rather than buried: the
+	// analysis runs in Python, per frame, so a Go caller gets vendor-correct
+	// tone only when driven from Python. Porting the analysis half is the
+	// remaining work, and it is what would let this field go away.
+	//
+	// It is per-FRAME, not per-roll, so it is deliberately NOT part of the
+	// engine selection key (engine.go keyOf) — a new curve must not evict the
+	// warm Engine.
+	OutToneLut []int32
+
 	Provenance  map[string]string // where each field came from, for the log
 	TapDir      string            // "" = no taps
 	WriteBypass bool
 }
+
+// HasToneLut reports whether this request carries a real analyzeAutoTone curve.
+func (r *RenderRequest) HasToneLut() bool { return len(r.OutToneLut) > 0 }
 
 // FilmClass resolves the stage-2 matrix dispatch for this request's film path.
 func (r *RenderRequest) FilmClass() int {
@@ -322,8 +351,27 @@ func (r *RenderRequest) Validate() error {
 			return err
 		}
 	}
+	// An absent tone LUT is legal and means "use the stand-in". A PRESENT one
+	// of the wrong size is not: AnsImaCitrasAggregate's ctor wraps it in a
+	// Tsc1DLutT sized by the operand's own lutSize, and the driver indexes it
+	// with a 12-bit luminance, so a short table would be silently clamped into
+	// rather than refused. Refusing beats rendering a frame through a curve
+	// that is not the curve the analysis produced.
+	if n := len(r.OutToneLut); n != 0 && n != ToneLutSize {
+		return fmt.Errorf(
+			"outToneLut has %d entries; analyzeAutoTone's composed curve for "+
+				"CN-Enhanced is %d. A partial curve would be clamped into "+
+				"silently rather than refused, so it is refused here",
+			n, ToneLutSize)
+	}
 	return nil
 }
+
+// ToneLutSize is analyzeAutoTone's composed OutToneLut length for CN-Enhanced —
+// count == lutSize == 4096, established from AnsImaCitrasAggregate's ctor
+// (0x100ad7f0) reading AnsCitrasOperand +0x30/+0x34 and constructing
+// Tsc1DLutT<short>(ToneLut, lutSize, 1) at 0x100ad9b8.
+const ToneLutSize = 4096
 
 // ParseTriple parses "a,b,c" into three ints.
 func ParseTriple(s string) ([3]int, error) {

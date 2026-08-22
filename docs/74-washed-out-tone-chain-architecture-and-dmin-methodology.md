@@ -27057,3 +27057,81 @@ it, not what it is computed from. The standing candidate remains the
 statistics vector `sba_measure` produces (SS192, SS196) — and the capture that
 would pair a real vector with these six δ values is the corrected reference
 re-run, still outstanding.
+
+
+## 202 — Measured against a real vendor frame: the TONE STAND-IN is the largest remaining defect, not δ
+
+### 202.1 The instrument
+
+`rawAA001.tif` / `AA001.tif` are the vendor's own RAW export and its own
+finished render of the same frame, **pixel-registered** — `best_shift` returns
+dy=0 dx=0 at |corr| 0.9297. So the vendor's complete end-to-end result is
+available for direct per-pixel comparison without instrumenting anything.
+
+Our render goes through the production entry (`scene_rpd12` → `render_scene` →
+`to_srgb`) with `PAKON_VENDOR_INVERT=1`, and the unknown export scale swept.
+Full frame, 1960 x 2941 x 3, every pixel, every channel.
+
+### 202.2 The result
+
+```
+                              MAE    % of scale  within20  within10   cast R/G/B
+tone STAND-IN (production)   20.97      8.2 %     59.8 %    35.3 %   -17.6/-2.9/+25.2
+REAL analyzeAutoTone chain   12.51      4.9 %     78.7 %    52.6 %    -9.3/-3.1/+10.2
+```
+
+**Swapping the tone chain removes 40 % of the total error.** Pixels agreeing
+within 10 codes go from about a third to over half. It also **halves the
+colour cast**: the R−B imbalance falls from ~43 codes to ~19.
+
+The `shasta_stand_in` flag is exactly the switch Phase 6.2 would flip in
+production, so this is a preview of the real change rather than a synthetic
+best case.
+
+### 202.3 This corrects §201's emphasis, and mine
+
+SS201 localised δ and I described it, more than once, as **the** remaining
+colour defect. That was wrong in proportion. About half the blue cast that
+motivated the claim is the tone stand-in, not δ. δ is real, measured and
+exactly uniform — SS201 stands as a *measurement* — but as a share of the
+end-to-end error it is the **second** term, not the first.
+
+The corrected order:
+
+1. **The tone-chain swap** — 40 % of the error, and it needs **no hardware**.
+   The six subsystems are individually Unicorn-verified, the assembled Python
+   chain is verified against the real DLL end to end (SS191), and
+   `AUTO_TONE_PORTED = False` means *"the render path has not been swapped"*,
+   not *"the chain is unverified"*. This is a wiring decision.
+2. **δ / the per-frame shift** — the residual ~19-code R−B imbalance.
+3. Everything below those.
+
+How the error was misattributed is worth recording, because the mechanism is
+general: a tone curve that is wrong produces errors that **track brightness**,
+and a channel-balance term that is wrong produces a **flat cast**. Both look
+like "the image is too blue" in a downscaled view. Separating them needed the
+signed per-channel mean (the cast) held apart from the residual after removing
+it (the structure) — and the residual was 80 % of the total, which is what
+pointed at tone.
+
+### 202.4 A note on how the error was presented
+
+The first difference image published for this frame was amplified 3x, which
+made a typical 20-code error read as 60 and looked far worse than the measured
+figures. Only **0.3 %** of pixels are at or above the 85-code value where that
+map saturates; **57.9 %** are below 20. The amplification was not wrong as a
+detection aid — it is what made the warm/cool split visible at all — but it is
+a poor way to communicate magnitude, and the true-scale version is the honest
+one to lead with.
+
+### 202.5 What this measurement is not
+
+* **One frame, one roll.** 12.51 is indicative, not certified.
+* **Rendered from the 8-bit vendor RAW**, so tonal steps are coarser than a
+  real capture would give. The direction and the ratio are trustworthy; the
+  absolute figure carries that caveat.
+* **The export scale is swept**, i.e. fitted. Best was 56 for both arms, so
+  the comparison between them is fair, but the absolute number is not
+  scale-free.
+* It says nothing about whether the *export* is byte-for-byte — that still
+  needs a vendor TIFF paired with a trace from the same scan.

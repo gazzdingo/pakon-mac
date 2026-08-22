@@ -379,6 +379,71 @@ def poly_pedestals() -> tuple[float, float, float]:
     return (float(c[9]), float(c[19]), float(c[29]))
 
 
+#: docs/74 §170. The vendor's F-135 inversion, in closed form, as recovered
+#: from the real table `fcn.10022a60` applies immediately before PolyPixel.
+#:
+#:     out = clamp(round(14750 - 3500 * log10(in)), 0, 16383),  out[0] = 16383
+#:
+#: Verified against the captured table entry-for-entry: max |err| 0.52 codes
+#: over all 4095 non-zero indices, i.e. pure rounding. Index 0 is the ceiling
+#: clamp because log10(0) is undefined.
+VENDOR_INVERT_A = 14750.0
+VENDOR_INVERT_B = 3500.0
+VENDOR_INVERT_MAX = 16383
+
+
+#: docs/74 §173.1: `lut_src`'s real range on live frames is 404..11681, and the
+#: loop indexes `table + in[i]*4` with a FULL 16-bit `in[i]`. The v42 capture
+#: dumped only 4096 entries, so §170 characterised a quarter of the table and
+#: §172's first run clipped 22 % of pixels at index 4095 -- an artificial
+#: ceiling of the dump, not of the vendor. 16384 covers 11681 with headroom.
+VENDOR_INVERT_ENTRIES = 16384
+
+
+#: The REAL vendor table, captured live (docs/74 §175). 16384 entries covering
+#: the full observed index range (lut_src 470..11724). Preferred over the
+#: closed form because no closed form is exact -- see the docstring below.
+_VENDOR_INVERT_NPY = (Path(__file__).resolve().parent / "ansel" /
+                      "python-pipeline" / "vendor_invert_table.npy")
+_vendor_lut_cache: np.ndarray | None = None
+
+
+def _vendor_invert_lut(n: int = VENDOR_INVERT_ENTRIES) -> np.ndarray:
+    """The vendor's inversion table, real if available, closed form otherwise.
+
+    THE REAL TABLE IS PREFERRED, and the reason is measured. Against the full
+    16384-entry capture the closed form `round(14750 - 3500*log10(i))` is exact
+    on only 14329/16384 (87.5 %), max |err| 1, and the error is ALWAYS +1 --
+    never -1 -- uniformly ~12 % in every index decade. A fine search over
+    A in 14749.0..14750.5 and B in 3499.6..3500.5 across three rounding modes
+    tops out at 16001/16383 (97.7 %, A=14749.9). So the vendor does not compute
+    this curve the way this formula does, and byte-exactness cannot come from
+    any of them.
+
+    The closed form remains as the fallback: it is within +/-1 everywhere, which
+    is what §174's 2.5x MAE improvement rests on, and it extends to indices the
+    capture never exercised.
+    """
+    global _vendor_lut_cache
+    if _vendor_lut_cache is None and _VENDOR_INVERT_NPY.is_file():
+        try:
+            t = np.load(_VENDOR_INVERT_NPY).astype(np.int32)
+            if t.size >= 4096:
+                _vendor_lut_cache = t
+        except Exception:                                  # noqa: BLE001
+            _vendor_lut_cache = None
+    if _vendor_lut_cache is not None and _vendor_lut_cache.size >= n:
+        return _vendor_lut_cache
+    idx = np.arange(n, dtype=np.float64)
+    out = np.empty(n, dtype=np.int32)
+    out[0] = VENDOR_INVERT_MAX
+    out[1:] = np.clip(
+        np.rint(VENDOR_INVERT_A - VENDOR_INVERT_B * np.log10(idx[1:])),
+        0, VENDOR_INVERT_MAX,
+    ).astype(np.int32)
+    return out
+
+
 def scene_rpd12(rgb14: np.ndarray, data_dir: str, offset: np.ndarray,
                 model: str, eng, film_base=None,
                 film_class: int = 1) -> np.ndarray:
@@ -395,10 +460,55 @@ def scene_rpd12(rgb14: np.ndarray, data_dir: str, offset: np.ndarray,
     ``film_base`` is the roll's, not this block's — see
     ``pakon_decode.f135_rom12_to_rpd12``.
     """
+    # docs/74 §170 -- the VENDOR's own F-135 inversion, applied where the
+    # vendor applies it: BEFORE stage 2, not after.
+    #
+    # Recovered from the live table fcn.10022a60 hands to its transfer loop
+    # (v42 capture): out = clamp(round(14750 - 3500*log10(in)), 0, 16383),
+    # exact to <=0.52 codes over all 4095 entries, R^2 1.00000, one FIXED
+    # table for the whole roll. Note what it does NOT contain: no film base,
+    # no Dmin, no pedestal (c9), no fpo. This port's own invert has all four
+    # and runs after the polynomial instead of before it.
+    #
+    # The vendor's table is indexed 0..4095 (12-bit) and yields 0..16383
+    # (14-bit), which is the domain PolyPixel then reads -- consistent with
+    # the measured poly_input_r range (501..7084).
+    #
+    # Off by default: this changes the architecture of the front of the chain,
+    # not a constant, and §170.4 states plainly it is one roll and one capture.
+    if model == "f135" and os.environ.get("PAKON_VENDOR_INVERT") == "1":
+        # NO >>2 here. That shift was inferred from the v42 dump having 4096
+        # entries, i.e. "the index must be 12-bit" -- and §173.1 refutes it:
+        # the loop indexes with a full 16-bit `in[i]` and lut_src's real range
+        # is 404..11681. The 4096 was the dump's size, not the table's. With
+        # the shift in place the index could never exceed 4095 no matter how
+        # large the LUT, which is what made §172's clipping caveat look
+        # intrinsic when it was an artefact of this line.
+        lut = _vendor_invert_lut()
+        idx = np.clip(np.asarray(rgb14, dtype=np.int32), 0, lut.size - 1)
+        inv = lut[idx].astype(np.uint16)
+        rpd16 = _rpd16(inv, data_dir, offset, model=model,
+                       film_class=film_class)
+        # the log already happened, upstream -- do NOT invert again
+        return ansel.rpd16_to_rpd12(rpd16, pc.RPD_MAX_BY_MODEL[model])
+
     rpd16 = _rpd16(rgb14, data_dir, offset, model=model,
                    film_class=film_class)
     rpd12 = ansel.rpd16_to_rpd12(rpd16, pc.RPD_MAX_BY_MODEL[model])
     if model != "f135":
+        return rpd12
+    # docs/74 §162/§164: the vendor's data is ALREADY POSITIVE by the time it
+    # reaches PolyPixel — signed corr(poly_input_r, vendor render) is +0.92 on
+    # 38/38 frames, against -0.93 for the PSI "raw" export — so a chain fed
+    # already-inverted input must NOT invert again. Measured end to end on the
+    # vendor's own input/output pair (§164.2): skipping the invert beats
+    # applying it on every frame, MAE 89.37 -> 24.68, correlation -0.930 ->
+    # +0.923.
+    #
+    # Off by default: this port's OWN captures are genuine negatives and do
+    # need the invert. The flag exists for chains fed vendor-domain data, and
+    # for measuring the downstream segment in isolation.
+    if os.environ.get("PAKON_NO_INVERT") == "1":
         return rpd12
     return dec.f135_rom12_to_rpd12(
         rpd12, poly_pedestals(), eng.sba.fpo, eng.setshifts_out,

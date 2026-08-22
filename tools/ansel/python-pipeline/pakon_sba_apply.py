@@ -5,6 +5,19 @@ VERIFIED
 --------
 * ``AnsAreaCapabilityImpl::applyBalanceShifts`` @ ``0x1019a0c0`` builds three
   4096-entry LUTs via ``0x1006c4f0`` on singleton ``0x106b5f74``.
+* It is **not** the builder that runs on a real F-135 analysis pass. In
+  ``live_hooks_20260819-121153.jsonl`` all 117 ``area_image_apply_lut``
+  (``0x100d9340``) calls carry one of two return addresses:
+  ``0x100fe87a`` (39, one per frame, the per-frame shifts) and ``0x101b291d``
+  (78, every one the exact identity). ``0x100fe87a`` is inside
+  ``ColorNegativePath::analyzePostBalance`` (``fcn.100fe4f0``, from its own
+  string table), which calls the same ``0x1006c4f0`` at ``0x100fe807`` and
+  reads its shift triple from a pointer argument. Neither ``0x1019a0c0`` nor
+  ``balanceAreaImage`` (``0x10102b20``) appears as a caller on any of the 117.
+  Tier 2 (live hardware hook capture, retaddr attribution).
+* The three tables it hands ``area_image_apply_lut`` are reproduced
+  bit-exactly by ``shift_luts`` below — tier 1, real DLL under Wine
+  (``pakon_shift_luts_golden.py``).
 * Master table fill: ctor ``0x100f42a0`` called from ``0x1056a470`` as
   ``(bits=0xc, floor=0, max=0xfff)``:
   - alloc ``0x20002`` bytes; usable pointer at ``obj+8`` = alloc+``0x10000``
@@ -125,6 +138,39 @@ def setshifts_02(
     b_p = _pivot(shifts_b)
     _, c1, c2 = fos_opening_axes(*b_p)
     return _pivot(fos_opening_axes_inverse(y, c1, c2))
+
+
+SHIFT_LUTS_PORTED = True  # tier 1: pakon_shift_luts_golden vs the real DLL
+
+
+def shift_luts(
+    shifts: tuple[int, int, int], count: int = 4096
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The three transfer tables ``area_image_apply_lut`` is handed.
+
+    Port of ``fcn.1006c4f0`` (PakonIMAu.dll md5
+    ``eea9dcf78ee21d4f7c515a6c2512242d``), the vendor's shift-LUT builder,
+    whose whole body is ``out[i] = master[i + shift]`` over the singleton at
+    ``0x106b5f74``. That master table is a clamped identity ramp spanning
+    signed index ``-0x8000..0x7fff``, so the tables reduce to
+
+        ``lut[i] = clip(i + shift, 0, 4095)``
+
+    which is the same arithmetic ``apply_balance_shifts`` performs directly on
+    pixels. Both forms are kept because the vendor's own call graph uses the
+    table form at ``area_image_apply_lut`` and the direct form elsewhere; a
+    disagreement between them would be a real bug, and the golden harness
+    checks the table form against the DLL rather than against this file.
+
+    Verified bit-exact against the real DLL running under Wine --
+    ``pakon_shift_luts_golden.py``. NOT verified by Unicorn: the master table
+    lives in uninitialised ``.data`` and is built by the DLL's own
+    initialisers, so an emulator would have to be handed a fabricated table.
+    """
+    idx = np.arange(int(count), dtype=np.int32)
+    return tuple(  # type: ignore[return-value]
+        np.clip(idx + int(s), 0, MASTER_MAX).astype("<i2") for s in shifts
+    )
 
 
 import ctypes

@@ -1076,6 +1076,31 @@ def f135_rom12_to_rpd12(lin12: np.ndarray,
     # NBP-fpo is internally inconsistent, because the shift's per-channel
     # spread is DERIVED from fpo's. Both halves have to move together, and
     # PAKON_VENDOR_CHROMA (SS110) supplies the other half.
+    # SS147 EXPERIMENT: subtract a constant from each channel's fpo, keeping
+    # the per-channel spread. The same-roll comparison in SS147 gives an
+    # R-implied fpo of 314..424 against this port's 879, i.e. a deficit of
+    # ~455..565. PAKON_UNIFORM_ANCHOR cannot express that: it replaces all
+    # three channels with one value, which is why anchor=400 fixed R and broke
+    # G and B.
+    # SS153: PER-CHANNEL fpo deltas. The citras golden passes bit-exact on
+    # every leaf (block_average, mirror_pad, luminance, avoidance_blend,
+    # tone_compose), so R's fold (SS152) is not a citras defect -- it is citras
+    # correctly broadcasting a luminance delta onto channels whose RELATIVE
+    # positions are wrong. A uniform delta shifts all three equally and cannot
+    # fix a relative error, which is why SS150's sweep moved R's slope but
+    # never its curvature.
+    _d3 = os.environ.get("PAKON_FPO_DELTA3")
+    if _d3:
+        _v = [float(x) for x in _d3.replace(",", " ").split()]
+        fpo = np.asarray(fpo, dtype=np.float64) - np.asarray(_v, dtype=np.float64)
+        if not quiet:
+            print(f"  [EXPERIMENT] per-channel fpo delta {_v} -> {np.asarray(fpo).round(0)}")
+    _fpo_delta = os.environ.get("PAKON_FPO_DELTA")
+    if _fpo_delta:
+        _d = float(_fpo_delta)
+        fpo = np.asarray(fpo, dtype=np.float64) - _d
+        if not quiet:
+            print(f"  [EXPERIMENT] fpo delta -{_d:g} -> {np.asarray(fpo).round(0)}")
     _anchor = os.environ.get("PAKON_UNIFORM_ANCHOR")
     if _anchor:
         _a = float(_anchor)

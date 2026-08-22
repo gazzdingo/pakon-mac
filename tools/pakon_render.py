@@ -732,7 +732,17 @@ class Roll:
             # branch, and both have to be set wherever a frame is rendered —
             # the engine is shared and cached, so set them on every fetch.
             eng.rpd_max = ansel.SHASTA_MAX
-            eng.shasta_stand_in = True
+            # shasta_stand_in=True runs the two-anchor STAND-IN for
+            # analyzeAutoTone. PAKON_REAL_AUTOTONE=1 runs the ported
+            # six-subsystem chain instead (real_auto_tone) -- the Python-side
+            # equivalent of PAKON_GO_AUTOTONE, and the switch AUTO_TONE_PORTED
+            # is about. docs/74 §202 measured it worth ~40 % of the end-to-end
+            # error on AA001 (MAE 20.97 -> 12.51), with no hardware. OFF by
+            # default because swapping what the product path computes is a
+            # deliberate step (§191), not a side effect of the chain being
+            # ready.
+            eng.shasta_stand_in = (
+                os.environ.get("PAKON_REAL_AUTOTONE") != "1")
         return eng
 
 

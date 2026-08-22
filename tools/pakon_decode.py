@@ -1716,10 +1716,18 @@ def cmd_strip(args: argparse.Namespace) -> int:
             # See AnselEngine.shasta_stand_in: the Cap-level
             # AnsShastaCapabilityImpl::analyze is unported, so the assembled
             # toneLut is not the vendor's curve. Two-anchor stand-in instead.
-            engine.shasta_stand_in = True
-            print("  F-135 tone: shasta two-anchor stand-in "
-                  f"(shadowPercent {engine.shasta.shadow_percent} → black, "
-                  f"median → metricGray {engine.shasta.metric_gray})")
+            # PAKON_REAL_AUTOTONE=1 runs the ported six-subsystem chain
+            # instead of this stand-in -- see pakon_render's copy of this
+            # branch and docs/74 §202. Off by default.
+            engine.shasta_stand_in = (
+                os.environ.get("PAKON_REAL_AUTOTONE") != "1")
+            if engine.shasta_stand_in:
+                print("  F-135 tone: shasta two-anchor stand-in "
+                      f"(shadowPercent {engine.shasta.shadow_percent} → black, "
+                      f"median → metricGray {engine.shasta.metric_gray})")
+            else:
+                print("  F-135 tone: REAL analyzeAutoTone chain "
+                      "(PAKON_REAL_AUTOTONE=1)")
 
         legacy = bool(getattr(args, "legacy_tone", False))
         print(f"  Ansel {'legacy-v1' if legacy else 'two-pass'} on "

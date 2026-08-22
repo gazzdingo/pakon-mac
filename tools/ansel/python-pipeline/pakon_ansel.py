@@ -76,6 +76,10 @@ import numpy as np
 
 import pakon_color_adjust as color_adjust
 import pakon_fugc as fugc_mod
+try:                                    # vendor CLUT port (docs/74 §171)
+    import pakon_kcms_clut as kcms_clut
+except Exception:                       # pragma: no cover
+    kcms_clut = None
 import pakon_ansel_maps as maps
 import pakon_sba_apply as sba_apply
 import pakon_sba_pcode as sba_pcode
@@ -162,6 +166,11 @@ class SbaParams:
     fpo: tuple[float, float, float] = (879.0, 1250.0, 1386.0)
     fpa: tuple[float, float, float] = (-70.0, -55.0, -45.0)
     pcls: float = 0.0  # Preference w1e; AnsSbaDPI+0x24 — all shipped dpi are 0
+    # dpi `cmm` -> Preference blob +0x30, the chroma-aim scale (docs/76 §2).
+    # Only reachable when dU/dV are non-zero, i.e. on the live mode-0 path;
+    # the old mode-0x11 fragment multiplied it by an identically-zero delta.
+    # Live blob +0x30 == 1000 on all 882 captured calls, == this dpi field.
+    cmm: float = 1000.0
     neutral_button: float = 130.0
     neutral_under_constraint: float = -16.0
     neutral_over_constraint: float = 16.0
@@ -186,6 +195,7 @@ class SbaParams:
             fpo=(fpo[0], fpo[1], fpo[2]),
             fpa=(fpa[0], fpa[1], fpa[2]),
             pcls=float(d.get("pcls", 0)),
+            cmm=float(d.get("cmm", 1000)),
             neutral_button=float(d.get("neutralButton", 130)),
             neutral_under_constraint=float(
                 d.get("neutralUnderConstraint", -16.0)
@@ -277,17 +287,55 @@ def channel_balance(rpd12: np.ndarray, mode: str = "median") -> np.ndarray:
     return np.clip(x, 0, SHASTA_MAX)
 
 
-def preference_shift_words(sba: SbaParams) -> tuple[int, int, int]:
-    """Mode-``0x11`` Preference fragment → ``+0x3a38`` words (docs/49)."""
-    return sba_pref.preference_shifts_from_dpi_fields(
+def sba_preference_blob(sba: SbaParams) -> bytes:
+    """The dpi-derived Preference ``blob`` (arg 3), 0x48 bytes."""
+    return sba_pref.build_preference_blob(
         fpo=sba.fpo,
         fpa=sba.fpa,
+        neu=sba.neu,
+        neo=sba.neo,
+        pcls=sba.pcls,
+        cmm=sba.cmm,
         neutral_balance_point=sba.neutral_balance_point,
         neutral_button=sba.neutral_button,
         under_constraint=sba.neutral_under_constraint,
         over_constraint=sba.neutral_over_constraint,
-        pcls=sba.pcls,
     )
+
+
+def preference_shift_words(
+    sba: SbaParams,
+    order_fpo: tuple[int, int, int] | None = None,
+) -> tuple[int, int, int]:
+    """Preference ``+0x3a38`` shift words, via the whole-function port.
+
+    **Mode 0, not 0x11.** Every one of the 882 captured live ``sba_preference``
+    calls across 23 scans passes ``mode = 0`` (``scene+0x5074``), and the
+    ``pakon_preference_shift_golden`` harness reproduces all 882 bit-exactly
+    against the real DLL and against the vendor's own hardware output. The old
+    ``0x11`` fragment structurally cannot express that call: mode 0 takes
+    ``aimY`` from ``pref_data+0`` and ``aimU/aimV`` from ``pref_data+2/+4``, so
+    its ``dU``/``dV`` are non-zero, while ``0x11`` forces all three deltas to
+    zero. This module's own docstring claim that common pass2 forces
+    ``hi->0x10``/``lo->1`` is wrong for the live CN path.
+
+    ``order_fpo`` is the per-frame ``orderFpo`` (Y, U, V) triple the vendor
+    writes at ``scene+0x38a2``; with it, this returns that frame's own shift.
+    Without it there is no per-frame information to use, and
+    ``static_order_fpo_from_blob`` supplies the zero-delta stand-in, which
+    reproduces the previous mode-``0x11`` triple **bit-for-bit** (see that
+    function for why that is an identity rather than a coincidence). So
+    switching to mode 0 changes the default render by exactly nothing; what it
+    changes is that a per-frame triple can now be expressed at all.
+    """
+    blob = sba_preference_blob(sba)
+    if order_fpo is None:
+        order_fpo = sba_pref.static_order_fpo_from_blob(blob)
+    pref_data = sba_pref.build_preference_pref_data(order_fpo)
+    got = sba_pref.preference_full(pref_data, blob, 0)
+    if got is None:                       # mode 0 never takes the arg1 guard
+        raise RuntimeError("preference_full took the 0x18a4 guard in mode 0")
+    return got[1]
 
 
 def cn_setshifts_apply_words(
@@ -401,15 +449,26 @@ def real_auto_tone(rpd12: np.ndarray, scene_type: int = 0) -> np.ndarray:
     internally (``dra.compose_tone``, ``contrast``'s own LUT construction).
 
     This is a pure-Python assembly of already Unicorn-verified pieces -- it
-    does not re-derive or guess at any subsystem's own arithmetic, and it is
-    NOT itself a claim that the ASSEMBLED chain has been proven bit-exact
-    against the real DLL end to end (that is a separate, still in-progress
-    verification, ``pakon_autotone_assembled_golden.py`` -- Phase 6.1 in
-    docs/66). What IS true here: every subsystem this wiring calls is
-    independently Unicorn-verified against the real DLL in isolation (see
-    each subsystem's own golden file), and this function's only job is to
-    hand each one's real output to the next exactly as ``pakon_autotone.py``'s
-    already-proven shell says to.
+    does not re-derive or guess at any subsystem's own arithmetic.  Every
+    subsystem this wiring calls is independently Unicorn-verified against the
+    real DLL in isolation (see each subsystem's own golden file), and this
+    function's only job is to hand each one's real output to the next exactly
+    as ``pakon_autotone.py``'s already-proven shell says to.
+
+    **Updated 2026-08-21.**  This docstring used to add that the assembled
+    chain was "a separate, still in-progress verification".  That is stale:
+    Phase 6.1 is CLOSED.  ``pakon_autotone_assembled_golden.py`` runs and
+    passes all seven scenarios, calling the real ``0x100fb730`` once with no
+    subsystem entry points hooked and comparing every scalar, result object
+    and LUT dword for dword -- and it caught a real integration bug in doing
+    so (a flat image makes cna's ``EdgeHist`` all-zero; the DLL masks the x87
+    zero-divide via FPCW 0x027f and this port did not).  See
+    ``pakon_autotone.py``'s Phase 6.1 block.
+
+    What remains is Phase 6.2, swapping the render path, which is why
+    ``pakon_shasta.AUTO_TONE_PORTED`` is still False.  Do not read that flag
+    as "the chain is unverified"; read it as "the render path has not been
+    swapped".
 
     ``scene_type`` (``ctx+0x44``) defaults to 0, the same default
     ``pakon_autotone.AutoToneContext()`` itself uses -- this integration has
@@ -543,6 +602,20 @@ def real_auto_tone(rpd12: np.ndarray, scene_type: int = 0) -> np.ndarray:
         min_value=ct_params.minValue,
         max_value=ct_params.maxValue,
     )
+    # SS151 EXPERIMENT: bypass the citras luminance-delta broadcast and apply
+    # OutToneLut per channel directly. SS151.2 measured R as the ONLY channel
+    # that folds through the tone stage (2 direction reversals vs 0 for G/B),
+    # and SS128 established the chain emits a single shared OutToneLut -- so a
+    # per-channel fold cannot come from the curve, only from how it is applied.
+    # citras indexes the curve by a smoothed LUMINANCE and adds the delta to
+    # R/G/B, which can reverse a channel whose distribution diverges from
+    # luminance. If R's reversals vanish here, the defect is in the broadcast;
+    # if they persist, it is upstream in the curve's index.
+    if os.environ.get("PAKON_TONE_PER_CHANNEL") == "1":
+        _l = np.asarray(lut, dtype=np.float64)
+        _i = np.clip(np.rint(clipped), 0, len(_l) - 1).astype(np.int64)
+        print("  [EXPERIMENT] OutToneLut applied per channel (citras bypassed)")
+        return _l[_i].astype(np.float64)
     toned = citras_driver.apply_citras(clipped, np.asarray(lut, dtype=np.int64),
                                        p)
     return toned.astype(np.float64)
@@ -649,6 +722,9 @@ class AnselEngine:
     band3_lut: scp_lut.ThreeBandLut | None = None
     setshifts_out: tuple[int, int, int] | None = None
     preference_a: tuple[int, int, int] | None = None
+    #: This frame's ``orderFpo`` (scene+0x38a2) Y/U/V, if one is known.
+    #: ``None`` = the roll-static zero-delta stand-in.
+    order_fpo: tuple[int, int, int] | None = None
     opening_fpo: tuple[int, int, int] | None = None
     opening_fpo_source: str = OPENING_FPO_SOURCE_DPI
     tone_lut: object = field(default=None, repr=False)  # np.int32 work/Cap table
@@ -745,16 +821,27 @@ class AnselEngine:
         band3 = None
         setshifts_out = None
         preference_a = None
+        order_fpo = None
         lut_path = scp_lut.find_shipped_3band_lut(root)
         # Both fragments must be golden before Preference→(1,2)→apply is
         # the host default; either False falls back to median channel_balance.
         if (
             lut_path is not None
             and sba_apply.SETSHIFTS_12_PORTED
-            and sba_pref.PREFERENCE_SHIFTS_PORTED
+            and sba_pref.PREFERENCE_FULL_PORTED
         ):
             band3 = scp_lut.load_3band_lut_ascii(lut_path)
-            preference_a = preference_shift_words(sba)
+            # PAKON_ORDER_FPO="Y,U,V" — this frame's own orderFpo triple
+            # (scene+0x38a2). MEASUREMENT HOOK: the port cannot yet compute
+            # this triple from a scan (see AnselEngine.set_order_fpo), so the
+            # only source is a live capture. Off unless set.
+            _ofpo_env = os.environ.get("PAKON_ORDER_FPO")
+            if _ofpo_env:
+                _p = [int(round(float(v))) for v in _ofpo_env.split(",")]
+                if len(_p) != 3:
+                    raise ValueError("PAKON_ORDER_FPO wants three values")
+                order_fpo = (_p[0], _p[1], _p[2])
+            preference_a = preference_shift_words(sba, order_fpo)
             setshifts_out = sba_apply.setshifts_12(
                 preference_a, preference_a, band3.planar, band3.num_lut
             )
@@ -788,6 +875,20 @@ class AnselEngine:
                 print(f"  [EXPERIMENT] density-domain shift dropped: "
                       f"{setshifts_out} -> (0, 0, 0)")
                 setshifts_out = (0, 0, 0)
+            # SS127: `k`, MEASURED rather than modelled. v34/v32 capture both
+            # cn_shift_before (at +0x4b6) and balance_shift_4b6, and their
+            # difference is uniform across R/G/B on every frame of both rolls
+            # -- which is `k`, the pure-luma conditional term SS105-SS113
+            # characterised but never valued. This applies a per-frame value so
+            # the question "does a correct k fix R" can be answered by
+            # measurement instead of by argument.
+            _k = os.environ.get("PAKON_K")
+            if _k and setshifts_out:
+                _kv = int(_k)
+                _new = tuple(int(v) + _kv for v in setshifts_out)
+                print(f"  [EXPERIMENT] measured k={_kv:+d} applied: "
+                      f"{setshifts_out} -> {_new}")
+                setshifts_out = _new
             if os.environ.get("PAKON_VENDOR_A") == "1" and setshifts_out:
                 _A = (807, 391, 145)
                 print(f"  [EXPERIMENT] vendor A applied whole: "
@@ -852,9 +953,11 @@ class AnselEngine:
             print(f"  SBA pcode: missing {pcode_path}")
         if setshifts_out is not None and band3 is not None and preference_a is not None:
             print(
-                f"  SBA Preference A (mode 0x11 / +0x3a38)={preference_a}  "
+                f"  SBA Preference A (mode 0 / +0x3a38)={preference_a}  "
                 f"setShifts(1,2) OUT={setshifts_out}  lut={band3.name} "
-                f"(SETSHIFTS_12_PORTED={sba_apply.SETSHIFTS_12_PORTED})"
+                f"orderFpo="
+                f"{order_fpo if order_fpo is not None else 'static(zero-delta)'}"
+                f" (SETSHIFTS_12_PORTED={sba_apply.SETSHIFTS_12_PORTED})"
             )
         else:
             print(
@@ -878,10 +981,58 @@ class AnselEngine:
             band3_lut=band3,
             setshifts_out=setshifts_out,
             preference_a=preference_a,
+            order_fpo=order_fpo,
             opening_fpo=fpo_i,
             opening_fpo_source=fpo_src,
             fugc_a_table_dmin=fugc_dmin,
             fugc_afilm_aim_dmin=afilm_aim,
+        )
+
+    def set_order_fpo(self, order_fpo: tuple[int, int, int] | None) -> None:
+        """Re-derive the balance shift for ONE frame's ``orderFpo`` triple.
+
+        The vendor recomputes the Preference shift per frame; this port
+        computes it once per roll in :meth:`load`, and docs/74 §181 measures
+        that scope error as the largest single remaining contributor (mean
+        |vendor - ours| 121.0 codes with the static triple, 32.7 with the
+        triple right). This is the seam that makes it per-frame:
+        ``orderFpo -> preference_full(mode 0) -> setshifts_12``, the same two
+        stages the vendor runs, both of them bit-exact ports
+        (``pakon_preference_shift_golden`` 882/882,
+        ``pakon_setshifts_golden``).
+
+        **What is NOT solved, and must not be papered over.** The port cannot
+        compute ``orderFpo`` from a scan. Its three components decompose
+        (docs/74 §76, §79, §88, §90) as::
+
+            Y = fos_opening_axes(dpi fpo).Y  + L
+            U = fos_opening_axes(dpi fpo).C1 + rdiv(num1, den)
+            V = fos_opening_axes(dpi fpo).C2 + rdiv(num2, den)
+
+        and BOTH deltas are products of the vendor's analysis pass:
+
+        * ``L`` is ``vars[133]`` of the shipped ``pcode-dls_1.7`` bytecode,
+          run on a 736-``int32`` per-scene statistics vector at
+          ``(0x1028b8d0 arg11) + 0x3c``. The interpreter is ported
+          (``pakon_vm``) and reproduces ``L`` 12/12 bit-exact **from a
+          captured vector** — nothing computes that vector offline.
+        * ``U``/``V`` need the 864-sample ``dens`` block plus the selection
+          mask at ``arg11+0xc20``, which are likewise analysis-pass outputs.
+
+        So the only real source of a triple today is a live hook capture, and
+        a capture is a verification instrument, not a production one. Callers
+        that have no captured triple must pass ``None``, which restores the
+        roll-static zero-delta stand-in. Nothing here invents a triple.
+        """
+        if self.band3_lut is None:
+            self.order_fpo = order_fpo
+            return
+        self.order_fpo = None if order_fpo is None else (
+            int(order_fpo[0]), int(order_fpo[1]), int(order_fpo[2]))
+        self.preference_a = preference_shift_words(self.sba, self.order_fpo)
+        self.setshifts_out = sba_apply.setshifts_12(
+            self.preference_a, self.preference_a,
+            self.band3_lut.planar, self.band3_lut.num_lut,
         )
 
     def render_scene(self, rpd12: np.ndarray,
@@ -1025,7 +1176,25 @@ class AnselEngine:
                 # `apply_lut`'s computation) -- the vendor's CN-Enhanced order
                 # is balance → FUGC → … → autoTone, not the reverse.
                 if apply_lut is not None:
+                    if os.environ.get("PAKON_FUGC_SPAN") == "1":
+                        _a = np.asarray(x, dtype=np.float64)
+                        _sb = [float(np.percentile(_a[..., _c], 99)
+                                     - np.percentile(_a[..., _c], 1))
+                               for _c in range(_a.shape[2])]
                     x = apply_1d_lut(x, apply_lut)
+                    if os.environ.get("PAKON_FUGC_SPAN") == "1":
+                        _b = np.asarray(x, dtype=np.float64)
+                        _sa = [float(np.percentile(_b[..., _c], 99)
+                                     - np.percentile(_b[..., _c], 1))
+                               for _c in range(_b.shape[2])]
+                        print("  [FUGC-SPAN] per-channel p99-p1 across apply_1d_lut:")
+                        for _c, _nm in enumerate("RGB"):
+                            _r = (_sa[_c] / _sb[_c]) if _sb[_c] > 0 else float("nan")
+                            print(f"    {_nm}: before {_sb[_c]:8.1f}  after {_sa[_c]:8.1f}"
+                                  f"  ratio {_r:.4f}")
+                        if min(_sb) > 0 and min(_sa) > 0:
+                            print(f"    spread before max/min = {max(_sb)/min(_sb):.4f}"
+                                  f"   after = {max(_sa)/min(_sa):.4f}   (1.0 = equalised)")
                 if shasta_mod.AUTO_TONE_PORTED:
                     x = real_auto_tone(x)
                 else:
@@ -1061,7 +1230,25 @@ class AnselEngine:
                     ]
                     x = np.stack(planes, axis=-1).astype(np.float64)
                 if apply_lut is not None:
+                    if os.environ.get("PAKON_FUGC_SPAN") == "1":
+                        _a = np.asarray(x, dtype=np.float64)
+                        _sb = [float(np.percentile(_a[..., _c], 99)
+                                     - np.percentile(_a[..., _c], 1))
+                               for _c in range(_a.shape[2])]
                     x = apply_1d_lut(x, apply_lut)
+                    if os.environ.get("PAKON_FUGC_SPAN") == "1":
+                        _b = np.asarray(x, dtype=np.float64)
+                        _sa = [float(np.percentile(_b[..., _c], 99)
+                                     - np.percentile(_b[..., _c], 1))
+                               for _c in range(_b.shape[2])]
+                        print("  [FUGC-SPAN] per-channel p99-p1 across apply_1d_lut:")
+                        for _c, _nm in enumerate("RGB"):
+                            _r = (_sa[_c] / _sb[_c]) if _sb[_c] > 0 else float("nan")
+                            print(f"    {_nm}: before {_sb[_c]:8.1f}  after {_sa[_c]:8.1f}"
+                                  f"  ratio {_r:.4f}")
+                        if min(_sb) > 0 and min(_sa) > 0:
+                            print(f"    spread before max/min = {max(_sb)/min(_sb):.4f}"
+                                  f"   after = {max(_sa)/min(_sa):.4f}   (1.0 = equalised)")
             else:
                 x = linked_percentile_tone(
                     x,
@@ -1071,7 +1258,25 @@ class AnselEngine:
                     max_value=self.shasta.max_value,
                 )
                 if apply_lut is not None:
+                    if os.environ.get("PAKON_FUGC_SPAN") == "1":
+                        _a = np.asarray(x, dtype=np.float64)
+                        _sb = [float(np.percentile(_a[..., _c], 99)
+                                     - np.percentile(_a[..., _c], 1))
+                               for _c in range(_a.shape[2])]
                     x = apply_1d_lut(x, apply_lut)
+                    if os.environ.get("PAKON_FUGC_SPAN") == "1":
+                        _b = np.asarray(x, dtype=np.float64)
+                        _sa = [float(np.percentile(_b[..., _c], 99)
+                                     - np.percentile(_b[..., _c], 1))
+                               for _c in range(_b.shape[2])]
+                        print("  [FUGC-SPAN] per-channel p99-p1 across apply_1d_lut:")
+                        for _c, _nm in enumerate("RGB"):
+                            _r = (_sa[_c] / _sb[_c]) if _sb[_c] > 0 else float("nan")
+                            print(f"    {_nm}: before {_sb[_c]:8.1f}  after {_sa[_c]:8.1f}"
+                                  f"  ratio {_r:.4f}")
+                        if min(_sb) > 0 and min(_sa) > 0:
+                            print(f"    spread before max/min = {max(_sb)/min(_sb):.4f}"
+                                  f"   after = {max(_sa)/min(_sa):.4f}   (1.0 = equalised)")
             # ColorAdjust after FUGC (IMAu save-path contrast/unsharp gate).
             # Factory-zero params → skip (DEFAULT_SKIP). Contrast LUT when
             # leaf ported + non-zero; unsharp apply still WALL.
@@ -1114,7 +1319,226 @@ class AnselEngine:
 
     def to_srgb(self, rpd12_toned: np.ndarray) -> np.ndarray:
         from PIL import Image, ImageCms
+        # SS129 EXPERIMENT: align each channel onto DRA own paper range.
+        # dra-*.dpi carries paperMin=1200 paperMax=2000, and DRA maps LUMINANCE
+        # there -- but the per-channel offsets leave R ~300 low and B ~400 high,
+        # so each channel lands where the ICC local slope is 0.157..0.241
+        # instead of the ~0.308 it has across 1200..2000. Off by default.
+        # SS134 EXPERIMENT: translate the black point down to the ICC's own
+        # domain. The invert's p1 is already right (R 901 vs the 924 the ICC
+        # needs for sRGB 10); the tone stage lifts it to ~1452 because DRA
+        # targets paperMin/paperMax = 1200/2000. This SHIFTS (does not rescale)
+        # each channel so p1 lands on the target, leaving span untouched --
+        # which is what distinguishes it from PAKON_PAPER_ALIGN (SS129.2),
+        # that rescaled span and moved the slope only 3 %.
+        # SS135 EXPERIMENT: black point AND span together. SS134 confirmed the
+        # translation (output p1 36/86/68 -> 0/10/8 against the vendor's
+        # 10/11/10) but a pure shift left the image dark -- p99 165/192/222 vs
+        # 252/251/255 -- isolating a residual span deficit of 1.15..1.47x, the
+        # same ~1.5x SS130 derived independently from the vendor's own raw
+        # buffers. This maps [p1, p99] onto the RPD window that yields the
+        # vendor's [black, white], per channel.
+        # SS138 EXPERIMENT: apply the SRA forward LUT on the MAIN path.
+        # pakon_ansel applies self.sra_lut only in the legacy `else` branch
+        # ("stand-in for Shasta toneLut"); the real_auto_tone path never
+        # applies it, though the render log prints the loaded name -- and a
+        # printed name is not evidence of application (cf. SS127.7).
+        # SS136 established a TRANSFORM is missing between tone and ICC; this
+        # tests whether the loaded-but-unused SRA curve is it.
+        if os.environ.get("PAKON_APPLY_SRA") == "1":
+            _z = np.clip(np.rint(np.asarray(rpd12_toned, dtype=np.float64)),
+                         0, SHASTA_MAX).astype(np.int32)
+            _lut = np.asarray(self.sra_lut, dtype=np.float64)
+            rpd12_toned = _lut[np.clip(_z, 0, len(_lut) - 1)]
+            print("  [EXPERIMENT] SRA fwd LUT applied post-tone")
+        _bw = os.environ.get("PAKON_BLACK_WHITE")
+        if _bw:
+            # RPD targets for vendor sRGB black/white, neutral-ramp ICC.
+            _TGT = {"R": (924.0, 2257.0), "G": (940.0, 2209.0),
+                    "B": (924.0, 4023.0)}
+            z = np.asarray(rpd12_toned, dtype=np.float64).copy()
+            for c, _nm in enumerate("RGB"):
+                lo, hi = _TGT[_nm]
+                p1 = float(np.percentile(z[..., c], 1))
+                p99 = float(np.percentile(z[..., c], 99))
+                if p99 > p1:
+                    z[..., c] = lo + (z[..., c] - p1) * ((hi - lo) / (p99 - p1))
+            print("  [EXPERIMENT] black+white mapped to vendor RPD targets")
+            rpd12_toned = z
+        _bp = os.environ.get("PAKON_BLACK_POINT")
+        if _bp:
+            _t = float(_bp)
+            z = np.asarray(rpd12_toned, dtype=np.float64).copy()
+            _d = []
+            for c in range(z.shape[2]):
+                p1 = float(np.percentile(z[..., c], 1))
+                z[..., c] = z[..., c] - (p1 - _t)
+                _d.append(p1 - _t)
+            print(f"  [EXPERIMENT] black point -> {_t:.0f}; shifted by "
+                  f"{[round(v) for v in _d]}")
+            rpd12_toned = z
+        if os.environ.get("PAKON_PAPER_ALIGN") == "1":
+            lo, hi = 1200.0, 2000.0
+            z = np.asarray(rpd12_toned, dtype=np.float64).copy()
+            for c in range(z.shape[2]):
+                p1, p99 = np.percentile(z[..., c], [1, 99])
+                if p99 > p1:
+                    z[..., c] = lo + (z[..., c] - p1) * ((hi - lo) / (p99 - p1))
+            print(f"  [EXPERIMENT] paper-align each channel -> {lo:.0f}..{hi:.0f}")
+            rpd12_toned = z
+        if os.environ.get("PAKON_PAPER_ALIGN_LUMA") == "1":
+            # SS157.8 EXPERIMENT. PAKON_PAPER_ALIGN maps each CHANNEL onto
+            # 1200..2000 independently. That is not what DRA does: dra-*.dpi
+            # carries paperMin/paperMax and DRA maps LUMINANCE onto them,
+            # letting the channels follow. Forcing all three individually
+            # destroys the per-channel separation SS153 measured, which is
+            # probably why SS157.5 found it fixes R and G to -5 codes but
+            # leaves B at -16.
+            #
+            # This applies ONE luminance-derived affine map to all three
+            # channels, preserving their separation.
+            lo, hi = 1200.0, 2000.0
+            z = np.asarray(rpd12_toned, dtype=np.float64).copy()
+            luma = 0.299 * z[..., 0] + 0.587 * z[..., 1] + 0.114 * z[..., 2]
+            p1, p99 = np.percentile(luma, [1, 99])
+            if p99 > p1:
+                g = (hi - lo) / (p99 - p1)
+                z = lo + (z - p1) * g
+                print(f"  [EXPERIMENT] paper-align LUMA -> {lo:.0f}..{hi:.0f} "
+                      f"(p1={p1:.0f} p99={p99:.0f} gain={g:.4f})")
+                rpd12_toned = z
+        if os.environ.get("PAKON_DRA_BOUNDS") == "1":
+            # REFUTED AT TIER 1 -- see SS158.1/SS158.2. Kept only so the
+            # refuted configuration stays reproducible; do NOT treat it as a
+            # candidate. This block maps lo..hi -> paperMin..paperMax affinely,
+            # i.e. it EXPANDS a narrow range. The real generateLut
+            # (0x1022ab50, Unicorn-verified) has no expansion branch at all:
+            # if the effective range already lies inside [1200, 2000] the
+            # DraLut is exactly the identity (lut[i] == i, all 4096 entries),
+            # and only a range spilling outside is compressed INWARD about
+            # 1550. SS157.9 observed this scoring worse than a guess and
+            # inferred the affine reading was wrong; that is now confirmed
+            # directly against the DLL.
+            #
+            # SS157.9. PAKON_PAPER_ALIGN_LUMA guessed both halves: it used the
+            # sRGB luma weights and the 1st/99th percentiles. DRA uses neither.
+            #
+            # Its luminance is the flat mean (R+G+B+1)/3 with signed
+            # truncation -- the literal `inc ecx` at 0x1022b1ae and the
+            # 0x55555556 magic-multiply at 0x1022b1b6 (dra.lum_histogram,
+            # Unicorn-verified). Its bounds come from dra.cum_bounds
+            # (0x10228bc0, Unicorn-verified) driven by the shipped dra-*.dpi:
+            # startingMinCumPoint=1.0 but startingMaxCumPoint=**90.0**, not 99,
+            # with binFactor=4 and paperMin/paperMax=1200/2000.
+            #
+            # Both leaves were already ported and verified; nothing on the
+            # render path called them. This wires them up.
+            import pakon_dra as _dra
+            _p = _dra.DraParams.load(_dra.VENDOR_DRA_DIR)
+            _pv = {k: _p.values[k] for k in
+                   ("startingMinCumPoint", "cumPctBelowMin",
+                    "startingMaxCumPoint", "cumPctAboveMax", "binFactor")}
+            z = np.asarray(rpd12_toned, dtype=np.float64)
+            _mx = int(_p.values["maxValue"])
+            # the vendor's own luminance, not a weighted luma
+            _lum = np.clip(
+                np.trunc((z[..., 0] + z[..., 1] + z[..., 2] + 1.0) / 3.0),
+                0, _mx).astype(np.int32)
+            _small = np.bincount(_lum.ravel(), minlength=_mx + 1).tolist()
+            _bf = int(_p.values["binFactor"])
+            _large = _dra.rebin(_small, _mx + 1, _bf)
+            _nl = len(_large)
+            _cum, _acc = [], 0
+            for v in _large:
+                _acc += v
+                _cum.append(_acc)
+            _lo, _hi = _dra.cum_bounds(_cum, _large, _nl, int(_lum.size), _pv)
+            _pmin = float(_p.values["paperMin"]); _pmax = float(_p.values["paperMax"])
+            if _hi > _lo:
+                _g = (_pmax - _pmin) / float(_hi - _lo)
+                rpd12_toned = _pmin + (z - float(_lo)) * _g
+                print(f"  [EXPERIMENT] DRA bounds lum {_lo}..{_hi} -> "
+                      f"{_pmin:.0f}..{_pmax:.0f} (gain={_g:.4f})")
+            else:
+                print(f"  [EXPERIMENT] DRA bounds degenerate ({_lo}..{_hi}) "
+                      f"— left unchanged")
+        if os.environ.get("PAKON_DRA_PIVOT") == "1":
+            # REFUTED TWICE -- empirically in SS157.11, then at tier 1 in
+            # SS158.2. Kept only for reproducibility; NOT a candidate.
+            #   * SS157.11: if the vendor centred every frame on a fixed point
+            #     its output luminance median would cluster tightly. Over 39
+            #     vendor renders it does not (sd 36.4, range 154) -- the vendor
+            #     preserves scene brightness variation, which this block
+            #     destroys by pinning every frame's median to 1550.
+            #   * SS158.2: the slope it clamps is clamped to DEAD parameters.
+            #     0x1022ab50 has no x87 instructions at all and keepMidPtLut
+            #     (0x102290b0) never reads +0x0c/+0x10; sweeping minSlope and
+            #     maxSlope across 0.0..100.0 leaves the real DLL's DraLut
+            #     byte-identical. Their only consumer is validate_params.
+            #
+            # SS157.10. dra-*.dpi carries lowFixedPoint == highFixedPoint ==
+            # 1550, and the CN Preference opening line reports the same number
+            # as NBP=1550. On the vendor's own frame this port's toned
+            # luminance median sits at 1810 -- 260 above that fixed point --
+            # and 260 is the offset SS157.3 fitted independently in ICC space
+            # (241..273) and SS156.3 fitted independently cross-roll (227..271).
+            #
+            # Three unrelated estimates landing on the same number is the
+            # reason to test the pivot as the MECHANISM rather than keep
+            # fitting a constant. This centres the toned image on the fixed
+            # point, optionally with DRA's own bounds-derived slope about it,
+            # clamped to minSlope/maxSlope from the same file.
+            import pakon_dra as _dra
+            _v = _dra.DraParams.load(_dra.VENDOR_DRA_DIR).values
+            _fp = float(_v["lowFixedPoint"])
+            z = np.asarray(rpd12_toned, dtype=np.float64)
+            _mx = int(_v["maxValue"])
+            _lum = np.clip(np.trunc((z[..., 0] + z[..., 1] + z[..., 2] + 1.0)
+                                    / 3.0), 0, _mx).astype(np.int32)
+            _med = float(np.percentile(_lum, 50))
+            _g = 1.0
+            if os.environ.get("PAKON_DRA_PIVOT_SLOPE") == "1":
+                _small = np.bincount(_lum.ravel(), minlength=_mx + 1).tolist()
+                _large = _dra.rebin(_small, _mx + 1, int(_v["binFactor"]))
+                _cum, _a = [], 0
+                for _x in _large:
+                    _a += _x
+                    _cum.append(_a)
+                _pv = {k: _v[k] for k in
+                       ("startingMinCumPoint", "cumPctBelowMin",
+                        "startingMaxCumPoint", "cumPctAboveMax", "binFactor")}
+                _lo, _hi = _dra.cum_bounds(_cum, _large, len(_large),
+                                           int(_lum.size), _pv)
+                if _hi > _lo:
+                    _g = (float(_v["paperMax"]) - float(_v["paperMin"])) \
+                        / float(_hi - _lo)
+                    _g = min(max(_g, float(_v["minSlope"])),
+                             float(_v["maxSlope"]))
+            rpd12_toned = _fp + (z - _med) * _g
+            print(f"  [EXPERIMENT] DRA pivot: lum median {_med:.0f} -> "
+                  f"fixed point {_fp:.0f} (shift {_fp - _med:+.0f}, "
+                  f"slope {_g:.4f})")
         u8 = rpd12_to_icc_u8(rpd12_toned)
+
+        # docs/74 §171 measured this port's lcms ICC step against the REAL
+        # vendor CMM and found it not bit-exact, one-signed, and not a
+        # per-channel remap -- i.e. a 3-D CLUT interpolation difference.
+        # pakon_kcms_clut runs the vendor's OWN interpolator instead
+        # (kodakcms.dll fcn.10018160, tetrahedral, 14-bit, precomputed index
+        # tables), with the tables SpCombineXforms itself built for this exact
+        # profile pair. It is bit-exact against the real routine over the
+        # whole u8 RGB domain -- all 16,777,216 triples; see
+        # pakon_kcms_clut_golden.py. Set PAKON_ICC_LCMS=1 to fall back.
+        if (os.environ.get("PAKON_ICC_LCMS") != "1"
+                and kcms_clut is not None and kcms_clut.available()
+                and (self.profile_dir / "Rpd2Pcs_HR200_QS_v5s10.pf").is_file()
+                and (self.profile_dir / "Srgb_v2.pf").is_file()):
+            if not getattr(self, "_kcms_announced", False):
+                self._kcms_announced = True
+                print("  ICC: kodakcms.dll fcn.10018160 port "
+                      "(vendor CLUT, bit-exact)")
+            return kcms_clut.evaluate(u8)
+
         if self._icc_cache is None:
             p1 = self.profile_dir / "Rpd2Pcs_HR200_QS_v5s10.pf"
             p2 = self.profile_dir / "Srgb_v2.pf"
@@ -1123,10 +1547,39 @@ class AnselEngine:
                 p2 = self.color_dir / "srgb.pf"
             src = ImageCms.getOpenProfile(str(p1))
             dst = ImageCms.getOpenProfile(str(p2))
+            # docs/74 §171. NOOPTIMIZE disables lcms's device-link
+            # precalculation. Measured against the REAL vendor CMM
+            # (kodakcms.dll SpEvaluate, md5 e4c8064a9dd3c3a5541d74b00a730e53)
+            # driven under Wine on 359,660 real toned pixels: this port is
+            # systematically DARKER than the vendor by mean 2.739 sRGB codes
+            # (R -4.08, G -2.37, B -1.74) with default flags, and 1.836 with
+            # NOOPTIMIZE. LOWRESPRECALC is worse still (-5.11). Default flags
+            # were the worst of the three.
+            #
+            # Confirmed independently on this path before adopting: the flag
+            # moves output +0.92/+0.88/+0.91 per channel on real toned pixels,
+            # i.e. BRIGHTER, which is toward the vendor -- matching the ~0.9
+            # the Wine comparison predicted.
+            #
+            # This is a DEFAULT change, justified because the vendor's own
+            # profile-Rpd2Srgb.dpi independently confirms every other part of
+            # this configuration (profile1/profile2 as below, dataType U8,
+            # renderIntent P, colorSpaceMax 255 -- which also validates
+            # rpd12_to_icc_u8's u8 = code*255/4095).
+            #
+            # It does NOT make the ICC bit-exact: a one-signed ~1.8 code
+            # residual remains, and it is not a per-channel remap (fitting the
+            # best monotone g(vendor)->ours leaves up to 3 codes on G/B and 23
+            # on R across 21-30 % of samples), i.e. a real 3-D CLUT
+            # interpolation difference. Closing that needs the vendor CMM
+            # itself or a port of its interpolator.
+            _flags = getattr(ImageCms.Flags, "NOOPTIMIZE", None)
+            _kw = {"flags": int(_flags)} if _flags is not None else {}
             self._icc_cache = ImageCms.buildTransformFromOpenProfiles(
                 src, dst, "RGB", "RGB",
-                renderingIntent=ImageCms.Intent.PERCEPTUAL)
-            print(f"  ICC: {p1.name} → {p2.name} (12-bit→U8 encode)")
+                renderingIntent=ImageCms.Intent.PERCEPTUAL, **_kw)
+            print(f"  ICC: {p1.name} → {p2.name} (12-bit→U8 encode"
+                  f"{', NOOPTIMIZE' if _flags is not None else ''})")
         im = ImageCms.applyTransform(
             Image.fromarray(u8, mode="RGB"), self._icc_cache)
         return np.asarray(im, dtype=np.uint8)

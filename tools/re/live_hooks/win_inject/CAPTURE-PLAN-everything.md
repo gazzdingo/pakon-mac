@@ -30,17 +30,28 @@ hooks_v51_everything.cfg   (validated: 31 hooks, incl. sba_measure,
    moment to confirm it stays responsive.
 5. **Scan one roll.** Lamp off when done.
 
-## THE PART THAT MAKES IT BYTE-FOR-BYTE — do not skip
+## What actually certifies byte-for-byte (corrected)
 
-The hook capture gives the internal values. To *certify* byte-for-byte we
-also need the vendor's own input and output for the SAME frames:
+The PSI-exported "raw" is NOT the pipeline's true input — it is an 8-bit
+export, already downsampled from the real 14-bit sensor data. So a raw+TIFF
+pair is NOT an input->output byte reference. Do not treat it as one.
 
-6. In PSI, **export both the RAW and the finished TIFF** for the frames you
-   just scanned — same scan, same session. (These are the `raw*.tif` /
-   `*.tif` pairs.) The raw is the pipeline's input; the finished TIFF is the
-   target. Pairing them from the SAME scan is essential — a trace matched to
-   TIFFs from a different scan is the §162 error that has cost this project
-   before.
+The real ground truth is the HOOK data: the DLL's own internal buffers on the
+true sensor input. Two things it gives:
+
+* **Correctness (the main prize, no export needed):** the sba_measure vector,
+  apb_scene delta, and framing arrays let us PORT and verify those stages
+  bit-exact against the real DLL. Porting them closes the blue, provably
+  matching the vendor's arithmetic.
+* **A partial true byte test:** the captured PIXEL PLANES (poly_input_r/
+  poly_output_r, scene brackets, lut_src/dst) are the vendor's real internal
+  pixels. Feed our pipeline the captured input plane, compare to the captured
+  output plane — byte-for-byte on real data, no 8-bit export involved. Capped
+  per §189.5, so this covers a few frames, not the whole roll.
+
+6. Optionally export the finished TIFFs too, but ONLY as a visual sanity
+   reference — they are 8-bit and cannot certify byte-identity. The hook
+   pixel planes are what a byte test uses.
 
 ## Getting it back
 

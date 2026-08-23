@@ -842,8 +842,21 @@ class AnselEngine:
                     raise ValueError("PAKON_ORDER_FPO wants three values")
                 order_fpo = (_p[0], _p[1], _p[2])
             preference_a = preference_shift_words(sba, order_fpo)
+            # PAKON_SETSHIFTS_IDENTITY=1 (docs/74 §208 review, 2026-08-22):
+            # the 2026-08-21 capture shows the vendor's setShifts(1,2) output
+            # equals A EXACTLY (frame-for-frame, cn_shift_before[+0x4b6] == A),
+            # i.e. the stage is IDENTITY for this roll -- but the shipped
+            # band3.planar LUT subtracts a uniform ~70. Passing an identity
+            # 3-band LUT reproduces the vendor 6/6. Opt-in while it is decided
+            # whether find_shipped_3band_lut picks the wrong file or the real
+            # LUT is near-identity for this SBA key.
+            _band3_planar = band3.planar
+            if os.environ.get("PAKON_SETSHIFTS_IDENTITY") == "1":
+                _band3_planar = list(range(band3.num_lut)) * 3
+                print("  [PAKON_SETSHIFTS_IDENTITY] setShifts LUT -> identity "
+                      "(drops the spurious ~70)")
             setshifts_out = sba_apply.setshifts_12(
-                preference_a, preference_a, band3.planar, band3.num_lut
+                preference_a, preference_a, _band3_planar, band3.num_lut
             )
             # EXPERIMENT (docs/74 SS110), opt-in via PAKON_VENDOR_CHROMA=1.
             #
@@ -1034,6 +1047,48 @@ class AnselEngine:
             self.preference_a, self.preference_a,
             self.band3_lut.planar, self.band3_lut.num_lut,
         )
+
+    def set_balance_shift(
+        self, triple: tuple[int, int, int] | None
+    ) -> tuple[int, int, int] | None:
+        """Apply ONE frame's already-final balance triple (``scene+0x4b6``).
+
+        This is the pure APPLICATION seam for per-frame balance, and it is
+        deliberately distinct from :meth:`set_order_fpo`:
+
+        * :meth:`set_order_fpo` recomputes the shift from an ``orderFpo``
+          triple, running ``preference_full -> setshifts_12``. That reproduces
+          ``setshifts_out`` (the driver-entry triple, docs/74 §201) but **not**
+          the per-frame uniform scalar ``δ`` the vendor adds afterward inside
+          ``cn_enhanced_driver`` — δ's source is still uncaptured (§201.4).
+        * :meth:`set_balance_shift` sets ``setshifts_out`` **directly** to the
+          value the render must apply — i.e. the vendor's own
+          ``balance_shift_4b6`` (``setshifts_out + δ``), captured whole. Nothing
+          is recomputed, so nothing is invented: the only source of such a
+          triple is a live hook capture (``area_shift_4b6`` /
+          ``balance_shift_4b6``) or, once ported, the full B1 chain including δ.
+
+        Verified against the 2026-08-21 reference capture (tier-2 provenance):
+        the six captured ``balance_shift_4b6`` triples are
+        ``(690,274,8) (820,402,164) (867,472,199) (988,587,326) (597,199,-35)
+        (781,371,129)``; feeding each to this method is what makes a render
+        per-frame instead of roll-static.
+
+        Passing ``None`` is a no-op (keeps whatever :meth:`load` computed), so a
+        frame with no captured triple falls back to the roll-static stand-in
+        rather than being blanked. Returns the value now in effect.
+
+        This method changes nothing unless a caller invokes it; the default
+        render path never does. The wired entry point is the ``render_frame``
+        ``PAKON_PER_FRAME_SHIFTS`` hook.
+        """
+        if triple is None:
+            return self.setshifts_out
+        self.setshifts_out = (int(triple[0]), int(triple[1]), int(triple[2]))
+        # The per-frame triple is final; there is no orderFpo behind it here.
+        self.order_fpo = None
+        self.preference_a = None
+        return self.setshifts_out
 
     def render_scene(self, rpd12: np.ndarray,
                      roll_scale: np.ndarray | None = None) -> np.ndarray:

@@ -174,9 +174,14 @@ def test_render_frame_inverts(seg, eng) -> list[str]:
         ]
         img = pr.render_frame(roll, 0, None, scale="full")
 
-    # render_frame rot90s for display, so compare against the same rotation of
-    # the input rather than assuming an orientation.
-    raw_disp = dec.to_frame_image(seg, 1.0)
+    # render_frame rot90s for display AND applies _display_orient (the vendor
+    # upright 180°, measured against the real vendor output TIFFs); compare
+    # against the same composed transform of the input rather than assuming an
+    # orientation. This test is about polarity (does the render invert the
+    # negative), not orientation -- keep the reference in render_frame's own
+    # display frame so a correct orientation change cannot masquerade as an
+    # inversion regression.
+    raw_disp = pr._display_orient(dec.to_frame_image(seg, 1.0))
     if raw_disp.shape[:2] != img.shape[:2]:
         fails.append(f"shape mismatch: raw {raw_disp.shape} vs {img.shape}")
         return fails

@@ -444,6 +444,112 @@ def _vendor_invert_lut(n: int = VENDOR_INVERT_ENTRIES) -> np.ndarray:
     return out
 
 
+@lru_cache(maxsize=8)
+def _vendor_invert_anchor(film_base, fpo, data_dir, model, film_class):
+    """Per-roll film-base re-anchor for the ``PAKON_VENDOR_INVERT=1`` path.
+
+    EVIDENCE TIER 4 (empirical vendor-colour matching), NOT a bit-exact claim.
+    This is not recovered from a captured vendor value; it is a correction
+    derived from this port's OWN two colour paths and measured end to end on
+    real rolls. See docs/74 (the colour investigation log) for the tier
+    hierarchy; this function is at the bottom of it.
+
+    THE PROBLEM.  With the vendor invert on, ``scene_rpd12`` applies the fixed
+    F-135 table (``out = clamp(14750 - 3500*log10(in))``) then stage 2, and
+    NEVER calls ``f135_rom12_to_rpd12``. That function is the only place this
+    port anchors the roll film base to the per-channel orange-mask aim ``fpo``
+    (so that the downstream ``setShifts`` — sized as ``nbp - fpo`` — carries it
+    to a neutral balance point). Skipping it leaves the film base sitting at an
+    arbitrary per-channel value ``L`` in the invert-domain RPD12; ``setShifts``
+    then lands it at ``L + setShifts`` which is NOT neutral (measured
+    ``[1051, 1120, 1202]`` on the street/protest roll — B above R by ~150
+    codes), and the render comes out blue.
+
+    WHAT THIS RETURNS.  The per-channel additive RPD12 offset that re-anchors
+    the film base's per-channel BALANCE to ``fpo`` — a pure additive shift, so
+    it preserves the vendor table's steep slope (hence the tone/contrast). Two
+    forms:
+
+      * ``o_full = fpo - L`` — the full anchor. Makes ``L + o_full + setShifts
+        == fpo + setShifts`` (neutral, spread ~25). But ``fpo + setShifts`` is
+        ~1600, well ABOVE the tone toe, so this REPRODUCES the washed-out
+        invert-OFF render bit-for-bit in colour and in blacks. Proven, docs/74.
+      * ``o_color = o_full - min(o_full)`` — the balance WITHOUT the level.
+        Applies ``fpo``'s per-channel SHAPE while keeping the invert table's own
+        deep black level (the least-shifted channel is not lifted). This is the
+        default: it keeps invert-ON's deep blacks (measured 1st-pctile ~12-15
+        vs invert-OFF's ~60) and neutralises the balance-clean frames, while
+        substantially reducing (not eliminating) the cast on frames whose real
+        per-frame balance differs from the roll-static ``setShifts`` (the
+        documented, still-uncaptured per-frame-balance gap, docs/74 §159-168,
+        §200-201).
+
+    HONEST LIMITATION.  Deep blacks and fully-neutral colour are coupled
+    through the tone/ICC chain (the ICC amplifies residual per-channel
+    imbalance in the shadows): no single per-channel RPD12 offset gives BOTH
+    perfectly on every frame. ``o_color`` is the best-achievable compromise
+    that satisfies the hard constraint "keep the deep blacks". Verify per stage,
+    not on the end-to-end number alone (docs/74 §171.3).
+
+    ``L`` is computed WITHOUT a captured raw film base: the roll ``film_base``
+    is in the stage-2 poly-output (RPD12) domain, but the vendor table is
+    indexed by RAW 14-bit sensor codes. So we invert the stage-2 polynomial
+    (3-D Newton, the poly is diagonal-dominant) to recover the raw clear-base
+    triple that produced ``film_base``, then push THAT through the invert-ON
+    pipeline (table -> poly -> rpd16_to_rpd12) to read ``L``. Cross-checked on
+    two scans of the same stock: the recovered raw triple matches the
+    interframe-gap clear base to <1%. Returns ``(o_color, o_full)`` as float
+    ``(3,)`` arrays, or ``(None, None)`` when it does not apply (non-F-135,
+    missing/sentinel film base, or the Newton fails to converge — in which case
+    the caller leaves the invert-ON output untouched rather than guessing).
+    """
+    if model != "f135" or film_base is None or fpo is None:
+        return None, None
+    fb = np.asarray(film_base, dtype=np.float64)
+    fpo_a = np.asarray(fpo, dtype=np.float64)
+    if fb.size != 3 or fpo_a.size != 3 or np.any(fb <= 0):
+        return None, None
+    rpd_max = pc.RPD_MAX_BY_MODEL[model]
+
+    def off_poly(tri):
+        # stage-2 poly output in RPD12 — the domain roll.film_base lives in.
+        # offset is unused on the F-135 poly path (see _rpd16), so zeros here
+        # match how the roll film base was measured.
+        r16 = _rpd16(np.asarray(tri, np.int32), data_dir, np.zeros(3),
+                     model=model, film_class=film_class)
+        return ansel.rpd16_to_rpd12(r16, rpd_max)
+
+    def on_poly(tri):
+        lut = _vendor_invert_lut()
+        idx = np.clip(np.asarray(tri, np.int32), 0, lut.size - 1)
+        r16 = _rpd16(lut[idx].astype(np.uint16), data_dir, np.zeros(3),
+                     model=model, film_class=film_class)
+        return ansel.rpd16_to_rpd12(r16, rpd_max)
+
+    # Recover the raw 14-bit clear-base triple: solve off_poly(x) == film_base.
+    x = np.array([8000.0, 8000.0, 8000.0])
+    h = 20.0
+    for _ in range(60):
+        r = off_poly(x.reshape(1, 1, 3)).reshape(3) - fb
+        if np.max(np.abs(r)) < 0.3:
+            break
+        jac = np.empty((3, 3))
+        for j in range(3):
+            xp = x.copy()
+            xp[j] += h
+            jac[:, j] = (off_poly(xp.reshape(1, 1, 3)).reshape(3) - fb - r) / h
+        try:
+            x = np.clip(x + np.linalg.solve(jac, -r), 1.0, 16383.0)
+        except np.linalg.LinAlgError:
+            return None, None
+    if np.max(np.abs(off_poly(x.reshape(1, 1, 3)).reshape(3) - fb)) > 2.0:
+        return None, None                       # did not converge — do not guess
+    L = on_poly(x.reshape(1, 1, 3)).reshape(3)
+    o_full = fpo_a - L
+    o_color = o_full - float(o_full.min())
+    return o_color, o_full
+
+
 def scene_rpd12(rgb14: np.ndarray, data_dir: str, offset: np.ndarray,
                 model: str, eng, film_base=None,
                 film_class: int = 1) -> np.ndarray:
@@ -490,7 +596,34 @@ def scene_rpd12(rgb14: np.ndarray, data_dir: str, offset: np.ndarray,
         rpd16 = _rpd16(inv, data_dir, offset, model=model,
                        film_class=film_class)
         # the log already happened, upstream -- do NOT invert again
-        return ansel.rpd16_to_rpd12(rpd16, pc.RPD_MAX_BY_MODEL[model])
+        rpd12_inv = ansel.rpd16_to_rpd12(rpd16, pc.RPD_MAX_BY_MODEL[model])
+        # Re-anchor the roll film base's per-channel BALANCE to fpo. The fixed
+        # table above never runs f135_rom12_to_rpd12, so unlike the invert-OFF
+        # path the film base was NEVER placed on fpo; setShifts (sized nbp-fpo)
+        # then lands the orange mask off-neutral and the render comes out blue.
+        # This adds the per-channel offset that fixes that WITHOUT lifting the
+        # black level, so the vendor table's steep tone (deep blacks) is kept.
+        # Tier 4 / empirical -- see _vendor_invert_anchor. Modes:
+        #   balance (default) apply fpo's per-channel shape, keep deep blacks;
+        #   full              apply the whole fpo anchor (== invert-OFF colour,
+        #                     neutral but washed);
+        #   none              legacy behaviour (blue).
+        mode = (os.environ.get("PAKON_VENDOR_INVERT_ANCHOR")
+                or "balance").strip().lower()
+        fpo = getattr(getattr(eng, "sba", None), "fpo", None)
+        if (mode != "none" and getattr(eng, "setshifts_out", None) is not None
+                and fpo is not None):
+            fb_key = (tuple(float(v) for v in film_base)
+                      if film_base is not None else None)
+            o_color, o_full = _vendor_invert_anchor(
+                fb_key, tuple(float(v) for v in fpo),
+                data_dir, model, film_class)
+            anchor = o_full if mode == "full" else o_color
+            if anchor is not None:
+                rpd12_inv = np.clip(
+                    rpd12_inv + np.asarray(anchor).reshape(1, 1, 3),
+                    0, ansel.SHASTA_MAX)
+        return rpd12_inv
 
     rpd16 = _rpd16(rgb14, data_dir, offset, model=model,
                    film_class=film_class)
@@ -1248,6 +1381,34 @@ def _apply_geometry(img: np.ndarray, p: dict) -> np.ndarray:
     return np.ascontiguousarray(img)
 
 
+def _display_orient(img: np.ndarray) -> np.ndarray:
+    """Put a rendered frame in the VENDOR's upright orientation.
+
+    ``dec.to_frame_image`` applies ``rot90(k=-1)`` (its ``ROTATE_180_FOR_LENS``
+    lens-inversion 180°). Measured against the real vendor output TIFFs — six
+    frames produced by Kodak/Pakon PSI on this very film (the 2026-08-22 v51
+    scan, AA001-AA006) — the scene is upright and un-mirrored only at
+    ``rot90(k=+1)``: the current base is a full 180° off and renders
+    upside-down. This adds that missing 180° so the display matches the vendor
+    (a pure rotation, no mirror — confirmed by pixel-matching a test-main_v2
+    frame against vendor AA001).
+
+    Scoped to the render/display path on purpose: ``dec.to_frame_image``'s own
+    file exports and the raw14 TIFF the Go pipeline reads (whose CCD-deskew
+    sign is coupled to the base rotation, main.go) are left untouched.
+
+    ``PAKON_VENDOR_ORIENT=0`` disables it — needed only for film wound the
+    OTHER way through the transport, where the vendor's own orientation flips
+    too (the codebase's earlier ``k=-1`` was settled from one such capture,
+    strip_cal.bin; that reading and this one cannot both be a fixed rule, so
+    orientation is transport-direction-dependent and the selection signal —
+    likely the DX/sprocket edge — was not captured here).
+    """
+    if os.environ.get("PAKON_VENDOR_ORIENT", "1") == "0":
+        return img
+    return np.ascontiguousarray(np.rot90(img, 2))
+
+
 def correction_steps(p: dict) -> np.ndarray:
     """This frame's user correction, in vendor button-steps, per channel."""
     d = float(p.get("density") or 0.0)
@@ -1475,6 +1636,88 @@ def _render_colour_python(roll: Roll, seg: np.ndarray, p: dict) -> np.ndarray:
     return _quiet(eng.to_srgb, toned)
 
 
+def _auto_white_balance_frame(img: np.ndarray) -> np.ndarray:
+    """OPT-IN per-frame grey-world white balance (PAKON_AUTO_WB=1).
+
+    APPROXIMATION, not the vendor's per-frame balance. A stand-in that makes a
+    roll look consistent today while the real per-frame balance -- the
+    capture-gated port (docs/74 §200-§201) -- is finished. The roll uses ONE
+    static balance triple; the vendor uses one per frame, which is why "some
+    frames look good, others not". This equalises channel means over the
+    mid-tones (near-black/near-white excluded, they skew the estimate) and
+    preserves overall luminance, so it neutralises each frame's own cast.
+    """
+    a = img.astype(np.float64)
+    flat = a.reshape(-1, 3)
+    lum = flat.mean(axis=1)
+    mid = (lum > 16.0) & (lum < 240.0)
+    sample = flat[mid] if int(mid.sum()) > 1000 else flat
+    means = sample.mean(axis=0)
+    if float(means.min()) <= 1e-6:
+        return img
+    gain = means.mean() / means
+    return np.clip(flat * gain, 0, 255).reshape(a.shape).astype(np.uint8)
+
+
+def _parse_per_frame_shifts(spec: str) -> list[tuple[int, int, int]]:
+    """``"r,g,b;r,g,b;..."`` -> list of int triples, one per frame index.
+
+    A ``-`` (or empty) entry means "no override for this frame" -> ``None``,
+    which leaves the roll-static stand-in in place for that frame.
+    """
+    out: list[tuple[int, int, int] | None] = []
+    for chunk in spec.split(";"):
+        c = chunk.strip()
+        if not c or c == "-":
+            out.append(None)
+            continue
+        parts = [int(round(float(v))) for v in c.split(",")]
+        if len(parts) != 3:
+            raise ValueError(
+                f"PAKON_PER_FRAME_SHIFTS entry {c!r} is not an r,g,b triple")
+        out.append((parts[0], parts[1], parts[2]))
+    return out  # type: ignore[return-value]
+
+
+def _apply_per_frame_shift(roll: Roll, index: int) -> None:
+    """OPT-IN (``PAKON_PER_FRAME_SHIFTS``): apply one balance triple per frame.
+
+    The mechanism the per-frame-balance work needs (docs/74 §200-§201): the
+    render currently computes ONE ``setshifts_out`` per roll in
+    ``AnselEngine.load`` and applies it to every frame, which is what makes
+    "some frames look good, others not" — a roll-static balance standing in for
+    a per-frame one. This routes a DIFFERENT captured/computed final balance
+    triple to each frame index via ``AnselEngine.set_balance_shift``.
+
+    Env format: ``PAKON_PER_FRAME_SHIFTS="690,274,8;820,402,164;..."`` — one
+    ``r,g,b`` per frame, ``-`` to skip a frame. Python colour engine only
+    (setShifts are not in play on the median-scale fallback, and the Go engine
+    is out of scope for this hook). Off unless set; changes nothing by default.
+    """
+    spec = os.environ.get("PAKON_PER_FRAME_SHIFTS")
+    if not spec:
+        return
+    triples = _parse_per_frame_shifts(spec)
+    eng = roll.engine()
+    if eng.setshifts_out is None:
+        # Preference apply is not active (median channel_balance fallback);
+        # there is no +0x4b6 seam to write, so refuse rather than pretend.
+        raise RuntimeError(
+            "PAKON_PER_FRAME_SHIFTS needs the Preference setShifts path "
+            "(eng.setshifts_out is None — median channel_balance fallback is "
+            "active for this roll/stock)")
+    # The engine is shared and cached across frames, so a prior frame's triple
+    # would leak. Reset to the roll-static value first (set_order_fpo(None)
+    # rebuilds exactly what load() computed), THEN apply this frame's triple if
+    # it has one. A ``-`` / beyond-list frame keeps the roll-static stand-in.
+    eng.set_order_fpo(None)
+    triple = triples[index] if index < len(triples) else None
+    if triple is None:
+        return
+    applied = eng.set_balance_shift(triple)
+    print(f"  [PER-FRAME] frame {index}: balance triple -> {applied}")
+
+
 def render_frame(roll: Roll, index: int, params: dict | None = None,
                  scale: str = "preview",
                  max_edge: int | None = None) -> np.ndarray:
@@ -1492,12 +1735,15 @@ def render_frame(roll: Roll, index: int, params: dict | None = None,
 
     seg = roll.slice14(f.a, f.b, step)
     if colour_engine() == "python":
+        _apply_per_frame_shift(roll, index)
         srgb = _render_colour_python(roll, seg, p)
     else:
         srgb = _render_colour_go(roll, seg, p)
 
-    img = dec.to_frame_image(srgb, roll.transport_scale)
+    img = _display_orient(dec.to_frame_image(srgb, roll.transport_scale))
     img = _apply_geometry(img, p)
+    if os.environ.get("PAKON_AUTO_WB") == "1":
+        img = _auto_white_balance_frame(img)
 
     b = float(p.get("brightness", 100)) / 100.0
     c = float(p.get("contrast", 100)) / 100.0
@@ -1752,7 +1998,7 @@ def export_frame(roll: Roll, index: int, dest: Path, fmt: str = "tiff",
                        np.asarray(roll.auto_offsets, dtype=np.float64),
                        model=roll.model, film_class=roll.film_class())
         img16 = _apply_geometry(
-            dec.to_frame_image(rpd16, roll.transport_scale), p)
+            _display_orient(dec.to_frame_image(rpd16, roll.transport_scale)), p)
         out = out.with_suffix(".tif")
         h, w = img16.shape[:2]
         pc.write_tiff(str(out), w, h,

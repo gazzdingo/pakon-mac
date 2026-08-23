@@ -150,6 +150,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import dataclass
 from enum import IntEnum
@@ -2300,6 +2301,164 @@ def frame_cascade(trace: np.ndarray,
     return frames, report
 
 
+# --------------------------------------------------------------------------
+# Wiring the DLL-ported cascade into the app (docs/74: FRAMING_PORTED gap)
+# --------------------------------------------------------------------------
+#
+# ``frame_cascade`` above is this port's own Otsu heuristic. The ``vendor_*``
+# helpers are the bit-exact port of TLB.dll's framing. This block is the
+# BRIDGE that lets the app run the vendor helpers on a real 14-bit roll,
+# opt-in via ``PAKON_VENDOR_FRAMING=1``.
+#
+# WHAT IS PROVEN vs WHAT IS APPROXIMATE (read before trusting this):
+#   * The cascade (``vendor_framing_entry`` -> the four-phase driver) is
+#     bit-exact against TLB.dll, and — on the 2026-08-22 v51 live capture —
+#     reproduces the scanner's OWN placed ``framing_slots`` EXACTLY when fed
+#     the scanner's OWN captured 8-bit line array (``this+0x6c``): 6 frames at
+#     lines 11/409/806/1202/1601/2000, width 375, threshold 119, invert=1.
+#     That is a real-hardware end-to-end check of the cascade, not a synthetic
+#     golden.
+#   * ``fcn.10006870`` (the reduce) is ``255 - (r+g+b)//3`` over a 3-byte
+#     per-line RGB array whose length is ``[vtable+0x20]`` — confirmed by
+#     disassembly and by that same reproduction.
+#   * WHAT IS NOT PINNED: how the scanner builds that 8-bit RGB summary from
+#     the raw scan (the resolution-tier downsample ``fcn.100040b0`` picks —
+#     ``line_scale`` in {1,2,4,8}, =8 for 35mm HR — plus the per-line column
+#     reduction and the 14->8 quantisation). That fill happens line-by-line
+#     DURING the scan and is NOT in the v51 capture (its earliest buffer is
+#     the framing object itself). So ``vendor_frames_from_trace`` DERIVES the
+#     summary from the app's own 14-bit per-line trace with the natural ``>>6``
+#     quantisation; the polarity (image dark / base bright) matches the
+#     scanner's, but the exact 8-bit values are this port's choice, not a
+#     captured fact. This is why ``FRAMING_PORTED`` stays False.
+
+#: ``fcn.10006e70``'s tag stamps -> this module's ``Phase``. The driver stamps
+#: 1 for phase 1 (NICE), 2 for phase 2 (IN_BETWEEN), 4 for phase 3 (LookAtEnd),
+#: 3 for phase 4 (LookAtBeginning) and 9 for blind — see
+#: ``vendor_framing_driver``.
+_VENDOR_TAG_PHASE = {1: Phase.NICE, 2: Phase.IN_BETWEEN, 4: Phase.AT_END,
+                     3: Phase.AT_BEGINNING, 9: Phase.BLIND}
+
+#: The resolution tier ``fcn.100040b0`` selects for 35mm at HR (3000x2000 frame
+#: image): the framing summary is the scan downsampled by 8 along the film.
+VENDOR_FRAMING_LINE_SCALE = 8
+
+
+def use_vendor_framing() -> bool:
+    """Whether the app should run the DLL-ported cascade instead of Otsu.
+
+    Opt-in, default off, for the reason in ``FRAMING_PORTED``'s comment: the
+    cascade is verified but the line-array *derivation* below is not.
+    """
+    return os.environ.get("PAKON_VENDOR_FRAMING") == "1"
+
+
+def vendor_frames_from_trace(
+        trace: np.ndarray,
+        present: np.ndarray | None = None,
+        *,
+        lines_per_mm: float | None = None,
+        pitch_lines: float | None = None,
+        line_scale: int = VENDOR_FRAMING_LINE_SCALE,
+        invert: int = 1) -> tuple[list[Frame], dict]:
+    """Run the bit-exact vendor cascade on a real 14-bit per-line trace.
+
+    ``trace`` is the app's own per-line ``(R+G+B)/3`` on the calibrated 14-bit
+    scale (``pakon_render.open_capture``'s ``trace_1d``). This function derives
+    the scanner's downsampled 8-bit RGB line summary from it, runs
+    ``vendor_framing_entry`` (bit-exact vs TLB.dll ``fcn.100072c0``), and maps
+    the placed slots back to full-resolution line spans.
+
+    See the block comment above for exactly what is proven and what is
+    approximate. Returns ``(frames, report)`` in the same shape
+    ``frame_cascade`` does, so callers do not care which cascade ran.
+    """
+    trace = np.asarray(trace, dtype=np.float64).reshape(-1)
+    n = trace.size
+    ls = int(line_scale)
+    n8 = n // ls
+    if n8 < 4:
+        raise ValueError(f"trace too short for vendor framing: {n} lines")
+
+    # Downsample along-film by averaging groups of `line_scale` scan lines.
+    ds = trace[:n8 * ls].reshape(n8, ls).mean(axis=1)
+    # 14-bit -> 8-bit, the natural RAW14_MAX(16383) >> 6. Image content is DARK
+    # (low) and interframe base is BRIGHT (high) in this domain, the same
+    # polarity the scanner's own summary carries, so the reduce's `255 - avg`
+    # makes image lines read high — exactly what the cascade's "ones" want.
+    avg8 = np.clip(ds / 64.0, 0, 255).astype(np.uint8)
+    rgb8 = np.stack([avg8, avg8, avg8], axis=1)
+
+    if pitch_lines is not None:
+        pitch_full = float(pitch_lines)
+        pitch_source = "given"
+    elif lines_per_mm is not None:
+        pitch_full = FRAME_PITCH_MM * lines_per_mm
+        pitch_source = "geometry"
+    else:
+        raise ValueError("vendor_frames_from_trace needs pitch_lines or "
+                         "lines_per_mm")
+    pitch = max(1, int(round(pitch_full / ls)))
+    width = max(1, int(round(pitch * (FRAME_IMAGE_MM / FRAME_PITCH_MM))))
+    n_slots = (2 * n8) // pitch
+    if n_slots <= 0:
+        raise ValueError(f"degenerate slot count {n_slots}")
+
+    slots = [[0, 0, 0] for _ in range(n_slots)]
+    warn = [0]
+    _ret, ones, thr, _n_runs = vendor_framing_entry(
+        rgb8, slots, n_slots=n_slots, pitch=pitch, width=width,
+        first=0, tail_margin=0, skip_gapok=0, warn=warn, invert=invert)
+
+    # Collect placed slots, mapping downsampled coords back to full-res lines.
+    # The roll caller (``vendor_place_roll_pictures``) discards a slot whose
+    # left edge or length is zero (0x10007b95); mirror that here.
+    frames: list[Frame] = []
+    for left, w, tag in slots:
+        if w <= 0 or left <= 0:
+            continue
+        frames.append(Frame(start=int(left) * ls, stop=int(left + w) * ls,
+                            phase=_VENDOR_TAG_PHASE.get(int(tag), Phase.NICE)))
+    frames.sort(key=lambda f: f.start)
+    for a, b in zip(frames, frames[1:]):        # frames cannot overlap on film
+        if a.stop > b.start:
+            a.stop = b.start
+    frames = [f for f in frames if f.lines > 0]
+
+    ones8 = np.asarray(ones[:n8], dtype=np.float64)
+    for f in frames:
+        s8 = f.start // ls
+        e8 = max(s8 + 1, f.stop // ls)
+        seg = ones8[s8:e8]
+        f.content_fraction = float(seg.mean()) if seg.size else 0.0
+
+    lo8, hi8 = vendor_limits(width)
+    report = {
+        "counts": {p.vendor_name: sum(1 for f in frames if f.phase is p)
+                   for p in Phase},
+        "total": len(frames),
+        "lo_lim": float(lo8 * ls),
+        "target": float(width * ls),
+        "hi_lim": float(hi8 * ls),
+        "pitch": round(pitch * ls, 1),
+        "pitch_source": pitch_source,
+        "pitch_measured": None,
+        "pitch_rejected_reason": None,
+        "lines_per_mm_geometry": (round(lines_per_mm, 4)
+                                  if lines_per_mm is not None else None),
+        "ones_threshold": int(thr),
+        "line_scale": ls,
+        "n_framing_lines": int(n8),
+        "scan_warnings": int(np.bitwise_or.reduce(
+            [int(f.phase) for f in frames]) if frames else 0),
+        "detector_arch": (
+            "vendor_framing_entry (TLB.dll fcn.100072c0, bit-exact); 8-bit "
+            "line summary DERIVED from the 14-bit trace by >>6 [APPROX — the "
+            "scanner's own raw-scan-to-summary quantisation is uncaptured]"),
+    }
+    return frames, report
+
+
 def find_frames_traces(trace: np.ndarray,
                        green: np.ndarray,
                        speed: float | None = None,
@@ -2345,6 +2504,15 @@ def find_frames_traces(trace: np.ndarray,
         if present.size != trace.size:
             raise ValueError(f"present and trace differ in length: "
                              f"{present.size} vs {trace.size}")
+    if use_vendor_framing():
+        # The DLL-ported cascade, opt-in. If the derivation degenerates on a
+        # given roll, do NOT lose the roll: fall through to the Otsu cascade.
+        try:
+            return vendor_frames_from_trace(
+                trace, present, lines_per_mm=lines_per_mm,
+                pitch_lines=pitch_lines)
+        except Exception:                                       # noqa: BLE001
+            pass
     return frame_cascade(trace, lines_per_mm, present,
                          ones_threshold, pitch_lines=pitch_lines)
 

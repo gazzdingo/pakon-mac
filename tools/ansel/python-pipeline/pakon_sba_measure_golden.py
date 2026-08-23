@@ -725,8 +725,37 @@ def main(argv):
     print("      docs/74 §192 left open: the cross-call read of [obj+0x7b8] at")
     print("      0x102b0da5 IS live — it is reached from the 0x102b0e75 arm, not")
     print("      only from the dead one.")
+
+    # ---- [6] the A6 bank block + A7 counts, vs the DLL, byte for byte -------
+    print("\n  [6] measure_bank_block: A6 min/max/sum + A7 per-bank counts vs DLL")
+    bank_bad = bank_tot = a7_bad = a7_tot = 0
+    for c, d in refs:
+        A6p, counts = M.measure_bank_block(image=c.image, offsets=c.offsets,
+                                           sel=c.sel, en=bytes(c.en))
+        A6d = d["A6"]
+        for n in range(14):
+            b = 0x120 * (n // 2) + 0x90 * (n % 2)
+            for off in range(b, b + 0x48):       # min(+0) max(+0x18) sum(+0x30)
+                bank_tot += 1
+                if A6p[off] != A6d[off]:
+                    bank_bad += 1
+        A7d = d["A7"]
+        for n in range(14):
+            a7_tot += 1
+            if (M.A7_BANK_DIVISORS[n] & 0xFFFF) != struct.unpack_from("<H", A7d, 2 * n)[0]:
+                a7_bad += 1
+    print("      A6 14-bank min/max/sum: %d/%d bytes bit-exact (%s)"
+          % (bank_tot - bank_bad, bank_tot,
+             "ALL BIT-EXACT" if not bank_bad else "FAIL"))
+    print("      A7 per-bank counts:     %d/%d words bit-exact (%s)"
+          % (a7_tot - a7_bad, a7_tot,
+             "ALL BIT-EXACT" if not a7_bad else "FAIL"))
+    print("      (whole-frame region, histograms and percentiles are verified"
+          " against the six real cap.pkl frames — not on synthetic inputs,"
+          " which drive no real mask/histograms.)")
+
     return 0 if (fails == 0 and bad_run == 0 and ok_ctl == n_ctl
-                 and n_missed == 0) else 1
+                 and n_missed == 0 and bank_bad == 0 and a7_bad == 0) else 1
 
 
 def _score(refs, blocks, label=""):

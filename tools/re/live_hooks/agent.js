@@ -693,6 +693,39 @@ const HOOKS = [
           'eea9dcf78ee21d4f7c515a6c2512242d: single 6-byte `sub esp,0xfac`, ' +
           'no jump target in the patched bytes',
   },
+
+  // v53 -- the framing 14->8-bit derivation SOURCE, to close FRAMING_PORTED.
+  //
+  // docs/74 §194. The ported framing cascade consumes the object's 8-bit
+  // per-line RGB summary at this+0x6c (captured as framing_lines), but this
+  // port holds float 14-bit non-inverted data and the 14->8 quantisation is
+  // unknown. The per-line value-writer is on an unhookable DMA path (prior
+  // RE), so instead capture the 16-bit CCD source + 8-bit summary + geometry
+  // of ONE real frame and derive the map offline. fcn.10004f00 is the framing
+  // object's allocator/geometry site: __thiscall, ecx=object, count =
+  // total_lines / line_scale, sets +0x60 (row-pointer table; table[0] is the
+  // 16-bit CCD base, a DOUBLE deref), +0x64 (size), +0x6c (8-bit summary).
+  // OFF by default (opt-in via hooks.cfg). TIER 3 (static mapping) until this
+  // capture runs, NOT yet live-confirmed -- that is what it is for.
+  {
+    dll: 'TLB.dll', va: 0x10004f00, id: 'tlb_framing_setup',
+    role: 'stage', pixelBuffer: false,
+    desc: 'Framing object allocator + geometry (__thiscall, ecx=object). ' +
+          'Computes count = total_lines / line_scale (e.g. 19096/8 = 2387) ' +
+          'and stores the +0x6c 8-bit per-line RGB summary pointer, the ' +
+          '+0x60 row-pointer table pointer (table[0] = contiguous 16-bit CCD ' +
+          'image base, a DOUBLE deref) and the +0x64 size. Hooked ENTRY+EXIT ' +
+          'on the object; paired with the +0x60 CCD-image and row-table dumps ' +
+          'on tlb_framing_line_reduce, captures the 16-bit source + 8-bit ' +
+          'summary + geometry of one real frame so the vendor 14->8 framing ' +
+          'quantisation can be derived offline and FRAMING_PORTED closed ' +
+          '(docs/74 §194). OFF by default (opt-in); not yet live-confirmed.',
+    cite: 'RE 2026-08-22, /tmp/pakon_re/framewriter/ (prior static-RE agent), ' +
+          'TLB.dll md5 193d9b2ce0a4b77ae9b78262bd06c0fc: fcn.10004f00 sets ' +
+          '+0x60/+0x64/+0x6c, store to [esi+0x6c] @ 0x100051b2. Prologue first ' +
+          'insn `mov eax, fs:[0]` is 6 bytes (>= 5), MinHook 5-byte patch safe ' +
+          '(approximate=0). TIER 3 (static mapping), NOT yet live-confirmed.',
+  },
 ];
 
 // ---------------------------------------------------------------------

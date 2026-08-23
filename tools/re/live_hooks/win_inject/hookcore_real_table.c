@@ -1109,6 +1109,67 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "0x102aece0-0x102b4ca4, single 6-byte `sub esp,0xfac` prologue, no "
           "jump target in the patched bytes",
           0, 1, 0, 0, 0 },
+
+        /* ---- v53: the framing 14->8-bit derivation SOURCE ----
+         *
+         * docs/74 SS194. FRAMING_PORTED is False for exactly one reason: the
+         * ported cascade consumes the object's 8-bit per-line RGB summary at
+         * this+0x6c (already captured as `framing_lines`), but this port holds
+         * float 14-bit non-inverted data, and the 14->8 quantisation the vendor
+         * applies is unknown. Deriving that map needs BOTH the 16-bit CCD source
+         * AND the finished 8-bit summary from the SAME real frame; the per-line
+         * value-writer itself is on an unhookable DMA path (prior RE), so the
+         * plan is to capture (16-bit source image + 8-bit summary + geometry)
+         * and derive the map offline.
+         *
+         * fcn.10004f00 is the framing object's allocator/geometry site
+         * (__thiscall, ecx = the object). It computes count = total_lines /
+         * line_scale (e.g. 19096/8 = 2387) and stores the three pointers this
+         * capture turns on: +0x60 (a POINTER to a row-pointer table; the
+         * contiguous 16-bit CCD base is table[0], a DOUBLE deref), +0x64 (size),
+         * +0x6c (the 8-bit summary). One entry+exit pair here records the object
+         * header after those stores; the two new +0x60 dump rows on
+         * tlb_framing_line_reduce read the 16-bit image and the row table.
+         *
+         * OFF BY DEFAULT: hotPathDisabled is set to make this OPT-IN via
+         * hooks.cfg (the framing capture is its own one-more-scan campaign),
+         * NOT because it is a hot path -- it is an allocator, called at setup,
+         * not per line. This is the same use of the flag as
+         * tlb_framing_line_reduce (see its citation): an honest "off by default
+         * on the enable-lever we have", not a claim about volume.
+         *
+         * EVIDENCE TIER: this address and the +0x60/+0x64/+0x6c layout are TIER
+         * 3 (static disassembly / mapping) from the prior RE agent, NOT yet
+         * confirmed against live hardware -- confirming it is precisely what
+         * this hook exists to do. If ecx is not the framing object, or the
+         * double-deref does not resolve, the rows come back readable=false,
+         * which is itself the finding (same philosophy as the other framing
+         * rows). Prologue safety: first instruction is `mov eax, fs:[0]`
+         * (6 bytes >= 5), so MinHook's 5-byte patch cannot split it
+         * (approximate=0). */
+        { "TLB.dll", 0x10004f00, "tlb_framing_setup",
+          "Framing object allocator + geometry (__thiscall, ecx = object). "
+          "Computes count = total_lines / line_scale (e.g. 19096/8 = 2387) and "
+          "stores the framing +0x6c 8-bit per-line RGB summary pointer, the "
+          "+0x60 row-pointer table pointer (whose table[0] is the contiguous "
+          "16-bit CCD image base -- a DOUBLE deref) and the +0x64 size. Hooked "
+          "ENTRY+EXIT on the object so the exit dump records those pointer bases "
+          "and the geometry after they are set; paired with the +0x60 CCD-image "
+          "and row-table dumps on tlb_framing_line_reduce, this captures the "
+          "16-bit source + 8-bit summary + geometry of ONE real frame so the "
+          "vendor's 14->8 framing quantisation can be derived offline and "
+          "FRAMING_PORTED closed (docs/74 SS194). OFF BY DEFAULT (opt-in via "
+          "hooks.cfg); NOT confirmed against live hardware yet -- that is what "
+          "this capture is for.",
+          "RE 2026-08-22, /tmp/pakon_re/framewriter/ (prior static-RE agent), "
+          "TLB.dll md5 193d9b2ce0a4b77ae9b78262bd06c0fc: fcn.10004f00 "
+          "(__thiscall, ecx=object) sets +0x60/+0x64/+0x6c; store to [esi+0x6c] "
+          "@ 0x100051b2. Prologue first insn `mov eax, fs:[0]` is 6 bytes "
+          "(>= 5), so a MinHook 5-byte patch is safe (approximate=0). TIER 3 "
+          "(static mapping), NOT yet live-confirmed -- this hook is the tool to "
+          "confirm it. hotPathDisabled set to make it opt-in, NOT for volume "
+          "(it is an allocator, not a per-line hot path).",
+          0, 1, 1, 0, 0 },
     };
 
     /* Build-time guard for exactly the bug described above: if table[] ever
@@ -2114,6 +2175,39 @@ const ExtraDumpSpec g_extraDumps[] = {
      * without assuming the count -- and n_slots is itself logged as arg2, so
      * a reader can always tell how much of the dump is live. */
     { "tlb_framing_entry",       "framing_slots",    EXTRA_DUMP_STACK_PTR, 2, 0, 0, 0x100, EXTRA_DUMP_ON_EXIT, 6 },
+
+    /* ---- v53: the framing 14->8-bit derivation SOURCE (docs/74 SS194) ----
+     *
+     * The rows above give the vendor's finished 8-bit per-line summary
+     * (framing_lines) and the placed frame list (framing_slots). What closes
+     * FRAMING_PORTED is the OTHER side of the 14->8 quantisation: the 16-bit
+     * CCD source and the geometry that maps it to those 8-bit lines. Three
+     * rows, all inert unless the framing hooks are enabled in hooks.cfg.
+     *
+     * framing_setup_obj -- tlb_framing_setup's object header at EXIT (after
+     * the allocator has stored +0x60/+0x64/+0x6c and the count), from the base
+     * so the exact offsets can be confirmed offline, same base-dump discipline
+     * as framing_obj. Capped at 4 (setup runs a handful of times, not hot).
+     *
+     * framing_src16 -- the contiguous 16-bit CCD image base, reached by the
+     * new EXTRA_DUMP_THIS_DEREF2_OFFSET: object +0x60 holds a POINTER to a
+     * row-pointer table, and table[0] is the image base (a DOUBLE deref). Read
+     * at line_reduce ENTRY, where the array is already filled. 0x8000 bytes is
+     * a window into the top of the image, not the whole frame -- enough to
+     * correlate the 16-bit source against the 8-bit summary offline; capped 6.
+     *
+     * framing_rowtable -- the row-pointer table itself (object +0x60, single
+     * deref = the same EXTRA_DUMP_THIS_DEREF_OFFSET framing_lines uses), so the
+     * per-row stride/layout of the 16-bit image can be resolved offline rather
+     * than assumed. 0x1000 bytes = up to 1024 row pointers; capped 6.
+     *
+     * All three are TIER 3 (static mapping) until this capture runs; a wrong
+     * offset or a non-object ecx comes back readable=false, which is the
+     * finding, and nothing else in the capture is disturbed. */
+    { "tlb_framing_setup",       "framing_setup_obj", EXTRA_DUMP_THIS_OFFSET,         0,    0, 0, 0x6CC0, EXTRA_DUMP_ON_EXIT,  4 },
+    { "tlb_framing_line_reduce", "framing_src16",     EXTRA_DUMP_THIS_DEREF2_OFFSET,  0x60, 0, 0, 0x8000, EXTRA_DUMP_ON_ENTRY, 6 },
+    { "tlb_framing_line_reduce", "framing_rowtable",  EXTRA_DUMP_THIS_DEREF_OFFSET,   0x60, 0, 0, 0x1000, EXTRA_DUMP_ON_ENTRY, 6 },
+
     /* ---------------------------------------------------------------------
      * v47 -- sba_measure (fcn.102aece0). PROVENANCE for B1.
      *
@@ -2175,6 +2269,25 @@ const ExtraDumpSpec g_extraDumps[] = {
     { "sba_measure", "measure_obj_post", EXTRA_DUMP_STACK_PTR, 9, 0, 0, 0x1000, EXTRA_DUMP_ON_EXIT,  18 },
     { "sba_measure", "measure_samples",  EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x2880, EXTRA_DUMP_ON_ENTRY, 18 },
     { "sba_measure", "measure_bandsub",  EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x18,   EXTRA_DUMP_ON_ENTRY, 18 },
+    /* v52 -- the LAST two uncaptured inputs to fcn.102aece0. arg7 (`en`, the
+     * per-slot enable/gate array) and arg8 (`par`, the per-slot parameter
+     * array) are POINTERS; v47-v51 logged their addresses in stack_dwords[6]
+     * and [7] but never dereferenced them, so the 720-slot vector could only
+     * be reconstructed to 506/720 (docs/74 -- synthetic `default_en`/`build_par`
+     * in the closure emulation). A search of all 28 captures (10.3 GB, Aug17-v51)
+     * confirmed NEITHER is on disk: the only 3 scans that hook sba_measure dump
+     * the same 4 labels above, none of them arg7/arg8. These are per-frame
+     * VARIABLE (mode_pack=0: both vary, laid out adjacently as par == en+0xdc;
+     * mode_pack=1: en is the shared constant 0x0839d0f0 but par still varies),
+     * so they must be CAPTURED, not reconstructed. `aim` (arg9, stack_dwords[8])
+     * is genuinely NULL, not uncaptured, so with these two the input set is
+     * complete. Sizes subsume the disassembly-derived read extents: `en` is
+     * read to +0x24 (gate words 0..6/0x0E, hist bytes to 0x24 -- 0x102af2bf,
+     * 0x102af35a); `par` to +0x56 (hue/chroma words + bias@0x56 -- 0x102af145,
+     * 0x102af261). Both reads are inside fcn.102aece0, so ON_ENTRY precedes use.
+     * These close 506/720 -> 720/720 = per-frame colour balance PROVENANCE. */
+    { "sba_measure", "measure_en",       EXTRA_DUMP_STACK_PTR, 6, 0, 0, 0x40,   EXTRA_DUMP_ON_ENTRY, 18 },
+    { "sba_measure", "measure_par",      EXTRA_DUMP_STACK_PTR, 7, 0, 0, 0x80,   EXTRA_DUMP_ON_ENTRY, 18 },
 
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0, EXTRA_DUMP_ON_ENTRY, 0 }, /* sentinel */
 };

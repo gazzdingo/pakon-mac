@@ -521,6 +521,7 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp,
          * stackIndex -- it reads from regs->ecx -- so its rows use 0.) */
         if (spec->kind != EXTRA_DUMP_THIS_OFFSET &&
             spec->kind != EXTRA_DUMP_THIS_DEREF_OFFSET &&
+            spec->kind != EXTRA_DUMP_THIS_DEREF2_OFFSET &&
             spec->kind != EXTRA_DUMP_MODULE_ABS &&
             (spec->stackIndex < 0 || spec->stackIndex >= STACK_DWORDS_LOGGED)) continue;
 
@@ -549,6 +550,17 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp,
                 srcPtr = *(void **)((BYTE *)base + spec->stackIndex);
                 srcPtr = (void *)((DWORD_PTR)srcPtr + spec->derefOffset);
                 readable = !IsBadReadPtr(srcPtr, numBytes);
+            }
+        } else if (spec->kind == EXTRA_DUMP_THIS_DEREF2_OFFSET) {
+            /* *(*(ecx + stackIndex)) + derefOffset -- framing +0x60 row table -> table[0] */
+            void *base = (void *)(DWORD_PTR)regs->ecx;
+            if (!IsBadReadPtr((BYTE *)base + spec->stackIndex, sizeof(void *))) {
+                void *table = *(void **)((BYTE *)base + spec->stackIndex);
+                if (!IsBadReadPtr(table, sizeof(void *))) {
+                    srcPtr = *(void **)table;                              /* table[0] */
+                    srcPtr = (void *)((DWORD_PTR)srcPtr + spec->derefOffset);
+                    readable = !IsBadReadPtr(srcPtr, numBytes);
+                }
             }
         } else if (spec->kind == EXTRA_DUMP_STACK_PTR_OFFSET) {
             /* stack arg pointer + offset -- e.g. balanceAreaImage's shift at

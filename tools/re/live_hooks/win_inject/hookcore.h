@@ -389,7 +389,21 @@ typedef enum ExtraDumpKind {
                                     correct if the DLL is relocated -- the
                                     engine resolves the module base at dump
                                     time from the same HookDef.dll the hook was
-                                    installed against.                          */
+                                    installed against.                          */,
+    EXTRA_DUMP_THIS_DEREF2_OFFSET = 8  /* dump N bytes from
+                                    *(*(regs->ecx + stackIndex)) + derefOffset --
+                                    a SECOND deref beyond THIS_DEREF_OFFSET: the
+                                    object field at +stackIndex holds a POINTER
+                                    to a row-pointer TABLE, and table[0] is the
+                                    contiguous 16-bit CCD image base. Used for
+                                    the framing object's +0x60 -> row table ->
+                                    table[0] = 16-bit CCD data (docs/74 SS194,
+                                    RE 2026-08-22 /tmp/pakon_re/framewriter/).
+                                    stackIndex carries the OBJECT OFFSET (0x60),
+                                    not a stack-dword index, so it is exempted
+                                    from the STACK_DWORDS_LOGGED bound in
+                                    hookcore.c exactly as THIS_OFFSET/
+                                    THIS_DEREF_OFFSET are.                       */
 } ExtraDumpKind;
 
 /* v46 -- WHEN a row fires. Until v46 every row fired on ENTRY only, because

@@ -726,6 +726,43 @@ const HOOKS = [
           'insn `mov eax, fs:[0]` is 6 bytes (>= 5), MinHook 5-byte patch safe ' +
           '(approximate=0). TIER 3 (static mapping), NOT yet live-confirmed.',
   },
+
+  // v54 -- the frame->grid sampler INPUT, the last unported colour piece.
+  //
+  // AnsImageData::blockAverage (fcn.100d9930, __thiscall, ecx = SOURCE
+  // AnsImageData). Block-averages a resized "analysis image" into the 24x36x6
+  // SBA grid -- that grid IS measure_samples, already the input to the
+  // bit-exact grid -> balance A path. The one remaining unported colour stage
+  // is the sampler that PRODUCES the grid; porting it needs its INPUT, the
+  // analysis image, on a real frame. This hook captures that: the src header
+  // (dims @+0xc/+0x10, layout @+0x4, pixptr @+0x20) and the analysis-image
+  // pixels via a single deref of *(ecx+0x20) -- the same 1-deref pattern as
+  // framing_lines / area pixel_data. Grid OUTPUT is matched offline against the
+  // existing measure_samples dump. OFF by default (opt-in via hooks.cfg): per
+  // image, not per pixel, but may run on several images per scan.
+  {
+    dll: 'PakonIMAu.dll', va: 0x100d9930, id: 'sba_block_average',
+    role: 'stage', pixelBuffer: true,
+    desc: 'AnsImageData::blockAverage (__thiscall, ecx = SOURCE AnsImageData). ' +
+          'Block-averages the resized analysis image into the 24x36x6 SBA grid ' +
+          '(= measure_samples). Captures its INPUT -- the analysis image (dims ' +
+          '@+0xc/+0x10, layout @+0x4, pixptr @+0x20) -- so the last unported ' +
+          'colour stage, the frame->grid sampler, can be ported; grid output = ' +
+          'measure_samples, and everything downstream (grid -> balance A) is ' +
+          'already bit-exact, no DLL. OFF by default (opt-in via hooks.cfg): ' +
+          'per-image not per-pixel, but may run on several images per scan.',
+    cite: 'RE 2026-08-24, /tmp/pakon_re/sampler/, PakonIMAu.dll md5 ' +
+          'eea9dcf78ee21d4f7c515a6c2512242d: fcn.100d9930 = ' +
+          'AnsImageData::blockAverage (embedded strings AnsImageData::' +
+          'blockAverage @0x10584430, "The source and destination images can ' +
+          'not be the same." @0x1058444c; source AnsImageData.cpp). r2 af+pdf ' +
+          'confirms a real function boundary at 0x100d9930 (~1621 B). Prologue ' +
+          '6A FF 68 A1 D0 51 10 = push -1 (2 B) + push 0x1051d0a1 (5 B) = 7 ' +
+          'bytes / 2 whole instructions, both push-immediate (no relative ' +
+          'jmp/call, no RIP-relative operand), MinHook 5-byte patch safe ' +
+          '(approximate=0). Asserts integer scale @0x100d9d09 (line 501) / ' +
+          '0x100d9d44 (line 509).',
+  },
 ];
 
 // ---------------------------------------------------------------------

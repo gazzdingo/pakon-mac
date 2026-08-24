@@ -1170,6 +1170,56 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "confirm it. hotPathDisabled set to make it opt-in, NOT for volume "
           "(it is an allocator, not a per-line hot path).",
           0, 1, 1, 0, 0 },
+
+        /* ---- v54: the frame->grid sampler INPUT (the last unported colour
+         * piece) ----
+         *
+         * AnsImageData::blockAverage (fcn.100d9930, __thiscall, ecx = the
+         * SOURCE AnsImageData). Block-averages a resized "analysis image" into
+         * the 24x36x6 SBA grid -- that grid IS measure_samples, the input to
+         * the already-bit-exact grid -> balance A path. The one remaining
+         * unported colour stage is the frame -> grid sampler that produces the
+         * grid; to port it we need its INPUT, the analysis image itself, on a
+         * real frame. This hook captures that: the src AnsImageData header
+         * (dims @+0xc/+0x10, layout @+0x4, pixptr @+0x20) and the analysis-image
+         * pixels reached by a single deref of *(ecx+0x20) -- the same 1-deref
+         * pattern framing_lines and area_image_apply_lut's pixel_data use. The
+         * grid OUTPUT is not dumped here: the default stack_dwords logged on
+         * entry already record the args, and the finished grid is matched
+         * offline against the existing measure_samples dump.
+         *
+         * OFF BY DEFAULT (hotPathDisabled=1): block-average is per-image, not
+         * per-pixel, but it can run on several images per scan, so it is opt-in
+         * via hooks.cfg and the dump rows are capped at 40 to catch the SBA
+         * invocation across a few frames without swamping the trace.
+         *
+         * Prologue safety: 6A FF 68 A1 D0 51 10 = `push -1` (2 B) +
+         * `push 0x1051d0a1` (5 B) = 7 bytes / two whole instructions, both
+         * push-immediate -- no relative jmp/call and no RIP-relative operand in
+         * the patched bytes -- so MinHook's 5-byte patch relocates them verbatim
+         * (approximate=0). VERIFIED with r2 af+pdf: real function boundary. */
+        { "PakonIMAu.dll", 0x100d9930, "sba_block_average",
+          "AnsImageData::blockAverage (__thiscall, ecx = SOURCE AnsImageData). "
+          "Block-averages the resized analysis image into the 24x36x6 SBA grid "
+          "(= measure_samples). This hook captures its INPUT -- the analysis "
+          "image (dims @+0xc/+0x10, layout @+0x4, pixptr @+0x20) -- so the last "
+          "unported colour stage, the frame->grid sampler, can be ported; grid "
+          "output = measure_samples, and everything downstream (grid -> balance "
+          "A) is already bit-exact, no DLL. OFF BY DEFAULT (opt-in via "
+          "hooks.cfg): block-average is per-image not per-pixel, but may be "
+          "called on several images per scan.",
+          "RE 2026-08-24, /tmp/pakon_re/sampler/, PakonIMAu.dll md5 "
+          "eea9dcf78ee21d4f7c515a6c2512242d: fcn.100d9930 = "
+          "AnsImageData::blockAverage (embedded strings AnsImageData::"
+          "blockAverage @0x10584430 and 'The source and destination images can "
+          "not be the same.' @0x1058444c, source AnsImageData.cpp). r2 af+pdf "
+          "confirms a real function boundary at 0x100d9930 (~1621 B). Prologue "
+          "6A FF 68 A1 D0 51 10 = push -1 (2 B) + push 0x1051d0a1 (5 B) = 7 "
+          "bytes / 2 whole instructions, both push-immediate (no relative "
+          "jmp/call, no RIP-relative operand), MinHook 5-byte patch safe "
+          "(approximate=0). Asserts integer scale @0x100d9d09 (line 501) / "
+          "0x100d9d44 (line 509).",
+          0, 0, 1, 0, 0 },
     };
 
     /* Build-time guard for exactly the bug described above: if table[] ever
@@ -2288,6 +2338,26 @@ const ExtraDumpSpec g_extraDumps[] = {
      * These close 506/720 -> 720/720 = per-frame colour balance PROVENANCE. */
     { "sba_measure", "measure_en",       EXTRA_DUMP_STACK_PTR, 6, 0, 0, 0x40,   EXTRA_DUMP_ON_ENTRY, 18 },
     { "sba_measure", "measure_par",      EXTRA_DUMP_STACK_PTR, 7, 0, 0, 0x80,   EXTRA_DUMP_ON_ENTRY, 18 },
+
+    /* v54 -- the frame->grid sampler INPUT (docs/74; RE 2026-08-24).
+     * sba_measure's `measure_samples` (above) is the 24x36x6 SBA GRID -- the
+     * OUTPUT of AnsImageData::blockAverage. The one remaining unported colour
+     * stage is the sampler that produces that grid, and porting it needs its
+     * INPUT: the resized analysis image blockAverage reads. These two rows
+     * capture it on the SOURCE AnsImageData (ecx):
+     *   blkavg_src_desc -- the src header (ecx+0), 0x24 bytes: layout @+0x4,
+     *     dims @+0xc/+0x10, pixptr @+0x20.
+     *   blkavg_src_px   -- the analysis-image pixels, *(ecx+0x20), a SINGLE
+     *     deref (same pattern as framing_lines / area pixel_data). 0x84000 ==
+     *     HOOKCORE_EXTRA_DUMP_MAX_BYTES, the read-safe ceiling.
+     * Both ON_ENTRY (the grid input exists before the call); capped at 40 to
+     * catch the SBA invocation across a few frames without swamping -- block-
+     * average is per-image, not per-pixel. No dst/grid row here: the default
+     * stack_dwords logged on entry already record the args, and the finished
+     * grid is matched offline against the existing measure_samples dump.
+     * Inert unless sba_block_average is enabled in hooks.cfg (OFF by default). */
+    { "sba_block_average", "blkavg_src_desc", EXTRA_DUMP_THIS_OFFSET,       0,    0, 0, 0x24,    EXTRA_DUMP_ON_ENTRY, 40 },
+    { "sba_block_average", "blkavg_src_px",   EXTRA_DUMP_THIS_DEREF_OFFSET, 0x20, 0, 0, 0x84000, EXTRA_DUMP_ON_ENTRY, 40 },
 
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0, EXTRA_DUMP_ON_ENTRY, 0 }, /* sentinel */
 };

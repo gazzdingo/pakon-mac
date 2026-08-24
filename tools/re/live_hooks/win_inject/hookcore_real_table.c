@@ -1330,6 +1330,88 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "RIP-relative operand), MinHook 5-byte patch safe (approximate=0). "
           "Single caller fcn.100d85c0 (apuPutAnalysisImageInPortfolio).",
           0, 1, 1, 0, 0 },
+
+        /* ---- v56: the frame->grid sampler DIAGNOSTIC (docs/74 sampler
+         * UPDATE 8/9; RE 2026-08-24, /tmp/pakon_re/sampler/ + v56build/).
+         * UPDATES 5/7 proved TWO misses: v54's sba_block_average and v55's
+         * paxelize_blockavg_op / dsba_intlv_to_planar / resample_analysis_img
+         * ALL fired ZERO times -- they are DSBA / ImaResample machinery the
+         * REGULAR SBA path never invokes. UPDATE 8 re-grounded on RUNTIME
+         * evidence: the regular capability's analyzePass1 DID run (12x), it only
+         * READS the already-populated frame grid (frame+0x1a), so the grid
+         * PRODUCER runs UPSTREAM and is unhooked. These two hooks are a
+         * diagnostic that finds the producer in ONE scan, using functions with
+         * proven/derived runtime firing on the regular path -- NOT another
+         * DSBA guess.
+         *
+         * HOOK 1 (essential) -- sba_analyze_pass1 @ 0x10218110. PROVEN to fire.
+         * The LATCH: dump the images the capability holds at analyze time. */
+        { "PakonIMAu.dll", 0x10218110, "sba_analyze_pass1",
+          "AnsSbaCapabilityImpl::analyzePass1 (__thiscall, ecx = "
+          "AnsSbaCapabilityImpl). PROVEN to fire on the REGULAR SBA path "
+          "(sba_order_fpo_calc returns into it 12x @ retaddr 0x102196ae, docs/74 "
+          "sampler UPDATE 8 §1). The frame->grid (frame+0x1a) is already "
+          "populated at entry -- this function only READS it -- so the grid "
+          "PRODUCER runs upstream and is unhooked. LATCH hook: dumps the "
+          "capability head (ecx+0), the arg0/arg1 AnsImageData headers and "
+          "arg0's pixels (*(arg0+0x20)) to test whether arg0 reproduces "
+          "measure_samples (=> the producer is arg0's source, portable offline "
+          "from one scan). OFF BY DEFAULT (opt-in via hooks.cfg).",
+          "docs/74 sampler UPDATE 8/9; RE 2026-08-24, /tmp/pakon_re/sampler/ + "
+          "/tmp/pakon_re/v56build/, PakonIMAu.dll md5 "
+          "eea9dcf78ee21d4f7c515a6c2512242d: r2 af+pdf real function boundary "
+          "(6312 B, 0x10218110-0x102199b8), embedded string "
+          "\"AnsSbaCapabilityImpl::analyzePass1()\" @0x1059e1b0. Prologue "
+          "55 8B EC 6A FF 68 1F AD 53 10 = push ebp (1 B) + mov ebp,esp (2 B) + "
+          "push -1 (2 B) = 5 bytes / 3 whole position-independent instructions "
+          "(no relative jmp/call, no RIP-relative operand), MinHook 5-byte patch "
+          "safe (approximate=0). Runtime firing proof: "
+          "live_hooks_20260822-170343.jsonl (retaddr 0x102196ae x12).",
+          0, 0, 1, 0, 0 },
+
+        /* HOOK 3 (bracket) -- cn_balance_order @ 0x10101220 =
+         * ColorNegativePath::analyzeBalanceOrder (\Atc\ansel\src\
+         * libPaths.ansel\cnMethods.cpp). The CN scene balance-order driver that
+         * acquires the "Sba"/"Fos" capabilities and calls the analyzePass1
+         * dispatcher fcn.10123980 at 0x101013da. Its ENTRY (no dump rows -- base
+         * enter/leave logging only) brackets the unhooked producer's call site
+         * in the timeline relative to sba_analyze_pass1. NOTE the sampler note's
+         * "~fcn.10101180" was wrong (that fcn is 153 B, ends 0x10101219); the
+         * real container of the 0x101013da call site is this 0x10101220 entry.
+         *
+         * Prologue 6A FF 68 D2 15 52 10 = push -1 (2 B) + push 0x105215d2 (5 B)
+         * = 7 bytes / 2 whole push-immediate instructions (no relative jmp/call,
+         * no RIP-relative operand), MinHook 5-byte patch safe (approximate=0).
+         * Real, independently call-reachable entry -> the exit return-address
+         * swap is safe; wantExitDefault=1 for the full enter/leave bracket. OFF
+         * BY DEFAULT (hotPathDisabled=1; per-scene, opt-in via hooks.cfg). No
+         * g_extraDumps rows.
+         *
+         * HOOK 2 (paxelize-SubSampled) was investigated and DELIBERATELY SKIPPED
+         * -- see /tmp/pakon_re/sampler/RESUME.md UPDATE 9: no RTTI op class for a
+         * SubSample op exists (BlockAveraged had two), the op is registered by
+         * name through a dynamic factory vtable (0x10071dee, call [eax+0x38]) so
+         * the string does not statically yield a handler, and UPDATE 7 already
+         * proved the whole paxelize/ImaResample chain is DSBA-only and does not
+         * fire on the regular path. Hooking it would repeat the documented miss;
+         * a guess was not added. Slot 47 left free. */
+        { "PakonIMAu.dll", 0x10101220, "cn_balance_order",
+          "ColorNegativePath::analyzeBalanceOrder (fcn.10101220, cnMethods.cpp) "
+          "-- the CN scene balance-order driver that acquires the Sba/Fos "
+          "capabilities and calls the analyzePass1 dispatcher (fcn.10123980) at "
+          "0x101013da. Call-log BRACKET (no dump rows): its enter/leave frames "
+          "the unhooked frame->grid producer's call site in the timeline "
+          "relative to sba_analyze_pass1. OFF BY DEFAULT (opt-in via hooks.cfg).",
+          "docs/74 sampler UPDATE 8/9; RE 2026-08-24, /tmp/pakon_re/v56build/, "
+          "PakonIMAu.dll md5 eea9dcf78ee21d4f7c515a6c2512242d: r2 af+pdf real "
+          "function boundary (5579 B, 0x10101220-0x101027eb) containing "
+          "call 0x10123980 @0x101013da; embedded strings "
+          "\"ColorNegativePath::analyzeBalanceOrder\" @0x10586d3c and \"Sba "
+          "capability not found.\" @0x1057a46c. Prologue 6A FF 68 D2 15 52 10 = "
+          "push -1 (2 B) + push 0x105215d2 (5 B) = 7 bytes / 2 whole "
+          "push-immediate instructions (no relative jmp/call, no RIP-relative "
+          "operand), MinHook 5-byte patch safe (approximate=0).",
+          0, 1, 1, 0, 0 },
     };
 
     /* Build-time guard for exactly the bug described above: if table[] ever
@@ -2509,6 +2591,25 @@ const ExtraDumpSpec g_extraDumps[] = {
      * so the HookDef sets wantExitDefault=1. Pixels need a 3rd deref -> not
      * capturable here. */
     { "resample_analysis_img", "anal_desc", EXTRA_DUMP_DEREF_PTR, 0, 0x0, 0, 0x24, EXTRA_DUMP_ON_EXIT, 8 },
+
+    /* v56 -- sba_analyze_pass1 LATCH rows (docs/74 sampler UPDATE 8/9;
+     * /tmp/pakon_re/v56build/). Field order {hookId,label,kind,stackIndex,
+     * derefOffset,derefOffset2,numBytes,when,maxDumps}. __thiscall: ecx=this=
+     * AnsSbaCapabilityImpl; sp[0]=first stack arg (arg0), sp[1]=second (arg1).
+     * p1_cap_head: THIS_OFFSET ecx+0, 0x40 -- capability head (locate the frame
+     * array / scene). p1_arg0_hdr: STACK_PTR sp[0], 0x24 -- arg0 AnsImageData
+     * descriptor (layout@+4, w@+0xc, h@+0x10, bands@+0x14, pixptr@+0x20).
+     * p1_arg0_pix: DEREF_PTR *(sp[0]+0x20), capped 0x84000 =
+     * HOOKCORE_EXTRA_DUMP_MAX_BYTES -- arg0's pixels (int16), the SAME 1-deref
+     * pattern area pixel_data uses. p1_arg1_hdr: STACK_PTR sp[1], 0x24 -- arg1
+     * scene context. All ON_ENTRY (the images exist at analyze time), capped 20
+     * (~12x/scan). If arg0's dims/pixels reproduce measure_samples, the producer
+     * IS arg0's source and ports offline from one scan. Inert unless
+     * sba_analyze_pass1 is enabled in hooks.cfg (OFF by default). */
+    { "sba_analyze_pass1", "p1_cap_head", EXTRA_DUMP_THIS_OFFSET, 0, 0x0,  0, 0x40,    EXTRA_DUMP_ON_ENTRY, 20 },
+    { "sba_analyze_pass1", "p1_arg0_hdr", EXTRA_DUMP_STACK_PTR,   0, 0,    0, 0x24,    EXTRA_DUMP_ON_ENTRY, 20 },
+    { "sba_analyze_pass1", "p1_arg0_pix", EXTRA_DUMP_DEREF_PTR,   0, 0x20, 0, 0x84000, EXTRA_DUMP_ON_ENTRY, 20 },
+    { "sba_analyze_pass1", "p1_arg1_hdr", EXTRA_DUMP_STACK_PTR,   1, 0,    0, 0x24,    EXTRA_DUMP_ON_ENTRY, 20 },
 
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0, EXTRA_DUMP_ON_ENTRY, 0 }, /* sentinel */
 };

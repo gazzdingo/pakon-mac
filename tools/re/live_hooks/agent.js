@@ -849,6 +849,53 @@ const HOOKS = [
           'RIP-relative operand), MinHook 5-byte patch safe (approximate=0). ' +
           'Single caller fcn.100d85c0 (apuPutAnalysisImageInPortfolio).',
   },
+  // ---- v56: frame->grid sampler diagnostic (docs/74 sampler UPDATE 8/9) ----
+  // HOOK 1 (essential): the LATCH, PROVEN to fire on the regular SBA path.
+  {
+    dll: 'PakonIMAu.dll', va: 0x10218110, id: 'sba_analyze_pass1',
+    role: 'stage', pixelBuffer: true,
+    desc: 'AnsSbaCapabilityImpl::analyzePass1 (fcn.10218110, __thiscall, ' +
+          'ecx = AnsSbaCapabilityImpl). PROVEN to fire on the REGULAR SBA path ' +
+          '(sba_order_fpo_calc returns into it 12x @ retaddr 0x102196ae). The ' +
+          'frame->grid (frame+0x1a) is already populated at entry -- this ' +
+          'function only READS it -- so the grid PRODUCER runs upstream and is ' +
+          'unhooked. LATCH hook: dumps the capability head (ecx+0), the ' +
+          'arg0/arg1 AnsImageData headers and arg0 pixels (*(arg0+0x20)) to ' +
+          'test whether arg0 reproduces measure_samples (=> the producer is ' +
+          'arg0\'s source, portable offline from one scan). OFF by default ' +
+          '(opt-in via hooks.cfg).',
+    cite: 'docs/74 sampler UPDATE 8/9; RE 2026-08-24, /tmp/pakon_re/sampler/ + ' +
+          '/tmp/pakon_re/v56build/, PakonIMAu.dll md5 ' +
+          'eea9dcf78ee21d4f7c515a6c2512242d: r2 af+pdf real function boundary ' +
+          '(6312 B, 0x10218110-0x102199b8), embedded string ' +
+          '"AnsSbaCapabilityImpl::analyzePass1()" @0x1059e1b0. Prologue ' +
+          '55 8B EC 6A FF 68 1F AD 53 10 = push ebp + mov ebp,esp + push -1 = ' +
+          '5 bytes / 3 whole position-independent instructions (no relative ' +
+          'jmp/call, no RIP-relative operand), MinHook 5-byte patch safe ' +
+          '(approximate=0). Runtime firing proof: ' +
+          'live_hooks_20260822-170343.jsonl (retaddr 0x102196ae x12).',
+  },
+  // HOOK 3 (bracket): CN balance-order driver, call-log only, no dump rows.
+  {
+    dll: 'PakonIMAu.dll', va: 0x10101220, id: 'cn_balance_order',
+    role: 'frame_boundary', pixelBuffer: false,
+    desc: 'ColorNegativePath::analyzeBalanceOrder (fcn.10101220, ' +
+          'cnMethods.cpp) -- the CN scene balance-order driver that acquires ' +
+          'the Sba/Fos capabilities and calls the analyzePass1 dispatcher ' +
+          '(fcn.10123980) at 0x101013da. Call-log BRACKET (no dump rows): its ' +
+          'enter/leave frames the unhooked frame->grid producer\'s call site ' +
+          'in the timeline relative to sba_analyze_pass1. OFF by default ' +
+          '(opt-in via hooks.cfg).',
+    cite: 'docs/74 sampler UPDATE 8/9; RE 2026-08-24, /tmp/pakon_re/v56build/, ' +
+          'PakonIMAu.dll md5 eea9dcf78ee21d4f7c515a6c2512242d: r2 af+pdf real ' +
+          'function boundary (5579 B, 0x10101220-0x101027eb) containing ' +
+          'call 0x10123980 @0x101013da; embedded strings ' +
+          '"ColorNegativePath::analyzeBalanceOrder" @0x10586d3c and "Sba ' +
+          'capability not found." @0x1057a46c. Prologue 6A FF 68 D2 15 52 10 = ' +
+          'push -1 + push 0x105215d2 = 7 bytes / 2 whole push-immediate ' +
+          'instructions (no relative jmp/call, no RIP-relative operand), ' +
+          'MinHook 5-byte patch safe (approximate=0).',
+  },
 ];
 
 // ---------------------------------------------------------------------

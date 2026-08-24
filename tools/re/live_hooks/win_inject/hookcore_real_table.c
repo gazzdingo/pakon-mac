@@ -1220,6 +1220,116 @@ void HookCore_BuildRealTable(HookEngine *eng) {
           "(approximate=0). Asserts integer scale @0x100d9d09 (line 501) / "
           "0x100d9d44 (line 509).",
           0, 0, 1, 0, 0 },
+
+        /* ---- v55: the frame->grid sampler, RTTI-PINNED (supersedes v54) ----
+         *
+         * v54's sba_block_average (fcn.100d9930) fired ZERO times last scan --
+         * that block-average belongs to pan-detect, not the SBA grid-fill,
+         * while measure_samples (the grid) fired 18x, proving a DIFFERENT
+         * function fills it. An RTTI walk pinned the real grid-fill op:
+         * ImaBlockAverageOpTT<short,double>::process = fcn.10154ea0, the ONLY
+         * concrete block-average op class in the DLL and the handler the
+         * dynamically-dispatched "paxelize-BlockAveraged" ImaResampleOp
+         * necessarily resolves to. Provenance (tier 3, RTTI): TD 0x10697fd8
+         * (.?AV?$ImaBlockAverageOpTT@FN@@) -> COL 0x105e6360 -> vtable
+         * 0x1058ddf4 slot 10 = 0x10154ea0. /tmp/pakon_re/sampler/.
+         *
+         * All three ON PakonIMAu.dll md5 eea9dcf78ee21d4f7c515a6c2512242d,
+         * re-verified this pass with r2 af+pdf (real function boundary) and the
+         * prologue read directly (MinHook 5-byte patch safe -- no relative
+         * jmp/call, no RIP-relative operand in the patched bytes). All three
+         * OFF BY DEFAULT (hotPathDisabled=1), opt-in via hooks.cfg.
+         *
+         * HOOK A -- paxelize_blockavg_op @ 0x10154ea0 (__thiscall, ecx=OP).
+         * CONFIRMS the op fires and captures the block factor (op+0x108) and the
+         * analysis DIMS; its src/dst pixels sit 3 pointer-levels deep, so no
+         * pixel row here (that is HOOK B). Prologue 6A FF 68 13 93 52 10 =
+         * push -1 (2 B) + push 0x10529313 (5 B) = 7 bytes / 2 whole
+         * push-immediate instructions. ZERO E8 callers (vtable-dispatched, as a
+         * name-registered op must be). ON_ENTRY -> wantExitDefault=0. */
+        { "PakonIMAu.dll", 0x10154ea0, "paxelize_blockavg_op",
+          "ImaBlockAverageOpTT<short,double>::process (__thiscall, ecx = the OP "
+          "object) -- the RTTI-pinned handler the \"paxelize-BlockAveraged\" "
+          "ImaResampleOp dispatches to, i.e. the SBA grid-fill. Reads the block "
+          "factor at op+0x108 (dest holder op+0x104) and the resample CONTEXT at "
+          "arg0 (dst rect @+0x30..0x3c, SOURCE analysis image @+0x40). This hook "
+          "dumps the op fields, the context, and the src image header (dims "
+          "@+0x34/+0x38, stride @+0x44) and, critically, CONFIRMS the op fires "
+          "(v54 hooked the wrong block-average and missed). Src/dst pixels are 3 "
+          "pointer-levels deep here, so they are captured on HOOK B "
+          "(dsba_intlv_to_planar), not here. OFF BY DEFAULT (opt-in via "
+          "hooks.cfg).",
+          "RE 2026-08-24, /tmp/pakon_re/sampler/, PakonIMAu.dll md5 "
+          "eea9dcf78ee21d4f7c515a6c2512242d. RTTI walk: TD 0x10697fd8 "
+          "(.?AV?$ImaBlockAverageOpTT@FN@@) -> COL 0x105e6360 -> vtable "
+          "0x1058ddf4 slot 10 = 0x10154ea0. r2 af+pdf confirms a real function "
+          "boundary (988 B, 0x10154ea0-0x1015528e), ZERO E8/CALL xrefs "
+          "(vtable-dispatched only). Prologue 6A FF 68 13 93 52 10 = push -1 "
+          "(2 B) + push 0x10529313 (5 B) = 7 bytes / 2 whole push-immediate "
+          "instructions (no relative jmp/call, no RIP-relative operand), MinHook "
+          "5-byte patch safe (approximate=0). Asserts \"BlockAverage factor must "
+          "be positive\"/ImaBlockAverageOp.h @0x10154f1a.",
+          0, 0, 1, 0, 0 },
+
+        /* HOOK B -- dsba_intlv_to_planar @ 0x101c0890 (cdecl,
+         * AnsDSbaCapabilityImpl::convertInterleaveToPlanar). THE clean
+         * analysis-image pixel capture: reads an AnsImageData SOURCE at arg1
+         * ([ebp+0xc]) -- pixptr at +0x20, the same +0x20 the area image uses --
+         * so DEREF_PTR(idx=1, off=0x20) dumps the analysis pixels exactly like
+         * area pixel_data. Real entry 0x101c0890 (NOT 0x101c0893, which afi
+         * resolves to the SAME fcn -> mid-prologue). Prologue 55 8B EC 6A FF 68
+         * = push ebp + mov ebp,esp + push -1 = 5 bytes / 3 whole
+         * position-independent instructions. ON_ENTRY -> wantExitDefault=0. */
+        { "PakonIMAu.dll", 0x101c0890, "dsba_intlv_to_planar",
+          "AnsDSbaCapabilityImpl::convertInterleaveToPlanar (cdecl) -- the CLEAN "
+          "analysis-image pixel capture on the DSBA/SBA path, the piece that "
+          "closes the frame->grid sampler port. Reads an AnsImageData SOURCE at "
+          "arg1 ([ebp+0xc]): h @+0x10, w @+0xc, bands @+0x14, layout @+0x4, "
+          "pixels at +0x20 (the SAME +0x20 AnsImageData pixptr the area image "
+          "uses). This hook dumps src_desc (the 0x24 header) and src_pixels via "
+          "a single deref of *(arg1+0x20) -- the same 1-deref pattern "
+          "area_image_apply_lut's pixel_data uses. Block-average these pixels "
+          "offline and compare to measure_samples[bands 0-2]. OFF BY DEFAULT "
+          "(opt-in via hooks.cfg).",
+          "RE 2026-08-24, /tmp/pakon_re/sampler/, PakonIMAu.dll md5 "
+          "eea9dcf78ee21d4f7c515a6c2512242d: r2 af+pdf confirms a real function "
+          "boundary (549 B, 0x101c0890-0x101c0ab5); afi @0x101c0893 resolves to "
+          "the SAME fcn.101c0890, confirming 0x101c0893 is mid-prologue, not an "
+          "entry (real entry is 0x101c0890). Prologue 55 8B EC 6A FF 68 = push "
+          "ebp (1 B) + mov ebp,esp (2 B) + push -1 (2 B) = 5 bytes / 3 whole "
+          "position-independent instructions (no relative jmp/call, no "
+          "RIP-relative operand), MinHook 5-byte patch safe (approximate=0). "
+          "Single caller fcn.101c1120 @0x101c126d.",
+          0, 0, 1, 0, 0 },
+
+        /* HOOK C -- resample_analysis_img @ 0x100d8030 (cdecl,
+         * pathUtils::resampleAnslysisImage). FALLBACK for the analysis DIMS
+         * only: resizes the frame into the proportionally-scaled analysis image
+         * the block-average consumes. Hooked ON EXIT (arg0 is the out
+         * ptr-to-descPtr, so DEREF_PTR(idx=0, off=0) does the one deref to the
+         * finished descriptor). Pixels need a 3rd deref -> not capturable here.
+         * Prologue 55 8B EC 6A FF 68 = 5 bytes / 3 whole position-independent
+         * instructions. ON_EXIT -> wantExitDefault=1 (it must be exit-hooked to
+         * fire the anal_desc row). */
+        { "PakonIMAu.dll", 0x100d8030, "resample_analysis_img",
+          "pathUtils::resampleAnslysisImage (cdecl) -- FALLBACK for the analysis "
+          "DIMS only. Resizes the frame into the proportionally-scaled "
+          "\"analysis image\" (dest = round(src*target/max(w,h))) the "
+          "block-average later consumes. Hooked ON EXIT: arg0 is the out "
+          "ptr-to-descPtr, so DEREF_PTR(idx=0, off=0) does the one deref to the "
+          "finished analysis descriptor (dims @+0xc/+0x10, layout @+0x4, pixptr "
+          "@+0x20). Its PIXELS need a 3rd deref (not capturable here); this row "
+          "settles the dims so HOOK B's source can be identified as pre- or "
+          "post-average. wantExitDefault=1 so the ON_EXIT row can fire. OFF BY "
+          "DEFAULT (opt-in via hooks.cfg).",
+          "docs/74 sampler UPDATE 3; RE 2026-08-24, /tmp/pakon_re/sampler/, "
+          "PakonIMAu.dll md5 eea9dcf78ee21d4f7c515a6c2512242d: r2 af+pdf confirms "
+          "a real function boundary (1047 B, 0x100d8030-0x100d8447). Prologue "
+          "55 8B EC 6A FF 68 = push ebp + mov ebp,esp + push -1 = 5 bytes / 3 "
+          "whole position-independent instructions (no relative jmp/call, no "
+          "RIP-relative operand), MinHook 5-byte patch safe (approximate=0). "
+          "Single caller fcn.100d85c0 (apuPutAnalysisImageInPortfolio).",
+          0, 1, 1, 0, 0 },
     };
 
     /* Build-time guard for exactly the bug described above: if table[] ever
@@ -2358,6 +2468,47 @@ const ExtraDumpSpec g_extraDumps[] = {
      * Inert unless sba_block_average is enabled in hooks.cfg (OFF by default). */
     { "sba_block_average", "blkavg_src_desc", EXTRA_DUMP_THIS_OFFSET,       0,    0, 0, 0x24,    EXTRA_DUMP_ON_ENTRY, 40 },
     { "sba_block_average", "blkavg_src_px",   EXTRA_DUMP_THIS_DEREF_OFFSET, 0x20, 0, 0, 0x84000, EXTRA_DUMP_ON_ENTRY, 40 },
+
+    /* v55 -- the RTTI-pinned frame->grid sampler (docs/74; RE 2026-08-24,
+     * /tmp/pakon_re/sampler/). v54's fcn.100d9930 was pan-detect's block-average
+     * and fired 0x; the real grid-fill op is ImaBlockAverageOpTT<short,double>::
+     * process = fcn.10154ea0 (RTTI: TD 0x10697fd8 -> COL 0x105e6360 -> vtable
+     * 0x1058ddf4 slot 10). Three hooks, all OFF by default (opt-in via
+     * hooks.cfg): A confirms the op fires + captures the block factor and
+     * analysis dims; B is the clean 1-deref analysis-image PIXEL capture that
+     * closes the port; C is the resize-EXIT fallback for the dims.
+     *
+     * HOOK A -- paxelize_blockavg_op @ 0x10154ea0 (__thiscall, ecx = the OP).
+     * Field order {hookId,label,kind,stackIndex,derefOffset,derefOffset2,
+     * numBytes,when,maxDumps}. op_fields: THIS_OFFSET ecx+0, 0x110 bytes ->
+     * dest holder @op+0x104, block factor @op+0x108. ctx: STACK_PTR sp[0]=arg0,
+     * 0x50 bytes -> dst rect @+0x30..0x3c, SOURCE image @+0x40. src_img_hdr:
+     * DEREF_PTR *(sp[0]+0x40) = the analysis ImaImage header, 0x48 bytes ->
+     * w@+0x34, h@+0x38, stride@+0x44. Pixels are 3 derefs deep here -> none;
+     * HOOK B captures them. All ON_ENTRY (the inputs exist before the call). */
+    { "paxelize_blockavg_op", "op_fields",   EXTRA_DUMP_THIS_OFFSET, 0, 0x0,  0, 0x110,   EXTRA_DUMP_ON_ENTRY, 40 },
+    { "paxelize_blockavg_op", "ctx",         EXTRA_DUMP_STACK_PTR,   0, 0,    0, 0x50,    EXTRA_DUMP_ON_ENTRY, 40 },
+    { "paxelize_blockavg_op", "src_img_hdr", EXTRA_DUMP_DEREF_PTR,   0, 0x40, 0, 0x48,    EXTRA_DUMP_ON_ENTRY, 40 },
+
+    /* HOOK B -- dsba_intlv_to_planar @ 0x101c0890 (cdecl,
+     * AnsDSbaCapabilityImpl::convertInterleaveToPlanar). THE analysis-image
+     * pixel capture. src_desc: STACK_PTR sp[1]=arg1 ([ebp+0xc]), 0x24 bytes ->
+     * AnsImageData header (w@+0xc, h@+0x10, bands@+0x14, layout@+0x4,
+     * pixptr@+0x20). src_pixels: DEREF_PTR *(sp[1]+0x20) = the analysis pixel
+     * buffer (int16), capped at 0x84000 = HOOKCORE_EXTRA_DUMP_MAX_BYTES -- the
+     * SAME 1-deref pattern as area pixel_data. Block-average these offline and
+     * compare to measure_samples[bands 0-2]. Both ON_ENTRY. */
+    { "dsba_intlv_to_planar", "src_desc",   EXTRA_DUMP_STACK_PTR, 1, 0,    0, 0x24,    EXTRA_DUMP_ON_ENTRY, 40 },
+    { "dsba_intlv_to_planar", "src_pixels", EXTRA_DUMP_DEREF_PTR, 1, 0x20, 0, 0x84000, EXTRA_DUMP_ON_ENTRY, 40 },
+
+    /* HOOK C -- resample_analysis_img @ 0x100d8030 (cdecl,
+     * pathUtils::resampleAnslysisImage). FALLBACK, analysis DIMS only. anal_desc:
+     * DEREF_PTR *(sp[0]+0) = *arg0 (the out param is a ptr-to-descPtr, so off0
+     * does the one deref to the finished analysis descriptor: dims @+0xc/+0x10,
+     * pixptr @+0x20). ON_EXIT (the resized image only exists after the call) --
+     * so the HookDef sets wantExitDefault=1. Pixels need a 3rd deref -> not
+     * capturable here. */
+    { "resample_analysis_img", "anal_desc", EXTRA_DUMP_DEREF_PTR, 0, 0x0, 0, 0x24, EXTRA_DUMP_ON_EXIT, 8 },
 
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0, EXTRA_DUMP_ON_ENTRY, 0 }, /* sentinel */
 };

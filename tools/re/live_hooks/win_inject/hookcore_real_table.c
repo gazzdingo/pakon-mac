@@ -2622,7 +2622,13 @@ const ExtraDumpSpec g_extraDumps[] = {
      * p1_src_pix (block-averaged offline) against sba_measure's measure_samples
      * to close the frame->grid sampler bit-exact. (docs/74 sampler UPDATE 11.) */
     { "sba_analyze_pass1", "p1_src_hdr", EXTRA_DUMP_STACK_PTR,   2, 0,    0, 0x24,    EXTRA_DUMP_ON_ENTRY, 20 },
-    { "sba_analyze_pass1", "p1_src_pix", EXTRA_DUMP_DEREF_PTR,   2, 0x20, 0, 0x84000, EXTRA_DUMP_ON_ENTRY, 20 },
+    /* v58 -- size corrected. v57 captured p1_src_hdr fine (arg2 = the 245x367x3
+     * analysis image, pixptr @ src+0x20) but p1_src_pix at 0x84000 (540672) read
+     * 1182 B PAST the tight 0x83b62 (539490 = 245*367*3*2) allocation end, and
+     * IsBadReadPtr is all-or-nothing, so the whole span came back unreadable.
+     * 0x83b62 reads the full image and stays inside the allocation. If a future
+     * roll's analysis image differs, p1_src_hdr shows the real w/h to re-size. */
+    { "sba_analyze_pass1", "p1_src_pix", EXTRA_DUMP_DEREF_PTR,   2, 0x20, 0, 0x83b62, EXTRA_DUMP_ON_ENTRY, 20 },
 
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0, EXTRA_DUMP_ON_ENTRY, 0 }, /* sentinel */
 };

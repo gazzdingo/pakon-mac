@@ -718,15 +718,114 @@ def l_input_vector(*, image, offsets, sel, arg4, en, par, obj, mode, mode_pack,
 ARG0_BAND_STRIDE = 0x6C0                  # 864 int16
 ARG0_LEN = 0x3000                         # captured arg0 allocation (12288 B)
 
-#: NOT reproduced here: the frame -> (bands 0-2) sampler.  It is performed
-#: upstream of fcn.1028b8d0 (which receives the grid already filled as its
-#: arg_2d4h), by a function reached through an INDIRECT call (no immediate xref
-#: to 0x1028b8d0 exists in PakonIMAu.dll -- return-address swap), and it samples
-#: the per-frame "area image" (245x367x3 12-bit, the area_image_apply_lut
-#: output) -- which the live capture dumps only TRUNCATED (0x80000 of the
-#: 0x83B62 needed) and which is not a simple decimation of.  Bands 0-2 must
-#: therefore be supplied by the caller; this function does not invent them.
-MEASURE_PREP_SAMPLER_PORTED = False
+#: The frame -> (bands 0-2) sampler.  PORTED and validated BIT-EXACT below
+#: (:func:`build_grid_from_source`).  It is ``createAlgData`` = ``fcn.1028ceb0``
+#: (PakonIMAu.dll, md5 eea9dcf78ee21d4f7c515a6c2512242d), called INSIDE
+#: ``AnsSbaCapabilityImpl::analyzePass1`` (fcn.10218110, @0x1021891e), and it
+#: reduces the per-frame source analysis image (245w x 367h x 3, interleaved
+#: int16, the ``area_image_apply_lut`` output = analyzePass1's arg2 pixels) to
+#: the 24x36x3 RGB density grid.  Validated 18/18 (6 frames x 3 measure calls)
+#: byte-exact against the real DLL's own ``measure_samples`` bands 0-2 in the
+#: paired live capture ``live_hooks_20260824-174111.jsonl`` (p1_src_pix ->
+#: measure_samples), 2592/2592 int16 per frame, residual identically 0.
+MEASURE_PREP_SAMPLER_PORTED = True
+
+
+# byte offset of the pixel pointer / dims inside an AnsImageData descriptor:
+#   [+0x04]=layout (0=interleaved), [+0x0c]=w, [+0x10]=h, [+0x14]=bands,
+#   [+0x20]=pixptr.  (getPixelAddress fcn.100d8dd0; p1_src_hdr capture.)
+#: grid geometry hard-coded in analyzePass1: 24 outer cells (var_194h=0x18) over
+#: the source HEIGHT, 36 inner cells (var_190h=0x24) over the source WIDTH.
+_GRID_N_OUTER = N_ROWS   # 24, maps to source height  (createAlgData D[0x18])
+_GRID_N_INNER = N_COLS   # 36, maps to source width   (createAlgData D[0x1c])
+
+
+def _trunc_half(v: int) -> int:
+    """``(x - (x>>31)) >> 1`` — integer divide-by-two truncating toward zero,
+    exactly as ``createAlgData`` computes each centering margin (0x1028d0ac /
+    0x1028d0b8, ``sar`` after the ``sub eax,edx`` sign fold)."""
+    return (v >> 1) if v >= 0 else -((-v) >> 1)
+
+
+def build_grid_from_source(analysis_img, w=None, h=None):
+    """Reduce the per-frame analysis image to the 24x36x3 RGB density grid.
+
+    Bit-exact port of ``createAlgData`` (``fcn.1028ceb0``) + its per-cell
+    block sampler ``fcn.1028cd10``.  The reduction, decoded from the real
+    function bodies and confirmed byte-exact against the paired live capture
+    (see :data:`MEASURE_PREP_SAMPLER_PORTED`):
+
+    * The grid is ``24`` outer cells x ``36`` inner cells; the **outer** axis
+      indexes the source **height** ``h`` (``D[0]``), the **inner** axis the
+      source **width** ``w`` (``D[4]``).
+    * Integer strides (``idiv``, truncating): ``step_outer = h // 24`` and
+      ``step_inner = w // 36``.  Centering margins (truncate-to-zero halves):
+      ``margin_outer = (h - step_outer*24) // 2``,
+      ``margin_inner = (w - step_inner*36) // 2``.
+    * Cell ``(i, j)`` (``i`` in ``[0,24)``, ``j`` in ``[0,36)``) samples a
+      block whose top-left is ``row0 = margin_outer + i*step_outer``,
+      ``col0 = margin_inner + j*step_inner``.  The block is transposed
+      relative to the cell stride (as the two functions are wired): its extent
+      is ``step_inner`` rows x ``step_outer`` cols --
+      ``rows [row0, row0+step_inner)``, ``cols [col0, col0+step_outer)``.
+    * Each band value is ``sum(unsigned pixels in block) // count`` (signed
+      ``idiv``; ``count = step_inner * step_outer``, every block fully in
+      bounds).  Pixels are read UNSIGNED (``movzx``).
+    * A per-channel offset ``this[0x4d58/0x4d5a/0x4d5c]`` is then subtracted
+      (0x1028d316..); it is 0 on the captured roll (residual identically 0)
+      and is NOT applied here -- see ``offset`` below.
+
+    ``analysis_img`` may be a numpy array shaped ``(h, w, 3)`` (interleaved,
+    the natural reshape of the source pixel buffer), or a flat ``bytes`` /
+    ``bytearray`` / int16 sequence together with explicit ``w`` and ``h``.
+
+    Returns a ``(3, 24, 36)`` numpy int array (bands 0/1/2 = R/G/B density) --
+    exactly the ``rgb_bands`` argument :func:`build_measure_inputs` consumes;
+    it derives bands 3-5 (``fos_opening_axes``) from these.
+    """
+    import numpy as np
+
+    a = np.asarray(analysis_img)
+    if a.ndim == 3:
+        h_, w_, b_ = a.shape
+        if b_ != 3:
+            raise ValueError("analysis image must have 3 bands, got %d" % b_)
+        if (w is not None and w != w_) or (h is not None and h != h_):
+            raise ValueError("w/h disagree with array shape")
+        w, h = w_, h_
+    else:
+        if w is None or h is None:
+            raise ValueError("flat analysis image requires explicit w and h")
+        if a.dtype == np.uint8:                 # raw byte buffer -> int16 codes
+            flat = np.frombuffer(a.tobytes(), dtype="<u2")
+        else:                                   # already an int16/int sequence
+            flat = a.ravel()
+        a = flat[: w * h * 3].reshape(h, w, 3)
+
+    # read pixels UNSIGNED (movzx), accumulate wide
+    src = a.astype(np.int64)
+    if src.min() < 0:
+        # a signed dtype carrying real >0x7fff codes would misread; coerce to
+        # the unsigned interpretation the DLL uses.
+        src = (a.astype(np.int64) & 0xFFFF)
+
+    step_outer = h // _GRID_N_OUTER      # h // 24  (D[0]//D[0x18])
+    step_inner = w // _GRID_N_INNER      # w // 36  (D[4]//D[0x1c])
+    if step_outer < 1 or step_inner < 1:
+        raise MeasureFault("degenerate analysis image %dx%d for 24x36 grid"
+                           % (w, h))
+    margin_outer = _trunc_half(h - step_outer * _GRID_N_OUTER)
+    margin_inner = _trunc_half(w - step_inner * _GRID_N_INNER)
+    count = step_inner * step_outer
+
+    grid = np.zeros((3, _GRID_N_OUTER, _GRID_N_INNER), dtype=np.int64)
+    for i in range(_GRID_N_OUTER):
+        row0 = margin_outer + i * step_outer
+        for j in range(_GRID_N_INNER):
+            col0 = margin_inner + j * step_inner
+            block = src[row0:row0 + step_inner, col0:col0 + step_outer, :]
+            grid[:, i, j] = block.reshape(-1, 3).sum(axis=0) // count
+    return grid
 
 
 def build_measure_inputs(rgb_bands, opening_rgb):

@@ -108,14 +108,25 @@ def afe_offset_converged(black: float) -> bool:
 
 
 def afe_offset_next(offset: int, black: float) -> int:
-    """The vendor proportional update: offset += round((black-300)*2*gain).
+    """The vendor proportional update: offset += trunc((black-300)*2*gain).
+
+    The delta is TRUNCATED TOWARD ZERO (an MSVC `(int)double` / `cvttsd2si`
+    cast), NOT rounded. This was PROVEN byte-exact against the v60 live capture
+    (live_hooks_20260824-193545.jsonl): fed the real captured dark-line black
+    readings, only truncation reproduces the 5 captured 0x84-idx5/6/7 offset
+    writes 10->-29/-38/-30->-21/-30/-22->-19/-25/-19->-19/-26/-19; round-ties-
+    away, round-half-even, and floor all fail (round3 R/B: -18 vs the real -19).
+    A divisor sweep confirms no uniform reduce divisor rescues rounding — the
+    delta truncation is required. (Prior revisions used _round_ties_away here,
+    reverse-engineered from writes alone; the real readings disprove it.)
 
     `black` MUST be on the vendor's own scale — the windowed mean produced by
-    fcn.1001d4c0 (round(sum(window)/(count*32)), samples unsigned), where the
-    target is 300 — NOT a decoded 14-bit wire count. See afe_black_scalar().
+    fcn.1001d4c0 (sum(window)/(count*32), samples unsigned, count=6 -> /192,
+    confirmed by the same capture), where the target is 300 — NOT a decoded
+    14-bit wire count. See afe_black_scalar().
     """
-    delta = _round_ties_away((float(black) - AFE_TARGET_BLACK) * 2.0
-                             * AFE_UPDATE_GAIN)
+    delta = math.trunc((float(black) - AFE_TARGET_BLACK) * 2.0
+                       * AFE_UPDATE_GAIN)
     return int(offset) + delta
 
 
@@ -295,22 +306,22 @@ def _selftest() -> int:
         ok &= got == exp
         print(f"    black {b}: converged={got}  {'ok' if got == exp else 'BAD'}")
 
-    # (4) Forward consistency demo (NOT a validation). Feed the loop the black
-    #     levels implied by docs/55's own trajectory and show it re-emits the
-    #     captured writes. The readings are BACKED OUT of the writes, so this is
-    #     circular by construction -- it demonstrates the rule is self-consistent
-    #     with the trace, it does NOT prove the rule, because the real readings
-    #     were never captured (they flow over EP 0x86, not DeviceIoControl).
-    print("[4] forward consistency demo vs docs/55 trajectory "
-          "(NOT a validation -- readings are reverse-engineered):")
-    # Per-round, per-channel black scalars chosen inside each implied band so
-    # afe_offset_next reproduces docs/55 R,G,B = 10 -> -29/-38/-30 -> -21/-30/-22
-    # -> -19/-25/-19 -> (G only) -26.
+    # (4) REAL end-to-end validation (v60 capture, tier-2 live). These are the
+    #     ACTUAL per-channel dark-line black readings, reduced by the vendor's
+    #     own fcn.1001d4c0 (sum(buf[0:6])/192) from the raw dark lines captured
+    #     ON_ENTRY to tlb_prescan_dark_reduce in live_hooks_20260824-193545.jsonl.
+    #     Unlike the old docs/55 demo, these readings are REAL, not backed out of
+    #     the writes -- so reproducing the captured offset writes below is a
+    #     genuine validation of afe_offset_next end to end (real readings -> real
+    #     writes). It is what disproved round-ties-away in favour of truncation.
+    print("[4] REAL end-to-end validation vs the v60 capture "
+          "(captured dark-line readings -> captured offset writes):")
     rounds_black = [
-        (1756, 2092, 1793),   # round1: +10 -> -29/-38/-30
-        (0, 0, 0),            # round2: -29/-38/-30 -> -21/-30/-22 (floored/overshoot)
-        (225, 113, 188),      # round3: -21/-30/-22 -> -19/-25/-19
-        (300, 337, 300),      # round4: only G (337>332) moves -25 -> -26; R,B in-window
+        (1766, 2124, 1817),   # round1: seed +10 -> -29/-38/-30
+        (0, 0, 0),            # round2: sensor floored -> -21/-30/-22
+        (193, 99, 168),      # round3: -21/-30/-22 -> -19/-25/-19
+        (295, 352, 331),      # round4: R,B in-window (converge); G 352>332 -> -26
+        # round5 (G only) black=299 in-window -> G converges, no further write
     ]
     conv = OffsetConvergence()
     all_writes = []
@@ -325,7 +336,7 @@ def _selftest() -> int:
     for i, w in enumerate(all_writes, 1):
         pretty = ", ".join(f"idx{idx}=0x{word:03X}" for idx, word in w)
         print(f"    emit {i}: {pretty or '(nothing changed)'}")
-    print(f"    final offsets R,G,B = {conv.offset}  (docs/55 converged "
+    print(f"    final offsets R,G,B = {conv.offset}  (captured converged "
           f"-19,-26,-19)")
     ok &= conv.offset == [-19, -26, -19]
 

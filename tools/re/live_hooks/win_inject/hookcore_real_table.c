@@ -2610,6 +2610,19 @@ const ExtraDumpSpec g_extraDumps[] = {
     { "sba_analyze_pass1", "p1_arg0_hdr", EXTRA_DUMP_STACK_PTR,   0, 0,    0, 0x24,    EXTRA_DUMP_ON_ENTRY, 20 },
     { "sba_analyze_pass1", "p1_arg0_pix", EXTRA_DUMP_DEREF_PTR,   0, 0x20, 0, 0x84000, EXTRA_DUMP_ON_ENTRY, 20 },
     { "sba_analyze_pass1", "p1_arg1_hdr", EXTRA_DUMP_STACK_PTR,   1, 0,    0, 0x24,    EXTRA_DUMP_ON_ENTRY, 20 },
+    /* v57 -- the SOURCE analysis image is arg2 (sp[2]), which v56 never dumped
+     * (it dumped only sp[0]/sp[1]). analyzePass1 ends `ret 0xc` = THREE stack
+     * args; arg2 @[ebp+0x10] is read at 0x102183cb as an AnsImageData (w@+0xc,
+     * h@+0x10, pixptr@+0x20) and handed with &grid(this+0x1a) to the producer
+     * createAlgData (fcn.1028ceb0) called INSIDE analyzePass1 -- so the grid is
+     * filled DURING this call, from arg2. Confirmed tier-2 from the v56 capture:
+     * sp[2] = 6 distinct per-frame heap ptrs (0x08fad574,0x08fb3a50,0x08fb9f2c,
+     * 0x08fc0408,0x08fc68e4,0x08fccdc0), repeated pass1==pass2. Pixels reachable
+     * in ONE deref, *(sp[2]+0x20), same pattern as area pixel_data. Pair
+     * p1_src_pix (block-averaged offline) against sba_measure's measure_samples
+     * to close the frame->grid sampler bit-exact. (docs/74 sampler UPDATE 11.) */
+    { "sba_analyze_pass1", "p1_src_hdr", EXTRA_DUMP_STACK_PTR,   2, 0,    0, 0x24,    EXTRA_DUMP_ON_ENTRY, 20 },
+    { "sba_analyze_pass1", "p1_src_pix", EXTRA_DUMP_DEREF_PTR,   2, 0x20, 0, 0x84000, EXTRA_DUMP_ON_ENTRY, 20 },
 
     { NULL, NULL, EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0, EXTRA_DUMP_ON_ENTRY, 0 }, /* sentinel */
 };

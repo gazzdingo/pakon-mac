@@ -2591,6 +2591,20 @@ const ExtraDumpSpec g_extraDumps[] = {
      * so the HookDef sets wantExitDefault=1. Pixels need a 3rd deref -> not
      * capturable here. */
     { "resample_analysis_img", "anal_desc", EXTRA_DUMP_DEREF_PTR, 0, 0x0, 0, 0x24, EXTRA_DUMP_ON_EXIT, 8 },
+    /* v59 -- the resample SOURCE, on ENTRY (the frame->245x367 filter's input).
+     * Only fires on a FRESH scan: apuPutAnalysisImageInPortfolio (fcn.100d85c0)
+     * has a "Scene has no analysis image(s)." gate, so a re-balance reuses the
+     * cached image and never resamples (why v55, a re-balance, saw 0 fires).
+     * cdecl: sp[1] = &srcImgDesc (36B AnsImageData: layout@+4, w@+0xc, h@+0x10,
+     * bands@+0x14, pixptr@+0x20); sp[2] = target (_AnselAnalysisImageSize_,
+     * already in stack_dwords). src_desc dumps the descriptor (READ FIRST for the
+     * true source dims). src_pix = *(sp[1]+0x20) source pixels -- the working
+     * image is large, so 0x84000 TRUNCATES it (captures the first ~46 lines, enough
+     * to pin the ImaResample filter on the top dest rows); the src_desc dims size a
+     * full-source follow-up if needed. Cap 2 (one frame's pair is enough; the
+     * output is the existing p1_src_pix after the in-place area_image_apply_lut). */
+    { "resample_analysis_img", "src_desc", EXTRA_DUMP_STACK_PTR, 1, 0,    0, 0x24,    EXTRA_DUMP_ON_ENTRY, 8 },
+    { "resample_analysis_img", "src_pix",  EXTRA_DUMP_DEREF_PTR, 1, 0x20, 0, 0x84000, EXTRA_DUMP_ON_ENTRY, 2 },
 
     /* v56 -- sba_analyze_pass1 LATCH rows (docs/74 sampler UPDATE 8/9;
      * /tmp/pakon_re/v56build/). Field order {hookId,label,kind,stackIndex,

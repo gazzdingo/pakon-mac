@@ -94,7 +94,36 @@ function startBackend(port) {
     // attributable choice per colour_engine()'s own stated design, not a
     // silent default, and it should come back out once Go's own chain is
     // actually wired and verified.
-    env: { ...process.env, PYTHONUNBUFFERED: '1', PAKON_COLOUR_ENGINE: process.env.PAKON_COLOUR_ENGINE || 'python' },
+    // Colour fixes verified this session (docs/74 §170-§208). Each stays
+    // overridable by setting the env var (incl. flipping it) before launch.
+    //   PAKON_COLOUR_ENGINE=python  the Unicorn-verified analyzeAutoTone chain,
+    //                        not Go's ShastaToneRpd stand-in. ON by default.
+    //   PAKON_SETSHIFTS_IDENTITY=1  the vendor's setShifts(1,2) is identity for
+    //                        the CN config (capture-verified 6/6); drops a
+    //                        spurious ~70 the shipped 3-band LUT introduced.
+    //                        ON by default.
+    //   PAKON_VENDOR_INVERT  the real F-135 inversion (_ClientColNegLut, the
+    //                        shipped 14-bit curve) BEFORE the polynomial -- the
+    //                        vendor's STEEP tone (3500 codes/decade), which the
+    //                        port's own invert (1000/decade) renders washed-out.
+    //                        Kept ON as the target architecture. Caveat: the
+    //                        vendor-invert branch in scene_rpd12 skips
+    //                        f135_rom12_to_rpd12, the ONLY place the film base
+    //                        is anchored to fpo -- and setShifts is sized to
+    //                        carry fpo->neutral, so without the anchor the base
+    //                        starts in the wrong place and the orange mask is
+    //                        left in -> blue cast (roll d3c47576: R-B -47..-117).
+    //                        The fix in progress re-anchors the base to fpo IN
+    //                        the vendor-invert domain: steep tone AND neutral.
+    //   PAKON_ORIENT / PAKON_VENDOR_ORIENT  vendor display orientation
+    //                        (rot90 k=+1); on by default, =0 to disable.
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+      PAKON_COLOUR_ENGINE: process.env.PAKON_COLOUR_ENGINE || 'python',
+      PAKON_VENDOR_INVERT: process.env.PAKON_VENDOR_INVERT || '1',
+      PAKON_SETSHIFTS_IDENTITY: process.env.PAKON_SETSHIFTS_IDENTITY || '1',
+    },
   });
   spawnedBackend = true;
   backend.stdout.on('data', (d) => process.stdout.write(`[backend] ${d}`));

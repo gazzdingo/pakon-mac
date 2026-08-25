@@ -32,6 +32,7 @@ Usage
 """
 from __future__ import annotations
 
+import copy
 import random
 import struct
 import sys
@@ -1460,6 +1461,554 @@ def check_analyze_hist(pe: bytes) -> int:
 
 
 # ---------------------------------------------------------------------------
+# 14. 0x102283d5..0x10228965 — the .dpi parser's per-line body
+# ---------------------------------------------------------------------------
+
+#: The loop body of ``AnsDraDPI::readAscii`` (``0x102283a0``): one already-read
+#: line in, zero or one params-field write out.  Slicing the body (rather than
+#: the whole function) is what makes this runnable at all — the enclosing
+#: function is built around a live ``std::basic_ifstream``, whose ``getline``
+#: and ``ios_base`` state machine would have to be reconstructed wholesale to
+#: reach the same bytes.  The body itself is the entire parse semantics.
+VA_DPI_LINE_TOP = 0x102283D5
+VA_DPI_LINE_BOTTOM = 0x10228965
+
+#: Frame offsets, read off the real ``lea``s (each one's ``esp`` displacement
+#: corrected for the pushes in flight at that instruction — see the comments).
+DPI_OFF_LINE = 0x30C      # 0x10228411 `lea edx,[esp+0x314]`, esp = F-8
+DPI_OFF_KEY = 0x58        # 0x10228431 `lea esi,[esp+0x58]`,  esp = F
+DPI_OFF_VALUE = 0x1F0     # 0x10228404 `lea eax,[esp+0x1f0]`, esp = F
+
+#: ``ebp`` is the params object's base; every field lands at ``ebp+0x2c+off``
+#: where ``off`` is DRA_PARAMS_LAYOUT's own (generateLut-relative) offset.
+DPI_PARAMS_SKEW = dra.DRA_PARAMS_BASE_SKEW      # 0x2c
+DPI_SCALAR_SPAN = 0x40    # maxValue .. cumPctAboveMax, the whole scalar image
+
+
+def _c_sscanf(read_cstr, s: str, fmt: str, write) -> int:
+    """A C ``sscanf`` for the five specifiers ``0x102283a0`` actually uses.
+
+    This is CRT code, not vendor code: ``ebx`` holds the ``MSVCR71!sscanf``
+    import and there is nothing of Kodak's inside it.  Hooking it is
+    therefore not a gap in the verification of the *parser* — what the real
+    DLL bytes are being asked here is which key matches, which destination
+    offset that key's arm passes, and which format string it passes, and all
+    three of those are executed for real.  Stated explicitly so this is not
+    mistaken for a full emulation of the conversion itself.
+    """
+    si = fi = ai = n = 0
+    ws = " \t\n\r\v\f"
+    args = []
+
+    def take_token() -> str | None:
+        nonlocal si
+        while si < len(s) and s[si] in ws:
+            si += 1
+        st = si
+        while si < len(s) and s[si] not in ws:
+            si += 1
+        return s[st:si] if si > st else None
+
+    while fi < len(fmt):
+        c = fmt[fi]
+        if c in ws:
+            fi += 1
+            while si < len(s) and s[si] in ws:
+                si += 1
+            continue
+        if c != "%":
+            if si < len(s) and s[si] == c:
+                si += 1
+                fi += 1
+                continue
+            return n
+        fi += 1
+        length = ""
+        while fmt[fi] in "hl":
+            length += fmt[fi]
+            fi += 1
+        conv = fmt[fi]
+        fi += 1
+        if conv == "s":
+            tok = take_token()
+            if tok is None:
+                return n
+            write(ai, tok.encode() + b"\x00")
+        elif conv == "c":
+            if si >= len(s):
+                return n
+            write(ai, s[si].encode())
+            si += 1
+        elif conv in "df":
+            tok = take_token()
+            if tok is None:
+                return n
+            if conv == "d":
+                v = dra._sscanf_int(tok, 16 if length == "h" else 32)
+                if v is None:
+                    return n
+                write(ai, struct.pack("<h" if length == "h" else "<i", v))
+            else:
+                v = dra._sscanf_float(tok)
+                if v is None:
+                    return n
+                write(ai, struct.pack("<f", v))
+        else:
+            raise AssertionError(f"unhandled %{conv}")
+        ai += 1
+        n += 1
+    del args
+    return n
+
+
+# MSVCP71 std::basic_string<char> imports the .ttc arm (0x102288bf..
+# 0x1022894b) walks through to turn "<dpi dir>\" + "<value>" into a path.
+IAT_STR_CTOR_VOID = 0x10573248     # basic_string()
+IAT_STR_NPOS = 0x10573128          # &basic_string::npos (DATA, not a call)
+IAT_STR_RFIND = 0x105732E8         # rfind(const char*, size_type, size_type)
+IAT_STR_SUBSTR = 0x105732DC        # substr(&out, pos, count)
+IAT_STR_ASSIGN = 0x10573134        # operator=(const basic_string&)
+IAT_STR_APPEND_PBD = 0x105731D4    # operator+=(const char*)
+IAT_STRSTR = 0x1057342C            # MSVCR71 strstr
+
+#: Frame slot holding the ``.dpi``'s own path string — ``mov edi,[esp+0x420]``
+#: at ``0x102288c6``, the object ``rfind``/``substr`` are called on.
+DPI_OFF_PATH_OBJ = 0x420
+
+
+def _read_cstr(emu: Emu, p: int) -> str:
+    out = bytearray()
+    while True:
+        b = emu.uc.mem_read(p, 1)[0]
+        if b == 0:
+            break
+        out.append(b)
+        p += 1
+    return out.decode("latin1")
+
+
+# --- MSVCP71 basic_string<char>, as THIS DLL's own code addresses it -------
+#
+# The module-level write_msvc_string() above lays the object out as
+# {union at +0x00, _Mysize +0x10, _Myres +0x14}.  The real code in the .ttc
+# arm does not agree with that, and says so itself: the string is
+# constructed at ``esp+0x20`` (0x10228803 `lea ecx,[esp+0x20]`) and then read
+# back at 0x1022893a..0x10228945 as
+#
+#     cmp dword [esp+0x38], 0x10      ; _Myres, i.e. base+0x18
+#     mov eax, dword [esp+0x24]       ; _Ptr,   i.e. base+0x04
+#     jae  .have_ptr
+#     lea eax, [esp+0x24]             ; _Buf,   i.e. base+0x04
+#
+# so this build's layout is {allocator +0x00, union +0x04, _Mysize +0x14,
+# _Myres +0x18} -- the VC7.1 `_String_val` shape, where the (empty) allocator
+# member still occupies the first 4 bytes.  Confirmed positively, not just
+# structurally: with the +0x00 layout the real DLL hands 0x10227c60 an EMPTY
+# path (it reads a C string out of the middle of the inline buffer, which is
+# NUL for any string long enough to be heap-allocated); with the layout below
+# it hands over the correct "<dpi dir>\<value>", which is what check_parse_dpi
+# asserts.
+STR_UNION_OFF = 0x04
+STR_MYSIZE_OFF = 0x14
+STR_MYRES_OFF = 0x18
+STR_BUF_CAP = 16
+
+
+def write_msvc_string_v71(emu: Emu, obj: int, text: bytes) -> None:
+    n = len(text)
+    emu.uc.mem_write(obj, b"\x00" * 4)
+    if n < STR_BUF_CAP:
+        emu.uc.mem_write(obj + STR_UNION_OFF, text + b"\x00" * (16 - n))
+        emu.w32(obj + STR_MYRES_OFF, 15)
+    else:
+        buf = emu.alloc(n + 1, text + b"\x00")
+        emu.w32(obj + STR_UNION_OFF, buf)
+        emu.uc.mem_write(obj + STR_UNION_OFF + 4, b"\x00" * 12)
+        emu.w32(obj + STR_MYRES_OFF, n)
+    emu.w32(obj + STR_MYSIZE_OFF, n)
+
+
+def _read_msvc_string(emu: Emu, obj: int) -> str:
+    res = emu.r32(obj + STR_MYRES_OFF)
+    return _read_cstr(
+        emu,
+        emu.r32(obj + STR_UNION_OFF) if res >= STR_BUF_CAP
+        else obj + STR_UNION_OFF)
+
+
+def run_parse_dpi_line(pe: bytes, line: str, seed: bytes,
+                       dpi_path: str = r"C:\ansel\dra\ansel-dra.dpi"):
+    """Execute the real per-line body on ``line``.
+
+    Returns ``(scalar params image, sscanf calls, ttc calls)`` where the
+    sscanf calls are ``(format, destination offset)`` — so a wrong
+    destination is a visible diff rather than a silent one — and the ttc
+    calls are ``(block offset, resolved path)`` captured at the real
+    ``push esi; push eax; call 0x10227c60`` (``0x10228949``).
+    """
+    emu = Emu(pe)
+    install_common_hooks(emu)
+    frame = STACK + 0x300000
+    params = HEAP + 0x100000
+    emu.uc.mem_write(frame, b"\x00" * 0x600)
+    emu.uc.mem_write(params - DPI_PARAMS_SKEW, b"\x00" * 0x400)
+    emu.uc.mem_write(params, seed)
+    emu.uc.mem_write(frame + DPI_OFF_LINE, line.encode() + b"\x00")
+
+    # The .dpi's own path object, and the npos datum rfind is compared to.
+    path_obj = emu.alloc(0x30)
+    write_msvc_string_v71(emu, path_obj, dpi_path.encode())
+    emu.w32(frame + DPI_OFF_PATH_OBJ, path_obj)
+    npos_cell = emu.alloc(4)
+    emu.w32(npos_cell, 0xFFFFFFFF)
+    emu.w32(IAT_STR_NPOS, npos_cell)
+
+    seen: list[tuple[str, int]] = []
+    ttc: list[tuple[int, str]] = []
+
+    def sscanf_stub(e: Emu, args: int):
+        inp = e.r32(args + 0)
+        fmt = _read_cstr(e, e.r32(args + 4))
+        ptrs = [e.r32(args + 8 + 4 * i) for i in range(fmt.count("%"))]
+        seen.append((fmt, ptrs[0] - params if ptrs else -1))
+        rc = _c_sscanf(None, _read_cstr(e, inp), fmt,
+                       lambda i, b: e.uc.mem_write(ptrs[i], b))
+        return rc, 0            # cdecl: the caller's `add esp,N` pops
+
+    stub = emu.stub()
+    emu.hook_stdcall(stub, sscanf_stub)
+
+    # --- the .ttc arm's std::string plumbing ------------------------------
+    def str_ctor_void(e: Emu, args: int):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        write_msvc_string_v71(e, this, b"")
+        return this, 0
+
+    def str_rfind(e: Emu, args: int):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        s = _read_msvc_string(e, this)
+        needle = _read_cstr(e, e.r32(args + 0))[:e.r32(args + 8)]
+        idx = s.rfind(needle)
+        return (0xFFFFFFFF if idx < 0 else idx), 12
+
+    def str_substr(e: Emu, args: int):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        out, pos, cnt = e.r32(args), e.r32(args + 4), e.r32(args + 8)
+        write_msvc_string_v71(e, out,
+                              _read_msvc_string(e, this)[pos:pos + cnt]
+                              .encode())
+        return out, 12
+
+    def str_assign(e: Emu, args: int):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        write_msvc_string_v71(e, this,
+                              _read_msvc_string(e, e.r32(args)).encode())
+        return this, 4
+
+    def str_append_pbd(e: Emu, args: int):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        write_msvc_string_v71(
+            e, this,
+            (_read_msvc_string(e, this) + _read_cstr(e, e.r32(args))).encode())
+        return this, 4
+
+    def strstr_stub(e: Emu, args: int):
+        hay_p, ned_p = e.r32(args), e.r32(args + 4)
+        i = _read_cstr(e, hay_p).find(_read_cstr(e, ned_p))
+        return (0 if i < 0 else hay_p + i), 0        # cdecl
+
+    emu.patch_iat_stub(IAT_STR_CTOR_VOID, str_ctor_void)
+    emu.patch_iat_stub(IAT_STR_RFIND, str_rfind)
+    emu.patch_iat_stub(IAT_STR_SUBSTR, str_substr)
+    emu.patch_iat_stub(IAT_STR_ASSIGN, str_assign)
+    emu.patch_iat_stub(IAT_STR_APPEND_PBD, str_append_pbd)
+    emu.patch_iat_stub(IAT_STRSTR, strstr_stub)
+
+    def ttc_leaf(e: Emu, args: int):
+        # 0x10228949: `push esi` (the block base) then `push eax` (the path).
+        block = e.uc.reg_read(UC_X86_REG_ESI)
+        ttc.append((block - params, _read_cstr(e, e.r32(args))))
+        return None, 0          # cdecl: `add esp,8` at 0x10228950 pops
+    emu.hook_stdcall(dra.DRA_TTC_SLOPE_LEAF, ttc_leaf)
+
+    emu.uc.reg_write(UC_X86_REG_ESP, frame)
+    emu.uc.reg_write(UC_X86_REG_EBP, params - DPI_PARAMS_SKEW)
+    emu.uc.reg_write(UC_X86_REG_EBX, stub)
+    emu.run(VA_DPI_LINE_TOP, VA_DPI_LINE_BOTTOM)
+    return bytes(emu.uc.mem_read(params, DPI_SCALAR_SPAN)), seen, ttc
+
+
+def _port_scalar_image(values: dict, base: bytes) -> bytes:
+    """The port's own params image over ``base``.
+
+    Only keys the port actually stored are written, so a field whose
+    conversion failed keeps ``base``'s bytes — which is precisely the real
+    DLL's behaviour (a failed ``sscanf`` arm leaves the field alone), and is
+    why the check seeds with non-zero bytes rather than zeros.
+    """
+    buf = bytearray(base)
+    for key, off, kind in dra.DRA_PARAMS_LAYOUT:
+        if kind == "ttc" or key not in values:
+            continue
+        v = values[key]
+        if kind == "i16":
+            struct.pack_into("<h", buf, off, int(v))
+        elif kind == "i32":
+            struct.pack_into("<i", buf, off, int(v))
+        elif kind == "f32":
+            struct.pack_into("<f", buf, off, float(v))
+        elif kind == "bool":
+            buf[off] = 1 if v else 0
+    return bytes(buf)
+
+
+#: Real shipped lines, plus the adversarial ones that separate an
+#: sscanf-shaped parse from a ``str.split``-shaped one.
+DPI_LINE_CASES: tuple[str, ...] = (
+    # --- every line of the real ansel-dra-default-default.dpi -------------
+    "# AnsDraDPI defaults",
+    "maxValue = 4095",
+    "lowFixedPoint = 1550",
+    "highFixedPoint = 1550",
+    "paperMin = 1200",
+    "paperMax = 2000",
+    "minSlope = 0.8",
+    "maxSlope = 1.5",
+    "binFactor = 4",
+    "bDoAverage = true",
+    "lumWeighting = 0.5",
+    "edgeWeighting = 0.5",
+    "bIsBacklit = false",
+    "bIsFlash = false",
+    "flashFraction = 0.25",
+    "backlitFraction = 0.25",
+    "startingMinCumPoint = 1",
+    "cumPctBelowMin = 0.1",
+    "startingMaxCumPoint = 90",
+    "cumPctAboveMax = 0.2",
+    # The six .ttc arms: block offset + resolved path, both checked.
+    "lowNormalTTC = lowNormal.ttc",
+    "highNormalTTC = highNormal.ttc",
+    "lowBacklitTTC = lowBacklit.ttc",
+    "highBacklitTTC = highBacklit.ttc",
+    "lowFrontlitTTC = lowFrontlit.ttc",
+    "highFrontlitTTC = highFrontlit.ttc",
+    # strstr(key,"TTC") hits but no arm matches -> must not load a curve.
+    "bogusTTCkey = x.ttc",
+    # --- comment / blank rejection (0x102283d5..0x102283fe) ---------------
+    "",
+    "*starred",
+    "\r",
+    "# maxValue = 1",
+    "  # maxValue = 1",        # NOT caught by the first-char test; caught
+                               # by the 2-conversion test instead
+    # --- the tokeniser (0x10228423 `cmp eax,2`) ---------------------------
+    "maxValue=4095",           # 1 conversion -> line REJECTED
+    "maxValue =4095",          # '=' matches, then %s -> 4095: ACCEPTED
+    "maxValue= 4095",          # %s eats "maxValue=", then no '=': REJECTED
+    "   maxValue   =   4095",  # leading/extra whitespace: ACCEPTED
+    "maxValue",                # 1 conversion
+    "maxValue =",              # 1 conversion (no value token)
+    "maxValue = ",
+    "maxValue == 4095",        # value token is "=", %hd then fails
+    # --- the three bools (%c + `cmp 0x74`) --------------------------------
+    "bDoAverage = true",
+    "bDoAverage = false",
+    "bDoAverage = True",       # capital T -> FALSE
+    "bDoAverage = TRUE",       # -> FALSE
+    "bDoAverage = t",          # -> TRUE
+    "bDoAverage = tomato",     # -> TRUE
+    "bDoAverage = 1",          # -> FALSE
+    "bIsBacklit = true",
+    "bIsFlash = true",
+    "bIsFlash = f",
+    # --- numeric conversion edge cases ------------------------------------
+    "maxValue = 4095abc",      # %hd stops at the junk
+    "maxValue = -1",
+    "maxValue = 65535",        # %hd wraps into int16
+    "maxValue = 70000",        # wraps
+    "maxValue = abc",          # conversion FAILS -> field left untouched
+    "binFactor = 100000",
+    "binFactor = -7",
+    "minSlope = .5",
+    "minSlope = 1e2",
+    "minSlope = -0.25",
+    "minSlope = abc",          # fails -> untouched
+    "cumPctAboveMax = 0.2",
+    # --- unknown keys (strstr(key,"TTC") gate, 0x102287f2) ----------------
+    "notAKey = 5",
+    "maxValu = 4095",          # near-miss on the repe cmpsb
+    "maxValues = 4095",        # longer: NUL byte makes cmpsb differ
+)
+
+
+def check_parse_dpi(pe: bytes) -> int:
+    print("=== 0x102283d5..0x10228965 / dra.parse_dpi_line "
+          "(.dpi per-line body) ===")
+    print("    (the real repe-cmpsb key chain and the real destination\n"
+          "     offsets execute for real; MSVCR71 sscanf is hooked, since\n"
+          "     it is CRT and not vendor code -- see _c_sscanf)")
+    # A non-zero seed proves "conversion failed -> field left UNWRITTEN":
+    # with a zeroed params block a failed write and a written 0 look alike.
+    seed = bytes((i * 37 + 11) & 0xFF for i in range(DPI_SCALAR_SPAN))
+    bad = 0
+    for line in DPI_LINE_CASES:
+        ref, seen, ttc = run_parse_dpi_line(pe, line, seed)
+        values: dict = {}
+        dra.parse_dpi_line(line, values)
+        got = _port_scalar_image(values, seed)
+        ok = got == ref
+        # The six *TTC arms: the block offset the real code hands
+        # 0x10227c60 must be DRA_PARAMS_LAYOUT's own offset for that key,
+        # and the path must be the .dpi's directory + the value token.
+        port_ttc = [(off, r"C:\ansel\dra" + "\\" + str(values[k]))
+                    for k, off, kind in dra.DRA_PARAMS_LAYOUT
+                    if kind == "ttc" and k in values]
+        ok_ttc = ttc == port_ttc
+        ok = ok and ok_ttc
+        bad += not ok
+        note = ""
+        if seen:
+            note = "  sscanf" + "".join(
+                f" {f!r}@{o:#x}" if o >= 0 else f" {f!r}" for f, o in seen)
+        if ttc:
+            note += "  ttc=" + ", ".join(f"{o:#x}:{p}" for o, p in ttc)
+        print(f"  {line!r:30.30}  {'OK' if ok else 'FAIL'}{note}")
+        if not ok:
+            diff = [(i, ref[i], got[i]) for i in range(DPI_SCALAR_SPAN)
+                    if ref[i] != got[i]]
+            if diff:
+                print(f"      byte diffs (off, dll, port): {diff[:8]}")
+            if not ok_ttc:
+                print(f"      ttc dll={ttc}  port={port_ttc}")
+
+    # The whole shipped file, end to end, against the real body line by line.
+    dpi = dra.VENDOR_DRA_DIR / "ansel-dra-default-default.dpi"
+    if dpi.exists():
+        acc = bytearray(DPI_SCALAR_SPAN)
+        values: dict = {}
+        for line in dpi.read_text().splitlines():
+            ref, _s, _t = run_parse_dpi_line(pe, line, bytes(acc))
+            acc = bytearray(ref)
+            dra.parse_dpi_line(line, values)
+        got = _port_scalar_image(values, bytes(DPI_SCALAR_SPAN))
+        ok = got == bytes(acc)
+        bad += not ok
+        print(f"  whole shipped .dpi, line by line: "
+              f"{'OK' if ok else 'FAIL'}")
+        if not ok:
+            diff = [(i, acc[i], got[i]) for i in range(DPI_SCALAR_SPAN)
+                    if acc[i] != got[i]]
+            print(f"      byte diffs (off, dll, port): {diff[:8]}")
+        # and that DraParams.load -- what every caller in the repo actually
+        # uses -- lands on that same real-DLL-produced image.
+        p = dra.DraParams.load(dra.VENDOR_DRA_DIR)
+        ok2 = _port_scalar_image(
+            p.values, bytes(DPI_SCALAR_SPAN)) == bytes(acc)
+        bad += not ok2
+        print(f"  DraParams.load == real DLL image:  "
+              f"{'OK' if ok2 else 'FAIL'}")
+    print(f"  {'all OK' if not bad else f'{bad} FAILED'}")
+    return bad
+
+
+# ---------------------------------------------------------------------------
+# 15. what the DRA LUT actually DOES -- two properties, asserted against the
+#     real DLL rather than reasoned about from the port
+# ---------------------------------------------------------------------------
+
+
+def _gauss_hist(n: int, mu: float, sigma: float, count: int,
+                seed: int) -> list[int]:
+    rng = random.Random(seed)
+    h = [0] * n
+    for _ in range(count):
+        h[min(n - 1, max(0, int(rng.gauss(mu, sigma))))] += 1
+    return h
+
+
+def check_lut_behaviour(pe: bytes) -> int:
+    """Two facts about ``generateLut``'s output, both read off the real DLL.
+
+    They matter because the shape of the DRA LUT -- not just its
+    arithmetic -- is what an integration has to get right, and both of these
+    were previously assumed rather than measured.
+    """
+    print("=== what the DRA LUT does to pixels (real DLL, shipped params) ===")
+    p = dra.DraParams.load(dra.VENDOR_DRA_DIR)
+    n = int(p["maxValue"]) + 1
+    paper_min, paper_max = int(p["paperMin"]), int(p["paperMax"])
+    bad = 0
+
+    # --- (a) in-paper-range frames get the IDENTITY, exactly --------------
+    # Not "approximately identity" and not "a gentle S": every one of the
+    # 4096 entries equals its own index.  This is the property that makes
+    # DRA a clamp rather than a stretch -- it has no branch that expands a
+    # narrow range out to fill [paperMin, paperMax].
+    print("  (a) effective range INSIDE [paperMin, paperMax] -> identity LUT")
+    for mu, sigma, seed in ((1600, 60, 1), (1550, 90, 2), (1400, 40, 3),
+                            (1750, 50, 4)):
+        lum = _gauss_hist(n, mu, sigma, 40000, seed)
+        lut, lo, hi = run_generate_lut(
+            pe, p, n, n // int(p["binFactor"]), lum, None, None, 0)
+        in_range = paper_min <= lo and hi <= paper_max
+        ident = all(lut[i] == i for i in range(n))
+        ok = (not in_range) or ident
+        bad += not ok
+        print(f"      hist~N({mu},{sigma})  eff=({lo},{hi})  "
+              f"in-paper-range={in_range}  identity={ident}  "
+              f"{'OK' if ok else 'FAIL'}")
+
+    # --- (b) out-of-range frames are COMPRESSED toward 1550, never expanded
+    print("  (b) effective range WIDER than the paper range -> compression")
+    for mu, sigma, seed in ((2000, 900, 5), (1900, 1200, 6)):
+        lum = _gauss_hist(n, mu, sigma, 60000, seed)
+        lut, lo, hi = run_generate_lut(
+            pe, p, n, n // int(p["binFactor"]), lum, None, None, 0)
+        fp = int(p["highFixedPoint"])
+        # the band the compression arm actually governs
+        span = [i for i in range(fp + 1, min(hi, n))]
+        shrinks = all(abs(lut[i] - fp) <= (i - fp) for i in span) if span else True
+        pinned = lut[fp] == fp
+        ok = shrinks and pinned
+        bad += not ok
+        print(f"      hist~N({mu},{sigma})  eff=({lo},{hi})  "
+              f"LUT[{fp}]=={lut[fp]}  highs-pulled-in={shrinks}  "
+              f"{'OK' if ok else 'FAIL'}")
+
+    # --- (c) minSlope / maxSlope are DEAD in dra --------------------------
+    # Their names promise slope limiting; generateLut (0x1022ab50) contains
+    # no x87 instructions at all and keepMidPtLut (0x102290b0) reads only
+    # params +0x00/+0x02/+0x04/+0x06/+0x08/+0x28 and the six .ttc blocks --
+    # never +0x0c or +0x10.  Rather than rest on that (a negative claim from
+    # static reading is exactly the kind this project distrusts), sweep both
+    # parameters across their whole valid range on a case where dra is
+    # genuinely working, and require the real DLL's LUT to be byte-identical.
+    print("  (c) minSlope/maxSlope perturbation -> byte-identical LUT")
+    lum = _gauss_hist(n, 2000, 900, 60000, 7)
+    edge = _gauss_hist(n, 1900, 800, 60000, 8)
+    ref = run_analyze_hist(pe, p, lum, edge, None, n)
+    non_trivial = any(ref[i] != i for i in range(n))
+    if not non_trivial:
+        print("      SKIPPED: baseline LUT is the identity, so this sweep "
+              "would be vacuous")
+        bad += 1
+    else:
+        for ms, xs in ((0.0, 1.5), (0.8, 100.0), (0.0, 0.0), (1.5, 1.5),
+                       (0.01, 99.0), (1.4, 1.5)):
+            q = copy.deepcopy(p)
+            q.values["minSlope"] = dra._f32(ms)
+            q.values["maxSlope"] = dra._f32(xs)
+            got = run_analyze_hist(pe, q, lum, edge, None, n)
+            ok = got == ref
+            bad += not ok
+            print(f"      minSlope={ms:<5} maxSlope={xs:<6} identical={ok}  "
+                  f"{'OK' if ok else 'FAIL'}")
+    print(f"  {'all OK' if not bad else f'{bad} FAILED'}")
+    return bad
+
+
+# ---------------------------------------------------------------------------
 
 
 def main() -> int:
@@ -1508,6 +2057,10 @@ def main() -> int:
     bad += check_analyze_image(pe)
     print()
     bad += check_analyze_hist(pe)
+    print()
+    bad += check_parse_dpi(pe)
+    print()
+    bad += check_lut_behaviour(pe)
     print()
     if bad:
         print(f"FAILED {bad} case(s)")

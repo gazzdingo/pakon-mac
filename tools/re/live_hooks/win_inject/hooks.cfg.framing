@@ -1,0 +1,84 @@
+# hooks.cfg — CAPTURE 1 of 2: FRAMING
+#
+# Copy to the XP box as `hooks.cfg`, next to hookdll.dll.
+#
+# WHAT THIS CAPTURE IS FOR
+# ========================
+# It closes the LAST render-affecting gap in the pipeline.
+#
+# The vendor's framing cascade is ported and bit-exact — 15 functions, 1,429
+# checks, up to and including the entry fcn.100072c0 with its full threshold
+# search (docs/74 §194). FRAMING_PORTED is nevertheless still False, for one
+# reason that no amount of further RE can fix:
+#
+#   The entry consumes the object's 8-bit per-line RGB summary at this+0x6c.
+#   This port holds float 14-bit NON-inverted data. Guessing that
+#   quantisation would move every frame boundary INVISIBLY to the golden,
+#   because the golden feeds both sides the same synthetic bytes.
+#
+# tlb_framing_line_reduce is the consumer of that array, and at its entry the
+# array is already filled. One capture of it settles the domain.
+#
+# WHY THIS IS ITS OWN SCAN
+# ========================
+# Volume, not safety. All three framing addresses are re-derived and
+# confirmed as real function entries (§189.4). But line_reduce is per-LINE:
+# on a ~9,000-line roll with a re-running threshold search it adds tens of MB
+# of plain enter lines even with its dump row capped at 6. The colour
+# reference trace (hooks.cfg.reference) is already ~175 MB; there is no
+# reason to pay both at once, and this one is cheap to repeat.
+#
+# EXPECTED SIZE: tens of MB. Run it first — it is also a cheap shakedown of
+# the injector before committing to the expensive trace.
+
+# Everything off, then only what this capture needs.
+EXIT=off
+
+cn_enhanced_driver=off
+analyze_auto_tone=off
+sba_set_shifts=off
+sba_get_shifts=off
+sba_preference=off
+sba_apply_balance_shifts=off
+fugc_analyze=off
+fugc_set_lut_info=off
+analyze_falloff=off
+shift_lut_builder=off
+analyze_post_balance=off
+balance_area_image=off
+analyze_scp_lut_balance=off
+analyze_area=off
+analyze_attributes=off
+scp_lut_worker=off
+icc_xform_apply=off
+icc_effect_op=off
+tlb_lut_apply=off
+tlb_afe_offset_write=off
+tlb_lamp_on=off
+tlb_afe_gain_write=off
+tlb_ccd_acquire_control=off
+color_adjust_shift=off
+
+# EXPLICITLY off. hooks.cfg.example claims tlb_polypixel is disabled by
+# default; the table says otherwise — its flags are 0,1,0,0,0, i.e.
+# hotPathDisabled is NOT set, and it never was (HEAD has 0,0,0,0,0). So the
+# documented default and the real default disagree, and the real one wins on
+# the box. It is a per-PIXEL hot path, so leaving it to the default would
+# have quietly swamped this capture. Found by check_hooks_cfg.py.
+tlb_polypixel=off
+sba_order_fpo_calc=off
+sba_order_fpo_helper=off
+area_image_apply_lut=off
+sba_measure=off
+
+# --- the three framing hooks -------------------------------------------
+# entry and driver are ON by default already; named here so this file is a
+# complete statement of the capture rather than a diff against the defaults.
+tlb_framing_entry=on
+tlb_framing_entry.exit=on
+tlb_framing_driver=on
+tlb_framing_driver.exit=on
+
+# THE ROW THIS CAPTURE EXISTS FOR. Off by default on volume alone
+# (hotPathDisabled), not on doubt.
+tlb_framing_line_reduce=on

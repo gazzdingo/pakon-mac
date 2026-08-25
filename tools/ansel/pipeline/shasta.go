@@ -152,7 +152,22 @@ const ShastaOnCnRenderPath = false
 // of 255). Bypassing the stage entirely renders 215.7/231.4/235.3 with 0.00 %
 // of samples under 16 — far too light, so the stage is load-bearing and the
 // crush is the stand-in's own hard two-anchor clip, not the ICC hop.
-const AutoTonePorted = false
+// SUPERSEDED, and split in two rather than flipped. analyzeAutoTone has an
+// ANALYSIS half and an APPLY half, and as of the citrasdriver port they have
+// different answers, so one boolean can no longer tell the truth about either.
+// The two that replace it are in autotone.go:
+//
+//	AutoToneApplyPorted    = true   ImaCitrasOpBase::virtual_40, verified
+//	                                bit-exact against the Python reference on a
+//	                                real frame (test_citras_driver_ports.py)
+//	AutoToneAnalysisPorted = false  cna → dra → toneHelper → contrast → ast →
+//	                                citras-analyze, which BUILDS the curve
+//
+// This constant is kept, and kept false, because the CHAIN as a whole is still
+// not ported — Go cannot compute an OutToneLut for itself. It is the AND of the
+// two flags above and exists so that nothing reading it is quietly upgraded by
+// the apply half landing.
+const AutoTonePorted = AutoToneApplyPorted && AutoToneAnalysisPorted
 
 // ShastaParams are the fields of anselinstalldir/dataPathItems/shasta/
 // shasta-rpd.dpi — the DPI shasta.map selects for the colour-negative

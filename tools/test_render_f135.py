@@ -111,17 +111,38 @@ def test_scene_rpd12_inverts(seg, eng) -> list[str]:
             f"frame is a negative.")
 
     # And it must be the vendor-cited step, not some other polarity flip.
-    ref = dec.f135_rom12_to_rpd12(
-        ansel.rpd16_to_rpd12(
-            pr._rpd16(seg, dec.DEFAULT_DATA_DIR, np.zeros(3), model="f135"),
-            pc.RPD_MAX_BY_MODEL["f135"]),
-        pr.poly_pedestals(), eng.sba.fpo, eng.setshifts_out,
-        quiet=True, film_base=base)
+    #
+    # WHICH step that is depends on PAKON_VENDOR_INVERT. This assertion used to
+    # hard-code the legacy reference, so running the suite with the flag set
+    # failed with "max delta 560.495" — not a regression, but a test that did
+    # not know the flag existed. The flag has been opt-in since the vendor
+    # inversion landed (docs/74 §170-§175); nothing had ever run this file with
+    # it on. Assert each architecture against ITS OWN reference rather than
+    # skipping, so both paths stay covered.
+    if os.environ.get("PAKON_VENDOR_INVERT") == "1":
+        # The vendor's own position: invert the RAW code with the captured
+        # table BEFORE the polynomial — no film base, no Dmin, no pedestal,
+        # no fpo — then poly, then rpd16 -> rpd12. No second inversion.
+        lut = pr._vendor_invert_lut()
+        inv = lut[np.clip(np.asarray(seg, dtype=np.int32), 0, lut.size - 1)]
+        ref = ansel.rpd16_to_rpd12(
+            pr._rpd16(inv.astype(np.uint16), dec.DEFAULT_DATA_DIR,
+                      np.zeros(3), model="f135"),
+            pc.RPD_MAX_BY_MODEL["f135"])
+        label = "vendor inversion (PAKON_VENDOR_INVERT=1)"
+    else:
+        ref = dec.f135_rom12_to_rpd12(
+            ansel.rpd16_to_rpd12(
+                pr._rpd16(seg, dec.DEFAULT_DATA_DIR, np.zeros(3),
+                          model="f135"),
+                pc.RPD_MAX_BY_MODEL["f135"]),
+            pr.poly_pedestals(), eng.sba.fpo, eng.setshifts_out,
+            quiet=True, film_base=base)
+        label = "pakon_decode.f135_rom12_to_rpd12"
     worst = float(np.abs(rpd12 - ref).max())
-    print(f"  vs pakon_decode.f135_rom12_to_rpd12: max delta {worst:g}")
+    print(f"  vs {label}: max delta {worst:g}")
     if worst != 0.0:
-        fails.append(f"scene_rpd12 is not pakon_decode's own step "
-                     f"(max delta {worst:g})")
+        fails.append(f"scene_rpd12 is not {label} (max delta {worst:g})")
     return fails
 
 
@@ -153,9 +174,14 @@ def test_render_frame_inverts(seg, eng) -> list[str]:
         ]
         img = pr.render_frame(roll, 0, None, scale="full")
 
-    # render_frame rot90s for display, so compare against the same rotation of
-    # the input rather than assuming an orientation.
-    raw_disp = dec.to_frame_image(seg, 1.0)
+    # render_frame rot90s for display AND applies _display_orient (the vendor
+    # upright 180°, measured against the real vendor output TIFFs); compare
+    # against the same composed transform of the input rather than assuming an
+    # orientation. This test is about polarity (does the render invert the
+    # negative), not orientation -- keep the reference in render_frame's own
+    # display frame so a correct orientation change cannot masquerade as an
+    # inversion regression.
+    raw_disp = pr._display_orient(dec.to_frame_image(seg, 1.0))
     if raw_disp.shape[:2] != img.shape[:2]:
         fails.append(f"shape mismatch: raw {raw_disp.shape} vs {img.shape}")
         return fails

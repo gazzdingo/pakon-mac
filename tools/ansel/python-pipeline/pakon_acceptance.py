@@ -46,6 +46,7 @@ CAVEAT INHERITED FROM THE INPUT
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import sys
 from pathlib import Path
@@ -161,14 +162,38 @@ def main() -> int:
         # pakon_render both set it True. Loading without setting it measures a
         # branch no real render takes.
         eng.shasta_stand_in = True
-        neg = raw.astype(np.float64) * 16.0
+        neg = raw.astype(np.float64) * float(os.environ.get("PAKON_ACC_SCALE", 16))
         fb = tuple(float(dec._film_base_code(neg[:, :, c])) for c in range(3))
-        pos = dec.f135_rom12_to_rpd12(neg, pr.poly_pedestals(), eng.sba.fpo,
-                                      eng.setshifts_out, quiet=True,
-                                      film_base=fb)
+        # scene_rpd12, NOT f135_rom12_to_rpd12 directly.
+        #
+        # FIXED 2026-08-21. This called dec.f135_rom12_to_rpd12() straight,
+        # which bypasses pakon_render.scene_rpd12 -- the only place the
+        # PAKON_VENDOR_INVERT branch lives (docs/74 §170-§175). The harness
+        # therefore reported byte-identical scores with the flag on and with
+        # it off: it could not see the flag at all, and had never scored the
+        # vendor-inversion architecture it exists to evaluate.
+        #
+        # Same family as §195.6's "an opt-in flag that no test exercises is
+        # not off by default, it is untested" -- here it was worse, because a
+        # test DID run and silently measured the other path.
+        #
+        # scene_rpd12 IS the production entry: pakon_render calls it for every
+        # real render, and it dispatches to the vendor inversion or the legacy
+        # c9 log depending on the flag. render_scene() still follows, because
+        # that is SBA + Shasta + FUGC + ColorAdjust and the vendor's own
+        # output is toned -- scoring an untoned render against a toned
+        # reference compares two different things.
+        pos = pr.scene_rpd12(neg, dec.DEFAULT_DATA_DIR, np.zeros(3), "f135",
+                             eng, fb)
         cand = eng.to_srgb(eng.render_scene(pos))
-        print("NOTE: rendered from the 8-bit vendor RAW. Approximate input; "
-              "absolute scores carry that caveat.")
+        which = ("vendor inversion (PAKON_VENDOR_INVERT=1)"
+                 if os.environ.get("PAKON_VENDOR_INVERT") == "1"
+                 else "this port's own c9 log inversion (default)")
+        print(f"NOTE: rendered from the 8-bit vendor RAW. Approximate input; "
+              f"absolute scores carry that caveat.")
+        print(f"      inversion: {which}")
+        print(f"      input scale: {neg.max()/max(raw.max(),1):.0f}x "
+              f"(PAKON_ACC_SCALE, default 16)")
     elif args.candidate:
         cand = _load(args.candidate)
     else:

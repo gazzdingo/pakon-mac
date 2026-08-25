@@ -48,14 +48,29 @@ typedef char HookRegs_size_check
 #define SHADOW_STACK_DEPTH 64
 
 /* How many raw stack dwords past the args pointer HookEntryC logs on
- * entry -- same spirit as agent.js's STACK_DWORDS_TO_LOG. */
-#define STACK_DWORDS_LOGGED 16
+ * entry -- same spirit as agent.js's STACK_DWORDS_TO_LOG.
+ *
+ * v34: 16 -> 32. docs/74 SS124 -- balance_area_image references `arg_68h`
+ * (ebp+0x68, argument #24) more often than any other argument, so its
+ * signature is ~25 dwords wide and 16 truncated it. Emulating the function
+ * offline faulted for want of args 16..24, which no dump in the v32 capture
+ * contains. 32 covers it with headroom; the cost is ~200 more bytes per
+ * logged call row. */
+#define STACK_DWORDS_LOGGED 32
 
 typedef struct ShadowFrame {
     DWORD hookIndex;
     DWORD callId;
     void *realRetAddr;
     DWORD entryTick;
+    /* v46 -- entry-time snapshot, so EXIT-side extra dumps never re-read the
+     * live stack. See hookcore.h's ExtraDumpWhen comment for why re-reading
+     * would be wrong for every `ret N` callee (OnReturnThunk's own frame and
+     * LogExitC's ~700 bytes of locals are written straight through the
+     * argument block). 132 bytes per frame x SHADOW_STACK_DEPTH x per-thread. */
+    DWORD savedArgs[STACK_DWORDS_LOGGED];
+    DWORD savedEcx;
+    int   savedArgCount;   /* how many of savedArgs[] were readable at entry */
 } ShadowFrame;
 
 typedef struct ShadowStack {
@@ -440,26 +455,75 @@ void HookCore_Shutdown(HookEngine *eng) {
  * IsBadReadPtr-guarded -- one bad pointer in one row logs
  * `"readable":false` for that row only, never aborts the others.
  * --------------------------------------------------------------------- */
-static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp) {
+/* v46 -- per-ROW emitted-dump counters for ExtraDumpSpec.maxDumps. Indexed by
+ * the row's position in g_extraDumps[], which is a compile-time constant
+ * table, so the index is stable for the process lifetime. Incremented with
+ * InterlockedIncrement because several PSI threads run hooks concurrently
+ * (the captures show tid 3020/3452/1556 all logging), and an unsynchronised
+ * counter would let a hot row overshoot its cap by an unbounded amount. */
+static volatile LONG g_extraDumpCounts[HOOKCORE_MAX_EXTRA_DUMP_ROWS];
+static volatile LONG g_extraDumpRowOverflowLogged = 0;
+
+static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp,
+                          HookRegs *regs, ExtraDumpWhen when) {
     const ExtraDumpSpec *spec;
-    /* HOOKCORE_EXTRA_DUMP_MAX_BYTES*2 hex chars + JSON field overhead;
-     * sb_putc's own bounds check makes a too-small buffer truncate safely
-     * rather than overflow, but this is sized generously so truncation
-     * should never actually happen for any row in g_extraDumps[]. */
-    char dumpLine[HOOKCORE_EXTRA_DUMP_MAX_BYTES * 2 + 256];
+    int rowIndex = -1;
+    /* HOOKCORE_EXTRA_DUMP_MAX_BYTES*2 hex chars + JSON field overhead.
+     * Heap-allocated (not a stack array) because 0x90000*2 hex chars exceed
+     * the default 1 MB thread stack -- see the HOOKCORE_EXTRA_DUMP_MAX_BYTES
+     * bump note in hookcore.h. sb_putc's own bounds check makes a too-small
+     * buffer truncate safely rather than overflow. */
+    DWORD lineCap = HOOKCORE_EXTRA_DUMP_MAX_BYTES * 2 + 256;
+    char *dumpLine = (char *)mc_alloc(lineCap);
     StrBuf sb;
+
+    if (dumpLine == NULL) {
+        /* Allocation failed: log a status line and skip ALL extra dumps for
+         * this call -- never crash the hooked process over a diagnostics
+         * convenience feature. */
+        HookCore_LogStatus(eng, "LogExtraDumps: mc_alloc for dump line failed -- skipping extra dumps for this call");
+        return;
+    }
 
     for (spec = g_extraDumps; spec->hookId != NULL; spec++) {
         DWORD numBytes;
         void *srcPtr;
         BOOL readable;
 
+        rowIndex++;   /* incremented for EVERY row, matched or not, so it stays
+                         the row's true position in g_extraDumps[] */
+
         if (!mc_streq_ci(spec->hookId, d->id)) continue;
+
+        /* v46: does this row fire on this side of the call? */
+        if (spec->when != EXTRA_DUMP_ON_BOTH && spec->when != when) continue;
+
+        /* v46: per-row cap. Checked BEFORE any pointer arithmetic or
+         * IsBadReadPtr so a capped hot row costs a compare and a branch, not a
+         * probe -- tlb_lut_apply runs this loop 52,877 times. */
+        if (spec->maxDumps != 0) {
+            if (rowIndex >= HOOKCORE_MAX_EXTRA_DUMP_ROWS) {
+                /* More rows than the counter array can hold. Fail LOUD and
+                 * treat the row as uncapped rather than silently mis-counting
+                 * (a shared counter would cap the wrong rows). Logged once. */
+                if (InterlockedExchange(&g_extraDumpRowOverflowLogged, 1) == 0) {
+                    HookCore_LogStatus(eng, "LogExtraDumps: g_extraDumps[] has more rows than HOOKCORE_MAX_EXTRA_DUMP_ROWS -- maxDumps is NOT being enforced past that point. Raise the constant and rebuild before trusting a capture's dump counts.");
+                }
+            } else if ((DWORD)InterlockedIncrement(&g_extraDumpCounts[rowIndex])
+                       > spec->maxDumps) {
+                continue;   /* cap reached: emit nothing at all for this row */
+            }
+        }
         /* Defensive: g_extraDumps[] rows are hand-written constants, but
          * a future added row with a bad stackIndex should skip cleanly
          * rather than read outside the STACK_DWORDS_LOGGED dwords the
-         * caller already validated. */
-        if (spec->stackIndex < 0 || spec->stackIndex >= STACK_DWORDS_LOGGED) continue;
+         * caller already validated. (EXTRA_DUMP_THIS_OFFSET ignores
+         * stackIndex -- it reads from regs->ecx -- so its rows use 0.) */
+        if (spec->kind != EXTRA_DUMP_THIS_OFFSET &&
+            spec->kind != EXTRA_DUMP_THIS_DEREF_OFFSET &&
+            spec->kind != EXTRA_DUMP_THIS_DEREF2_OFFSET &&
+            spec->kind != EXTRA_DUMP_MODULE_ABS &&
+            (spec->stackIndex < 0 || spec->stackIndex >= STACK_DWORDS_LOGGED)) continue;
 
         numBytes = spec->numBytes;
         if (numBytes > HOOKCORE_EXTRA_DUMP_MAX_BYTES) numBytes = HOOKCORE_EXTRA_DUMP_MAX_BYTES;
@@ -469,16 +533,75 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp) 
         if (spec->kind == EXTRA_DUMP_STACK_PTR) {
             srcPtr = (void *)(DWORD_PTR)sp[spec->stackIndex];
             readable = !IsBadReadPtr(srcPtr, numBytes);
-        } else { /* EXTRA_DUMP_DEREF_PTR: base = sp[idx], real ptr = *(base + off) */
+        } else if (spec->kind == EXTRA_DUMP_DEREF_PTR) { /* base = sp[idx], real ptr = *(base + off) */
             void *base = (void *)(DWORD_PTR)sp[spec->stackIndex];
             if (!IsBadReadPtr((BYTE *)base + spec->derefOffset, sizeof(void *))) {
                 srcPtr = *(void **)((BYTE *)base + spec->derefOffset);
                 readable = !IsBadReadPtr(srcPtr, numBytes);
             }
+        } else if (spec->kind == EXTRA_DUMP_THIS_OFFSET) { /* the __thiscall Impl/this object */
+            srcPtr = (void *)((DWORD_PTR)regs->ecx + spec->derefOffset);
+            readable = !IsBadReadPtr(srcPtr, numBytes);
+        } else if (spec->kind == EXTRA_DUMP_THIS_DEREF_OFFSET) {
+            /* *(ecx + stackIndex) + derefOffset -- e.g. getShifts reads
+             * *(SbaCap+0x10)+0x3a38 (this -> Impl -> +0x3a38). */
+            void *base = (void *)(DWORD_PTR)regs->ecx;
+            if (!IsBadReadPtr((BYTE *)base + spec->stackIndex, sizeof(void *))) {
+                srcPtr = *(void **)((BYTE *)base + spec->stackIndex);
+                srcPtr = (void *)((DWORD_PTR)srcPtr + spec->derefOffset);
+                readable = !IsBadReadPtr(srcPtr, numBytes);
+            }
+        } else if (spec->kind == EXTRA_DUMP_THIS_DEREF2_OFFSET) {
+            /* *(*(ecx + stackIndex)) + derefOffset -- framing +0x60 row table -> table[0] */
+            void *base = (void *)(DWORD_PTR)regs->ecx;
+            if (!IsBadReadPtr((BYTE *)base + spec->stackIndex, sizeof(void *))) {
+                void *table = *(void **)((BYTE *)base + spec->stackIndex);
+                if (!IsBadReadPtr(table, sizeof(void *))) {
+                    srcPtr = *(void **)table;                              /* table[0] */
+                    srcPtr = (void *)((DWORD_PTR)srcPtr + spec->derefOffset);
+                    readable = !IsBadReadPtr(srcPtr, numBytes);
+                }
+            }
+        } else if (spec->kind == EXTRA_DUMP_STACK_PTR_OFFSET) {
+            /* stack arg pointer + offset -- e.g. balanceAreaImage's shift at
+             * arg4+0x0a (a field inside the arg's struct). */
+            srcPtr = (void *)((DWORD_PTR)sp[spec->stackIndex] + spec->derefOffset);
+            readable = !IsBadReadPtr(srcPtr, numBytes);
+        } else if (spec->kind == EXTRA_DUMP_STACK_DEREF2_OFFSET) {
+            /* *(sp[idx] + derefOffset) + derefOffset2 -- e.g. getShifts reads
+             * *(arg1+0x10)+0x3a38, arg1 = sp[0]. */
+            void *base = (void *)(DWORD_PTR)sp[spec->stackIndex];
+            if (!IsBadReadPtr((BYTE *)base + spec->derefOffset, sizeof(void *))) {
+                srcPtr = *(void **)((BYTE *)base + spec->derefOffset);
+                srcPtr = (void *)((DWORD_PTR)srcPtr + spec->derefOffset2);
+                readable = !IsBadReadPtr(srcPtr, numBytes);
+            }
+        } else if (spec->kind == EXTRA_DUMP_MODULE_ABS) {
+            /* module base + derefOffset -- a GLOBAL, reached by RVA rather
+             * than through any argument (docs/74 SS106.4). Resolved from the
+             * hook's own module handle so a relocated load stays correct;
+             * a failed GetModuleHandleA leaves srcPtr NULL and the row
+             * reports readable=false rather than reading address 0. */
+            HMODULE mod = GetModuleHandleA(d->dll);
+            if (mod) {
+                srcPtr = (void *)((BYTE *)mod + spec->derefOffset);
+                readable = !IsBadReadPtr(srcPtr, numBytes);
+            }
+        } else { /* EXTRA_DUMP_PLANAR_PLANE: PolyPixel planar R/G/B,
+                    base + (stack_dwords[3]*stack_dwords[4]) * derefOffset */
+            DWORD_PTR base = (DWORD_PTR)sp[spec->stackIndex];
+            DWORD_PTR wh = (DWORD_PTR)sp[3] * (DWORD_PTR)sp[4];
+            srcPtr = (void *)(base + wh * spec->derefOffset);
+            readable = !IsBadReadPtr(srcPtr, numBytes);
         }
 
-        sb_init(&sb, dumpLine, sizeof(dumpLine));
-        sb_puts(&sb, "{\"kind\":\"buffer_dump\",\"hook_id\":");
+        sb_init(&sb, dumpLine, lineCap);
+        sb_puts(&sb, "{\"kind\":\"buffer_dump\",\"event\":");
+        /* v46: which side of the call this dump was taken on. Present on
+         * every buffer_dump line, including pre-v46-style ENTRY rows, so a
+         * consumer never has to infer it from the label. */
+        sb_puts(&sb, when == EXTRA_DUMP_ON_EXIT ? "\"leave\"" : "\"enter\"");
+        sb_puts(&sb, ",\"hook_id\":");
         sb_put_json_str(&sb, d->id);
         sb_puts(&sb, ",\"call_id\":");
         sb_put_i32_dec(&sb, (long)callId);
@@ -501,6 +624,7 @@ static void LogExtraDumps(HookEngine *eng, HookDef *d, DWORD callId, DWORD *sp) 
         sb_puts(&sb, "}");
         LogLine(eng, dumpLine, FALSE); /* same hot-path flush policy as the enter/leave lines */
     }
+    mc_free(dumpLine);
 }
 
 /* ---------------------------------------------------------------------
@@ -551,10 +675,18 @@ void *HookEntryC(DWORD hookIndex, HookRegs *regs, void *realRetAddr,
      * pointer" safety agent.js's tryReadBytes() had via Frida. */
     sb_init(&stackSb, stackBuf, sizeof(stackBuf));
     sp = (DWORD *)argsPtr;
-    spReadable = !IsBadReadPtr(sp, STACK_DWORDS_LOGGED * sizeof(DWORD));
+    /* Probed per dword, not once across the whole span. The single
+     * whole-span IsBadReadPtr this replaced made the window all-or-nothing:
+     * widening it to 32 (above) would have degraded any call whose frame ends
+     * within 128 bytes of unreadable memory from "16 good dwords" to
+     * "unreadable", silently losing arguments that used to be captured.
+     * Short rows are the honest outcome -- a consumer sees how many dwords it
+     * actually got rather than a full-length row padded with garbage. */
+    spReadable = !IsBadReadPtr(sp, sizeof(DWORD));
     if (spReadable) {
         int i;
         for (i = 0; i < STACK_DWORDS_LOGGED; i++) {
+            if (IsBadReadPtr(sp + i, sizeof(DWORD))) break;
             if (i > 0) sb_putc(&stackSb, ',');
             sb_put_hex8_quoted(&stackSb, sp[i]);
         }
@@ -596,7 +728,7 @@ void *HookEntryC(DWORD hookIndex, HookRegs *regs, void *realRetAddr,
      * SAME sp readability already established above -- never dereferences
      * sp[] on a pointer this function has already decided not to trust. */
     if (spReadable) {
-        LogExtraDumps(eng, d, (DWORD)callId, sp);
+        LogExtraDumps(eng, d, (DWORD)callId, sp, regs, EXTRA_DUMP_ON_ENTRY);
     }
 
     if (r->exitEnabled) {
@@ -628,10 +760,25 @@ void *HookEntryC(DWORD hookIndex, HookRegs *regs, void *realRetAddr,
             ShadowStack *ss = GetShadowStack(eng);
             if (ss != NULL && ss->top < SHADOW_STACK_DEPTH) {
                 ShadowFrame *fr = &ss->frames[ss->top++];
+                int si;
                 fr->hookIndex = hookIndex;
                 fr->callId = (DWORD)callId;
                 fr->realRetAddr = realRetAddr;
                 fr->entryTick = GetTickCount();
+                /* v46 -- snapshot the args and ECX for the EXIT-side extra
+                 * dumps. Taken here, not at exit, because by the time
+                 * OnReturnThunk runs this harness's own frame has overwritten
+                 * the argument block of any `ret N` callee (hookcore.h,
+                 * ExtraDumpWhen). Re-probes rather than reusing the loop above
+                 * so the snapshot never depends on the logging path's state. */
+                fr->savedEcx = regs->ecx;
+                fr->savedArgCount = 0;
+                for (si = 0; si < STACK_DWORDS_LOGGED; si++) {
+                    if (IsBadReadPtr(sp + si, sizeof(DWORD))) break;
+                    fr->savedArgs[si] = sp[si];
+                    fr->savedArgCount = si + 1;
+                }
+                for (; si < STACK_DWORDS_LOGGED; si++) fr->savedArgs[si] = 0;
                 *outSwapAddr = (void *)&OnReturnThunk;
             } else {
                 char msg[256];
@@ -682,6 +829,32 @@ void *LogExitC(DWORD eaxRet, DWORD edxRet) {
     sb_puts(&sb, ",\"edx\":"); sb_put_hex8_quoted(&sb, edxRet);
     sb_puts(&sb, "}");
     LogLine(eng, line, FALSE); /* hot path -- see LogLine's header comment */
+
+    /* v46 -- EXIT-side extra dumps, from the entry-time snapshot. Emitted
+     * AFTER the "leave" line for the same reason the entry dumps come after
+     * the "enter" line: a bug in here can never suppress the baseline capture
+     * this harness exists for. `d == NULL` means the shadow frame carried a
+     * hookIndex this build no longer has (a stale/mismatched DLL), in which
+     * case there is no id to match rows against and dumping is skipped.
+     *
+     * fakeRegs exists because LogExtraDumps takes a HookRegs* and reads ECX
+     * from it for the THIS_* kinds; everything else it needs comes from the
+     * saved arg array. Zeroed apart from ECX so a future kind that reads some
+     * other register gets an obviously-wrong 0 rather than stale stack. */
+    if (d != NULL && fr->savedArgCount > 0) {
+        /* Every field written explicitly rather than `= {0}`: this file is
+         * built -ffreestanding -fno-builtin precisely so GCC cannot turn an
+         * aggregate initialiser into an implicit memset() that would re-resolve
+         * through a CRT this DLL deliberately does not import (build.sh). */
+        HookRegs fakeRegs;
+        fakeRegs.edi = 0; fakeRegs.esi = 0; fakeRegs.ebp_orig = 0;
+        fakeRegs.esp_orig = 0; fakeRegs.ebx = 0; fakeRegs.edx = 0;
+        fakeRegs.eax = 0; fakeRegs.eflags = 0; fakeRegs.hookIndex = 0;
+        fakeRegs.retAddr = 0;
+        fakeRegs.ecx = fr->savedEcx;
+        LogExtraDumps(eng, d, fr->callId, fr->savedArgs, &fakeRegs,
+                      EXTRA_DUMP_ON_EXIT);
+    }
 
     return fr->realRetAddr;
 }

@@ -6,3 +6,4 @@
 
 # Wine self-test log output (test-run only, never a real capture).
 live_hooks_*.jsonl
+selftest_v46.jsonl

@@ -46,6 +46,7 @@ const pythonWireSample = `{
   "ccdDeskew": [8, 0, -8],
   "rotate180": true,
   "userOffsets": [1.5, -2.5, 3.5],
+  "outToneLut": [11, 22, 33],
   "provenance": {"dx": "flag"}
  }
 }`
@@ -93,6 +94,48 @@ func TestPythonWireFillsEveryField(t *testing.T) {
 	check("userOffsets", r.UserOffsets, [3]float64{1.5, -2.5, 3.5})
 	if r.Provenance["dx"] != "flag" {
 		t.Errorf("provenance did not arrive: %v", r.Provenance)
+	}
+	// The tone curve is a slice, so it is checked by content rather than by
+	// ==. Three entries here, not 4096: this asserts the NAME still binds, and
+	// Validate's own length rule is what refuses a wrong-sized real curve.
+	if len(r.OutToneLut) != 3 || r.OutToneLut[0] != 11 || r.OutToneLut[2] != 33 {
+		t.Errorf("outToneLut did not arrive: %v — the field name in "+
+			"tools/pakon_colour_go.py no longer matches RenderRequest",
+			r.OutToneLut)
+	}
+	if !r.HasToneLut() {
+		t.Error("HasToneLut() is false for a request that carries a curve")
+	}
+}
+
+// A tone curve that is not analyzeAutoTone's own length must be refused, not
+// clamped into. The driver indexes it with a 12-bit luminance, so a short table
+// would render the frame through a curve that is not the curve the analysis
+// produced — and it would look plausible, which is the failure mode this repo
+// treats as the worst one.
+func TestWrongSizedToneLutIsRefused(t *testing.T) {
+	base := RenderRequest{
+		Model: "f135", FilmPath: "ColNeg", AnselPath: "CN-Premium",
+		CoeffSource: CoeffEeprom, StageOrder: OrderShastaFugc,
+		IccInput: IccU12, FilmBase: [3]int{3000, 3000, 3000},
+	}
+	if err := base.Validate(); err != nil {
+		t.Fatalf("the base request was refused: %v", err)
+	}
+	if base.HasToneLut() {
+		t.Error("HasToneLut() is true for a request with no curve")
+	}
+
+	short := base
+	short.OutToneLut = make([]int32, 256)
+	if err := short.Validate(); err == nil {
+		t.Fatal("a 256-entry tone LUT validated; analyzeAutoTone's is 4096")
+	}
+
+	right := base
+	right.OutToneLut = make([]int32, ToneLutSize)
+	if err := right.Validate(); err != nil {
+		t.Fatalf("a %d-entry tone LUT was refused: %v", ToneLutSize, err)
 	}
 }
 

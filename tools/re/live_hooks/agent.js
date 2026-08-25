@@ -896,6 +896,82 @@ const HOOKS = [
           'instructions (no relative jmp/call, no RIP-relative operand), ' +
           'MinHook 5-byte patch safe (approximate=0).',
   },
+
+  // ---- v60: TWO acquisition-side TLB.dll captures in ONE fresh scan ----
+  //
+  // HOOK A -- pre-scan AFE dark-line read-back, to VALIDATE the byte-exact
+  // convergence f recovered in tools/pakon_vendor_prescan.py (commit f43f61d).
+  // fcn.1001d4c0 is the dark-offset REDUCE leaf FN_bCalibrateFindDarkOffset
+  // (fcn.1001e1c0) calls 3x/iteration (R/G/B): reduce(int32 *buf, start, end,
+  // scale) = round(sum(buf[start..end))/((end-start)*scale)) = the per-channel
+  // reduced BLACK driving offset += round((black-300)*-3/112). buf = first
+  // stack arg (0-deref); start/end/scale free in stack_dwords; reduced black =
+  // EAX free on exit. Pair offline with tlb_afe_offset_write. OFF by default.
+  {
+    dll: 'TLB.dll', va: 0x1001d4c0, id: 'tlb_prescan_dark_reduce',
+    role: 'stage', pixelBuffer: false,
+    desc: 'AFE dark-offset REDUCE leaf (fcn.1001d4c0) -- reduce(int32 *buf, ' +
+          'int start, int end, int scale) = round(sum(buf[start..end), ' +
+          'unsigned-corrected) / ((end-start)*scale)), the per-channel reduced ' +
+          'BLACK that drives PSI\'s offset update offset += ' +
+          'round((black-300)*-3/112) (commit f43f61d, docs/72). Called 3x/' +
+          'iteration (R/G/B) by FN_bCalibrateFindDarkOffset (fcn.1001e1c0 @ ' +
+          '0x1001e30e/0x1001e371/0x1001e3d4). Hooked here (not the SEH-prologue ' +
+          'acquire fcn.1001d590) because the dark-line buffer is the CLEANEST ' +
+          'arg: buf = arg1 = stack_dwords[0], a plain int32-array pointer ' +
+          '(0 extra deref); start/end/scale = stack_dwords[1]/[2]/[3] (free on ' +
+          'entry); reduced black = EAX (free on exit). This is the READING ' +
+          'paired offline with each tlb_afe_offset_write (0x100299c0) to ' +
+          'validate afe_offset_next reproduces PSI\'s trajectory. OFF by ' +
+          'default (opt-in via hooks.cfg); <=24 calls at pre-scan calibration, ' +
+          'not a hot path. wantExitDefault=1 (EAX = reduced black).',
+    cite: 'commit f43f61d (tools/pakon_vendor_prescan.py), docs/72; r2 af+pdf ' +
+          '2026-08-25 vs TLB.dll md5 193d9b2ce0a4b77ae9b78262bd06c0fc: ' +
+          'fcn.1001d4c0 real function boundary (208 B, 0x1001d4c0-0x1001d58d, ' +
+          'ret 0x10), buffer indexed `fild dword [edi+edx*4]` with edi=arg1; ' +
+          '3 real E8/CALL xrefs from fcn.1001e1c0 (exit swap safe, ' +
+          'notCallReachable=0). Prologue 8B 54 24 08 + DD 05 C8 C1 05 10 = mov ' +
+          'edx,[esp+8] (4 B) + fld qword [0x1005c1c8] (6 B, x86-32 absolute ' +
+          'disp32 not RIP-relative) = 2 whole position-independent ' +
+          'instructions, MinHook 5-byte patch safe (approximate=0).',
+  },
+
+  // HOOK B -- the reduced-res AREA image builder (bit-exact colour source;
+  // docs/74 sampler UPDATE 15). fcn.100013b0 builds the 245x367x3 planar
+  // working image from the reduced-res scan source (de-interleave + inversion-
+  // LUT + orient; calls tlb_lut_apply 3x/row, no scale-down). FIRES 6x/scan,
+  // vtable-dispatched (call [eax+0x44]). Geometry descriptor = 2nd stack arg
+  // (stack_dwords[1]): src dims @+0x2c/+0x30, orient @+0x38, plane base @+0x58.
+  // ON_ENTRY dumps geom_desc + the raw source planes via *(desc+0x58); src_w
+  // ~250 confirms the reduced-res model. OFF by default.
+  {
+    dll: 'TLB.dll', va: 0x100013b0, id: 'tlb_area_build',
+    role: 'stage', pixelBuffer: true,
+    desc: 'The per-frame de-interleave + inversion-LUT + orient kernel ' +
+          '(fcn.100013b0) that builds the 245x367x3 planar working image from ' +
+          'the reduced-res scan source (docs/74 sampler UPDATE 15). Calls ' +
+          'tlb_lut_apply (0x10022a60) 3x/output-row and only strides pointers ' +
+          'between -- a 1:1 line copy of an already-reduced ~250-wide source, ' +
+          'NOT a scale-down; FIRES 6x per fresh scan (1/frame), ' +
+          'vtable-dispatched (call [eax+0x44]). ecx=this (LUT/source provider); ' +
+          'the GEOMETRY DESCRIPTOR is the 2nd stack arg = stack_dwords[1] (src ' +
+          'dims @+0x2c/+0x30, orient @+0x38, plane base @+0x58). Hooked ' +
+          'ON_ENTRY: geom_desc (STACK_PTR idx 1, READ FIRST -- src_w ~250 not ' +
+          '4093/2000 proves the reduced-res-acquisition model) and src_plane0 ' +
+          '(DEREF_PTR *(desc+0x58) = the raw reduced-res int16 source planes). ' +
+          'The output is already latched by tlb_polypixel / area_image_apply_lut ' +
+          'so no exit dump. OFF by default (opt-in via hooks.cfg): 6x/scan.',
+    cite: 'docs/74 /tmp/pakon_re/sampler/RESUME.md UPDATE 15; r2 af+pdf ' +
+          '2026-08-25 vs TLB.dll md5 193d9b2ce0a4b77ae9b78262bd06c0fc: ' +
+          'fcn.100013b0 real function boundary (1873 B, 0x100013b0-0x10001b01); ' +
+          'reads [ebx+0x2c]/[ebx+0x30]/[ebx+0x38]/[ebx+0x58] with ebx = 2nd ' +
+          'stack arg (`mov ebx,[esp+0x2c]` after sub esp,0x20; push ebx), calls ' +
+          'tlb_lut_apply x3/row at 0x100018f8/0x10001913/0x10001930. Prologue ' +
+          '83 EC 20 53 8B 5C 24 2C = sub esp,0x20 (3 B) + push ebx (1 B) + mov ' +
+          'ebx,[esp+0x2c] (4 B) = 3 whole position-independent instructions ' +
+          '(8 B), no relative jmp/call, MinHook 5-byte patch safe ' +
+          '(approximate=0). Entry-only so no exit swap (notCallReachable=0).',
+  },
 ];
 
 // ---------------------------------------------------------------------

@@ -263,3 +263,9 @@ _Thunk_\sfx:
     DEFTHUNK 45, 45
     DEFTHUNK 46, 46
     DEFTHUNK 47, 47
+    /* v60 (2026-08-25): 48, added in the SAME pass as the HOOKCORE_MAX_HOOKS
+     * 48 -> 49 bump, the `extern void Thunk_48` declaration in hookcore.h, and
+     * the thunks[] entry in hookcore_real_table.c -- for the two new
+     * acquisition-side TLB.dll hooks (tlb_prescan_dark_reduce, tlb_area_build).
+     * Thunk_47 was already free (47/48); only this one new thunk is needed. */
+    DEFTHUNK 48, 48

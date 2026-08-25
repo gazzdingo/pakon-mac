@@ -167,7 +167,14 @@ extern "C" {
  * 40 rather than 36 leaves four spare slots so the next append does not
  * have to touch hookstub.S; Thunk_32..39 are defined there in this same
  * pass, per the Thunk_23 discipline documented in hookcore_real_table.c. */
-#define HOOKCORE_MAX_HOOKS 48
+/* v60 (2026-08-25): 48 -> 49. TWO new acquisition-side TLB.dll hooks
+ * (tlb_prescan_dark_reduce 0x1001d4c0, tlb_area_build 0x100013b0) appended at
+ * the END of table[], same append-only discipline. 47 used + 2 = 49: Thunk_47
+ * was already free (47/48), so only ONE new slot is needed -- Thunk_48, added
+ * below alongside DEFTHUNK 48 in hookstub.S and the thunks[] entry in
+ * hookcore_real_table.c, all four edits in the SAME pass, re-checked against
+ * the Thunk_23 "forgot the matching thunk" bug this header documents. */
+#define HOOKCORE_MAX_HOOKS 49
 
 /* Must exactly match the PUSHAD+PUSHFD+index+retaddr stack layout that
  * hookstub.S's SharedEntryHandler builds -- see that file's header
@@ -626,6 +633,13 @@ extern void Thunk_38(void); extern void Thunk_39(void);
  * are FOUR edits that must happen together -- the compile-time assert in
  * hookcore_real_table.c fails the build if they do not. */
 extern void Thunk_40(void); extern void Thunk_41(void); extern void Thunk_42(void); extern void Thunk_43(void); extern void Thunk_44(void); extern void Thunk_45(void); extern void Thunk_46(void); extern void Thunk_47(void);
+/* v60: Thunk_48, added with the two acquisition-side TLB.dll hooks
+ * (tlb_prescan_dark_reduce, tlb_area_build). Thunk_47 was already free (47/48),
+ * so this single new thunk plus the HOOKCORE_MAX_HOOKS 48->49 bump, the
+ * DEFTHUNK 48 in hookstub.S and the thunks[] entry cover the two-hook append.
+ * The compile-time assert in hookcore_real_table.c fails the build if any of
+ * these four edits is missing. */
+extern void Thunk_48(void);
 
 #ifdef __cplusplus
 }

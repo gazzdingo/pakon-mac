@@ -1718,6 +1718,81 @@ def _apply_per_frame_shift(roll: Roll, index: int) -> None:
     print(f"  [PER-FRAME] frame {index}: balance triple -> {applied}")
 
 
+_PFB_REF_CACHE: dict = {}
+
+
+def _pfb_roll_ref(roll: Roll, step: int) -> np.ndarray:
+    """ROLL-level per-band linear reference for the per-frame balance resample.
+
+    The geometric mean of every frame's linear (rgb14) band, pooled — the
+    density anchor :mod:`pakon_per_frame_balance` maps to ``fpo``. Roll-level
+    (not per-frame) on purpose: a per-frame anchor would map each frame's own
+    average to neutral and DELETE the very per-frame cast this is meant to
+    correct. Cached per (roll id, step); computed lazily on first use.
+    """
+    key = (id(roll), step)
+    cached = _PFB_REF_CACHE.get(key)
+    if cached is not None:
+        return cached
+    logsum = np.zeros(3, dtype=np.float64)
+    npx = 0
+    for fr in roll.frames:
+        seg = roll.slice14(fr.a, fr.b, step)
+        flat = np.clip(seg.reshape(-1, 3).astype(np.float64), 1.0, None)
+        logsum += np.log10(flat).sum(axis=0)
+        npx += flat.shape[0]
+    ref = 10.0 ** (logsum / max(1, npx))
+    _PFB_REF_CACHE[key] = ref
+    return ref
+
+
+def _apply_per_frame_balance(roll: Roll, index: int, seg: np.ndarray,
+                             step: int) -> None:
+    """OPT-IN (``PAKON_PER_FRAME_BALANCE``): compute this frame's SBA balance
+    from its own analysis image and route it through ``set_order_fpo``.
+
+    APPROXIMATE, and deliberately so (the seam the roll-static balance leaves
+    open, docs/74 §200-§201). The chain
+    ``analysis_img -> grid -> L + U/V -> orderFpo`` is a bit-exact port (6/6 vs
+    the real DLL, NO DLL); the ONE approximate link is the frame ->
+    245x367 analysis image resample, which the vendor does with an unported
+    filter + area LUT and this reproduces with a roll-anchored log density +
+    box downsample (:mod:`pakon_per_frame_balance`). So this is
+    "visually per-frame-correct", not bit-exact — tier: empirical/approximate.
+
+    Python colour engine only, and only when the Preference apply path is live
+    (``eng.setshifts_out`` present / ``band3_lut`` built). A frame whose triple
+    cannot be computed keeps the roll-static stand-in rather than being blanked.
+    Off unless ``PAKON_PER_FRAME_BALANCE`` is set; changes nothing by default.
+    """
+    on = os.environ.get("PAKON_PER_FRAME_BALANCE") in ("1", "true", "on")
+    eng = roll.engine()
+    # The engine is shared/cached across frames, so a per-frame triple this
+    # hook wrote on a PRIOR frame would leak into this one. Reset to the
+    # roll-static value first, ALWAYS -- including when the feature is now off,
+    # so toggling the flag between renders cannot leave a stale balance behind.
+    # PAKON_PER_FRAME_SHIFTS manages its own +0x4b6 state, so defer to it.
+    if getattr(eng, "band3_lut", None) is not None \
+            and not os.environ.get("PAKON_PER_FRAME_SHIFTS"):
+        eng.set_order_fpo(None)
+    if not on:
+        return
+    import pakon_per_frame_balance as pfb
+    import pakon_sba_measure as _sbam
+    fpo = getattr(getattr(eng, "sba", None), "fpo", None)
+    if fpo is None or getattr(eng, "band3_lut", None) is None \
+            or getattr(eng, "setshifts_out", None) is None:
+        # Preference apply not active — no seam to write; keep roll-static.
+        return
+    ref = _pfb_roll_ref(roll, step)
+    ana = pfb.analysis_image_from_frame(seg.astype(np.float64), fpo, ref)
+    grid = _sbam.build_grid_from_source(np.rint(ana).astype(np.int64))
+    triple = pfb.grid_bands_to_triple(grid, fpo)
+    eng.set_order_fpo(tuple(int(v) for v in triple))
+    print(f"  [PER-FRAME-BALANCE] frame {index}: orderFpo={triple} "
+          f"-> setshifts={eng.setshifts_out}")
+
+
 def render_frame(roll: Roll, index: int, params: dict | None = None,
                  scale: str = "preview",
                  max_edge: int | None = None) -> np.ndarray:
@@ -1736,6 +1811,7 @@ def render_frame(roll: Roll, index: int, params: dict | None = None,
     seg = roll.slice14(f.a, f.b, step)
     if colour_engine() == "python":
         _apply_per_frame_shift(roll, index)
+        _apply_per_frame_balance(roll, index, seg, step)
         srgb = _render_colour_python(roll, seg, p)
     else:
         srgb = _render_colour_go(roll, seg, p)

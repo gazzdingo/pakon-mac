@@ -2067,6 +2067,469 @@ def converge_afe_offsets(link: "Link", cfg: "ScanConfig", *,
 
 
 # --------------------------------------------------------------------------
+# VENDOR-FAITHFUL pre-scan bring-up -- opt-in behind PAKON_VENDOR_PRESCAN
+# --------------------------------------------------------------------------
+#
+# `converge_afe_offsets` above is this project's OWN dark-offset search
+# (calib_wizard.solve_offset algebra, round-based, reached only via the
+# `--live-afe-converge` flag). Everything from here to `safe_stop` is a
+# SEPARATE, second opt-in: the VENDOR'S own update rule `f`, ported byte-exact
+# in `tools/pakon_vendor_prescan.py` and validated against the v60 live capture
+# (commit 74bbc32) -- afe_offset_next (delta = trunc((black-300)*-3/112)),
+# afe_offset_converged (268..332), afe_black_scalar (sum(window)/(count*32)),
+# the 9-bit sign-magnitude encoder, led_duty_next/led_duty_converged.
+#
+# GATING. Every hardware effect below is reachable ONLY when the environment
+# flag PAKON_VENDOR_PRESCAN is set (see `vendor_prescan_enabled`). With the
+# flag unset -- the default -- run_scan does not import pakon_vendor_prescan
+# and does not call any of this: the scan is byte-for-byte the stored-
+# calibration replay it always was. See CLAUDE.md's hardware-safety section.
+#
+# WHAT IS PROVEN vs WHAT IS NOT. The *decision arithmetic* of both loops is
+# byte-exact against the capture and is exercised OFFLINE with captured
+# readings (see /tmp/pakon_re/prescan_wire/ and pakon_vendor_prescan
+# --selftest). The *real per-round reduce* -- turning an acquired line into the
+# scalar the vendor compares to its target -- is NOT proven: the vendor's
+# `tlb_prescan_dark_reduce`/duty peak run on the raw per-channel EP-0x86 buffer
+# (16-bit samples), upstream of this port's 14-bit line decode, and which
+# samples form the window is a live-capture question. So the loops here are
+# wired, guarded, and LOUDLY warned -- the same posture as converge_afe_offsets
+# ("run once, supervised") -- not asserted correct on hardware.
+
+# TODO (fixed bring-up bytes -- NOT applied, would risk the default path).
+# docs/55 captured the vendor's exact CCD bring-up ORDER, which differs from
+# this port's `ccd_configure`:
+#   * 0x82 writes in the order idx 6,0,11,4,5,1,2,3,10 (integration first, mask
+#     0x0060 -- NOT 0x100 -- then the geometry indices), i.e. NOT ccd_configure's
+#     order;
+#   * an `0x82 idx 9` sweep (0x0014, 0x0017, 0x0313, ... eleven writes, a
+#     per-operation parameter of unknown meaning);
+#   * a LIGHT-board write `0x40 reg 0x91 idx 60 = 0x0100` interleaved into the
+#     CCD sequence (docs/55 steps 14 and 41);
+#   * gains (0x84 idx 2/3/4 = 13) and the dark-offset loop written AFTER the
+#     acquire bit (step 18), not before.
+# `ccd_configure` is on EVERY default scan (run_scan line ~3285), so reordering
+# it -- even behind this flag -- would mean a second, flag-only configure
+# function; that is a separate, static-validatable change against a real
+# capture, deliberately NOT taken here to keep the default path byte-identical
+# (CLAUDE.md). This TODO records the docs/55 order so it is not re-derived.
+
+#: The one env switch that turns the whole vendor bring-up on. Default OFF.
+VENDOR_PRESCAN_ENV = "PAKON_VENDOR_PRESCAN"
+_VENDOR_PRESCAN_TRUE = {"1", "true", "on"}
+
+
+def vendor_prescan_enabled() -> bool:
+    """True iff the opt-in flag selects the vendor-faithful bring-up.
+
+    Unset (the default) leaves run_scan's bring-up byte-for-byte as before --
+    stored afe_offsets and stored lamp duty, replayed, with no adaptive loop.
+    """
+    return (os.environ.get(VENDOR_PRESCAN_ENV, "").strip().lower()
+            in _VENDOR_PRESCAN_TRUE)
+
+
+# ---- AFE dark-offset convergence (vendor f) ------------------------------
+
+def _vendor_afe_apply_writes(link: "Link", writes, log) -> None:
+    """Push the write-on-change AFE offset words to reg 0x84 idx 5/6/7.
+
+    `writes` is the (idx, word) list `pakon_vendor_prescan.OffsetConvergence`
+    emits: idx is already in (5, 6, 7) == pc.ADC_IDX_OFFSET_{R,G,B}, and word
+    is the 9-bit sign-magnitude the vendor's own encoder produced (clamp
+    included). Only CHANGED channels are present -- write-on-change, exactly as
+    the real FN_bDrvPutCcdAtoDOffsets does (its cmp;je skip). This is the same
+    register `ccd_configure` writes with pc.adc_write; only the selection (one
+    changed channel at a time) differs.
+    """
+    for idx, word in writes:
+        link.ack(pc.adc_write(int(idx), int(word)),
+                 f"vendor AFE offset 0x84 idx{int(idx)} := wire 0x{int(word):03x} "
+                 f"(9-bit sign-magnitude, write-on-change)")
+
+
+def _acquire_dark_planes(link: "Link", cfg: "ScanConfig", probe_bytes: int,
+                         log):
+    """Read a short stationary, lamp-off line block at the CURRENTLY-configured
+    registers and decode it to (n_lines, PIXELS_PER_LINE, CHANNELS).
+
+    Deliberately does NOT call `ccd_configure`: the vendor AFE loop has already
+    written the geometry, gains and this round's offsets, and re-writing the
+    offsets here would defeat the write-on-change the vendor does. This is the
+    read half of `_live_afe_measure`, duplicated on purpose rather than
+    refactored out of it, so the existing `--live-afe-converge` path is left
+    byte-for-byte untouched (CLAUDE.md: keep the default path identical).
+    """
+    import numpy as np
+    reset_fifos(link)
+    reset_fifos(link)
+    acquire(link, True)
+    try:
+        buf = bytearray()
+        phase = None
+        collected = []
+        n_lines = 0
+        want_lines = max(1, probe_bytes // gate.BYTES_PER_LINE)
+        deadline = time.time() + LIVE_AFE_PROBE_TIMEOUT_S
+        last_data = time.time()
+        while n_lines < want_lines:
+            now = time.time()
+            if now > deadline:
+                log("warn", message=f"vendor AFE dark probe: hit the "
+                                    f"{LIVE_AFE_PROBE_TIMEOUT_S:.0f}s round "
+                                    f"timeout with {n_lines} of {want_lines} "
+                                    f"lines")
+                break
+            data = link.read_image(CHUNK)
+            if not data:
+                if now - last_data > LIVE_AFE_STALL_S:
+                    log("warn", message=f"vendor AFE dark probe: no image data "
+                                        f"for {LIVE_AFE_STALL_S:.0f}s, stopping "
+                                        f"this round with {n_lines} lines")
+                    break
+                continue
+            last_data = now
+            buf += data
+            if phase is None and len(buf) >= 4 * gate.BYTES_PER_LINE:
+                phase = gate.find_phase(buf[: 8 * gate.BYTES_PER_LINE])
+            if phase is None:
+                continue
+            lines, consumed, n, _brk = gate.split_lines(buf, phase)
+            if consumed:
+                del buf[:consumed]
+                phase = 0
+            if n:
+                collected.append(lines)
+                n_lines += n
+    finally:
+        acquire(link, False)
+    if not collected:
+        raise ScanRefused(
+            "vendor AFE convergence: no image data came back from a "
+            "stationary, lamp-off probe. Refusing to guess a dark level from "
+            "nothing -- check the lamp is actually off and the sensor is "
+            "acquiring.")
+    all_lines = np.concatenate(collected, axis=0)
+    return all_lines.reshape(all_lines.shape[0], gate.PIXELS_PER_LINE,
+                             gate.CHANNELS)
+
+
+#: How many of a channel's samples the vendor's fcn.1001d4c0 averages
+#: (sum(window)/(count*32); count=6 -> /192, confirmed by the v60 capture).
+VENDOR_AFE_REDUCE_WINDOW = 6
+
+
+def _vendor_afe_measure(link: "Link", cfg: "ScanConfig", offsets: tuple,
+                        probe_bytes: int, log):
+    """One real dark round -> the three per-channel black scalars on the
+    VENDOR /32 scale (target 300), reduced with the vendor's own fcn.1001d4c0
+    via `pakon_vendor_prescan.afe_black_scalar`.
+
+    ***THE REDUCE SCALE IS NOT PROVEN.*** The vendor reduces the raw per-channel
+    EP-0x86 buffer (16-bit samples), upstream of this port's 14-bit line
+    decode; this port reduces the first `VENDOR_AFE_REDUCE_WINDOW` decoded
+    samples of each channel's line-mean instead. The plane mean is logged
+    beside the reduced scalar precisely so a supervised run can compare the two
+    against a live `tlb_prescan_dark_reduce` capture (the hook is written) and
+    pin the mapping. Until it is pinned, treat a real convergence from this as
+    UNCONFIRMED -- the arithmetic that consumes the scalar is validated, the
+    scalar itself is a stand-in.
+    """
+    import numpy as np
+    import pakon_vendor_prescan as pvp
+    planes = _acquire_dark_planes(link, cfg, probe_bytes, log)
+    line_mean = planes.astype(float).mean(axis=0)      # (PIXELS, CHANNELS)
+    w = min(VENDOR_AFE_REDUCE_WINDOW, line_mean.shape[0])
+    blacks = tuple(pvp.afe_black_scalar(line_mean[:w, c])
+                   for c in range(min(3, line_mean.shape[1])))
+    plane_mean = [round(float(v), 1)
+                  for v in planes.astype(float).mean(axis=(0, 1))]
+    log("vendor_afe_measure", offsets=[int(v) for v in offsets],
+        black_vendor_scale=[int(b) for b in blacks], plane_mean=plane_mean,
+        note="black_vendor_scale reduce UNPROVEN vs live tlb_prescan_dark_reduce")
+    return blacks
+
+
+def _vendor_afe_loop(conv, measure, apply_writes, max_rounds, log):
+    """The pure decision loop: emit(write-on-change) -> apply -> measure ->
+    observe(update). No hardware references -- `measure` and `apply_writes` are
+    the only outside effects, so an offline harness drives this with captured
+    readings and asserts the emitted write stream. Returns
+    ((R, G, B), settled: bool).
+    """
+    for rnd in range(1, max_rounds + 1):
+        if conv.all_converged():
+            break
+        writes = conv.emit()
+        if writes:
+            apply_writes(writes)
+        blacks = measure(tuple(int(v) for v in conv.offset))
+        conv.observe(blacks)
+        log("vendor_afe_round", round=rnd,
+            afe_offsets=[int(v) for v in conv.offset],
+            black=[round(float(v), 1) for v in blacks],
+            converged=[bool(v) for v in conv.converged])
+    tail = conv.emit()
+    if tail:
+        apply_writes(tail)
+    return tuple(int(v) for v in conv.offset), conv.all_converged()
+
+
+def converge_afe_offsets_vendor(link: "Link", cfg: "ScanConfig", *,
+                                seed=None, max_rounds=None,
+                                probe_bytes: int = LIVE_AFE_PROBE_BYTES,
+                                measure=None, apply_writes=None,
+                                configure: bool = True, log=None) -> tuple:
+    """Vendor-faithful AFE dark-offset convergence (pakon_vendor_prescan `f`).
+
+    ***REQUIRES THE LAMP OFF, TRANSPORT STATIONARY*** -- same precondition as
+    converge_afe_offsets: this measures the sensor's own dark level, and with
+    the lamp on it would converge to the lit level instead. The caller (the
+    run_scan PAKON_VENDOR_PRESCAN branch) satisfies this by running it right
+    after clear_fault, before lamp_on.
+
+    The DECISION arithmetic -- seed +10/+10/+10, afe_offset_next, the 268..332
+    window, the 9-bit sign-magnitude encoder, write-on-change, cap 8 -- is
+    byte-exact against the v60 capture and is validated OFFLINE (captured
+    readings -> captured 0x84 writes 10/10/10 -> ... -> -19/-26/-19).
+
+    ***THE REAL REDUCE IS UNPROVEN*** -- see `_vendor_afe_measure`. Both effects
+    are injectable so the loop runs with zero hardware in a test:
+      measure(offsets)      -> (black_R, black_G, black_B) on the vendor scale
+      apply_writes(writes)  -> push the (idx, word) offset writes
+    """
+    import pakon_vendor_prescan as pvp   # opt-in only; import runs nothing
+    log = log or (lambda *a, **k: None)
+    seed = tuple(int(v) for v in (pvp.AFE_SEED if seed is None else seed))
+    max_rounds = pvp.AFE_MAX_ROUNDS if max_rounds is None else int(max_rounds)
+
+    injected = measure is not None and apply_writes is not None
+    if apply_writes is None:
+        apply_writes = lambda writes: _vendor_afe_apply_writes(link, writes, log)  # noqa: E731
+    if measure is None:
+        measure = lambda offs: _vendor_afe_measure(link, cfg, offs,             # noqa: E731
+                                                   probe_bytes, log)
+
+    # Real path: bring the CCD up (geometry, A/D constants, gains) at the seed
+    # so the first dark read is valid -- the vendor writes all of that before
+    # its offset loop (docs/55 steps 1-21). The seed offsets go out here, so
+    # the loop records them as already-on-the-wire (stored=seed) and only puts
+    # CHANGES on the wire afterwards: true write-on-change, no redundant seed
+    # write. The offline harness injects both callbacks (`injected`), skips this
+    # bring-up, and starts from stored=[None]*3 so the seed IS emitted and the
+    # complete captured write stream is what gets asserted.
+    if configure and not injected:
+        ccd_configure(link, replace(cfg, afe_offsets=seed))
+        conv = pvp.OffsetConvergence(offset=list(seed), stored=list(seed))
+    else:
+        conv = pvp.OffsetConvergence(offset=list(seed))
+
+    final, settled = _vendor_afe_loop(conv, measure, apply_writes,
+                                      max_rounds, log)
+    if not settled:
+        log("warn", message=f"vendor AFE convergence did not settle in "
+                            f"{max_rounds} rounds; offsets left at "
+                            f"{list(final)} (best effort, NOT confirmed -- the "
+                            f"real reduce scale is unpinned, see "
+                            f"_vendor_afe_measure)")
+    log("vendor_afe_converged", afe_offsets=list(final), settled=bool(settled))
+    return final
+
+
+# ---- LED duty / white-balance search (vendor f) --------------------------
+
+def _vendor_led_write_duty(link: "Link", cfg: "ScanConfig", on_counts, log):
+    """Write one open-gate 0x82 PWM word (B, Ir=0, R, -, G, N) from integer
+    on-counts, clamped to N-2 exactly as pc.lamp_on_count / lamp_on do.
+
+    The N-2 ceiling (fcn.1002c5f0) is the hardware guard that keeps the search
+    from over-driving the LED: `led_duty_next` clamps duty <= 1.0, which maps to
+    at most N-2 on-counts, i.e. the same ceiling `lamp_on` already enforces. It
+    is preserved here, not loosened.
+    """
+    n = int(cfg.lamp_n)
+    on_r, on_g, on_b = (max(0, min(int(v), n - 2)) for v in on_counts)
+    link.ack(pc.write_register(
+        pc.AD_LIGHT, pc.REG_LIGHT_LED_DUTY,
+        b"".join(v.to_bytes(2, "little")
+                 for v in (on_b, 0, on_r, 0, on_g, n))),
+        f"vendor LED open-gate 0x82 B{on_b} R{on_r} G{on_g} N{n} "
+        f"(<= N-2 clamp preserved)")
+
+
+def _vendor_led_measure_peak(link: "Link", cfg: "ScanConfig", probe_bytes: int,
+                             log):
+    """One real LIT round -> per-channel peak (max over a window), for
+    `led_duty_converged`/`led_duty_next`.
+
+    ***THE PEAK SCALE IS NOT PROVEN.*** The vendor's window peak is on the raw
+    16-bit EP-0x86 sample (target 63968, near the 65535 full scale); this port
+    decodes to 14-bit (max 16383), so a port peak must be scaled to the vendor
+    16-bit frame before comparison -- the same port-vs-vendor scale question as
+    the AFE reduce, and equally a live-capture TODO. The raw 14-bit peak is
+    logged so a supervised run can pin the factor. Until then a real duty search
+    from this is UNCONFIRMED.
+    """
+    import numpy as np
+    import pakon_vendor_prescan as pvp
+    # Lamp lit, gate open, stationary -- the read scaffolding is the dark one;
+    # only the lamp state (the caller's responsibility) differs.
+    planes = _acquire_dark_planes(link, cfg, probe_bytes, log)
+    peak14 = planes.max(axis=(0, 1))                    # per channel, 14-bit
+    # Provisional lift to the vendor's 16-bit frame. UNPROVEN scale factor.
+    peak16 = [int(round(float(p) * 4.0)) for p in peak14[:3]]
+    log("vendor_led_measure", peak14=[int(p) for p in peak14[:3]],
+        peak16_provisional=peak16,
+        note="peak scale UNPROVEN vs live vendor duty capture")
+    return peak16
+
+
+def _vendor_led_loop(states, measure_peak, write_duty, n_period, max_rounds,
+                     log):
+    """Pure per-channel ratiometric duty search: for each of up to `max_rounds`
+    rounds, measure peaks, step each unconverged channel's duty via
+    `DutyChannelState.step` (which wraps led_duty_next/led_duty_converged and
+    the oscillation guard), write the resulting on-counts. No hardware refs --
+    `measure_peak`/`write_duty` are injectable for offline unit tests.
+
+    `states` maps channel-name -> DutyChannelState (order R, G, B for the peak
+    tuple). Returns the converged on-counts (R, G, B) and settled flag.
+    """
+    order = ("R", "G", "B")
+    for rnd in range(1, max_rounds + 1):
+        if all(states[c].converged for c in order):
+            break
+        peaks = measure_peak()
+        on_counts = []
+        for c, peak in zip(order, peaks):
+            duty = states[c].step(int(peak))
+            on = max(0, min(int(n_period * duty), n_period - 2))
+            on_counts.append(on)
+        write_duty(tuple(on_counts))
+        log("vendor_led_round", round=rnd,
+            peaks=[int(p) for p in peaks],
+            duty=[round(states[c].duty, 5) for c in order],
+            on_counts=list(on_counts),
+            converged=[bool(states[c].converged) for c in order])
+    on_counts = tuple(max(0, min(int(n_period * states[c].duty), n_period - 2))
+                      for c in order)
+    settled = all(states[c].converged for c in order)
+    return on_counts, settled
+
+
+def search_led_duty_vendor(link: "Link", cfg: "ScanConfig", *,
+                           max_rounds=None, probe_bytes: int = LIVE_AFE_PROBE_BYTES,
+                           measure_peak=None, write_duty=None, log=None) -> tuple:
+    """Vendor-faithful LED open-gate duty / white-balance search
+    (pakon_vendor_prescan led_duty_next/led_duty_converged).
+
+    ***REQUIRES THE LAMP LIT, GATE OPEN (no film), TRANSPORT STATIONARY.*** The
+    caller runs it after lamp_on + warm-up, before the transport starts.
+
+    Returns the searched open-gate on-counts (R, G, B). The DECISION logic is
+    the vendor ratiometric rule (duty *= 63968/peak, clamp <= 1.0, oscillation
+    guard, cap 32) and is unit-tested offline with synthetic peaks. The real
+    PEAK MEASUREMENT scale is UNPROVEN -- see `_vendor_led_measure_peak`; a real
+    search from this is UNCONFIRMED until a live vendor duty capture pins it.
+
+    The N-2 hardware clamp on every duty write is preserved (`_vendor_led_write
+    _duty`), so even a mis-scaled peak cannot drive the LED past the ceiling
+    `lamp_on` already enforces.
+    """
+    import pakon_vendor_prescan as pvp   # opt-in only; import runs nothing
+    log = log or (lambda *a, **k: None)
+    max_rounds = pvp.LED_MAX_ROUNDS if max_rounds is None else int(max_rounds)
+    n = int(cfg.lamp_n)
+
+    if write_duty is None:
+        write_duty = lambda oc: _vendor_led_write_duty(link, cfg, oc, log)      # noqa: E731
+    if measure_peak is None:
+        measure_peak = lambda: _vendor_led_measure_peak(link, cfg,             # noqa: E731
+                                                        probe_bytes, log)
+
+    # Seed each channel's duty from where the lamp is already being driven
+    # (open-gate if calibrated, else the with-film on_counts lamp_on used):
+    # on_count / N is the current duty, the natural start for the ratiometric
+    # step. Order R, G, B.
+    start = cfg.open_gate_on_counts or cfg.film_on_counts
+    states = {name: pvp.DutyChannelState(channel="vis",
+                                         duty=(max(0, min(int(v), n - 2)) / n)
+                                         if n else 0.0)
+              for name, v in zip(("R", "G", "B"), start)}
+
+    on_counts, settled = _vendor_led_loop(states, measure_peak, write_duty,
+                                          n, max_rounds, log)
+    if not settled:
+        log("warn", message=f"vendor LED duty search did not settle in "
+                            f"{max_rounds} rounds; open-gate on-counts left at "
+                            f"{list(on_counts)} (best effort, NOT confirmed -- "
+                            f"peak scale unpinned, see _vendor_led_measure_peak)")
+    log("vendor_led_converged", open_gate_on_counts=list(on_counts),
+        settled=bool(settled))
+    return on_counts
+
+
+def apply_vendor_prescan(link: "Link", cfg: "ScanConfig", phase: str,
+                         log=None) -> "ScanConfig":
+    """Run the flag-gated vendor bring-up for one `phase` and return the cfg
+    with the freshly-measured values committed in. Two phases, matching where
+    each must run in run_scan:
+
+      "afe"  -- lamp DARK, before lamp_on: AFE dark-offset convergence. Returns
+                cfg with `afe_offsets` replaced by the converged triple.
+      "led"  -- lamp LIT open-gate, after lamp_on + warm-up: LED duty search.
+                Returns cfg with `open_gate_on_counts` replaced by the searched
+                triple, and `on_counts` (the with-film target the existing
+                lamp_switch_to_scan_duty transitions to) re-derived from it by
+                the FN_bBeforeScan open-gate x10^D boost. Both are guarded and
+                clamped; the derivation is behind the flag only.
+
+    Caller checks `vendor_prescan_enabled()` (and dry-run/simulate) first; this
+    does the hardware.
+
+    TODO (not this task -- the "color half"): the reduced-resolution AREA
+    acquisition the vendor also runs during bring-up (the finer white-balance /
+    flat-field pass, reduce-vs-EAX) is NOT wired here. It is separate and
+    bigger; docs/59 has the capture. Only the coarse dark-offset + duty loops
+    are wired.
+    """
+    log = log or (lambda *a, **k: None)
+    if phase == "afe":
+        converged = converge_afe_offsets_vendor(link, cfg, log=log)
+        log("vendor_prescan", phase="afe",
+            afe_offsets_before=list(cfg.afe_offsets),
+            afe_offsets_after=list(converged))
+        return replace(cfg, afe_offsets=tuple(int(v) for v in converged))
+    if phase == "led":
+        open_gate = search_led_duty_vendor(link, cfg, log=log)
+        # With-film target = open-gate boosted by 10^D per channel
+        # (FN_bBeforeScan). D is per FILM type (LAMP_DENSITY_EXPONENTS: ColNeg
+        # key 1 = 0.144/0.400/0.715, the orange-mask compensation), but the
+        # film->key mapping is not wired here, so this uses the conservative
+        # `None`/else branch (0.0/0.03/0.0 R/G/B) -- a near-no-op boost that
+        # cannot over-drive. This is the value the existing
+        # lamp_switch_to_scan_duty switches to when film arrives. UNVALIDATED
+        # colour derivation, behind the flag only; the correct per-film D and
+        # the searched open-gate scale are the colour-half TODO below.
+        n = int(cfg.lamp_n)
+        bases = pc.LAMP_DENSITY_EXPONENTS.get(None)
+        d_r, d_g, d_b = bases[0], bases[1], bases[2]
+        with_film = tuple(
+            max(0, min(int(round(o * (10.0 ** d))), n - 2))
+            for o, d in zip(open_gate, (d_r, d_g, d_b)))
+        log("vendor_prescan", phase="led",
+            open_gate_before=list(cfg.open_gate_on_counts
+                                  or cfg.film_on_counts),
+            open_gate_after=list(open_gate),
+            on_counts_before=list(cfg.on_counts),
+            on_counts_after=list(with_film),
+            note="with-film = open-gate x10^D (UNVALIDATED colour derivation)")
+        return replace(cfg, open_gate_on_counts=tuple(int(v) for v in open_gate),
+                       on_counts=with_film)
+    raise ValueError(f"unknown vendor prescan phase {phase!r}")
+
+
+# --------------------------------------------------------------------------
 # the stop, which is the only part that absolutely must work
 # --------------------------------------------------------------------------
 
@@ -2754,6 +3217,28 @@ def run_scan(out_path: str | Path,
                     afe_offsets_after=list(converged))
                 cfg = replace(cfg, afe_offsets=converged)
 
+        # VENDOR-FAITHFUL AFE dark-offset convergence -- opt-in, default OFF.
+        # Runs HERE, lamp still off (lamp_on is below), transport never touched.
+        # In place of the stored-afe_offsets replay: the vendor's own `f`
+        # (pakon_vendor_prescan) drives the +10/+10/+10 -> converged trajectory
+        # and commits the result for the rest of this scan (including the
+        # sidecar, since cfg flows on). If both this and --live-afe-converge are
+        # set, this runs second and wins. Under dry-run/simulate there is no
+        # real dark level, so the stored value is left unchanged.
+        if vendor_prescan_enabled():
+            if dry_run or _simulating():
+                log("warn", message="PAKON_VENDOR_PRESCAN has no effect under "
+                                    "--dry-run or PAKON_SCAN_SIMULATE: there is "
+                                    "no real dark level to measure, so the "
+                                    "stored afe_offsets are used unchanged.")
+            else:
+                log("phase", phase="vendor_prescan_afe",
+                    message="vendor AFE dark-offset convergence "
+                            "(PAKON_VENDOR_PRESCAN, pakon_vendor_prescan f, "
+                            "docs/55 steps 19-34; real reduce scale UNPROVEN -- "
+                            "run supervised, see converge_afe_offsets_vendor)")
+                cfg = apply_vendor_prescan(link, cfg, "afe", log=log)
+
         if not lamp:
             log("warn", message="LAMP OFF: this is the DX-without-the-lamp "
                                 "experiment. The capture will be black and "
@@ -2786,6 +3271,33 @@ def run_scan(out_path: str | Path,
                 if not health.ok:
                     raise ScanAborted(f"lamp is not healthy before the scan: "
                                       f"{health.fault}")
+
+            # VENDOR-FAITHFUL LED open-gate duty / white-balance search --
+            # opt-in, default OFF. Runs HERE: lamp lit (lamp_on above), gate
+            # open (no film yet -- the leader is in the gate), transport still
+            # stationary (started below). In place of the stored open-gate duty
+            # replay: the vendor ratiometric rule searches duty to the peak
+            # target, and the result is committed as cfg.open_gate_on_counts (+
+            # a with-film on_counts derivation). The existing
+            # lamp_switch_to_scan_duty then transitions to the with-film duty
+            # when the DX board reports film present, exactly as before. Every
+            # duty write keeps the N-2 hardware clamp; the peak scale is
+            # UNPROVEN, so run supervised. `not skip_lamp_health` is not a
+            # precondition -- this only needs the lamp lit, which the `else`
+            # (lamp on) branch guarantees.
+            if vendor_prescan_enabled() and not (dry_run or _simulating()):
+                log("phase", phase="vendor_prescan_led",
+                    message="vendor LED open-gate duty search "
+                            "(PAKON_VENDOR_PRESCAN, pakon_vendor_prescan "
+                            "led_duty_next, docs/59; peak scale UNPROVEN -- run "
+                            "supervised, see search_led_duty_vendor). TODO: the "
+                            "reduced-res AREA white-balance pass is the colour "
+                            "half and is NOT wired here.")
+                cfg = apply_vendor_prescan(link, cfg, "led", log=log)
+                # The search's final `_vendor_led_write_duty` already left the
+                # lamp at the searched open-gate duty, so no re-drive is needed;
+                # the scan starts at the measured value. cfg carries the value
+                # forward for the sidecar and the later with-film switch.
 
         log("phase", phase="sensor", message="CCD geometry and A/D")
         ccd_configure(link, cfg)

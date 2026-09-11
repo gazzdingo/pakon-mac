@@ -142,7 +142,9 @@ if [ "${1:-}" = "selftest" ]; then
         echo "== running selftest.exe under Wine =="
         WINEPREFIX="${WINEPREFIX:-$HOME/wineprefixes/hookcore_test}" \
             WINEDEBUG=-all wine selftest.exe
-        rm -f live_hooks_*.jsonl   # test-run log, not a real capture
+        # test-run logs, not real captures. selftest_v46.jsonl is the pinned
+        # path the v46 extra-dump assertions read back (HOOKDLL_LOG_PATH).
+        rm -f live_hooks_*.jsonl selftest_v46.jsonl
     else
         echo "wine not found -- built selftest.exe but did not run it." \
              "Install with: brew install --cask wine-stable"

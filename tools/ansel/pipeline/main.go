@@ -349,6 +349,10 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 	// replaces it. rpd12 holds the RAW poly output here, in the 0..4095 domain
 	// PolyPixel produces; pass 2 overwrites it with the inverted value once
 	// frameDmin (which itself needs the raw poly planes) is known.
+	// Decided ONCE, read by both pass 1 and pass 2. See inversionMode().
+	invMode := inversionMode(model, vendorInvertEnabled)
+	logf("INVERSION: %s\n", invMode)
+
 	for y := 0; y < height; y++ {
 		yy := y - 0
 		rpd12[yy] = make([][3]float64, width)
@@ -359,6 +363,14 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 			var outR, outG, outB float32
 
 			if model == "f135" {
+				if invMode == "vendor" {
+					// The vendor's own position for the inversion: BEFORE the
+					// polynomial, on the raw code. Pass 2 is skipped in this
+					// mode by the same inversionMode() call, so the log
+					// happens exactly once — pakon_render's vendor path guards
+					// the same hazard with "do NOT invert again".
+					r, g, b = applyVendorInvertRGB(r, g, b)
+				}
 				polyOut := PolyPixel([3]int{r, g, b}, coeffs)
 
 				outR = float32(polyOut[0])
@@ -483,18 +495,12 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 		logTerm(float64(frameDmin[1]), c9[1]),
 		logTerm(float64(frameDmin[2]), c9[2]),
 	}
-	if model == "f135" {
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				p := rpd12[y][x]
-				for ch := 0; ch < 3; ch++ {
-					v := float64(fpo[ch]) + 1000*(baseLog[ch]-logTerm(p[ch], c9[ch]))
-					p[ch] = float64(clamp4k(int(v)))
-				}
-				rpd12[y][x] = p
-			}
-		}
-	}
+	// Runs only in "legacy" mode. Under "vendor" the inversion already
+	// happened in pass 1, and both branches read the SAME inversionMode()
+	// result, so inverting twice is unrepresentable rather than merely
+	// guarded — see inversionMode's comment for why that distinction earned
+	// its own refactor.
+	applyLegacyInversion(invMode, rpd12, fpo, baseLog, c9, logTerm, clamp4k)
 	tw.Write("inv", rpd12) // after the c9 negative->positive log
 
 	balanced := make([][][3]float64, height)
@@ -559,14 +565,68 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 	// Auto-tone. The real stage for a negative is
 	// ColorNegativePath::analyzeAutoTone (0x100fb730) — a six-capability chain
 	// (cna → dra → toneHelper → contrast → ast → citras), NOT Shasta, which
-	// never runs for CN-Enhanced. It is not ported; see AutoTonePorted in
-	// shasta.go for the full call map, the enable bytes, the toneHelper DPI
-	// resolution and why the chain cannot be ported piecewise. Until then
-	// F-135 keeps the two-anchor stand-in built from shasta-rpd.dpi.
+	// never runs for CN-Enhanced. See AutoTonePorted in shasta.go for the full
+	// call map and the enable bytes.
+	//
+	// The chain's APPLY half is now ported: if the caller supplied the real
+	// OutToneLut, it is applied through the vendor's own driver
+	// (ImaCitrasOpBase::virtual_40, citrasdriver) — a luminance-indexed,
+	// gradient-avoiding delta broadcast, not a per-channel stretch. Without a
+	// LUT the F-135 falls back to the two-anchor stand-in from shasta-rpd.dpi.
+	// Both branches are named in the provenance banner below; neither is
+	// silent.
+	//
+	// CORRECTION 2026-08-21: this comment used to read "the ANALYSIS half that
+	// builds that curve is still Python-only". That is no longer true and had
+	// gone stale — package ansautotone EXISTS in Go and its Analyze() returns
+	// the OutToneLut directly, with cna/dra/toneHelper/contrast each verified
+	// bit-exact against their Python references, which are themselves
+	// Unicorn-verified against the DLL. The accurate statement is narrower:
+	// the Go analysis chain is not WIRED here. That is Phase 6.2, and it is a
+	// deliberate decision rather than a missing port — see autotone.go.
+	//
+	// Note before wiring it: docs/74 §182.3 shows Go and Python diverge
+	// UPSTREAM of tone (Go inverts against the FRAME's dmin where Python uses
+	// the ROLL's; FUGC provenance and index rounding differ). So computing the
+	// curve in Go would replace a stand-in with the vendor's real chain — a
+	// genuine correctness gain — but would NOT by itself make the two engines
+	// agree, because they would be analysing different input.
 	shasted := fugcOut
-	if model == "f135" {
+	toneVia := "none"
+	if req.HasToneLut() {
+		toned, err := applyVendorTone(fugcOut, req.OutToneLut)
+		if err != nil {
+			return fmt.Errorf("vendor tone apply: %w", err)
+		}
+		shasted = toned
+		toneVia = "citrasdriver(analyzeAutoTone OutToneLut)"
+	} else if goAutoTone && model == "f135" {
+		// Phase 6.2, opt-in via PAKON_GO_AUTOTONE=1 — compute the curve here
+		// with the ported analysis chain rather than falling back to the
+		// stand-in. See computeGoToneLut for the evidence chain.
+		lut, err := computeGoToneLut(fugcOut, eng.AnselRoot)
+		if err != nil {
+			return fmt.Errorf("go autotone: %w", err)
+		}
+		if lut == nil {
+			// sceneType epilogue zeroed the tone object: no curve to apply.
+			// Passing the frame through untoned is what having no tone object
+			// means; it is NOT a silent fallback to the stand-in, and the
+			// banner says so.
+			toneVia = "ansautotone(Go): no tone curve (sceneType epilogue)"
+		} else {
+			toned, err := applyVendorTone(fugcOut, lut)
+			if err != nil {
+				return fmt.Errorf("vendor tone apply: %w", err)
+			}
+			shasted = toned
+			toneVia = "ansautotone(Go analysis) + citrasdriver"
+		}
+	} else if model == "f135" {
 		shasted = ShastaToneRpd(fugcOut, sel.ShastaParams())
+		toneVia = "ShastaToneRpd stand-in"
 	}
+	logf("TONE: %s\n", toneVia)
 	tw.Write("shasta", shasted)
 	tw.Write("ansel", shasted) // the toned RPD-12 handed to the ICC hop
 
@@ -584,6 +644,8 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 	for y := 0; y < height; y++ {
 		iccU8[y] = make([][3]uint8, width)
 	}
+
+	logf("ICC: %s\n", IccRenderBanner(rpd2pcs != nil && srgb != nil))
 
 	workers := runtime.NumCPU()
 	if workers > height {
@@ -625,14 +687,14 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 					o := x * 4
 					bypassRow[o], bypassRow[o+1], bypassRow[o+2], bypassRow[o+3] = dr, dg, db, 255
 
-					// req.IccInput, not the depth-less entry point. -icc-input
-					// existed as a flag and as a RenderRequest field but nothing
-					// read it, so the two answers it selects between — u12 reaching
-					// every one of the mft2 input table's 4096 knots, or u8 reaching
-					// 256 of them because that is all PIL can hand lcms — rendered
-					// identically and the parity harness measured the difference as
-					// 0.00%. docs/62 §2.9.
-					srgbColor := IccRpd12ToSrgb8Depth(rpd2pcs, srgb,
+					// IccRenderRpd12ToSrgb8 runs the port of the vendor's own
+					// CLUT interpolator (kodakcms.dll fcn.10018160, tetrahedral
+					// / 14-bit / SAR) by default; PAKON_ICC_TRILINEAR=1 selects
+					// the old trilinear mft2 chain, which docs/74 §176 measured
+					// as up to 3 sRGB codes away from the vendor. req.IccInput
+					// only reaches the trilinear path — the vendor's combined
+					// transform is u8-in by construction, see icc.go.
+					srgbColor := IccRenderRpd12ToSrgb8(rpd2pcs, srgb,
 						[3]int{finalR, finalG, finalB}, req.IccInput)
 					outRow[o], outRow[o+1], outRow[o+2], outRow[o+3] =
 						srgbColor[0], srgbColor[1], srgbColor[2], 255
@@ -659,10 +721,29 @@ func processImage(fr *frame, req *RenderRequest, eng *Engine, logf func(string, 
 	n := float64(width * height)
 	logf("OUTPUT mean sRGB per channel: R=%.1f G=%.1f B=%.1f\n", sum[0]/n, sum[1]/n, sum[2]/n)
 	if model == "f135" {
-		logf("PROVENANCE: F135InvertPorted=%v AutoTonePorted=%v "+
-			"ShastaAnalyzePorted=%v — the inversion and the tone scale are "+
-			"stand-ins, not vendor call sites\n",
-			F135InvertPorted, AutoTonePorted, ShastaAnalyzePorted)
+		// Two separate facts, kept separate on purpose. AutoToneApplyPorted is
+		// about the vendor's apply driver being ported and verified;
+		// AutoToneAnalysisPorted is about the six-subsystem chain that builds
+		// the curve, which is not. A render is only tone-correct when the
+		// apply is ported AND a real curve arrived, so the banner reports the
+		// curve's presence rather than letting the flag imply it.
+		// Three branches now, and the banner must distinguish all three —
+		// "which curve ran" is the single most load-bearing fact about a
+		// render's colour, and docs/74 §182.1 is what happens when a claim
+		// about which path ran goes stale.
+		toneSource := "ShastaToneRpd stand-in (no OutToneLut supplied)"
+		switch {
+		case req.HasToneLut():
+			toneSource = "vendor OutToneLut via citrasdriver"
+		case goAutoTone && model == "f135":
+			toneSource = "Go ansautotone chain + citrasdriver " +
+				"(PAKON_GO_AUTOTONE=1)"
+		}
+		logf("PROVENANCE: F135InvertPorted=%v AutoToneApplyPorted=%v "+
+			"AutoToneAnalysisPorted=%v ShastaAnalyzePorted=%v — tone: %s; "+
+			"the inversion is still a stand-in, not a vendor call site\n",
+			F135InvertPorted, AutoToneApplyPorted, AutoToneAnalysisPorted,
+			ShastaAnalyzePorted, toneSource)
 	}
 
 	if err := tw.Close(); err != nil {
@@ -859,9 +940,12 @@ func main() {
 			"pakon_ansel.py:render_scene does). They do not commute.")
 	iccInputFlag := flag.String("icc-input", string(IccU12),
 		"u8 | u12 — the precision the RPD codes reach the ICC transform at. "+
-			"The RPD-side profile's mft2 input table has 4096 entries, so u12 "+
-			"reaches every knot. u8 exists to put Go on Python's footing for "+
-			"the parity harness. docs/62 §2.9.")
+			"ONLY affects PAKON_ICC_TRILINEAR=1: the default evaluator is the "+
+			"vendor's own combined transform (kodakcms.dll fcn.10018160), "+
+			"whose input index table is 3x256 by construction, so it is u8-in "+
+			"and this flag cannot change that. For the trilinear path, the "+
+			"RPD-side profile's mft2 input table has 4096 entries, so u12 "+
+			"reaches every knot. docs/62 §2.9, docs/74 §176.")
 	fugcModeFlag := flag.Int("fugc-mode", 1, "FUGC mode (Cap +0x60e8). 2 takes "+
 		"the metrics/plane path at 0x101fc7e6; anything else takes setLutInfo "+
 		"at 0x101f82c0, which is what pakon_ansel.py defaults to and what "+

@@ -231,15 +231,50 @@ METRIC_LEVEL = "level"      # mean over illuminated columns of the averaged line
 METRICS = (METRIC_MAX, METRIC_LEVEL)
 DEFAULT_METRIC = METRIC_MAX
 
-#: Where a healthy black level sits, in wire counts. The working 2026-08-07
-#: base-16 calibration measured 1120.5 / 1443.0 / 1160.9 with a spatial spread
-#: of 0.07-0.11 %, so this band is not invented — it is the pedestal a set of
-#: tables that demonstrably work were built on. Low enough to waste almost
-#: nothing (1400 of 65535 is 2 %), high enough that no pixel is anywhere near
-#: code 0.
+#: SAFETY band, in wire counts: "is this black level catastrophically wrong?"
+#: The working 2026-08-07 base-16 calibration measured 1120.5 / 1443.0 /
+#: 1160.9 with a spatial spread of 0.07-0.11 %, so this band is not invented —
+#: it is the pedestal a set of tables that demonstrably work were built on.
+#: Low enough to waste almost nothing (1400 of 65535 is 2 %), high enough that
+#: no pixel is anywhere near code 0.
+#:
+#: **These stay broad on purpose.** docs/74 §92 showed the 2026-08-07 pedestal
+#: was itself measured with lifted offsets, so 1300 describes where black *sat*
+#: rather than where it *belongs* — but `build_calibration`'s validation,
+#: `calib_wizard` and `test_calib` all use this band to ask the *safety*
+#: question, and every historical calibration must keep answering it. The
+#: separate, tighter question — "have we converged to the vendor's target?" —
+#: is `BLACK_CONVERGE_*` below. Two different questions, two constants.
 BLACK_TARGET_WIRE = 1300.0
 BLACK_MIN_WIRE = 400.0      # below this the bottom of the range is at risk
 BLACK_MAX_WIRE = 4000.0     # above this the pedestal is eating real range
+
+#: CONVERGENCE target, in wire counts: what the vendor actually drives black
+#: to. Measured on real silicon, docs/74 §92, via `tools/afe_black_probe.py`:
+#: loading the vendor's own converged offsets for this unit ((-19, -26, -19),
+#: recovered live in §91) produced
+#:
+#:     779.7  562.3  571.2      mean 637.7
+#:
+#: against 1747.9 / 1590.8 / 1639.6 (mean 1659.4) at the offsets then stored —
+#: i.e. this port's black sat **+1022 wire codes** above the vendor's.
+#:
+#: **The target is what generalises; the offsets are not.** (-19, -26, -19) is
+#: serial 16275's answer and must never be hardcoded — another F-135's sensor
+#: converges somewhere else. Aiming every unit at the vendor's *level* is what
+#: makes the colour match on hardware this project has never seen.
+BLACK_CONVERGE_TARGET_WIRE = 638.0
+
+#: Per-channel accept window for convergence. Deliberately NOT symmetric noise
+#: around the mean: the vendor's own converged state spans 562.3 → 779.7, a
+#: 217-code spread across channels, so it does **not** equalise black between
+#: channels and a tight band around 638 would reject the vendor's own answer.
+#: This is that measured spread plus ~110 codes of margin each way. It accepts
+#: the vendor's real state and rejects 1659 decisively, which is exactly the
+#: discrimination §91.3's null result lacked (the safety band above contains
+#: both, so `landed` was satisfied on round 1 before any correction).
+BLACK_CONVERGE_MIN_WIRE = 450.0
+BLACK_CONVERGE_MAX_WIRE = 890.0
 
 #: Fraction of samples allowed to sit on the bottom ADC code before a dark
 #: reference counts as clipped. Chosen the same way as CLIP_FRACTION_MAX at the

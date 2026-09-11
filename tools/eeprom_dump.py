@@ -29,6 +29,8 @@ import time
 import usb.core
 import usb.util
 
+import pakon_usb_guard as guard
+
 VENDOR_READ = 0xA9
 WINDEX = 0x1234
 REQ_TYPE_IN = 0xC0            # device-to-host, vendor, device
@@ -47,8 +49,8 @@ def read_eeprom(d, n, length, timeout=3000):
     """One EEPROM, selected by index n (0..7 -> I2C 0x50..0x57)."""
     wvalue = ((n | 0x50) << 1) | 1
     try:
-        return bytes(d.ctrl_transfer(REQ_TYPE_IN, VENDOR_READ, wvalue,
-                                     WINDEX, length, timeout))
+        return bytes(guard.ctrl_transfer(d, REQ_TYPE_IN, VENDOR_READ,
+                                         wvalue, WINDEX, length, timeout))
     except usb.core.USBError as exc:
         return f"ERROR: {exc}"
 

@@ -154,11 +154,19 @@ _OnReturnThunk:
      * flags value instead of a known-correct one. */
 
 /* ---------------------------------------------------------------------
- * Thunk_00 .. Thunk_27 -- 28 fixed slots (HOOKCORE_MAX_HOOKS in
+ * Thunk_00 .. Thunk_31 -- 32 fixed slots (HOOKCORE_MAX_HOOKS in
  * hookcore.h). Each is just `push <its own index>; jmp SharedEntryHandler`
  * -- deliberately identical in shape so a bug in one is a bug in all of
- * them (uniform, mechanically-checkable, not 28 independently-hand-
+ * them (uniform, mechanically-checkable, not 30 independently-hand-
  * written variants that could each have their own typo).
+ *
+ * Thunk_29 (docs/74 §72.7, v21): added alongside the one new PakonIMAu.dll
+ * hook (sba_order_fpo_calc, 0x1028b8d0) appended at the END of
+ * hookcore_real_table.c's table[]. Added in the SAME pass as the
+ * HOOKCORE_MAX_HOOKS 29->30 bump, the new `extern void Thunk_29(void)`
+ * declaration in hookcore.h, and the new thunks[29] array entry in
+ * hookcore_real_table.c -- all four together, specifically to not repeat
+ * the Thunk_23 bug described below.
  *
  * Thunk_25/26/27 (docs/74 §49, 2026-08-15): added alongside the three new
  * TLB.dll lamp/AFE-gain/CCD-acquire-control hooks appended at the END of
@@ -229,3 +237,35 @@ _Thunk_\sfx:
     DEFTHUNK 25, 25
     DEFTHUNK 26, 26
     DEFTHUNK 27, 27
+    DEFTHUNK 28, 28
+    DEFTHUNK 29, 29
+    DEFTHUNK 30, 30
+    DEFTHUNK 31, 31
+    /* v46 (2026-08-21): 32..39, added in the SAME pass as the
+     * HOOKCORE_MAX_HOOKS 32 -> 40 bump, the `extern void Thunk_32..39`
+     * declarations in hookcore.h, and the thunks[] entries in
+     * hookcore_real_table.c. That bump exists because 36 table entries were
+     * being compiled into a 32-element array and the last four hooks were
+     * SILENTLY DISCARDED -- see hookcore.h's own comment on the constant. */
+    DEFTHUNK 32, 32
+    DEFTHUNK 33, 33
+    DEFTHUNK 34, 34
+    DEFTHUNK 35, 35
+    DEFTHUNK 36, 36
+    DEFTHUNK 37, 37
+    DEFTHUNK 38, 38
+    DEFTHUNK 39, 39
+    DEFTHUNK 40, 40
+    DEFTHUNK 41, 41
+    DEFTHUNK 42, 42
+    DEFTHUNK 43, 43
+    DEFTHUNK 44, 44
+    DEFTHUNK 45, 45
+    DEFTHUNK 46, 46
+    DEFTHUNK 47, 47
+    /* v60 (2026-08-25): 48, added in the SAME pass as the HOOKCORE_MAX_HOOKS
+     * 48 -> 49 bump, the `extern void Thunk_48` declaration in hookcore.h, and
+     * the thunks[] entry in hookcore_real_table.c -- for the two new
+     * acquisition-side TLB.dll hooks (tlb_prescan_dark_reduce, tlb_area_build).
+     * Thunk_47 was already free (47/48); only this one new thunk is needed. */
+    DEFTHUNK 48, 48

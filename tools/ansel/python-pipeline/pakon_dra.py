@@ -237,8 +237,40 @@ DRA_LIGHTING_BRANCH_PORTED = True
 # 0x10229136, 0x10229186) and the params block addresses it selects.
 DRA_LIGHTING_DISPATCH_PORTED = True
 
-# ansel-dra-default-default.dpi: 25 keys -> DRA_PARAMS_LAYOUT, read straight
-# out of the parser 0x102283a0's strcmp/sscanf chain (key, offset, format).
+# ansel-dra-default-default.dpi: 25 keys -> DRA_PARAMS_LAYOUT.
+#
+# WAS tier-3 only (the key/offset/format triples were read off the parser
+# 0x102283a0's repe-cmpsb + sscanf chain by eye).  NOW Unicorn-verified: the
+# real per-line body 0x102283d5..0x10228965 is executed on real line text
+# with the CCRT sscanf import hooked, and the 0x40-byte scalar params image
+# the real code writes at ebp+0x2c is diffed BYTE-FOR-BYTE against the
+# port's own image, per line.  See pakon_dra_golden.check_parse_dpi.
+#
+# That verification found TWO REAL DIVERGENCES in this port, both now fixed
+# (they are why this was worth doing rather than trusting the static read):
+#
+#   1. The three bools are NOT strcmp(value, "true").  The DLL does
+#      sscanf(value, "%c", &c) then `cmp byte, 0x74 ; sete` -- a single
+#      LOWERCASE 't' on the first character only (0x102285c4/0x102285d8 and
+#      its two twins).  "True"/"TRUE" are FALSE to the real DLL; the old
+#      port made them False too but by accident, and made "t" False where
+#      the DLL makes it True.
+#   2. The line tokeniser is sscanf("%s = %s"), not a split on '='.  A
+#      "key=value" line with no surrounding spaces returns 1 conversion and
+#      is REJECTED by 0x10228423; the old split-based port accepted it.
+#      Likewise the comment test at 0x102283d5 is a FIRST-CHARACTER test,
+#      not "strip from the first '#'".
+#
+# On the shipped ansel-dra-default-default.dpi every key is written in the
+# canonical "key = value" form with a lowercase "true"/"false", so NEITHER
+# divergence changes any currently-loaded value.  This fix is correctness of
+# the port against the vendor, not a behaviour change to the render path --
+# stated plainly so nobody reads it as a found-and-fixed render bug.
+#
+# NOT covered: the CRT sscanf itself is hooked, not emulated (it is MSVCR71,
+# not vendor code), and the six *TTC arms (0x102287e8..0x1022894b) are
+# outside the verified slice because they need live MSVCP71 std::string
+# rfind/substr; their key->block-offset mapping remains tier-3.
 DRA_DPI_PARSE_PORTED = True
 
 # The .ttc control-point files and the 0x4b4-stride params block they land in.
@@ -566,28 +598,221 @@ def parse_ttc(path: Path) -> DraTtc:
     return curve
 
 
-def parse_dpi(path: Path) -> dict[str, str]:
-    """``ansel-dra-default-default.dpi`` -> flat ``dict``.
+# ---------------------------------------------------------------------------
+# the .dpi per-line body — 0x102283d5..0x10228965
+#
+# The CRT's own ``sscanf`` is what does the tokenising and every numeric
+# conversion here (``call ebx`` at 0x1022841e and at each key's arm; ``ebx``
+# is loaded with the ``MSVCR71!sscanf`` import once, outside the loop).  The
+# helpers below reproduce sscanf's semantics for exactly the five conversion
+# specifiers this function uses, because the DIFFERENCE between them and a
+# naive ``str.split`` is observable and real — see ``parse_dpi_line``.
+# ---------------------------------------------------------------------------
 
-    Matches the DLL parser ``0x102283a0``, which per line: skips anything
-    starting ``#``, ``*``, CR, LF or NUL (``0x102283d5``..``0x102283fe``), then
-    ``sscanf(line, "%s = %s", key, value)`` and requires **exactly 2**
-    conversions (``cmp eax,2`` at ``0x10228423``) before running its
-    ``strcmp`` chain.  Also matches this repo's existing convention
-    (``pakon_ansel.parse_dpi``, ``pipeline/maps.go:dpiFields``).
+#: The five format strings ``0x102283a0`` passes to ``sscanf``, by .rdata VA.
+DPI_FMT_KV = 0x105858AC        # "%s = %s"   — 0x10228418
+DPI_FMT_I16 = 0x10576D70       # "%hd"       — 0x1022844b et al
+DPI_FMT_I32 = 0x10582F8C       # "%ld"       — 0x10228594
+DPI_FMT_F32 = 0x1058A580       # "%f"        — 0x10228536 et al
+DPI_FMT_CHAR = 0x10593964      # "%c"        — 0x102285c4 / 0x10228666 /
+                               #               0x102286aa (the three bools)
+
+#: ``strstr(key, "TTC")`` at ``0x102287f2`` — the gate on the whole curve
+#: branch.  A key with no ``"TTC"`` substring falls straight to the loop
+#: bottom (``je 0x10228965``) and is a silent no-op.
+DPI_TTC_MARKER = "TTC"
+
+_C_WS = " \t\n\r\v\f"
+
+
+def _sscanf_token(s: str, i: int) -> tuple[str | None, int]:
+    """One ``%s``: skip leading whitespace, then take up to the next.
+
+    Returns ``(None, i)`` when the input is exhausted first — i.e. the
+    conversion FAILS and sscanf stops, which is what makes the surrounding
+    ``cmp eax,2`` at ``0x10228423`` reject the line.
+    """
+    while i < len(s) and s[i] in _C_WS:
+        i += 1
+    start = i
+    while i < len(s) and s[i] not in _C_WS:
+        i += 1
+    if i == start:
+        return None, i
+    return s[start:i], i
+
+
+def sscanf_kv(line: str) -> tuple[str, str] | None:
+    """``sscanf(line, "%s = %s", key, value)``, returning ``None`` unless it
+    reports exactly the 2 conversions ``0x10228423`` demands.
+
+    The literal ``'='`` in the format has to MATCH A REAL ``'='`` in the
+    input, and the two ``%s`` are whitespace-delimited, so a ``key=value``
+    line with no spaces is **rejected outright** by the real DLL: the first
+    ``%s`` swallows ``"key=value"`` whole, the format then wants ``'='`` and
+    the input is exhausted, so sscanf returns 1 and the line is silently
+    skipped.  A naive ``line.split("=", 1)`` accepts it — a real divergence,
+    Unicorn-confirmed in ``check_parse_dpi``.
+    """
+    key, i = _sscanf_token(line, 0)
+    if key is None:
+        return None
+    while i < len(line) and line[i] in _C_WS:
+        i += 1
+    if i >= len(line) or line[i] != "=":
+        return None
+    i += 1
+    val, _ = _sscanf_token(line, i)
+    if val is None:
+        return None
+    return key, val
+
+
+def _sscanf_int(tok: str, bits: int) -> int | None:
+    """``%hd`` / ``%ld``: an optional sign then a maximal digit run.
+
+    Trailing junk is ignored (``"4095abc"`` converts to 4095) and a token
+    with no digits at all fails, leaving the destination field UNWRITTEN —
+    modelled here by returning ``None`` and by the caller not storing.
+    """
+    i = 0
+    if i < len(tok) and tok[i] in "+-":
+        i += 1
+    d0 = i
+    while i < len(tok) and tok[i].isdigit():
+        i += 1
+    if i == d0:
+        return None
+    v = int(tok[:i])
+    if bits == 16:
+        return _s16(v & 0xFFFF)
+    return _s32(v & 0xFFFFFFFF)
+
+
+def _sscanf_float(tok: str) -> float | None:
+    """``%f``: sign, digits/point, optional exponent; narrowed to float32
+    because the destination is a ``float``, not a ``double``."""
+    i = 0
+    if i < len(tok) and tok[i] in "+-":
+        i += 1
+    d0 = i
+    while i < len(tok) and (tok[i].isdigit() or tok[i] == "."):
+        i += 1
+    if i < len(tok) and tok[i] in "eE":
+        j = i + 1
+        if j < len(tok) and tok[j] in "+-":
+            j += 1
+        k = j
+        while k < len(tok) and tok[k].isdigit():
+            k += 1
+        if k > j:
+            i = k
+    if i == d0:
+        return None
+    try:
+        return _f32(float(tok[:i]))
+    except ValueError:
+        return None
+
+
+def _sscanf_bool(tok: str) -> bool | None:
+    """The three bools, ``0x102285b8``..``0x102285e0`` and its two twins.
+
+    NOT ``strcmp(value, "true")`` — this file used to say that and it was
+    **wrong**.  The DLL does ``sscanf(value, "%c", &c)`` and then
+    ``cmp byte, 0x74 ; sete`` — a single lowercase ``'t'`` on the FIRST
+    character.  So ``"true"``, ``"t"`` and ``"tomato"`` are all TRUE while
+    ``"True"`` and ``"TRUE"`` are FALSE.  Confirmed bit-exact against the
+    real bytes in ``check_parse_dpi``, not read off the disassembly alone.
+    """
+    if not tok:
+        return None
+    return tok[0] == "t"
+
+
+#: scalar key -> (generateLut-relative offset, kind), in the DLL's own test
+#: order.  Derived from DRA_PARAMS_LAYOUT so the two cannot drift.
+_DPI_SCALARS: dict[str, tuple[int, str]] = {
+    k: (off, kind) for k, off, kind in DRA_PARAMS_LAYOUT if kind != "ttc"
+}
+_DPI_TTC_KEYS: tuple[str, ...] = tuple(
+    k for k, _off, kind in DRA_PARAMS_LAYOUT if kind == "ttc")
+
+
+def parse_dpi_line(line: str, values: dict) -> None:
+    """``0x102283d5``..``0x10228965`` — the parser's whole per-line body.
+
+    Mutates ``values`` in place.  A key whose conversion fails, or whose line
+    is rejected, leaves ``values`` untouched, exactly as the DLL leaves the
+    params field unwritten.
+
+    1. ``0x102283d5``..``0x102283fe`` — reject the line outright if its
+       **first** character is ``'#'``, ``'*'``, CR, LF or NUL.  Note this is
+       a first-character test only: it is *not* "strip everything after a
+       ``#``", which is what this port used to do.  A leading-whitespace
+       comment (``"  # x"``) is therefore NOT caught here — it is caught one
+       step later, by the 2-conversion requirement.
+    2. ``0x10228404``..``0x10228426`` — ``sscanf(line, "%s = %s", …)``,
+       requiring exactly 2 (see ``sscanf_kv``).
+    3. ``0x1022842c``..``0x102287e3`` — a ``repe cmpsb`` chain over the 19
+       scalar keys, each arm re-invoking ``sscanf`` on the *value* with that
+       key's own format and destination offset.
+    4. ``0x102287e8``..``0x102287fd`` — anything unmatched is passed to
+       ``strstr(key, "TTC")``; no match means the line is a silent no-op.
+    """
+    if not DRA_DPI_PARSE_PORTED:
+        _unported("DRA_DPI_PARSE_PORTED", DRA_PARSE_DPI, ".dpi parsing")
+    if not line or line[0] in "#*\r\n\0":
+        return
+    kv = sscanf_kv(line)
+    if kv is None:
+        return
+    key, val = kv
+    ent = _DPI_SCALARS.get(key)
+    if ent is not None:
+        _off, kind = ent
+        if kind == "i16":
+            v = _sscanf_int(val, 16)
+        elif kind == "i32":
+            v = _sscanf_int(val, 32)
+        elif kind == "f32":
+            v = _sscanf_float(val)
+        else:
+            v = _sscanf_bool(val)
+        if v is not None:
+            values[key] = v
+        return
+    if DPI_TTC_MARKER not in key:
+        return
+    if key in _DPI_TTC_KEYS:
+        values[key] = val
+
+
+def parse_dpi(path: Path) -> dict[str, object]:
+    """``ansel-dra-default-default.dpi`` -> the typed params dict.
+
+    Runs ``parse_dpi_line`` over every line, in file order, so a repeated key
+    legitimately wins last — the DLL has no "already seen" guard.
+
+    Scalars come back already converted to their destination C type (``int``
+    for ``%hd``/``%ld``, float32-narrowed ``float`` for ``%f``, ``bool`` for
+    the three ``%c`` fields); the six ``*TTC`` keys come back as the raw
+    filename token, which the caller resolves against the ``.dpi``'s own
+    directory — the DLL does exactly that at ``0x102288bf``..``0x1022894b``:
+    ``dpiPath.rfind('\\\\')``, then ``substr(0, idx+1) + value``.  (If the
+    ``.dpi`` path contains **no** backslash at all, ``rfind`` returns
+    ``npos`` and ``0x102288ea`` jumps *past* the ``0x10227c60`` call — the
+    curve is silently never loaded.  Not reachable here, where paths are
+    always absolute, but it is the DLL's real behaviour.)
 
     Note this file carries **no** ``key =`` line, so the repo's key-indexed
     resolvers cannot find it — it is opened by path, like ``cna``'s.
     """
     if not DRA_DPI_PARSE_PORTED:
         _unported("DRA_DPI_PARSE_PORTED", DRA_PARSE_DPI, ".dpi parsing")
-    out: dict[str, str] = {}
+    out: dict[str, object] = {}
     for line in path.read_text().splitlines():
-        line = line.split("#", 1)[0].strip()
-        if not line or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        out[k.strip()] = v.strip()
+        parse_dpi_line(line, out)
     return out
 
 
@@ -610,16 +835,15 @@ class DraParams:
             if key not in raw:
                 continue
             v = raw[key]
-            if kind == "i16" or kind == "i32":
-                p.values[key] = int(v.split()[0])
-            elif kind == "f32":
-                p.values[key] = struct.unpack(
-                    "<f", struct.pack("<f", float(v.split()[0])))[0]
-            elif kind == "bool":
-                p.values[key] = (v.split()[0] == "true")
-            elif kind == "ttc":
+            if kind == "ttc":
+                # 0x102288bf..0x1022894b: the .ttc is resolved against the
+                # .dpi's OWN directory, which is dra_dir here.
                 p.values[key] = v
-                p.curves[key] = parse_ttc(dra_dir / v)
+                p.curves[key] = parse_ttc(dra_dir / str(v))
+            else:
+                # Already converted by parse_dpi_line, through the same
+                # sscanf specifier the DLL's own arm uses.
+                p.values[key] = v
         return p
 
     def curve_pair(self, lighting: int) -> tuple[DraTtc, DraTtc]:
@@ -1360,6 +1584,41 @@ def generate_lut(results: DraResults, params: "DraParams", lighting: int,
        are real is ``eff_bounds()`` actually called.
     3. ``keepMidPtLut`` (``keep_midpt_lut``) builds the final curve from the
        lighting-selected TTC pair and the resolved eff bounds.
+
+    WHAT THIS ACTUALLY DOES TO PIXELS
+    ---------------------------------
+    Asserted against the real DLL, not reasoned out of the port — see
+    ``pakon_dra_golden.check_lut_behaviour``.  With the shipped
+    ``ansel-dra-default-default.dpi`` (paperMin 1200, paperMax 2000, both
+    fixed points 1550) and the shipped Normal ``.ttc`` pair (both the
+    3-point identity ``0 0 / 1 1 / 10 10``):
+
+    * **If ``[effMin, effMax]`` lies inside ``[paperMin, paperMax]``, the
+      DraLut is EXACTLY the identity** — all 4096 entries, ``lut[i] == i``.
+      dra does nothing whatsoever to such a frame.
+    * **Only a range that spills outside the paper range is touched**, and
+      then the offending side is *compressed inward*, pivoting on the fixed
+      point 1550: highs map ``[1550, effMax] -> [1550, paperMax]`` and then
+      continue at unit slope; lows map ``[effMin, 1550] -> [paperMin,
+      1550]`` and then ramp down by 1 per step.  The two sides are
+      independent — one can be compressed while the other stays identity.
+    * **There is no expansion branch at all.**  Nothing here stretches a
+      narrow ``[effMin, effMax]`` out to fill ``[paperMin, paperMax]``.  dra
+      is a one-way clamp-and-compress, not an auto-level.
+
+    So dra's contribution to overall brightness is zero for an in-range
+    frame and NEGATIVE-going (a pull toward 1550) for a frame whose
+    highlights exceed paperMax.  It only shifts a frame brighter when that
+    frame is shadow-clipped (``effMin`` well below ``paperMin``).
+
+    ``minSlope`` and ``maxSlope`` (params +0x0c/+0x10) are **dead here**
+    despite their names: ``0x1022ab50`` contains no x87 instructions at all,
+    and ``0x102290b0`` reads only params +0x00/+0x02/+0x04/+0x06/+0x08/+0x28
+    and the six ``.ttc`` blocks.  Confirmed positively rather than by that
+    absence: sweeping both across their whole valid range leaves the real
+    DLL's DraLut byte-identical on a frame where dra is genuinely working
+    (``check_lut_behaviour`` case (c)).  Their only consumer is
+    ``validate_params``' range check (bad-index 6).
     """
     if not DRA_GENERATE_LUT_PORTED:
         _unported("DRA_GENERATE_LUT_PORTED", DRA_GENERATE_LUT,

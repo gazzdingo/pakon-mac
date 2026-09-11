@@ -418,20 +418,34 @@ int main(int argc, char **argv) {
     printf("  RPD post-stage4c: R_mean=%.1f G_mean=%.1f B_mean=%.1f\n",
            (double)sum_r/num_pixels, (double)sum_g/num_pixels, (double)sum_b/num_pixels);
 
+    /* docs/74 §176: the vendor's CMM folds Rpd2Pcs_HR200_QS_v5s10.pf ->
+     * Srgb_v2.pf into one combined transform and evaluates it tetrahedrally at
+     * 14-bit with an arithmetic shift. pakon_kcms_clut_c.c is that arithmetic
+     * with the vendor's own combined tables baked in, so the default path needs
+     * no .pf files. The profiles below are loaded only for PAKON_ICC_TRILINEAR=1
+     * — and note that before this, if they failed to load, srgb_buf was left
+     * uninitialised and the BMP was written from unwritten malloc. */
     printf("[5/5] ICC CLUT render (RPD 12-bit -> sRGB 8-bit)...\n");
-    const char *rpd2pcs_path = "/Users/guy/Downloads/Pakon Update 2/fx35install"
-        "/program files/Pakon/F-X35 COM SERVER"
-        "/anselinstalldir/dataPathItems/profile/Rpd2Pcs_HR200_QS_v5s10.pf";
-    const char *srgb_path = "/Users/guy/Downloads/Pakon Update 2/fx35install"
-        "/program files/Pakon/F-X35 COM SERVER"
-        "/anselinstalldir/dataPathItems/profile/Srgb_v2.pf";
 
     IccMft2 rpd2pcs, srgb_profile;
-    if (icc_load_profile(rpd2pcs_path, &rpd2pcs) == 0 &&
-        icc_load_profile_b2a0(srgb_path, &srgb_profile) == 0) {
-        for (size_t i = 0; i < num_pixels; i++) {
-            icc_rpd12_to_srgb8(&rpd2pcs, &srgb_profile, &rpd_buf[i*3], &srgb_buf[i*3]);
-        }
+    int profiles_ok = 0;
+    if (icc_use_trilinear()) {
+        const char *rpd2pcs_path = "/Users/guy/Downloads/Pakon Update 2/fx35install"
+            "/program files/Pakon/F-X35 COM SERVER"
+            "/anselinstalldir/dataPathItems/profile/Rpd2Pcs_HR200_QS_v5s10.pf";
+        const char *srgb_path = "/Users/guy/Downloads/Pakon Update 2/fx35install"
+            "/program files/Pakon/F-X35 COM SERVER"
+            "/anselinstalldir/dataPathItems/profile/Srgb_v2.pf";
+        profiles_ok = (icc_load_profile(rpd2pcs_path, &rpd2pcs) == 0 &&
+                       icc_load_profile_b2a0(srgb_path, &srgb_profile) == 0);
+    }
+    printf("  ICC: %s\n", icc_render_banner(profiles_ok));
+    for (size_t i = 0; i < num_pixels; i++) {
+        icc_render_rpd12_to_srgb8(profiles_ok ? &rpd2pcs : NULL,
+                                  profiles_ok ? &srgb_profile : NULL,
+                                  &rpd_buf[i*3], &srgb_buf[i*3]);
+    }
+    if (profiles_ok) {
         icc_mft2_free(&rpd2pcs);
         icc_mft2_free(&srgb_profile);
     }

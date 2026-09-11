@@ -33,6 +33,8 @@ import time
 
 import usb.core
 
+import pakon_usb_guard as guard
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pakon_load import Fx2, HexImage, find_unloaded, find_loaded   # noqa: E402
 from write_guard import require_writes_unlocked, confirm_write     # noqa: E402
@@ -50,7 +52,8 @@ def read_personality(dev, length=8, tries=4):
     for _ in range(tries):
         time.sleep(0.15)
         try:
-            raw = bytes(dev.ctrl_transfer(VENDOR_IN, READ, 0, 0, length, 5000))
+            raw = bytes(guard.ctrl_transfer(dev, VENDOR_IN, READ, 0, 0,
+                                            length, 5000))
         except usb.core.USBError as exc:
             return f"ERROR: {exc}"
         if last is not None and raw != last:
@@ -131,7 +134,11 @@ def main() -> int:
 
     print("\n  writing...")
     try:
-        n = dev.ctrl_transfer(VENDOR_OUT, WRITE, 0, 0, payload, 8000)
+        # The boot personality is the replaceable chip -- Kodak ships the
+        # exact bytes. The guard still refuses EEPROM 0x52 regardless of this
+        # unlock; see tools/pakon_usb_guard.py.
+        guard.unlock_boot_write("eeprom_repair.py --write, user-confirmed")
+        n = guard.ctrl_transfer(dev, VENDOR_OUT, WRITE, 0, 0, payload, 8000)
         print(f"  wrote {n} byte(s)")
     except usb.core.USBError as exc:
         sys.exit(f"  write failed: {exc}\n  EEPROM unchanged as far as can be told; "

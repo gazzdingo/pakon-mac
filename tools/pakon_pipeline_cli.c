@@ -823,7 +823,8 @@ int main(int argc, char **argv) {
         printf("[ICC] Rpd2Pcs: grid=%d³ n_in=%d n_out=%d\n",
                rpd2pcs.grid, rpd2pcs.n_table_in, rpd2pcs.n_table_out);
     else
-        printf("[ICC] WARNING: Rpd2Pcs not loaded — output will use pow(1/2.2) fallback\n");
+        printf("[ICC] Rpd2Pcs not loaded — only needed for PAKON_ICC_TRILINEAR=1;\n"
+               "      the default vendor CLUT port carries its own combined tables\n");
     if (srgb_ok)
         printf("[ICC] Srgb: grid=%d³\n", srgb_profile.grid);
 
@@ -899,27 +900,21 @@ int main(int argc, char **argv) {
      * STAGE 4d — ICC CLUT: RPD 12-bit → sRGB 8-bit
      * Cite: docs/58 §10 — Rpd2Pcs_HR200_QS_v5s10.pf → Srgb_v2.pf
      *       dataType = U8, renderIntent = P, colorSpaceMax = 255
-     *       Input table clips RPD above code 3000 (docs/58 §6 row 9)
-     * Fallback: pow(1-x, 1/2.2) if profiles not loaded.
+     *
+     * docs/74 §176: the vendor folds that profile pair into one combined
+     * transform (SpCombineXforms) and evaluates it with a tetrahedral, 14-bit,
+     * arithmetic-shift interpolator. That is what runs here by default, from
+     * the captured tables — so it no longer needs the .pf files at all, and
+     * there is no gamma fallback to fall into: the old one produced visibly
+     * plausible but wrong colour, which is worse than failing.
      * ------------------------------------------------------------------ */
-    printf("[5/5] ICC CLUT render (RPD → PCS → sRGB)...\n");
-    if (rpd2pcs_ok && srgb_ok) {
-        for (size_t i = 0; i < num_pixels; i++) {
-            const int32_t *px = &rpd_buf[i*3];
-            icc_rpd12_to_srgb8(&rpd2pcs, &srgb_profile, px, &srgb_buf[i*3]);
-        }
-    } else {
-        /* Fallback: simple negative inversion + sRGB gamma.
-         * NOTE: this does NOT produce correct colour — load the ICC profiles. */
-        printf("  WARNING: using gamma fallback — load ICC profiles for correct colour\n");
-        for (size_t i = 0; i < num_pixels * 3; i++) {
-            double norm = (double)rpd_buf[i] / 4095.0;
-            if (norm < 0.0) norm = 0.0;
-            if (norm > 1.0) norm = 1.0;
-            double v = pow(1.0 - norm, 1.0 / 2.2) * 255.0;
-            int vi = (int)v; if (vi < 0) vi = 0; if (vi > 255) vi = 255;
-            srgb_buf[i] = (uint8_t)vi;
-        }
+    printf("[5/5] ICC CLUT render (RPD → sRGB)...\n");
+    printf("  ICC: %s\n", icc_render_banner(rpd2pcs_ok && srgb_ok));
+    {
+        const IccMft2 *p1 = rpd2pcs_ok ? &rpd2pcs : NULL;
+        const IccMft2 *p2 = srgb_ok ? &srgb_profile : NULL;
+        for (size_t i = 0; i < num_pixels; i++)
+            icc_render_rpd12_to_srgb8(p1, p2, &rpd_buf[i*3], &srgb_buf[i*3]);
     }
     free(rpd_buf); rpd_buf = NULL;
 

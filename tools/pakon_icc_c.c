@@ -1,6 +1,26 @@
 /*
  * pakon_icc_c.c — ICC v2 mft1/mft2 CLUT parser + trilinear evaluator (pure C).
  *
+ * !! NOT THE VENDOR'S ARITHMETIC — see icc_render_rpd12_to_srgb8 at the bottom.
+ *
+ * docs/74 §176 drove the real Kodak CMM (kodakcms.dll, md5
+ * e4c8064a9dd3c3a5541d74b00a730e53) under Wine and established that its CLUT
+ * interpolator is tetrahedral, 14-bit integer, and arithmetic-shift (floor).
+ * Everything below this banner is trilinear, double-precision and
+ * round-to-nearest — all three wrong. §176's negative controls measured the
+ * cost of each on a 32³ lattice of the input domain:
+ *
+ *     trilinear instead of tetrahedral   2037 / 98304 samples differ, max |d| 3
+ *     round-to-nearest instead of SAR    1200 / 98304 samples differ, max |d| 1
+ *
+ * The vendor's own arithmetic is in pakon_kcms_clut_c.c, which is bit-exact
+ * against pakon_kcms_clut.py over all 16,777,216 u8 triples
+ * (tools/test_kcms_clut_ports.py), and that module is bit-exact against the real
+ * DLL over the same domain (pakon_kcms_clut_golden.py). This file is retained
+ * for the ICC profile parser (still used to report grid sizes) and as the
+ * PAKON_ICC_TRILINEAR=1 escape hatch, which exists so the two can be diffed —
+ * not because it is a defensible fallback.
+ *
  * Cite: docs/58-colour-pipeline.md §6.1 ("ICC mft2 evaluation, exactly")
  * Cite: docs/58-colour-pipeline.md §6 table row 9: Rpd2Pcs_HR200_QS_v5s10.pf
  *       A2B0 mft2, 31³ grid, n_in=4096, n_out=512, 16-bit
@@ -26,6 +46,8 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+
+#include "pakon_kcms_clut_c.c"
 
 #define ICC_MFT2_TAG  0x6D667432  /* 'mft2' big-endian */
 #define ICC_MFT1_TAG  0x6D667431  /* 'mft1' big-endian */
@@ -362,4 +384,51 @@ void icc_rpd12_to_srgb8(
         uint32_t v = (uint32_t)srgb16[c] * 255 / 65535;
         srgb_out[c] = (uint8_t)(v > 255 ? 255 : v);
     }
+}
+
+/* -------------------------------------------------------------------------
+ * THE ICC HOP THE PIPELINES SHOULD CALL
+ *
+ * Default: pakon_kcms_clut_c.c — the port of kodakcms.dll fcn.10018160, which
+ * is the interpolator the vendor's own CMM runs for this profile pair. It
+ * needs no .pf files: SpCombineXforms already folded both profiles into the
+ * tables in pakon_kcms_clut_tables.h, and pakon_kcms_clut_golden.py case 2
+ * checks those shipped tables byte-for-byte against the ones the live DLL
+ * builds. This mirrors the Python path, where AnselEngine.to_srgb defaults to
+ * the same port (pakon_ansel.py; PAKON_ICC_LCMS=1 falls back to lcms there).
+ *
+ * PAKON_ICC_TRILINEAR=1: run icc_rpd12_to_srgb8 above instead. Provided so the
+ * two can be diffed on real frames; it is the algorithm docs/74 §176 disproved,
+ * and it needs both profiles loaded — if they are not, this falls through to
+ * the vendor port rather than to something worse.
+ * ------------------------------------------------------------------------- */
+int icc_use_trilinear(void) {
+    static int cached = -1;
+    if (cached < 0) {
+        const char *e = getenv("PAKON_ICC_TRILINEAR");
+        cached = (e && e[0] == '1') ? 1 : 0;
+    }
+    return cached;
+}
+
+void icc_render_rpd12_to_srgb8(const IccMft2 *rpd2pcs, const IccMft2 *srgb,
+                               const int32_t rpd[3], uint8_t srgb_out[3]) {
+    if (icc_use_trilinear() && rpd2pcs && srgb) {
+        icc_rpd12_to_srgb8(rpd2pcs, srgb, rpd, srgb_out);
+        return;
+    }
+    kcms_rpd12_to_srgb8(rpd, srgb_out);
+}
+
+/* One line naming which evaluator is live, so a render log can never leave it
+ * ambiguous. Returns the string it printed. */
+const char *icc_render_banner(int profiles_loaded) {
+    if (icc_use_trilinear() && profiles_loaded)
+        return "PAKON_ICC_TRILINEAR=1 — legacy trilinear mft2 chain "
+               "(docs/74 §176: NOT the vendor's arithmetic)";
+    if (icc_use_trilinear())
+        return "PAKON_ICC_TRILINEAR=1 requested but profiles are not loaded — "
+               "using the vendor CLUT port";
+    return "kodakcms.dll fcn.10018160 port — vendor CLUT, tetrahedral / "
+           "14-bit / SAR, bit-exact over all 16,777,216 u8 triples";
 }

@@ -1,9 +1,29 @@
+// icc.go is an ICC v2 mft1/mft2 parser plus a TRILINEAR evaluator.
+//
+// !! NOT THE VENDOR'S ARITHMETIC — see IccRenderRpd12ToSrgb8 at the bottom.
+//
+// docs/74 §176 drove the real Kodak CMM (kodakcms.dll, md5
+// e4c8064a9dd3c3a5541d74b00a730e53) under Wine and established that its CLUT
+// interpolator is tetrahedral, 14-bit integer, and arithmetic-shift (floor).
+// trilinearClut below is trilinear, float64 and round-to-nearest — all three
+// wrong. §176's negative controls priced each on a 32³ lattice of the domain:
+//
+//	trilinear instead of tetrahedral   2037 / 98304 samples differ, max |d| 3
+//	round-to-nearest instead of SAR    1200 / 98304 samples differ, max |d| 1
+//
+// The vendor's own arithmetic is in package kcmsclut. This file keeps the
+// profile parser (engine.go still loads both profiles, and their grid sizes are
+// reported) and the trilinear path as the PAKON_ICC_TRILINEAR=1 escape hatch,
+// which exists so the two can be diffed — not because it is a defensible
+// fallback.
 package main
 
 import (
 	"encoding/binary"
 	"fmt"
 	"os"
+
+	"pakonpipeline/kcmsclut"
 )
 
 const (
@@ -347,4 +367,53 @@ func IccRpd12ToSrgb8(rpd2pcs *IccMft2, srgb *IccMft2, rpd [3]int) [3]uint8 {
 		}
 	}
 	return srgbOut
+}
+
+// -------------------------------------------------------------------------
+// THE ICC HOP THE PIPELINE SHOULD CALL
+//
+// Default: package kcmsclut — the port of kodakcms.dll fcn.10018160, the
+// interpolator the vendor's own CMM runs for this profile pair. It needs no
+// .pf files: SpCombineXforms already folded both profiles into its tables, and
+// pakon_kcms_clut_golden.py case 2 checks those shipped tables byte-for-byte
+// against the ones the live DLL builds. This mirrors the Python path, where
+// AnselEngine.to_srgb defaults to the same port (PAKON_ICC_LCMS=1 falls back to
+// lcms there), and the C path, where icc_render_rpd12_to_srgb8 does the same.
+//
+// PAKON_ICC_TRILINEAR=1 runs IccRpd12ToSrgb8Depth instead. Provided so the two
+// can be diffed on real frames; it is the algorithm docs/74 §176 disproved.
+//
+// Note that -icc-input has no meaning on the vendor path: fcn.10018160 sits on
+// the CMM dispatcher's in=3/out=3 *u8* leaf, and the combined transform's input
+// index table is 3x256 by construction. u8 there is not a quantisation this
+// port chose, it is the shape of the transform the vendor itself built.
+// -------------------------------------------------------------------------
+
+// iccTrilinear caches the PAKON_ICC_TRILINEAR lookup — this is on the
+// per-pixel path.
+var iccTrilinear = os.Getenv("PAKON_ICC_TRILINEAR") == "1"
+
+// IccRenderRpd12ToSrgb8 evaluates the ICC hop with whichever evaluator is
+// selected. rpd2pcs/srgb may be nil on the default path.
+func IccRenderRpd12ToSrgb8(rpd2pcs *IccMft2, srgb *IccMft2, rpd [3]int,
+	depth IccInputDepth) [3]uint8 {
+	if iccTrilinear && rpd2pcs != nil && srgb != nil {
+		return IccRpd12ToSrgb8Depth(rpd2pcs, srgb, rpd, depth)
+	}
+	return kcmsclut.Rpd12ToSrgb8(rpd)
+}
+
+// IccRenderBanner names the live evaluator, so a render log can never leave it
+// ambiguous.
+func IccRenderBanner(profilesLoaded bool) string {
+	if iccTrilinear && profilesLoaded {
+		return "PAKON_ICC_TRILINEAR=1 — legacy trilinear mft2 chain " +
+			"(docs/74 §176: NOT the vendor's arithmetic)"
+	}
+	if iccTrilinear {
+		return "PAKON_ICC_TRILINEAR=1 requested but profiles are not loaded — " +
+			"using the vendor CLUT port"
+	}
+	return "kodakcms.dll fcn.10018160 port — vendor CLUT, tetrahedral / " +
+		"14-bit / SAR, bit-exact over all 16,777,216 u8 triples"
 }

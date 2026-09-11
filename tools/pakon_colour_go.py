@@ -193,6 +193,37 @@ class ColourRequest:
     #: only the three resolved numbers cross.
     userOffsets: tuple = (0.0, 0.0, 0.0)
 
+    #: ``ColorNegativePath::analyzeAutoTone``'s composed tone curve for THIS
+    #: FRAME -- the 4096-entry ``OutToneLut`` the real six-subsystem chain
+    #: (cna -> dra -> toneHelper -> contrast -> ast -> citras-analyze) builds,
+    #: i.e. ``pakon_ansel.real_auto_tone``'s own
+    #: ``contrast_state.results.OutToneLut``.
+    #:
+    #: Empty means "Go has no curve", and Go then runs its openly-labelled
+    #: ``ShastaToneRpd`` stand-in and says so in the provenance banner. When it
+    #: is populated, Go applies it through the vendor's real apply driver
+    #: (``ImaCitrasOpBase::virtual_40``, ported in
+    #: ``tools/ansel/pipeline/citrasdriver``, verified bit-exact against
+    #: ``pakon_citras_driver.py`` over 48,411,449 samples on a real frame by
+    #: ``tools/test_citras_driver_ports.py``).
+    #:
+    #: WHY IT CROSSES THE WIRE RATHER THAN BEING COMPUTED IN GO: only the APPLY
+    #: half of ``analyzeAutoTone`` is ported. The ANALYSIS half that BUILDS
+    #: this curve is ~3,800 lines of Python across six separately
+    #: Unicorn-verified subsystems and has no Go port, so the side that already
+    #: has the verified chain hands the real curve over rather than letting Go
+    #: invent one. Porting the analysis half is what would remove this field.
+    #:
+    #: It is EMPTY BY DEFAULT and nothing in this repo fills it yet. Two real
+    #: costs have to be paid first, and neither is paid by adding a field: the
+    #: analysis chain costs ~20 s on a full 3000x2000 frame in Python (measured),
+    #: which a slider drag cannot absorb; and switching the live tone stage
+    #: changes every rendered image, which docs/74 §171.3 says must be measured
+    #: stage-by-stage against the vendor rather than by watching the end-to-end
+    #: number. The transport is ready; the decision to use it is not this
+    #: field's to make.
+    outToneLut: tuple = ()
+
     provenance: dict = field(default_factory=dict)
 
     def wire(self) -> bytes:

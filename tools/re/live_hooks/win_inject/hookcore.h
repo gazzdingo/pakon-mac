@@ -119,8 +119,62 @@ extern "C" {
  * same pass, matching thunks[25..27] in hookcore_real_table.c -- the
  * exact "forgot the matching thunk" mistake §46/§47 found and fixed is
  * the one thing this bump was double-checked against.
+ * Bumped 28->29 (docs/74 §57, 2026-08-16): one new PakonIMAu.dll hook
+ * (color_adjust_shift, 0x101b76d0) appended at the END of table[], same
+ * append-only discipline. Thunk_28 added to hookstub.S in the same pass.
+ * Bumped 31->32 (docs/74 §86, v26): one new PakonIMAu.dll hook
+ * (sba_vm_interp, 0x102aadf0) appended at the END of table[], same
+ * append-only discipline. Thunk_31 added to hookstub.S and to
+ * hookcore_real_table.c's thunks[] in the SAME pass. This is the bytecode
+ * interpreter §78.2 identified; the capture dumps its program so the
+ * static-vs-generated question and the live opcode count can both be
+ * answered offline, without per-dispatch logging.
+ * Bumped 30->31 (docs/74 §76, v24): one new PakonIMAu.dll hook
+ * (sba_order_fpo_helper, 0x1028ae00) appended at the END of table[], same
+ * append-only discipline. Thunk_30 added to hookstub.S and to
+ * hookcore_real_table.c's thunks[] in the SAME pass. Its arg 9 is the one
+ * value §76 could not derive statically (the Y term L[-0x200]); the engine
+ * already logs 16 raw stack dwords per entry, so hooking it captures that
+ * dword with no extra dump row at all.
+ * Bumped 29->30 (docs/74 §72.7, v21): one new PakonIMAu.dll hook
+ * (sba_order_fpo_calc, 0x1028b8d0) appended at the END of table[], same
+ * append-only discipline. Thunk_29 added to hookstub.S and to
+ * hookcore_real_table.c's own thunks[] array in the SAME pass -- the
+ * §46.8/§47 "forgot the matching thunk" bug class this file's own comment
+ * above documents was explicitly re-checked before committing.
  * --------------------------------------------------------------------- */
-#define HOOKCORE_MAX_HOOKS 28
+/* v46 (2026-08-21): 32 -> 40, fixing a REAL, SILENT, ALREADY-SHIPPED BUG.
+ *
+ * The v41-v45 working tree inserted four hooks into the MIDDLE of
+ * hookcore_real_table.c's table[] (shift_lut_builder, analyze_post_balance,
+ * scp_lut_worker, tlb_lut_apply) without bumping this number. table[] is
+ * declared `HookDef table[HOOKCORE_MAX_HOOKS]`, so 36 initialisers into a
+ * 32-element array is only a WARNING in C ("excess elements in array
+ * initializer", emitted four times by this repo's own build.sh and not
+ * treated as an error) -- the last four entries were silently DISCARDED at
+ * compile time:
+ *
+ *     color_adjust_shift  0x101b76d0    sba_order_fpo_calc    0x1028b8d0
+ *     sba_order_fpo_helper 0x1028ae00   sba_vm_interp         0x102aadf0
+ *
+ * check_table_sync.py did not catch it because it compares SOURCE TEXT
+ * against agent.js and never looks at HOOKCORE_MAX_HOOKS; a count check
+ * against this constant is added there in the same pass. table[] is also
+ * changed to an unsized `table[]` plus a compile-time assert, so an
+ * over-long table can never again be silently truncated -- it becomes a
+ * build failure instead.
+ *
+ * 40 rather than 36 leaves four spare slots so the next append does not
+ * have to touch hookstub.S; Thunk_32..39 are defined there in this same
+ * pass, per the Thunk_23 discipline documented in hookcore_real_table.c. */
+/* v60 (2026-08-25): 48 -> 49. TWO new acquisition-side TLB.dll hooks
+ * (tlb_prescan_dark_reduce 0x1001d4c0, tlb_area_build 0x100013b0) appended at
+ * the END of table[], same append-only discipline. 47 used + 2 = 49: Thunk_47
+ * was already free (47/48), so only ONE new slot is needed -- Thunk_48, added
+ * below alongside DEFTHUNK 48 in hookstub.S and the thunks[] entry in
+ * hookcore_real_table.c, all four edits in the SAME pass, re-checked against
+ * the Thunk_23 "forgot the matching thunk" bug this header documents. */
+#define HOOKCORE_MAX_HOOKS 49
 
 /* Must exactly match the PUSHAD+PUSHFD+index+retaddr stack layout that
  * hookstub.S's SharedEntryHandler builds -- see that file's header
@@ -281,26 +335,178 @@ typedef struct HookRuntime {
  * pixel -- nothing like the per-pixel volume hotPathDisabled guards
  * against). Every row is IsBadReadPtr-guarded exactly like the existing
  * stack_dwords dump; an unreadable pointer logs `"readable":false`
- * rather than skipping the row silently or crashing. */
+ * rather than skipping the row silently or crashing.
+ * Bumped 8192 -> 0x84000 (540672 = 132 pages, docs/74 SS60, 2026-08-16):
+ * the full 245x367 planar/interleaved frame is 539490 bytes (=0x83B62), so
+ * the old cap only carried ~2-16 scanlines, which is not enough to solve
+ * the raw<->RPD12 spatial relayout by 2D cross-correlation (the two
+ * buffers are laid out differently and the truncated tops don't overlap).
+ * 0x84000 is the page-rounded committed size of that buffer (539490 rounds
+ * up to 132*4096); the first v12 build used 0x90000 (the observed inter-
+ * buffer stride) and every full-frame dump came back IsBadReadPtr-failed,
+ * so 0x84000 is the read-safe ceiling. LogExtraDumps' line buffer moved to
+ * the heap at the same time because 0x84000*2 hex chars exceeds the
+ * default 1 MB thread stack. */
 #define HOOKCORE_MAX_EXTRA_DUMPS 8
-#define HOOKCORE_EXTRA_DUMP_MAX_BYTES 8192
+#define HOOKCORE_EXTRA_DUMP_MAX_BYTES 0x84000
 
 typedef enum ExtraDumpKind {
     EXTRA_DUMP_STACK_PTR = 0,  /* dump N bytes from   *stack_dwords[idx]        */
-    EXTRA_DUMP_DEREF_PTR = 1   /* dump N bytes from  **(stack_dwords[idx]+off)  */
+    EXTRA_DUMP_DEREF_PTR = 1,  /* dump N bytes from  **(stack_dwords[idx]+off)  */
+    EXTRA_DUMP_THIS_OFFSET = 2,/* dump N bytes from   (regs->ecx + derefOffset) --
+                                   for a __thiscall target, the Impl/`this`
+                                   object's own fields (stackIndex ignored)     */
+    EXTRA_DUMP_PLANAR_PLANE = 3, /* dump N bytes from  *(stack_dwords[idx]) +
+                                   (stack_dwords[3] * stack_dwords[4]) *
+                                   derefOffset -- PolyPixel's planar buffer,
+                                   R/G/B at base + w*h*(0/2/4); w/h are
+                                   hard-coded to stack_dwords[3]/[4] per the
+                                   PolyPixel calling convention (docs/74 SS32)  */
+    EXTRA_DUMP_THIS_DEREF_OFFSET = 4, /* dump N bytes from
+                                    *(regs->ecx + stackIndex) + derefOffset --
+                                    for a __thiscall target whose `this` points
+                                    to a holder: deref this+stackIndex to get the
+                                    Impl, then add derefOffset (e.g. getShifts
+                                    reads *(SbaCap+0x10)+0x3a38)                */
+    EXTRA_DUMP_STACK_PTR_OFFSET = 5, /* dump N bytes from
+                                    (stack_dwords[idx] + derefOffset) -- a raw
+                                    stack arg pointer PLUS an offset, for a
+                                    field inside the arg's struct (e.g.
+                                    balanceAreaImage reads the shift at
+                                    arg4+0x0a)                                 */
+    EXTRA_DUMP_STACK_DEREF2_OFFSET = 6, /* dump N bytes from
+                                    *(stack_dwords[idx] + derefOffset) +
+                                    derefOffset2 -- a double deref then offset
+                                    (e.g. getShifts reads *(arg1+0x10)+0x3a38,
+                                    arg1 = stack_dwords[0])                    */
+    EXTRA_DUMP_MODULE_ABS = 7      /* dump N bytes from the module base plus
+                                    derefOffset -- i.e. a GLOBAL, addressed by
+                                    its RVA rather than through any argument.
+                                    stackIndex is ignored.
+
+                                    Every kind above reaches memory via a stack
+                                    argument or `this`, so a static/global has
+                                    been uncapturable. docs/74 SS106.1 needs
+                                    exactly that: the gate on the balance-shift
+                                    write compares against a global whose file
+                                    image is 0, so its run-time value is only
+                                    observable live.
+
+                                    RVA-relative, NOT absolute, so it stays
+                                    correct if the DLL is relocated -- the
+                                    engine resolves the module base at dump
+                                    time from the same HookDef.dll the hook was
+                                    installed against.                          */,
+    EXTRA_DUMP_THIS_DEREF2_OFFSET = 8  /* dump N bytes from
+                                    *(*(regs->ecx + stackIndex)) + derefOffset --
+                                    a SECOND deref beyond THIS_DEREF_OFFSET: the
+                                    object field at +stackIndex holds a POINTER
+                                    to a row-pointer TABLE, and table[0] is the
+                                    contiguous 16-bit CCD image base. Used for
+                                    the framing object's +0x60 -> row table ->
+                                    table[0] = 16-bit CCD data (docs/74 SS194,
+                                    RE 2026-08-22 /tmp/pakon_re/framewriter/).
+                                    stackIndex carries the OBJECT OFFSET (0x60),
+                                    not a stack-dword index, so it is exempted
+                                    from the STACK_DWORDS_LOGGED bound in
+                                    hookcore.c exactly as THIS_OFFSET/
+                                    THIS_DEREF_OFFSET are.                       */
 } ExtraDumpKind;
+
+/* v46 -- WHEN a row fires. Until v46 every row fired on ENTRY only, because
+ * LogExtraDumps was called solely from HookEntryC. That made it structurally
+ * impossible to capture any stage's OUTPUT: the vendor's chain is a sequence
+ * of in-place transforms (PolyPixel is in-place; area_image_apply_lut rewrites
+ * this->0x20 in place; the shift-LUT builder writes through out-pointers), so
+ * "the buffer at the boundary" only exists after the call returns. Entry-only
+ * gave inputs and nothing else, and the whole reason a reference trace was
+ * asked for is to have BOTH sides of each stage on the same frame.
+ *
+ * HOW THE EXIT DUMP READS ITS POINTERS -- and why it does NOT re-read the
+ * stack. At the instant OnReturnThunk runs, the hooked function's own
+ * `ret`/`ret N` has already executed. For a cdecl callee (`ret`) ESP still
+ * points at the argument block, but for a stdcall/thiscall callee (`ret N`)
+ * ESP is N bytes ABOVE it -- and OnReturnThunk's own prologue plus LogExitC's
+ * ~700-byte frame are written BELOW that ESP, i.e. straight through the
+ * argument block. Re-reading argsPtr at exit would therefore hand back this
+ * harness's own stack garbage for every stdcall/thiscall hook, silently, and
+ * this engine is deliberately calling-convention-agnostic so there is no
+ * per-hook way to know which is which.
+ *
+ * Instead, HookEntryC SNAPSHOTS the stack dwords and ECX into the shadow-stack
+ * frame at entry, and the exit dump resolves its pointers from that snapshot.
+ * The pointer VALUES are the entry-time ones (correct: they are the caller's
+ * arguments, which the callee cannot change) and the BUFFER CONTENTS are the
+ * exit-time ones (which is the point). The buffers live in the heap, so
+ * nothing OnReturnThunk does can touch them.
+ *
+ * An EXIT/BOTH row only fires when this call was actually exit-hooked -- i.e.
+ * `wantExitDefault`/hooks.cfg enabled it AND LooksLikeCodeAddress accepted the
+ * return-address swap AND the shadow stack had room. If any of those declined,
+ * the ENTRY half still lands and the EXIT half is simply absent; it never
+ * degrades into a wrong reading. */
+typedef enum ExtraDumpWhen {
+    EXTRA_DUMP_ON_ENTRY = 0,   /* default -- the pre-v46 behaviour           */
+    EXTRA_DUMP_ON_EXIT  = 1,
+    EXTRA_DUMP_ON_BOTH  = 2
+} ExtraDumpWhen;
 
 typedef struct ExtraDumpSpec {
     const char    *hookId;      /* matches HookDef.id                       */
     const char    *label;       /* short JSON field name, e.g. "r_lut"      */
     ExtraDumpKind  kind;
     int            stackIndex;  /* index into the same stack_dwords[] array
-                                    HookEntryC already logs on "enter"       */
+                                     HookEntryC already logs on "enter"       */
     DWORD          derefOffset; /* only used for EXTRA_DUMP_DEREF_PTR       */
+    DWORD          derefOffset2;/* only used for EXTRA_DUMP_STACK_DEREF2_OFFSET */
     DWORD          numBytes;    /* must be <= HOOKCORE_EXTRA_DUMP_MAX_BYTES,
-                                    enforced defensively at the call site
-                                    too, not just by convention here        */
+                                     enforced defensively at the call site
+                                     too, not just by convention here        */
+    ExtraDumpWhen  when;        /* v46; 0 == ENTRY == the historical default */
+    DWORD          maxDumps;    /* v46. 0 = unlimited (the historical
+                                     behaviour). Otherwise this row stops
+                                     emitting after this many dumps, counted
+                                     per ROW over the whole process lifetime
+                                     with an InterlockedIncrement.
+
+                                     WHY THIS EXISTS. Dump VOLUME, not hook
+                                     count, is what kills a capture, and the
+                                     two failures that cost real scans were
+                                     both volume or index errors on a hot
+                                     function: v45 hung ~96 KB of dumps on
+                                     tlb_lut_apply, which fires 52,877 times
+                                     in one scan (~5 GB), and the log was
+                                     truncated to uselessness. Before v46 the
+                                     only lever was all-or-nothing -- either
+                                     the hot function carried its big dump on
+                                     every call, or it carried none.
+
+                                     That is exactly backwards for a trace:
+                                     the interesting content of a hot function
+                                     is the FIRST few calls (the first frames),
+                                     and everything after is the same shape
+                                     again. A per-row cap turns "impossible"
+                                     into "N frames", and it is what makes the
+                                     0x84000 full-frame rows affordable at all
+                                     (39 frames x 2 planes x 0.5 MB, hex-
+                                     encoded, is ~160 MB from ONE row).
+
+                                     ENTRY and EXIT halves of a BOTH row share
+                                     one counter, so `maxDumps = 2*N` gives N
+                                     matched pairs; ENTRY-only and EXIT-only
+                                     rows on the same hook count separately.
+
+                                     A capped row that has stopped emits
+                                     NOTHING -- no line at all -- so a consumer
+                                     must not treat "fewer dumps than calls" as
+                                     an error. check_v46.py knows the caps. */
 } ExtraDumpSpec;
+
+/* Upper bound on the number of rows in g_extraDumps[], used only to size the
+ * per-row `maxDumps` counter array in hookcore.c. Checked at run time (a row
+ * index past the end is treated as uncapped and logged loudly) rather than at
+ * compile time, because g_extraDumps[] lives in another translation unit. */
+#define HOOKCORE_MAX_EXTRA_DUMP_ROWS 128
 
 /* Defined in hookcore_real_table.c, terminated by a {NULL,...} sentinel
  * row (checked by hookId == NULL, not by array length). */
@@ -412,6 +618,28 @@ extern void Thunk_18(void); extern void Thunk_19(void); extern void Thunk_20(voi
 extern void Thunk_21(void); extern void Thunk_22(void);
 extern void Thunk_23(void); extern void Thunk_24(void);
 extern void Thunk_25(void); extern void Thunk_26(void); extern void Thunk_27(void);
+extern void Thunk_28(void); extern void Thunk_29(void);
+extern void Thunk_30(void); extern void Thunk_31(void);
+/* v46: Thunk_32..39 added alongside the HOOKCORE_MAX_HOOKS 32 -> 40 bump
+ * and the matching DEFTHUNK 32..39 in hookstub.S -- all in the SAME pass,
+ * re-checked against the Thunk_23 "forgot the matching thunk" bug that
+ * hookcore_real_table.c's own header documents. */
+extern void Thunk_32(void); extern void Thunk_33(void);
+extern void Thunk_34(void); extern void Thunk_35(void);
+extern void Thunk_36(void); extern void Thunk_37(void);
+extern void Thunk_38(void); extern void Thunk_39(void);
+/* v47: 40..47, added with the sba_measure hook. Bumping the constant,
+ * declaring the thunks, DEFTHUNK-ing them and listing them in thunks[]
+ * are FOUR edits that must happen together -- the compile-time assert in
+ * hookcore_real_table.c fails the build if they do not. */
+extern void Thunk_40(void); extern void Thunk_41(void); extern void Thunk_42(void); extern void Thunk_43(void); extern void Thunk_44(void); extern void Thunk_45(void); extern void Thunk_46(void); extern void Thunk_47(void);
+/* v60: Thunk_48, added with the two acquisition-side TLB.dll hooks
+ * (tlb_prescan_dark_reduce, tlb_area_build). Thunk_47 was already free (47/48),
+ * so this single new thunk plus the HOOKCORE_MAX_HOOKS 48->49 bump, the
+ * DEFTHUNK 48 in hookstub.S and the thunks[] entry cover the two-hook append.
+ * The compile-time assert in hookcore_real_table.c fails the build if any of
+ * these four edits is missing. */
+extern void Thunk_48(void);
 
 #ifdef __cplusplus
 }

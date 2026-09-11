@@ -71,6 +71,16 @@ from a VM disk image, apparently black & white film, 8-bit JPEG, small
 verified-coherent sample) but the caveats bound the *precision*, not the
 *direction*, of the finding — see §13 for the full honest accounting.
 
+**Seventh update, 2026-08-16 — per-frame balance reproduced bit-exact
+except one luma term**: §63–§65 below use live hook captures (v16/v17) to
+close the per-frame balance chain. The FOS `orderFpo` (`scene+0x38a2`) is
+per-frame and feeds `preference_shifts_hiNN(hi=0x30, lo=3, non_flash_adj=1000)`
+→ `+0x3a38` (= A), reproduced **bit-exact on every frame**; the applied
+balance is `setshifts_12(A,A) + Δ` where Δ is a per-frame uniform luma offset
+(`+29…+95`). The sole remaining unknown is the source of Δ (a `setShifts`
+post-combine term, traced to the caller's tail, not yet pinned). §65 is a
+handoff for the next agent with the tooling, offsets, and capture hashes.
+
 Written 2026-08-12, a fresh read-only investigation into `docs/66`'s
 "washed out" defect, picking up exactly where the eleventh pass's own "What
 is still open" list left off (FUGC's dmin correction; the four unreplicated
@@ -12694,3 +12704,14434 @@ doc's own established convention. `docs/74-…md` itself is the only file
 this pass edited (this section). `TLB.dll` was not reached this pass —
 scoped out honestly rather than claimed and skipped, per the time this
 pass's own hand-tracing standard required for `PakonIMAu.dll` alone.
+
+## 57 — The `analyzePostBalance` shift leaf `0x101b76d0` read and verified
+bit-exact against the real DLL: `out_c = round((in_c − mean)·M_c +
+S1·S2 + dmin_c)` — a recentre/scale/offset, not a contrast stretch, and the
+first tier-1 (Unicorn) close of this doc's own "post balance shifts" stage
+
+§8's stage-by-stage trace labelled stage 4 "post balance shifts" without
+reading the code that produces them. §48 then showed `analyzePostBalance`
+(`0x100fdc40`) fires once per real frame and is the genuine, real
+`applyLut` caller upstream of every other apply stage — but did not read
+its shift arithmetic either. This section closes both: it reads the 282-byte
+leaf that actually computes the three int16 post-balance shifts, and checks
+its closed form bit-exact against the real DLL executed under Unicorn.
+The result is a recentre-and-rescale (mean-centred, per-channel-scaled,
+plus an offset) — which is why §8 saw the span preserved (785→785 R), not
+stretched: the leaf has no contrast/levels term, only a centering
+subtraction, a per-channel gain, and an additive offset.
+
+### 57.1 — The leaf, reached two ways, and the object it reads
+
+`fcn.101b76d0` (realsz 282, `0x101b76d0…0x101b77e7`) is a thiscall; `ecx`
+is the Impl. It has exactly two call sites, both real:
+
+1. `fcn.100f13a0` (`0x100f13c1`) — a 45-byte wrapper that does
+   `mov ecx, [ecx+0x10]` (dereferences the Cap to its Impl) then passes its
+   own four stack args straight through. Its callers are the path methods
+   (`AnsCpRestorePath/LockbeamPath/BalancePath/DcPremiumPath/ArchivePath
+   ::virtual_12`) and `analyzePostBalance` itself at `0x100fe7a1`.
+2. `fcn.101b7e90` (`0x101b80ad`) — the body of
+   `AnsColorAdjustCapability::virtual_24` (`0x100f1e90`, which also does
+   `mov ecx, [edi+0x10]` at `0x100f1ed7` before calling it).
+
+Both routes converge on the same object: the Impl is
+`AnsColorAdjustCapabilityImpl`, held at `AnsColorAdjustCapability + 0x10`
+(vtable `0x10597480` → `0x101b95f0`; `…Impl::analyze` string at
+`0x10597484`, body `fcn.101b9620`).
+
+### 57.2 — Field layout the leaf reads, and the closed form
+
+Impl offsets, each read-site cited from `af`+`pdf`:
+
+| offset | field | type | first read |
+|---|---|---|---|
+| `+0x0c/+0x10/+0x14` | `M` (scale, 3 ch) | float | `0x101b76f5` / `0x101b7744` / `0x101b7793` |
+| `+0x18` | `S1` | float | `0x101b76f8` |
+| `+0x1c/+0x20/+0x24` | `a,b,c` (densities) | float | `0x101b76d4` / `0x101b76e9` / `0x101b76ec` |
+| `+0x28` | `S2` | float | `0x101b76fb` |
+| `+0x2c/+0x2e/+0x30` | `dmin` (offset, 3 ch) | int16 | `0x101b76d7` / `0x101b7730` / `0x101b777f` |
+
+Per-channel (R shown; G/B are the same body with `b`,`c` and `+0x10`,`+0x14`):
+
+```
+(2a − b − c) / 3 · M_r  +  S1·S2  +  dmin_r   →  round → int16
+```
+
+The `(2a − b − c)/3` term is algebraically `a − mean(a,b,c)` — the compiler
+wrote the mean as `fld a; fadd st0,st0; fsub b; fsub c; fmul [1/3]`. The
+three constants were dumped from the image: `0x1059728c = 0.33333334f`,
+`0x10575674 = 0.0f` (the round-branch compare), `0x10574f40 = 0.5` (double,
+the ±0.5 before `_ftol2`). Rounding is `_ftol2` (`0x104ffe44`) after a ±0.5
+bias — round-half-away-from-zero, the same `pakon_fos.round_msvc_104ffe44`.
+The return value is `arg_ch` (a COM return object: the leaf copies the
+singleton `[0x106b5bd4]` into it and refcounts — boilerplate, not shift math).
+
+### 57.3 — Verification
+
+New golden `tools/ansel/python-pipeline/pakon_postbalance_golden.py`, same
+Unicorn harness shape as `pakon_setshifts_golden.py`: map the PE at
+`0x10000000`, build the Impl on the unicorn heap, enter `0x101b76d0`, stop
+at the `ret 0x10` (`0x101b77e7`), read the three OUT words. Eight cases
+(positive, negative, zero, sub-unit, ceiling, half-boundary) all match the
+Python closed form bit-exact — `dll=(501,701,601)` vs `py=(501,701,601)`,
+etc., including the sign-sensitive `(−0.001, +0.001, 0.0)` case that
+distinguishes round-half-away-from-zero from truncation. DLL MD5 re-checked
+`eea9dcf78ee21d4f7c515a6c2512242d` before running. No production, golden,
+or port file changed — `pakon_postbalance_golden.py` is additive.
+
+### 57.4 — Impl construction: `M` and `S1` are ctor args (defaults 25/25/25/75); `dens`/`S2`/`dmin` are zeroed
+
+The Impl's ctor is `fcn.101b9070` (its own `…Impl::AnsColorAdjustCapabilityImpl`
+error-string at `0x10597440`). It writes the fields in one straight line
+(disassembly, tier 3):
+
+```
+mov [esi],     0x10597480   ; Impl vtable
+mov [esi+0xc], ecx          ; M_r  ← ctor arg
+mov [esi+0x10], edx         ; M_g  ← ctor arg
+mov [esi+0x14], eax         ; M_b  ← ctor arg
+mov [esi+0x18], ecx         ; S1   ← ctor arg
+mov [esi+0x1c], edi         ; a = 0      (xor edi,edi earlier)
+mov [esi+0x20], edi         ; b = 0
+mov [esi+0x24], edi         ; c = 0
+mov [esi+0x28], edi         ; S2 = 0
+mov [esi+0x2c], di          ; dmin_r = 0
+mov [esi+0x2e], di          ; dmin_g = 0
+mov [esi+0x30], di          ; dmin_b = 0
+```
+
+So **only `M` and `S1` come in from outside; `dens`, `S2`, `dmin` are all
+zero at construction.** The single ctor caller is the Cap ctor
+`AnsColorAdjustCapability` (`fcn.100f1840`, vtable `0x10585d2c`), which
+applies a `-1.0`-sentinel default before forwarding: it `fucompp`s each
+arg against `0x10585e18 = -1.0` and substitutes `0x1059754c/50/54 = 25.0`
+and `0x10597558 = 75.0` (all four dumps from the image). Defaults are thus
+`M = (25, 25, 25)`, `S1 = 75`, so the leaf is `(in_c − mean)·25 + 75·S2 +
+dmin_c`.
+
+### 57.5 — Open: the `dens`/`S2`/`dmin` writer, and whether this is the FOS balance at all
+
+Two things remain unresolved, stated as such. **(1)** Neither the Impl's
+`analyze` (`fcn.101b9620`) nor its `export` (`fcn.101b7e90`, the leaf's
+second caller) writes `+0x1c…+0x30` — they only read them (the leaf) or
+copy the unrelated `+0x64…+0x70` getter quad via `0x101b7680`. So the
+writer of the non-zero `dens`/`S2`/`dmin` is still unlocated; the FOS→Impl
+copy, if it exists, has not been found. **(2)** The Cap's own vtable
+(`0x10585d2c`, seven slots) plus its `getButtonValues`/`acquire` strings and
+`AnsColorAdjustCapability.cpp` source name suggest this is the **user
+density/brightness adjust control**, not the automatic FOS scene balance —
+which would make the leaf a *separate* subsystem from the
+`SbaCalcFosResults` chain §57's hypothesis conflated. Both are flagged as
+hypothesis, not findings. The efficient next step is a live hook on
+`0x101b76d0` (or its Impl) to dump the five field values during a real scan
+and correlate against the already-ported `orderFpo`/`fosDmin` — static
+field-write search is swamped by STL `+0xc/+0x1c/+0x2c…` false positives.
+
+## 58 — The §57.5 live hook answered it the other way: `0x101b76d0` never
+fires on a real scan — the ColorAdjust density-adjust shift is dead on the
+live render path, and the balance that *does* run is SBA→`balanceAreaImage`
+→`applyLut`, not this leaf
+
+The §57.5 hook (v10, `color_adjust_shift` @ `0x101b76d0`, entry-only, with
+an `impl_fields` dump of the Impl's `+0xc…+0x30`) was built, cross-compiled
+(kernel32-only, XP 5.1 stamp, `check_table_sync.py` green at 29 hooks,
+selftest `ALL PASS`), versioned `hookdll_v10.dll`/`injector_v10.exe` (MD5
+`5d1c8a6fb3631c975264b6cc2e54183b` / `79cae493a1327b845190fd574b1298d1`),
+uploaded, and run on the real box — capture
+`live_hooks_20260816-112253.jsonl` (417 lines, MD5
+`67d332529db5e9d9da5cb4409a9cab26`).
+
+**Result: the hook installed cleanly and never fired once.** Install line is
+`"va_documented":"0x101b76d0","rt_address":"0x07eb76d0"` — base `0x07d00000`
++ RVA `0x1b76d0`, exactly right (cross-checked against every sibling hook's
+own `rt_address` in the same capture, e.g. `analyze_auto_tone` `0x07dfb730`
+= `0x07d00000 + 0xfb730`). `"22/22 enabled hook(s) installed after 0
+attempt(s)"`, no `hook_failed` lines, `color_adjust_shift` is present only in
+its one `hook_installed` line — **zero `enter`, zero `leave`, zero
+`impl_fields` `buffer_dump` events** across the whole capture. The other 21
+hooks all fired at their documented cadence, so this is not a dead harness:
+`cn_enhanced_driver` 6 (a real 6-frame scan), `analyze_auto_tone`/
+`balance_area_image`/`analyze_scp_lut_balance`/`analyze_falloff`/
+`analyze_attributes`/`analyze_area`/`fugc_analyze`/`fugc_set_lut_info`/
+`sba_set_shifts` 6 each, `sba_get_shifts` 18, `sba_preference` 12,
+`area_image_apply_lut` 18, `icc_*` 6 each, `tlb_polypixel` 19.
+
+**What this settles.** §57.5 asked which code writes the non-zero
+`dens`/`S2`/`dmin` and whether this is the FOS balance. The live answer is
+neither: the leaf is not reached at all on this scan, so the field-provenance
+question is moot for the live path — consistent with §57.4's ctor finding
+(dens/S2/dmin stay zero) *and* with the gate `analyzePostBalance` puts in
+front of it (`[cast_result+0xc]` byte test at `0x100fe6dd`; when clear the
+whole `fcn.100f13a0`→`0x101b76d0` block is skipped). The two callers of the
+leaf — `analyzePostBalance` via `fcn.100f13a0` and
+`AnsColorAdjustCapability::virtual_24` via `fcn.101b7e90` — never take it.
+`AnsColorAdjustCapability` is therefore confirmed (now by live absence, not
+just by its `getButtonValues`/`acquire` naming) to be an **off-by-default
+density/brightness user control**, not the automatic balance.
+
+**What still runs for balance, from this same capture:** the SBA path is
+live — `sba_preference` (12) → `sba_get_shifts` (18) → `sba_set_shifts` (6)
+→ `balance_area_image` (6, composing filmLut·scpLut·shift·fugc) →
+`area_image_apply_lut` (18). `sba_apply_balance_shifts` (`0x1019a0c0`) is
+also 0 fires (matches docs/74 §37.3's own "0/12 real fires"). So the
+standing ~88-89 sRGB offset is **not** in `0x101b76d0` — it is upstream of
+the leaf entirely, in the SBA/Preference shift values (`scene+0x3a38`) or
+the `balanceAreaImage` LUT compose, both of which this capture already
+logs and which remain the live leads, not the now-ruled-out density adjust.
+
+## 59 — The v10 balance LUTs decode to the vendor's real, per-frame balance:
+six different shift triples across six frames, each a pure `clamp(i+shift,
+0,4095)` ramp — while the port applies one fixed DPI-derived `setShifts`
+word to every frame. The docs/63 "FOS → orderFpo" gap, now with live data.
+
+The v10 capture's `area_image_apply_lut` `r_lut`/`g_lut`/`b_lut` dumps (18 of
+each, `EXTRA_DUMP_STACK_PTR` on the three LUT pointers) are the vendor's
+actual applied balance LUTs, decoded straight off the raw hex. They split
+cleanly in two:
+
+- **12 identity LUTs** — `out[i] == i` for `i=0..4095` (`nz=1, sat=4095`,
+  `identity=True`). These are the AREA-analysis-image applies (the private
+  copy docs/74 §46 left open), run with no balance at all.
+- **6 pure-ramp LUTs** — `out[i] == clamp(i + shift, 0, 4095)` exactly
+  (`vals[i] == i + vals[0]` through the whole ramp, then flat at 4095). One
+  per frame, and the shift is **different every frame**:
+
+  | frame | shift (R, G, B) |
+  |---|---|
+  | 1 | (683, 267, 1) |
+  | 2 | (813, 394, 155) |
+  | 3 | (863, 466, 195) |
+  | 4 | (989, 587, 325) |
+  | 5 | (591, 192, 0) |
+  | 6 | (779, 368, 125) |
+
+Frame 1's R (`683`) is exactly the `setShifts_out` R this doc's own §9 cites
+(`683`), and the ramp shape is byte-for-byte `pakon_sba_apply`'s
+`master[i+shift]` / `clamp(i+shift,0,4095)` — the apply leaf the port already
+has is the right one.
+
+**The discrepancy is upstream of the apply — but its source is not what a
+first read suggests, and §6 already refuted the obvious candidate.** The
+vendor recomputes the shift per frame (`sba_preference` 12× = 6 enter+leave,
+`sba_set_shifts` 6×, one per frame), so `scene+0x3a38` varies per frame. The
+port does not: `pakon_ansel.py:757-760` computes `preference_a =
+preference_shift_words(sba)` → `preference_shifts_from_dpi_fields(fpo, fpa,
+neutral_balance_point, …)` — **all DPI fields, zero frame content** — and
+applies that one fixed `setshifts_out = setshifts_12(A, A)` to every frame.
+The obvious attribution — "pass2 Preference takes per-frame FOS content
+(`orderFpo`/`fosDmin`)" — is **hypothesis, and §6 already refuted its closest
+form**: §6 checked whether `fpo` (the anchor the whole Preference chain reads)
+is derived per-scene and found it is populated once from the DPI `readAscii`
+*in the real DLL itself*, so the per-frame variation is **not** coming from
+`fpo`. What *does* make the applied shift vary per frame is therefore still
+**undetermined** — not asserted here to be FOS, Dmin, or exposure. This
+capture proves the per-frame step is real and non-constant (R spans 591→989
+across six frames) but does not identify its input. And it still does not
+explain the *uniform* ~88-89 offset: a per-frame variation cannot produce a
+constant shift. So this is a re-confirmation of the known
+`ANALYSE_ROLL_PORTED` gap plus one new data point (the concrete per-frame
+triples), **not** a root-cause lead — recorded for completeness, not pursued
+further here.
+
+**Not yet explained by this alone:** the standing ~88-89 offset is described
+as *uniform* across the roll, whereas this gap is a per-frame variation —
+so it does not on its own produce a constant offset. Two live leads remain
+to close it: (1) the exact per-frame `scene+0x3a38` values (still need a
+dump — the entry register/stack dumps record the fpo inputs `879/1250/1386`
+and intermediate `680/975/1010` words but not the final `+0x3a38` store), and
+(2) the inversion `ROM12 → RPD12` (task B), for which this same capture's
+`tlb_polypixel`/`poly_input_r` + `area_image_apply_lut`/`pixel_data` pair is
+the fit data. Both are the next live leads, not closed here.
+
+## 60 — The inversion is not where the port put it: `area_image_apply_lut`'s
+input — the buffer this port calls "RPD12", the post-inversion density — is
+**bit-for-bit the linear PolyPixel output**, 180° rotated. There is no
+log/density step between the polynomial and the balance.
+
+Task B's own fit data answers it in a way none of the prior searches found:
+the vendor does not log-invert between PolyPixel and the balance. With the
+v12→v14 full-frame dump fixes (v12 `0x90000` failed IsBadReadPtr on every
+row — the inter-buffer stride exceeds the committed region; v13 `0x84000` =
+page-rounded 245×367×3×2 = 539490→540672 fixed `poly_input_r` but not
+`pixel_data`; v14 `0x80000` for `pixel_data` fixed it), the capture
+`live_hooks_20260816-180542.jsonl` carries a full planar raw frame
+(`poly_input_r`, 245×367 R+G+B) and the RPD12 (`pixel_data`, interleaved
+RGB).
+
+**Result (tier 2 — live hardware, bit-exact):** for every leader segment,
+after a clean 180° rotation — raw `(i,j)` ↔ RPD12 `(366−i, 244−j)`, the
+scanner's bottom-up read plus the image's own orientation, with the
+`+11`-row offset being only the dump truncation of the last ~10 rows —
+`RPD12[i,j] == ROM12[i,j]` exactly, where `ROM12 = PolyPixel(raw)` computed
+with this port's already-Unicorn-verified `pakon_color.poly_pixel` (which
+`_ftol`-truncates to int, matching the int16 store). Three segments × 356×245
+pixels × R,G,B: `max|diff| == 0`, `corr == 1.0000` on every channel. The
+ranges are identical (e.g. seg-0 R `300..1868` both) — a log transform would
+produce a *different* range, not the same one.
+
+**What this settles.** §59's "inversion ROM12 → RPD12" lead is closed: the
+"RPD12" the balance sees is the **linear** poly output, so the port's
+`f135_rom12_to_rpd12` (the `fpo + 1000·log10(base−c9) − 1000·log10(lin−c9)`
+log, `F135_INVERT_PORTED=False`, docs/63) is **misplaced** — it runs *before*
+`apply_balance_shifts`, but the vendor applies the balance ramp to the
+*linear* domain and only then reaches density. This is exactly consistent
+with docs/58 §3.5's "no density LUT between the polynomial and Ansel" —
+`area_image_apply_lut` is pre-Ansel, so no LUT/log between poly and it.
+The log inversion, if it is a single step at all, lives **downstream of the
+balance** (inside the `analyzeAutoTone` chain the port's `real_auto_tone`
+already wraps), not between poly and balance.
+
+**Why this is a root-cause lead for the ~88-89 offset, stated as a lead not
+a fix.** Balance-then-log and log-then-balance are different transforms
+(a shift commutes with nothing nonlinear): the vendor shifts the *linear*
+ROM12 and the port shifts the *log* RPD12. Swapping that order (or, more
+precisely, the port's extra early log) is a concrete, previously-unverified
+structural difference on exactly the stage §8 flagged. Not yet proven to
+produce the exact ~88-89 number — that needs the port's render re-ordered
+(log-after-balance) and re-diffed — but it is the first live, bit-exact
+evidence that the port's inversion placement is wrong, not merely
+"unverified".
+
+## 61 — The re-order is applied: the balance shift now runs in the LINEAR
+domain before the log, matching the vendor (docs/74 §60), and the old
+density-domain `apply_balance_shifts` pass is removed
+
+Concrete code changes, all scoped to the balance/inversion boundary:
+
+- `pakon_decode.f135_rom12_to_rpd12` now applies `lin' = clamp(lin +
+  setShifts, 0, 4095)` **before** `dens = 1000·(log10(base−c9) −
+  log10(lin'−c9))`. `setshifts=None` still skips it (caller already
+  balanced). Docstring updated: `rpd12 = fpo + 1000·(log10(filmBase−c9) −
+  log10(clamp(lin+setShifts,0,4095) − c9))`.
+- `pakon_ansel.AnselEngine.render_scene` no longer calls
+  `apply_balance_shifts` on the density — `scene_rpd12` already delivers
+  the balanced density, so re-shifting would double the balance. `balanced`
+  is now `x` (the already-balanced input).
+- `pakon_parity.py` drops its now-redundant `apply_balance_shifts` pass
+  (same double-shift reason); `taps["balance"]` == `taps["inv"]`.
+
+**Magnitude, worked on the shipped defaults** (fpo=879, c9≈159.59,
+base≈2500, lin=800, shift=683): old = `fpo + 1000·log10((base−c9)/(lin−c9))
++ 683` ≈ 2125; new = `fpo + 1000·log10((base−c9)/((lin+683)−c9))` ≈ 1127.
+The full 683 shift no longer lands in the density whole — the log compresses
+it — which is the concrete mechanism by which the old order over-brightened
+the render. This is a large change on the exact stage §8 flagged, and it is
+the first render-path change backed by live bit-exact evidence (§60) rather
+than a curve fit.
+
+**Not yet closed.** (1) The exact log formula/scale is still the port's
+unverified `1000·log10` — §60 proved only its *position*, not its
+coefficients; the `~88-89` number is not claimed closed until the port is
+re-rendered against a real vendor reference and re-diffed. (2) `test_render_f135.py`
+and `test_calib.py` pass after the change; the `pakon_gate.py selftest`
+"reconstruction is biased" failure is a pre-existing gain/flat-field
+reconstruction issue, unrelated to this change and left untouched.
+
+## 62 — The per-frame balance source recovered: inverting the golden
+`setshifts_12` against the live OUT gives the actual per-frame `+0x3a38`
+shift words, and they vary — the fixed DPI Preference value is not what the
+vendor applies
+
+§61 fixed the *order* (balance on linear, before the log). It did not fix
+the *value*. §59 already showed the applied OUT varies per frame; this
+section closes the loop by recovering the actual per-frame `+0x3a38`
+Preference words the OUT was built from, and traces the Preference mode
+switch that would have produced them.
+
+### 62.1 — Recovered `+0x3a38` per frame (invert `setshifts_12` on the live OUT)
+
+`setshifts_12` is Unicorn-golden, and the applied balance ramp **is** the
+setShifts OUT (`balanceAreaImage` reads `[scene+0x4b6]` and builds
+`clamp(i+shift,0,4095)` via `0x1006c4f0`). Inverting `setshifts_12` against
+the six live OUT ramps (v14 `live_hooks_20260816-180542.jsonl`, R/G/B from
+the three LUTs) recovers the `+0x3a38` words, round-trip-verified bit-exact
+(`setshifts_12(A,A) == OUT` on every frame):
+
+| frame | OUT (live ramp) | `+0x3a38` (A) recovered |
+|---|---|---|
+| 1 | (706, 290, 24) | (769, 354, 88) |
+| 2 | (816, 398, 160) | (864, 447, 208) |
+| 3 | (863, 467, 197) | (905, 509, 239) |
+| 4 | (993, 592, 331) | (1020, 619, 358) |
+| 6 | (779, 370, 129) | (831, 421, 181) |
+
+The port's fixed DPI value is `A ≈ (740, 354, 208)` (inverting its own
+`setshifts_out = (683,297,151)`). So `+0x3a38` moves per frame by up to
+~+280 on R, ~+265 on G, ~+150 on B — the "not enough red" cast: the port
+holds R at ~740 while frames 2-4 need 864/905/1020.
+
+### 62.2 — The Preference mode switch that would read the FOS
+
+`Preference` (`0x1028c780`) selects its U/V aims on the high nibble of
+`scene+0x5074` (arg5):
+
+| `hi` | aimU/aimV source |
+|---|---|
+| `0x10` | `opening.u/v` (dU=dV=0) |
+| `0x20` | `neu` opponent |
+| `0x30` | **`arg1_2` / `arg1_4` = FOS `orderFpo` `+2/+4`** |
+| `0x40` | `lo42`/`hi44` |
+| else (`0`) | `fpo[1]`/`fpo[2]` (DPI) |
+
+The FOS results arrive as `arg2`, fetched by `0x1013c4e0 → 0x1023fc70`
+(`[cap+0x14]` = the FOS Impl's `SbaFOSResults`). The caller `fcn.102159c0`
+has a `bl` gate: `bl==0` forces `hi=0x10` at `0x10216356`; `bl!=0` uses the
+real `hi`. The port already has the skeleton for this — `pakon_sba_preference.
+preference_shifts_hiNN(..., hi, lo, arg1_2, arg1_4)` calls `preference_aim_uv`,
+which maps `hi=0x30` to `(arg1_2, arg1_4)` — but the render path calls
+`preference_shift_words` → `preference_shifts_from_dpi_fields` (mode `0x11`,
+DPI-only) and nothing feeds `orderFpo` into those slots.
+
+### 62.3 — The contradiction left open (flagged, not resolved)
+
+The v14 `sba_preference` hook shows **all 12 Preference calls with
+`arg2`(FOS)=0 and `arg5`(mode)=0x00** — so the live Preference runs the
+`hi=0`/`lo=0` DPI-default path, which `preference_aim_uv` maps to constant
+`fpo[1]/fpo[2]`. A constant `+0x3a38` through the fixed `setshifts_12` cannot
+produce the recovered per-frame A. Two candidate resolutions, both open:
+
+1. a **second, per-frame writer** of `+0x3a38` (or of `scene+0x4b6`) after
+   Preference runs — the "no alternate `+0x3a38` writer" unknown from
+   `pakon_analyse_roll.py` — which would be the real FOS→balance step; or
+2. the FOS `orderFpo` is written into the scene's preference area
+   (`scene+0x38a2+2/+4`, the `hi=0`/`hi=0x30` U/V-aim fields) per frame, so
+   the DPI-default path reads per-frame values after all.
+
+`setShifts` (`0x10100260`) was ruled out as the source: it calls `getShifts`
+twice (A≡B) plus the SCPLut getter `0x10122a70`, no FOS input, so `OUT` is a
+fixed function of `+0x3a38` alone. The decisive next trace is the
+`+0x3a38`/`scene+0x38a2` writer; the fix itself is already shape-known: feed
+the per-frame FOS `orderFpo` G/B into `preference_shifts_hiNN(hi=0x30, ...)`
+in place of the fixed DPI value.
+
+**Resolved (tier 3, static):** the per-frame writer is an
+`AnsSbaCapabilityImpl` method (source `AnsSbaCapabilityImpl.cpp`, body around
+`0x102192xx`) that finds the FOS capability (`"Can't find fos capability"` @
+`0x1058be00`) and calls the FOS calc `0x1028b8d0` with `scene+0x38a2` (the
+preference data the Preference's `hi=0`/`hi=0x30` U/V-aim fields live in) plus
+the FOS frame inputs (`scene+0x1a` dens, `+0x290c` dmin, `+0x388c`/`+0x3bc8`
+C banks, `+0x5978`). So the FOS `orderFpo` is written *into* `scene+0x38a2`
+per frame, and the live `hi=0` Preference then reads per-frame values — the
+constant write the hook captured was the *pre-FOS* DPI value, overwritten by
+the FOS step before the balance reads it. The port equivalent is exactly
+§62.4's `fos_analyze_roll` → `preference_shifts_hiNN(hi=0x30, lo=3)`.
+
+### 62.4 — Fix shape + the exact mode (hi=0x30, lo=3) and the live timeline
+
+The port already contains the whole per-frame skeleton, just unwired:
+
+- `pakon_fos.fos_analyze_roll` → per-frame `orderFpo` (3×i16 in *opponent*
+  Y/C1/C2, not RGB — `orderFpo = opening_axes(fpo) + Δ`).
+- `preference_shifts_hiNN(fpo, fpa, hi, lo, arg1_0, arg1_2, arg1_4)` →
+  `preference_aim_uv` maps `hi=0x30` to `(arg1_2, arg1_4)` = FOS `orderFpo`
+  `+2/+4` (C1/C2), and `preference_aim_y` maps `lo=3` to `arg1_0` = FOS
+  `orderFpo` `+0` (Y). So the full per-frame word is
+  `hi=0x30, lo=3` with `arg1_0/arg1_2/arg1_4 ← orderFpo[Y/C1/C2]`.
+
+The live timeline (v14) is: per frame, in a batch *before* the frames —
+`sba_preference` (pass2) → `sba_set_shifts` → `sba_get_shifts`×2 — then the
+frame runs `cn_enhanced_driver` → `area_image_apply_lut` (balance). The
+recovered A's per-frame movement is both luma (R,G move together, up to +280)
+and chroma (B moves ~−120…+150), which is exactly the full `orderFpo` (Y+C1+C2)
+— consistent with `hi=0x30, lo=3`, not just the G/B-only `hi=0x30`. The open
+question stays §62.3's: *which* step writes the per-frame `orderFpo` into the
+scene, since the live Preference reads `FOS=null`. v15 adds a `getShifts`
+`+0x3a38` dump to read the per-frame words directly (built; upload blocked on
+the drop server being down).
+
+### 62.5 — v15 confirms `+0x3a38` is per-frame, and reveals the balance ramp is
+`setshifts_12(+0x3a38) + a per-frame uniform offset`
+
+`getShifts` dump (v15 `live_hooks_20260816-185402.jsonl`) reads `+0x3a38`
+directly, 3× per frame (identical), per frame:
+
+| frame | `+0x3a38` | balance ramp OUT | `setshifts_12(A)` | Δ (uniform) |
+|---|---|---|---|---|
+| 1 | (730, 314, 47) | (684, 267, 0) | (661, 244, −23) | +23 |
+| 2 | (776, 355, 118) | (811, 390, 153) | (715, 294, 57) | +96 |
+| 3 | (847, 451, 177) | (856, 460, 186) | (796, 400, 126) | +60 |
+| 4 | (953, 553, 290) | (988, 587, 324) | (919, 518, 255) | +69 |
+| 5 | (645, 245, 8) | (577, 177, −59) | (564, 164, −72) | +13 |
+| 6 | (759, 349, 105) | (778, 367, 124) | (697, 286, 43) | +81 |
+
+Two things settle at once. **First**, `+0x3a38` is per-frame — the direct dump
+confirms the §62 inversion direction, so the port's fixed DPI value is wrong.
+**Second**, the applied ramp is *not* `setshifts_12(A)` alone: there is a
+per-frame **uniform** offset Δ (same on R/G/B, but different per frame:
+`+23/+96/+60/+69/+13/+81`) added between the setShifts OUT and the balance
+ramp. This is the `filmLut·scpLut·shift·fugc` compose (docs/74 §46) not being
+identity — but the balance LUT is a **pure ramp** (`clamp(i + shift, 0, 4095)`,
+checked across all 4096 entries: `r[i] == clamp(i + 684, 0, 4095)`, no scpLut
+nonlinearity), and the ramp shift is `scene+0x4b6` = the setShifts OUT. So the
+Δ is added **inside `setShifts` (`0x10100260`)**, between its `getShifts` read
+and the OUT write — the applied shift is `setshifts_12(A) + Δ`, where Δ is a
+per-frame **uniform (luma-only) offset**, not a per-channel scpLut offset
+(the uniformity rules out a LUT difference). §62's inversion therefore folded
+the Δ into the recovered A — the dump now separates them.
+
+**Net fix shape, revised:** the per-frame balance is two terms — (1) the
+Preference `+0x3a38` from FOS `orderFpo` (§62.4), and (2) a per-frame uniform
+luma Δ added in `setShifts`. Both are per-frame; the port has term (1)
+shape-known (`preference_shifts_hiNN(hi=0x30,lo=3,orderFpo)` → `setshifts_12`)
+and term (2) is the `setShifts` extra step (its `0x101d0200`/`0x100d21d0`
+calls, both `_AnselApplyFugcAnalysis_`-adjacent) still to trace.
+
+## 63 — v16 dump resolves term (1) of §62.5's fix: `orderFpo` (scene+0x38a2) is per-frame and the fpo is DPI-constant, and the Δ is confirmed a *post-combine* uniform luma offset
+
+v16 (`live_hooks_20260816-191735.jsonl`, md5 `6f889256d335b968a84140eff50ee48b`)
+added two `sba_preference` dumps — `pref_data` (arg1 = `scene+0x38a2`, 0x64 B)
+and `blob` (arg4 = nested-fpo struct, 0x48 B) — on top of v15's `getShifts`
+`+0x3a38` dump. Two questions settled, one contradicted.
+
+### 63.1 — `scene+0x38a2` is the FOS `orderFpo`, per-frame; the fpo is DPI-static
+
+`pref_data[0..2]` (the words the Preference's `hi=0x30`/`lo=3` aim paths read
+as `arg1_0`/`arg1_2`/`arg1_4`) is per-frame, in opponent (Y,U,V):
+
+| frame | `orderFpo` (Y,U,V) | `orderFpo` → RGB (preference inverse) |
+|---|---|---|
+| 1 | (2133, 58, 465) | (879, 1279, 1537) |
+| 2 | (2037, 70, 448) | (831, 1233, 1464) |
+| 3 | (1917, 47, 456) | (761, 1163, 1388) |
+| 4 | (1737, 54, 452) | (657, 1047, 1244) |
+| 5 | (2225, 63, 431) | (932, 1353, 1621) |
+| 6 | (2072, 66, 445) | (855, 1267, 1504) |
+
+The `blob` is **constant** across all six frames — `fpo=(879,1250,1386)`,
+`fpa=(-70,-55,-45)`, `neu=(975,975,975)`, `neo=(1010,1010,1010)`,
+`lim46=2685` (blob+0x46), `lo42=-2080` (blob+0x42), `hi44=2080` (blob+0x44)
+— matching the shipped DPI defaults verbatim (`pakon_ansel.SbaParams`). Two
+blob words (`blob[22]`, `blob[23]`) are per-frame (FOS residuals, not yet
+semantically identified). So the FOS writes the per-frame balance point into
+`scene+0x38a2`, and the fpo it's aimed *against* is the DPI static value —
+confirming §62.4's mode (`hi=0x30`, `lo=3` reads `arg1_0/2/4` = orderFpo).
+
+### 63.2 — Δ is a post-combine uniform luma offset, bit-exact (not in A, not in the LUT)
+
+Recomputing §62.5's table with the golden `setshifts_12(A,A)` (equalRGB
+`luts6_postROMM_equalRGBshort.lut`) on v16's own numbers:
+
+| frame | A (`+0x3a38`) | OUT (ramp) | `setshifts_12(A,A)` | Δ = OUT − ss |
+|---|---|---|---|---|
+| 1 | (740, 325, 59) | (701, 285, 19) | (672, 256, −10) | (29,29,29) |
+| 2 | (789, 371, 131) | (821, 402, 163) | (731, 312, 73) | (90,90,90) |
+| 3 | (853, 457, 184) | (874, 479, 206) | (803, 408, 135) | (71,71,71) |
+| 4 | (954, 553, 291) | (985, 583, 321) | (919, 517, 255) | (66,66,66) |
+| 5 | (665, 267, 31) | (603, 205, −31) | (589, 191, −45) | (14,14,14) |
+| 6 | (765, 354, 112) | (779, 368, 125) | (702, 291, 48) | (77,77,77) |
+
+`OUT == setshifts_12(A,A) + Δ` exactly, and Δ is **uniform on R/G/B** per
+frame. The decisive discriminator: `setshifts_12(A+Δ, A+Δ)` does **not**
+reproduce OUT (off by a few codes), while `setshifts_12(A,A)+Δ` is exact —
+so Δ is added **after** the `(1,2)` combine, not folded into A, and it is a
+pure luma term (uniform code offset ⇔ chroma-preserving in opponent space;
+`OUT`'s opponent C1/C2 equal A's C1/C2 to ±1 LSB). The `(1,2)` combine at
+`0x10100a37…0x101010ac` is golden-verified as `setshifts_12` (no Δ), and the
+code after `STOP_OUT 0x101010ac` to `ret 0x1010117f` is only COM refcount +
+`0x100d21d0` ctor — so Δ is added by the **caller** of `setShifts`, not inside
+the golden fragment. `setShifts` has three call sites: `0x10058bcf`,
+`0x1006b74f`, `0x10101f89`; the live one is `0x10101f89` (inside `0x10101xxx`),
+whose post-call tail (eax → `0x10001580`) was read but does not obviously add Δ.
+
+### 63.3 — One new structural relationship (orderFpo + shift ≈ pivot)
+
+`orderFpo_Y + A_y ≈ 2780` (2782/2782/2780/2775/2781/2783) — the per-frame
+shift and the per-frame balance point are complementary in opponent luma.
+Not yet reduced to a clean formula; recorded for the next pass.
+
+## 64 — v17 resolves term (1) completely: `+0x3a38` IS the Preference's own OUT, reproduced bit-exact
+
+v17 (`live_hooks_20260816-193632.jsonl`, md5 `a92a7bbd9e514f37e5a2325a30c53996`)
+added one `getShifts` dump — `pref_out_3a30` (`*(ecx+0x10)+0x3a30`, 6 B) —
+capturing the Preference's *other* output next to the `+0x3a38` getShifts
+reads. The Preference (`0x1028c780`) writes **two** triples: `inv(s', −U, −V)`
+(the "final shift", `0x1028cce7` loop) and `inv(t', +U, +V)` (the "out+2",
+`0x1028ccc0` loop), where `s' = clamp(lim46 − (Y−w1e), lo, hi)` and
+`t' = lim46 − s'`. The dump shows `+0x3a30 = 0`, `+0x3a32/+0x3a34` = the
+out+2 R/G, and `+0x3a38/+0x3a3a/+0x3a3c` = the **final shift** — which is
+exactly the `+0x3a38` that `getShifts` reads as A.
+
+So A is **not** a separate FOS result: it is the Preference's own output.
+Running the already-ported `preference_shifts_hiNN(hi=0x30, lo=3)` against
+v17's `orderFpo` with the DPI blob fields reproduces A **bit-exact on all
+five frames**, once one parameter is correct:
+
+```
+non_flash_adj = 1000   # the one term prior passes left at 0; = blob[24]/[25] = 1000 = 100%
+```
+
+| frame | `orderFpo` (Y,U,V) | A (`+0x3a38`) | port `preference_shifts_hiNN` |
+|---|---|---|---|
+| 1 | (2046, 70, 447) | (783, 366, 127) | (783, 366, 127) ✓ |
+| 2 | (1913, 47, 454) | (854, 459, 187) | (854, 459, 187) ✓ |
+| 3 | (1726, 53, 451) | (959, 560, 297) | (959, 560, 297) ✓ |
+| 4 | (2226, 64, 431) | (665, 266, 31) | (665, 266, 31) ✓ |
+| 5 | (2055, 65, 445) | (775, 365, 121) | (775, 365, 121) ✓ |
+
+With `non_flash_adj=0` the port yields (731,345,199) for frame 1 — the chroma
+aims are *scaled* by `non_flash_adj·0.001`, so 0 disabled the UV-aim term and
+made prior passes' Preference outputs diverge from the live A. This closes
+§62.4's open term (1) end-to-end: FOS `orderFpo` → `preference_shifts_hiNN
+(hi=0x30, lo=3, non_flash_adj=1000)` → `+0x3a38`, all bit-exact. `non_flash_adj`
+is matched by parameter search against the live A (5/5 bit-exact), not yet
+traced to its read site in the disassembly — flag that tier honestly.
+
+### 64.1 — The scale field is `cmm` (blob+0x30), Unicorn-verified, not `nonFlashAdj`
+
+§64 called the scale `non_flash_adj=1000` on a parameter-search match. That
+is now traced and Unicorn-pinned (tier 1). The Preference reads the scale at
+`0x1028caa7` (`movsx eax, [ebx+0x30]`) — `ebx` = arg4 = the blob (set at
+`0x1028ca47 mov ebx,[ebp+0x14]`) — then `fimul dword [0x105a0800]` (×0.001).
+The blob fill `0x10214f20` maps `blob+0x30 ← scene+0x4d1c` (`mov cx,[esi+0x4d1c]
+; mov [edi+0x30],cx`), and `scene+0x4d1c` is the dpi field **`cmm`**
+(`sba-CN-default.dpi` line 17: `cmm = 1000`; `fog` is the neighbour at
+`+0x4d1e`→`blob+0x32`). So the chroma-aim scale is `cmm·0.001`, and
+`nonFlashAdj` (`+0x4d1a`→`blob+0x12`… `blob[18]=25`) is a *different* field
+that the Preference does not read here. Added three `hi=0x30,lo=3` cases to
+`pakon_preference_golden.py` sweeping `non_flash_adj`(=cmm) over `0/500/1000`
+— all bit-exact vs the DLL (dll/py `(1038,652,506)`, `(877,651,669)`,
+`(716,649,832)`). Value live: `blob[24]=1000`, so the live chroma aim is at
+full strength — the prior passes' `0` disabled it.
+
+### 64.2 — What remains: only Δ (term 2)
+
+With A now closed-form, the applied balance is `setshifts_12(A,A) + Δ` where
+Δ (v17) = `+95/+63/+65/+29/+73` uniform. Δ is the `setShifts`/caller post-
+combine luma offset (§63.2); everything else in the per-frame balance chain
+is now reproduced. The open Δ is the *sole* remaining unknown for the
+per-frame balance. Candidate next steps: (1) trace the `0x10101xxx` caller's
+post-`setShifts` tail and the other two `setShifts` call sites (`0x10058bcf`,
+`0x1006b74f`) for the uniform add; (2) dump `scene+0x4b6` and the caller's OUT
+buffer (`arg5 = [esp+0x20]−4`, the "accumulation buffer at [ptr−4]/[ptr−2]/[ptr]"
+from §62) at `balance_area_image` entry to see the raw pre-LUT OUT; (3) test
+whether Δ is `out+2`-derived — the "out+2" (`inv(t', +U, +V)`, dumped as
+`+0x3a32/+0x3a34/+0x3a36`) is the lim46-complement of the final shift and is
+the only other per-frame luma term the Preference produces.
+
+## 65 — Handoff: how this pass found things, and the tooling to continue
+
+For the next agent. Everything here is against real captured hardware data
+(tier 2) + the Unicorn-golden fragments already in-tree (tier 1); no formula
+in §63–64 is "looks right", every table row is bit-exact against a dump.
+
+* **Dumps come from `tools/re/live_hooks/win_inject/`.** `g_extraDumps[]` in
+  `hookcore_real_table.c` is the dump spec list. `EXTRA_DUMP_THIS_DEREF_OFFSET
+  {this_off, deref_off, nbytes}` reads `*(ecx+this_off)+deref_off` — used for
+  `+0x3a38`, `+0x3a30` (offset 0x10 → Impl, then +0x3a38/+0x3a30).
+  `EXTRA_DUMP_STACK_PTR {stack_idx, off, nbytes}` reads `*sp[stack_idx]+off` —
+  used for `sba_preference` arg1 (pref_data) and arg3 (blob). `build.sh`
+  must show "only KERNEL32.dll", XP 5.1 stamp, and `selftest ALL PASS`;
+  `check_table_sync.py` keeps `hookcore_real_table.c` ⇄ `agent.js` hook lists
+  in sync (29 hooks).
+* **The capture decode loop** (repeatedly the fastest path to a finding):
+  (1) dump a buffer live, (2) decode it against the known structures, (3)
+  diff against the port's own output for the same input. The balance LUT is a
+  pure ramp `clamp(i+shift,0,4095)` — recover `shift` by scanning for the s
+  that satisfies `lut[i]==min(max(i+s,0),4095)` over i∈[400,3400) (this is
+  how every OUT in §62–64 was recovered from `area_image_apply_lut` r/g/b).
+* **Live captures in `/tmp/pakon_re/`** (not committed, per repo rule):
+  v14 `live_hooks_20260816-180542.jsonl`, v15 `…-185402.jsonl`, v16
+  `…-191735.jsonl` (md5 `6f8892…ee48b`), v17 `…-193632.jsonl` (md5 `a92a7b…
+  0c53996`). Hook DLLs: v16 `f30d880d…a74de`, v17 `85094067…613bf` (uploaded
+  to the drop server `http://192.168.86.67:8000/`, intermittently up).
+* **Key offsets in the scene object (= `*(AnsSbaCapability+0x10)` = Impl):**
+  `+0x38a2` = FOS `orderFpo` (Preference arg1), `+0x3a30/+0x3a32` = Preference
+  "out+2", `+0x3a38` = Preference "final shift" = the shift `getShifts` reads,
+  `+0x4b6` = `setShifts` OUT (read by `balanceAreaImage`), `+0x4d0e` = nested
+  fpo. `getShifts` `0x10124000` reads `*(this+0x10)+0x3a38` (only `0x3a38`
+  immediate in the whole DLL). `setShifts` `0x10100260`; its golden `(1,2)`
+  fragment is `0x10100a37…0x101010ac`; call sites `0x10058bcf`, `0x1006b74f`,
+  `0x10101f89`. Preference `0x1028c780`; two OUT loops `0x1028ccc0` (out+2)
+  and `0x1028cce7` (final shift).
+* **The pipeline shape (now fully reproduced except Δ):** per-frame
+  `orderFpo` → `preference_shifts_hiNN(hi=0x30,lo=3,non_flash_adj=1000)` →
+  `A=+0x3a38` → `setshifts_12(A,A)` → `+Δ` → balance ramp
+  `clamp(i+shift,0,4095)`. The port currently uses the DPI-static mode
+  (`preference_shifts_from_dpi_fields`, mode 0x11, `non_flash_adj=0`) and no
+  per-frame orderFpo and no Δ — that is the gap to close.
+
+## 66 — The per-frame `orderFpo` writer is a *different* function from the ported FOS — `0x1028b8d0`, not `SbaCalcFosResults`
+
+§62.3 named `0x1028b8d0` the per-frame `scene+0x38a2` writer and §62.4
+claimed "the port equivalent is `fos_analyze_roll`". That equivalence is now
+checked and does **not** hold structurally — the ported FOS is the wrong
+entry point for the per-frame orderFpo, pending a Unicorn/live comparison.
+
+* `0x1028b8d0` — the function the `AnsSbaCapabilityImpl` methods call **5×
+  per frame** (`0x10215d6a/15fae/1605b/1937b/196a9`). It spans
+  `0x1028b8d0…0x1028c45d` (~0xba0 bytes), takes **13** cdecl args
+  (`add esp,0x34`), and calls **8 helper subroutines** — `0x1028abf0`,
+  `0x1028ae00`, `0x1028b570`, `0x1028b650`, `0x1028b6e0`, `0x102ac310`,
+  `0x102ae9d0`, `0x102aece0`(×3) — plus two inline 3-band LUT lookups at
+  `0x1028c480` (planar, `[ecx+4/8/0xc][eax]` → 3×i16) and `0x1028c4b0`
+  (interleaved, `[ecx+4][eax*3+k]` → 3×i16). Its body carries the FOS
+  opponent transform at high multiplicity (9 `MAGIC_Y` / 7 `MAGIC_C1` / 6
+  `MAGIC_C2` / 11 `RGB_SCALE` sites vs `0x1028f570`'s 2/2/2/6).
+* `SbaCalcFosResults @ 0x1028f570` — the ported FOS calc (`fos_calc_results`
+  / `fos_analyze_roll`), **10** args, sole `E8` from `AnsFosCapabilityImpl::
+  analyze` (`0x1024087c`). Its golden leaves live at `0x1028f250…0x10290332`.
+* **No overlap**: `0x1028b8d0` calls none of the ported leaves, and no ported
+  leaf sits in `0x1028b8d0`'s helper range `0x1028abxx…0x102aexx`. The two are
+  separate code paths.
+
+So §62.4's wiring recipe (`fos_analyze_roll → preference`) is **not yet
+earned**: it assumes the roll-wide `SbaCalcFosResults` orderFpo equals the
+per-frame `0x1028b8d0` orderFpo, which the argument-count and helper-set
+differences contradict. The gate before any wiring is one of:
+
+1. Unicorn-execute `0x1028b8d0` on a synthetic frame and diff its OUT against
+   `fos_analyze_roll`'s orderFpo for the same inputs; or
+2. live-capture (v18) the FOS inputs (dens `scene+0x1a`, C banks
+   `+0x388c/+0x3bc8`, dmin `+0x290c`, the `+0x38a0/+0x5978` words, and the
+   `dc_*` params) alongside `scene+0x38a2`, then run `fos_analyze_roll`
+   offline and diff.
+
+Either way it is a verification step, not an assumption — do not wire the
+per-frame orderFpo until one of these is bit-exact.
+
+## 67 — Contradiction to resolve before wiring: the live Preference runs with mode=0, but A is only reproduced by hi=0x30/lo=3
+
+§64's bit-exact match (`A = preference_shifts_hiNN(hi=0x30, lo=3, cmm=1000,
+orderFpo)`) is real — re-verified 5/5 — but the v17 capture shows the
+Preference's `arg5`(mode) = 0 on **all 10 calls** (leader and analysis pass),
+and mode=0 gives a different output. Both computed for v17 frame 0
+(orderFpo Y=2046, U=70, V=447, cmm=1000):
+
+* `hi=0x30, lo=3` (aim_y=arg1_0=Y, aim_uv=arg1_2/arg1_4=U/V) → `(783,366,127)` = A.
+* `hi=0x00, lo=0` (aim_y=param0, aim_uv=fpo[1]/fpo[2]) → `(1929,-596,-55)` ≠ A.
+
+The arg layout itself was re-derived from the **verified** golden harness
+frame (`ret, param, arg1, out, blob, mode`) and the DLL's reads:
+`[ebp+8]=param`, `[ebp+0xc]=arg1` (null-checked, read `+0/+2/+4` by
+`lo=3`/`hi=0x30`), `[ebp+0x10]=out`, `[ebp+0x14]=blob`, `[ebp+0x18]=mode`.
+The live call `0x10216444` pushes `ebx=scene+0x38a2` first (→ the *param*
+slot, so `param0 = scene+0x38a2[0] = orderFpo Y`) and `edi = 0x1013c4e0`
+(→ the *arg1* slot; `0x1013c4e0` fetches the FOS results and returns NULL
+live, hence arg2=0). So with mode=0 the Preference reads per-frame luma via
+`param0`=orderFpo-Y but constant chroma via `fpo[1]/fpo[2]` — which cannot
+produce A's per-frame chroma.
+
+Mode-setting path (`AnsSbaCapabilityImpl` body, `0x102160a7…0x10216413`) is
+multi-stage — `0x102160a7` sets mode=eax∈{1,3,4}, `0x1021610d` sets 1|di,
+`0x102161a8/bb/c9` ORs `0x20/0x30/0x40` off `[ebp-0x2c]`∈{2,3,4}, `0x10216345`
+forces `hi=0x10` when `bl==0`, `0x10216407` ORs the lo nibble — so `0x33` is
+reachable, but the captured arg5 is 0. Two open resolutions, both unproven:
+
+1. the live mode really is `0x33` and the `arg5`=0 capture is a hook/timing
+   artifact (needs a `[esi+0x5074]` dump at the call), or
+2. `+0x3a38` is written *after* the mode=0 Preference by a second per-frame
+   writer, and §64's match is a coincidence of the Y-aim (param0 ≡ orderFpo-Y
+   ≡ arg1_0) that does not extend to chroma.
+
+Either way, §64's "A = Preference OUT" is **not safe to wire** as stated until
+one is disproved. Do not build the FOS→preference wiring on it.
+
+### 67.1 — §67 resolved in direction: the Preference's *other* OUT proves it runs hi=0x30/lo=3
+
+The Preference writes two triples — the "out+2" (`inv(t', +U, +V)`, at
+`scene+0x3a32`) and the "final shift" (`inv(s', −U, −V)`, at `scene+0x3a38`).
+Both were computed for v17 frame 0 (orderFpo Y=2046,U=70,V=447, cmm=1000):
+
+| mode | final shift (+0x3a38) | out+2 (+0x3a32) |
+|---|---|---|
+| `hi=0x30,lo=3` | (783,366,127) | (766,1183,1422) |
+| `hi=0,lo=0` | (1929,−596,−55) | (−378,2146,1605) |
+
+Live `+0x3a38`=(783,366,127) **and** `+0x3a32/+0x3a34`=(766,1183) both match
+`hi=0x30,lo=3` exactly — the mode=0 values match neither. So §64 stands (the
+live Preference runs `hi=0x30,lo=3`, orderFpo U/V aims), and §67's `arg5=0`
+capture is the anomaly to explain, not a second writer of `+0x3a38`. v18 adds
+a `scene+0x5074` (mode-word) dump at `getShifts` to settle whether the live
+mode word is `0x33` (arg5 capture artifact) or `0` (Preference reads the mode
+from somewhere other than `[ebp+0x18]`).
+
+## 68 — §67 resolved: the live mode is 0, and the Preference's `hi=0` else-branch reads the orderFpo U/V from `scene+0x38a2` (a port bug, now fixed)
+
+v18 (`live_hooks_20260817-091509.jsonl`, md5 `3518fb9e…9524df`) dumped the mode
+word directly: `scene+0x5074` = `0` at `getShifts` on every frame, matching the
+`arg5`=0 captures. So the mode really is 0 — §67's "arg5 capture artifact" was
+wrong, and the second open resolution was the true one, with a twist.
+
+The Preference's `hi=0` aim-UV else-branch is `0x1028ca2f`: `movsx edx,[edi+2]
+; movsx eax,[edi+4]`, where `edi = [ebp+8]` = **arg1** (the *param* struct,
+`scene+0x38a2` live), **not** the blob `fpo` (`[ebp+0x14]`). So with mode=0:
+
+* `aim_y` = `param0` = `scene+0x38a2[0]` = orderFpo **Y** (per-frame),
+* `aim_uv` = `scene+0x38a2[+2]/[+4]` = orderFpo **U/V** (per-frame).
+
+That is exactly the orderFpo Y/U/V §64 matched — but via **mode=0**, not
+`hi=0x30/lo=3`. The port's `preference_aim_uv` returned `fpo[1]/fpo[2]` for the
+else case (a conflation of the param and blob structs, invisible to the golden
+test only because `non_flash_adj=0` zeroes the aim-UV term in every original
+case). Fixed: added a `param_uv` argument (param `+0x02/+0x04`) and made the
+else-branch return it. Unicorn-verified (3 new `hi=0` golden cases with
+`non_flash_adj`∈{1000,500,250}, all `dll==py`), and live bit-exact 6/6 frames:
+`preference_shifts_hiNN(hi=0, lo=0, param0=orderFpoY, param_uv=orderFpoUV,
+cmm=1000) == +0x3a38`.
+
+Related, flagged not fixed (mode=0 doesn't reach them): `hi=0x20` (neu) reads
+`arg1[+0x0c/+0x0e/+0x10]` and `hi=0x40` (lo42/hi44) reads `arg1[+0x42/+0x44]`
+— both from the *param* struct, not the blob — so the port's `neu`/`lo42`/
+`hi44` (blob-sourced) are also wrong for those two modes. Live-irrelevant for
+the shipped mode=0 path, but wrong byte-for-byte if ever exercised.
+
+## 69 — The Δ is a *third* getShifts call in the setShifts caller, reading a different `+0x3a38`
+
+v19 (`live_hooks_20260817-110241.jsonl`, md5 `740bfe5e…579e01`) pinned the
+balance shift directly: `balance_area_image` reads the three ramp-shift words
+from `arg4+0x0a` = `scene+0x4b6` (cn_enhanced_driver passes `esi+0x4ac`,
+`0x10069837`), and they equal `setshifts_12(A,A) + Δ` with Δ uniform
+(`+12/+91/+64/+65/+14/+77`). The write path:
+
+* `scene+0x4b6` is zeroed by `analyze_scp_lut_balance` (`0x100fd8be`: three
+  `mov word [ebx+0x4b6..0x4ba], ax` with `eax=0`) — that is the *only*
+  `+0x4b6`-immediate store in the DLL.
+* The setShifts caller (`0x10101xxx`, after `setShifts` @ `0x10101f89`) then
+  adds Δ at `0x10102033..57`:
+  `add [eax-4], cx; add [eax-2], dx; add [eax], cx`, where `eax=[esp+0x20]`
+  (the OUT buffer base, i.e. `scene+0x4b6+4`) and `cx/dx` come from
+  `[esp+0x88]/[esp+0x8a]/[esp+0x8c]`.
+* `[esp+0x88..]` is the OUT of a **third** getShifts call, `0x10101ff6`
+  (`call 0x10124000`), whose `this=[esp+0x54]` and `arg1=&[esp+0x30]` differ
+  from the two getShifts the `setShifts` body makes (`0x101002dd/0x10100397`,
+  this=`[esp+0xb4]/[esp+0xbc]`). The getShifts body reads `*(arg1+0x10)+0x3a38`
+  — so this third call reads a **different** `+0x3a38` field than the one the
+  hook dumps (`EXTRA_DUMP_THIS_DEREF_OFFSET` reads `*(this+0x10)+0x3a38`).
+
+So Δ is a per-frame uniform triple stored in a *second* `+0x3a38`-offset field
+(the third getShifts's `arg1+0x10` target), added to `scene+0x4b6` after the
+combine. Two things still to pin (flagging, not assumed): (1) whether this
+third call actually fires in the live flow — v19 shows only 2 `sba_get_shifts`
+per frame, so either the `bl` gate at `0x10101fc4/6` skips it and Δ comes from
+elsewhere, or the third call's hook dump is the wrong offset; (2) what writes
+that second `+0x3a38` field. v20 should dump the third getShifts's real read
+(`*(arg1+0x10)+0x3a38`) and `[esp+0x88]`.
+
+---
+
+**Editorial note on numbering.** The section below was originally written and
+committed as `## 57` on the `worktree-tender-gliding-abelson` branch, in
+parallel with this doc's own `## 57`–`## 69` sequence being written
+concurrently on `per-frame-balance`. Both branches independently appended
+after `## 56` and diverged from the same base (`efb0a18`); merging them
+produced a real numbering collision, not a hypothetical one. Per this doc's
+own established convention (§42/§49 precedent), the longer, continuous,
+already-cross-referenced sequence (`## 57`–`## 69`) was left untouched, and
+the shorter, independent section was renumbered to `## 70` and its own
+internal self-references (`§57.1`–`§57.7`) updated to match. No content was
+altered beyond the numbers themselves.
+
+## 70 — §55.7's own dangling `DMLDICELib.dll:0x100020c3` caller thread run
+to ground: a real, live, vtable-dispatched call from `DMLDICEProcess`
+itself, confirmed reachable, confirmed the wrong subsystem, confirmed
+never exercised by this project's own port
+
+§55.7 found the single closest two-independent-`log10` shape this whole
+project's DLL search has ever produced — `DMLDICELib.dll`'s `0x100020c3`
+pair, real code computing `log10(a)/log10(b)` rather than
+`f135_rom12_to_rpd12`'s own `log10(a)−log10(b)` — but explicitly could not
+establish its own caller: `aaa`'s recursive-descent walk never forms a
+function there, and the one `CODE XREF` comment r2 itself attached to the
+address resolved, on direct lookup, to an unrelated stub that could not be
+its real container. This section finishes that specific thread: hashes the
+DLL again, finds the function's real boundary, finds its real caller chain
+by discovering the C++ vtable it lives in, and resolves — decisively, not
+provisionally — what §55.7 left open.
+
+### 70.1 — Provenance
+
+`DMLDICELib.dll` re-hashed against both
+`/Users/guy/pakon-windows-repair/COM-SERVER/DMLDICELib.dll` and a fresh
+`/tmp/pakon_re/DMLDICELib.dll` copy: `md5`
+`10e2095015c2580998e063b563407041` both places, exact match to §55.1's
+own published hash — same binary, no drift. `PakonIMAu.dll` was also
+re-hashed for an independent check used in §70.5:
+`eea9dcf78ee21d4f7c515a6c2512242d`, matching every prior citation of this
+DLL in this doc. Tooling: `radare2` 6.1.8 via `r2pipe`, `aaa` full
+analysis, `af`+`pdf`/`pdfj` for real function-boundary disassembly, `pD`
+never used to characterize a function's purpose, only as a "not real code"
+diagnostic where explicitly flagged. Scripts are scratch,
+`/tmp/pakon_re/*.py`, not committed.
+
+### 70.2 — The function itself, read in full: `fcn.10002080`, both
+branches, every constant decoded
+
+Forcing `af` at `0x100020c3` (the same address §55.7 found `aaa` never
+attached to a function) resolves a clean 164-byte function,
+`fcn.10002080` (`0x10002080`–`0x10002123`), containing both the
+`0x100020c3` pair §55.7 read and the "second, near-identical copy" it
+noted at `0x10002109` — **one correction to §55.7's own phrasing here**:
+these are not two copies in two functions, they are the `if`/`else` halves
+of one function, selected by its own first argument. Read in full via
+`pdf`:
+
+```
+fcn.10002080(mode, x):                       ; stdcall, ret 8 (2 stack dwords)
+    N = 4095   if mode == 12
+    N = 16383  if mode == 14
+    (anything else -> return 0.0, degenerate)
+    d = 0.1646  if x >= 0.035     ; fcomp x, 0x100351b0; fnstsw; test ah,0x41
+    d = 0.02    if x <  0.035
+    return N * log10(1 + d) / log10(N + 1)
+```
+
+Every constant decoded directly (`pxj`, IEEE-754, not read off a
+disassembly comment): `0x100351b0` = `0.035`, `0x100351ac` = `0.02`,
+`0x100351a8` = `0.1646`, `0x10035128` = `1.0`, `0x10035198` (dword) =
+`16383.0`, `0x100351a0` (qword) = `16384.0`, `0x1003518c` (dword) =
+`4095.0`, `0x10035190` (qword) = `4096.0` — the identical `16383`/`16384`
+and `4095`/`4096` 12-bit/14-bit domain pair this whole DLL uses throughout
+(§55.7's own `fcn.10001380`, §70.4 below). The two real `fyl2x` sites
+§55.7 already confirmed (`0x100020c3` in the `mode==14` branch,
+`0x10002109` in the `mode==12` branch) are each half of the identical
+`fldlg2; fxch; fyl2x` × 2 → `fdivp` → `fmul` idiom — `log10(1+d)` divided
+by `log10(N+1)`, then rescaled by `N`. Numerically, for the two `d`
+values this function ever uses: `16383·log10(1.02)/log10(16384) ≈ 33.4`,
+`16383·log10(1.1646)/log10(16384) ≈ 257.3`, `4095·log10(1.02)/log10(4096)
+≈ 9.7`, `4095·log10(1.1646)/log10(4096) ≈ 75.0` (computed directly in
+Python from the decoded constants, not estimated) — small, integer-ish
+magnitudes, the shape of a bin-count or margin, not a pixel value.
+
+**What this computes, structurally.** `log10(1+d)/log10(N+1)` is the
+fraction of the full log-dynamic-range (`log10(N+1)`) that a `(1+d)`
+gain/contrast ratio represents; multiplying by `N` rescales that fraction
+back into 0..`N` code-value units. This is "how many steps, out of a full
+N-step log-scaled axis, does a d×100% margin correspond to" — a
+percentage-of-dynamic-range-to-log-bin-count conversion, computed once per
+call from two fixed constants (`0.02`/`0.1646`, selected by a `0.035`
+threshold test on a caller-supplied float) and a mode flag, never from a
+per-pixel raw code. Both real inputs are stack arguments (`[esp+8]` = mode
+int, `[esp+4]` = the float compared against `0.035`); the return is the
+single scalar in `ST(0)`, `ret 8` popping both. This is exactly the
+diagnostic/parameter shape the task asked to distinguish from a
+colour-conversion path — a session-level threshold or margin value, not a
+per-pixel density.
+
+### 70.3 — No direct call exists anywhere in the DLL: confirmed two
+independent ways, not just by r2's own analysis
+
+`axtj`/`afij` at `0x10002080` after a fresh `aaa` + forced `af`: zero
+xrefs, `indegree: 0` — reproducing §55.7's own negative. Because §55.2
+already established that r2's own forced-`af`/`afij` signal can be
+self-fulfilling, this pass additionally ran a from-scratch, r2-independent
+check: a Python PE parser reading `DMLDICELib.dll`'s own section table
+directly and linearly scanning the entire `.text` section's raw bytes for
+`E8` (`call rel32`) opcodes, computing each candidate's real target VA by
+hand and comparing against `0x10002080`. **Zero matches** — no `E8 call`
+anywhere in this binary's `.text` targets this function's entry, at all,
+independent of any r2 analysis pass. This function is genuinely never
+called by a direct `call` instruction — the only way it can be reached is
+indirectly.
+
+### 70.4 — Finding the vtable: a genuine C++ virtual method table at
+`0x10035164`, confirmed by construction, not by name-guessing
+
+A raw-byte search for the literal little-endian `DWORD` `0x10002080`
+across the whole file (independent of r2, same Python script) finds
+exactly **one** occurrence, at raw offset `0x3517c`, inside `.rdata`
+(VA `0x1003517c`). r2's own pointer-aware hex dump (`pxr`) at that address
+shows this is not a coincidental float bit-pattern (the false-positive
+class §51.2/§55.2 already trained this project to expect in this exact
+byte range, since it sits close to the float constants read in §70.2) —
+it is one slot of a **contiguous 9-entry table of real code addresses**,
+`0x10035164`–`0x10035184`, each entry resolving to the start of a real,
+named function:
+
+```
+0x10035164 -> fcn.10001f20   (slot 0)
+0x10035168 -> fcn.10001f50   (slot 1)
+0x1003516c -> fcn.10001fd0   (slot 2)
+0x10035170 -> fcn.10001f70   (slot 3)
+0x10035174 -> fcn.10002050   (slot 4)
+0x10035178 -> fcn.10002060   (slot 5)
+0x1003517c -> fcn.10002080   (slot 6)  <- the target
+0x10035180 -> fcn.10002130   (slot 7)
+0x10035184 -> fcn.100021b0   (slot 8)
+```
+
+This is a real C++ vtable, confirmed by its own construction, not
+inferred from the table's shape alone: `fcn.10001f00` (18 bytes, read in
+full) does `call fcn.10001000; mov dword [esi], 0x10035164; mov eax, esi;
+ret` — the textbook MSVC "construct object, install its own vtable
+pointer" idiom, `esi` being the `this` the caller passed in `ecx`. This
+also resolves the exact loose end §55.7 left unexplained: the stray
+`CODE XREF from fcn.10001f40` comment r2 attached to the target address
+turns out to belong to `fcn.10001f40` — itself `mov dword [ecx],
+0x10035164; jmp fcn.10001050`, the same "reset vtable pointer, delegate to
+shared teardown" idiom MSVC emits for a scalar-deleting destructor, called
+from slot 0 (`fcn.10001f20`) — i.e. slot 0 of this table is the
+destructor, and the `CODE XREF` r2 attached to `0x100020c3` was always a
+sibling-slot artifact, not a real attribution, exactly as §55.7 already
+suspected but could not confirm.
+
+`fcn.10001f00` itself has exactly one caller (`axtj`): `DMLDICEBegin`
+(the exported entry point) at `0x1002b682`, immediately after a
+`0xc38c8`-byte allocation (`fcn.1002bdc4`, `push 0xc38c8`) succeeds. The
+returned, vtable-installed object (`ebx`) is then passed as `this`
+(`ecx`) directly into `fcn.10001130` — the exact function §55.7 already
+traced one hop further into `fcn.10001380`'s own log-histogram-table
+builder. Both of §55.7's two `DMLDICELib.dll` candidates — the log-binning
+initializer and this section's own target — are therefore methods
+reachable off the **same constructed object**, the handle `DMLDICEBegin`
+hands back to its own caller.
+
+### 70.5 — The real caller chain, hop by hop, `axtj`, single caller
+confirmed at every hop, exactly this doc's established discipline
+
+```
+fcn.10002080 (target)
+  <- [vtable dispatch, call dword [edx+0x18], edx = dword [esi], esi = this]
+     fcn.100021e0 @ 0x1000227d          (axtj: 1 real CALL xref)
+  <- fcn.100012d0 @ 0x1000134f          (axtj: 1 real CALL xref)
+  <- DMLDICEProcess @ 0x1002b725        (exported; axtj on DMLDICEBegin: 0
+                                          in-DLL xrefs, i.e. this is a real
+                                          external entry point, not an
+                                          internal helper)
+```
+
+Read directly, not inferred: `DMLDICEProcess` (`0x1002b6f0`) loads its
+handle argument into `ebx`, and — when non-null — calls `fcn.100012d0`
+with `ecx = ebx`. `fcn.100012d0` immediately does `mov esi, ecx` and,
+on exactly one of four mutually-exclusive branches (gated by
+`[esi+0x30] <= 1999` and `[esi+0x40] == 0`; the other three branches call
+three sibling functions, `fcn.10020ed0`/`fcn.10016890`/`fcn.1000c4b0`,
+instead), does `mov ecx, esi; call fcn.100021e0` — the same `this` object,
+unmutated. `fcn.100021e0` (21,567 bytes, `pdf` read for the relevant
+prologue-to-call span) does `mov esi, ecx` at entry and, after two value-
+selection branches that both converge back onto the mainline (confirmed
+by reading every conditional jump between the function's entry and the
+call site — exactly two, `je 0x1000222d` and `jne 0x10002261`, neither of
+which exits the function or skips past the call), unconditionally reaches:
+
+```
+0x1000226e   mov eax, dword [esi + 0x14]      ; mode arg
+0x10002271   mov ecx, dword [esi + 0x28ac]    ; float-x arg
+0x10002277   mov edx, dword [esi]             ; edx = this object's OWN vtable
+0x10002279   push eax
+0x1000227a   push ecx
+0x1000227b   mov ecx, esi                     ; this
+0x1000227d   call dword [edx + 0x18]          ; slot 6 = fcn.10002080
+```
+
+`edx` is loaded fresh from `[esi]` immediately before the call — the same
+object whose vtable was installed to `0x10035164` by `fcn.10001f00` in
+§70.4 — not a different or unconfirmed object. Offset `0x18` is `6 × 4`,
+exactly slot 6, exactly `fcn.10002080`. The two pushed arguments (object
+fields at `+0x14` and `+0x28ac`) land on `fcn.10002080`'s own two stack
+parameters (`mode`, `x`) exactly as §70.2 characterized them. This is a
+real, confirmed, hand-verified vtable dispatch — the same category of
+evidence §51.6 used for `ColorMetricRPD12`'s vtable and §56 used for
+`AnsError`/`Ima2DImage` — landing, without ambiguity, on the exact
+function this section set out to find a caller for.
+
+**This closes §55.7's own dangling gap.** The function does have a real
+caller, reachable — conditionally, not unconditionally on every
+`DMLDICEProcess` call, per the branch gate in `fcn.100012d0` — from a real
+exported entry point on the vendor's own binary. §55.7's own separate,
+already-published finding that `DMLDICEProcess` itself is called from a
+live, statically-resolved site inside `TLB.dll` (`0x10026fe6`, through a
+`GetProcAddress`-resolved pointer) extends this chain one hop further,
+onto real vendor Windows software.
+
+### 70.6 — Why `tools/re/reachability.py walk` does not apply to this
+specific chain, explained rather than forced
+
+This entire five-hop chain (`TLB.dll` → `DMLDICEProcess` → `fcn.100012d0`
+→ `fcn.100021e0` → vtable slot 6 → `fcn.10002080`) lives across two DLLs
+this tool was never built to scope. `tools/re/reachability.py`'s own
+docstring is explicit that it is "a direct-call reachability walk over
+**PakonIMAu.dll**" specifically: its `--dll` flag accepts "an
+already-extracted PakonIMAu.dll," its calibration point and every
+published seed (`AnsShastaCapabilityImpl::analyze`,
+`AnsCnEnhancedPath::virtual_8`) are `PakonIMAu.dll`-internal addresses,
+and — more fundamentally than the file-path scoping — the walk follows
+**only direct `E8 call` edges**, tallying indirect/vtable call sites
+without resolving them (documented in the tool's own module docstring and
+already exercised this way in §51/§55/§56). The load-bearing hop in this
+chain is precisely the one kind of edge the tool is designed not to
+follow: `fcn.100021e0`'s `call dword [edx+0x18]` at `0x1000227d`. Running
+`walk` seeded at `DMLDICEProcess` inside `DMLDICELib.dll` would trace the
+two direct hops to `fcn.100021e0` and then stop, correctly reporting one
+more indirect call site — reproducing, mechanically, only the part of
+§70.5 this section already had to hand-verify with `pxr` and a raw-byte
+vtable search precisely because the automated tool cannot do it. Separate
+from the file-scoping question, the more decisive reason the walk adds
+nothing here: `PakonIMAu.dll` — the one binary whose own render path this
+doc treats as "live" for `f135_rom12_to_rpd12`'s own purposes — was
+re-checked fresh this pass (`ii`, full import listing, `eea9dcf7…`,
+matching every other citation of this DLL in this doc) and contains
+**zero** references to `DICE`/`DMLDICE` anywhere in its own import table.
+This is an independent, first-hand confirmation of docs/70's own already-
+cited claim ("not in `PakonIMAu.dll`"), not a repeated citation of it.
+Since `reachability.py`'s entire seed universe is addresses inside
+`PakonIMAu.dll`, and `PakonIMAu.dll` never imports from `DMLDICELib.dll`
+at all, no seed this tool could be given would ever reach this chain —
+running it against `PakonIMAu.dll` would trivially confirm non-reachability
+without needing to execute it, and running it against `DMLDICELib.dll`
+instead would answer a question this section already answered by hand,
+more completely than the tool's own direct-edge-only design can.
+
+### 70.7 — Verdict
+
+**§55.7's own honestly-flagged gap is closed, not left open a second
+time.** `fcn.10002080` (containing the `0x100020c3`/`0x10002109` pair) has
+a real caller: a confirmed C++ vtable slot (slot 6 of the object
+`DMLDICEBegin` constructs and returns), dispatched from `fcn.100021e0`,
+reached from `fcn.100012d0`, reached from the exported `DMLDICEProcess`
+entry point itself — every hop traced by direct disassembly and `axtj`,
+single real caller confirmed at each, no address accepted on a forced-`af`
+signal alone (§55.2's own standard, reapplied here for the boundary
+discovery in §70.2). Independent of r2's own xref engine, a from-scratch
+byte-level scan of the whole `.text` section confirms there is no direct
+`call` to this function anywhere in the binary — the caller genuinely is
+vtable-only, the same structural blind spot §46/§51.8 item 3/§56 already
+named, worked around here by finding the vtable itself rather than by
+building a general vtable-resolution sweep (out of scope, per this task's
+own instruction).
+
+**And it still isn't `f135_rom12_to_rpd12`.** Two independent grounds,
+each sufficient on its own:
+
+1. **Wrong operation, wrong operands, wrong domain.** The function
+   computes `N·log10(1+d)/log10(N+1)` — a division, not a subtraction,
+   confirmed unchanged from §55.7's own reading — from a mode flag and a
+   float compared against a fixed `0.035` threshold to select between two
+   fixed constants (`0.02`, `0.1646`), not from two independently-varying
+   per-pixel raw codes (`base`, `poly`) each offset by `c9`. Its own
+   numeric outputs (≈9.7–257, computed directly in §70.2) are small,
+   integer-scaled magnitudes consistent with a bin-count or classification
+   margin, not a 12-bit density code. It sits in the same object
+   (`DMLDICEBegin`'s handle) as §55.7's own log-histogram-table builder
+   (`fcn.10001380`) — both are Digital ICE defect-detection configuration
+   methods, not colour/density conversions.
+2. **Wrong subsystem, never exercised by this project's own port,
+   independent of the vendor's own live wiring.** Even fully reachable on
+   the real vendor stack (`TLB.dll` → `DMLDICEProcess`, already published
+   in §55.7), this project's own port has `ICE_PORTED = False` (raises
+   rather than no-ops, per docs/70), has never captured an IR channel on
+   real hardware, and — newly confirmed first-hand this pass, not just
+   cited — `PakonIMAu.dll` itself contains zero references to
+   `DMLDICELib.dll`/`DICE` anywhere in its own import table. The tone
+   chain this doc traces lives entirely inside `PakonIMAu.dll`; this
+   function cannot be reached from it by any path, live or dead.
+
+**What this changes relative to §55.9's own closing tally:** nothing
+about the seven-DLL negative result itself — `DMLDICELib.dll`'s
+`0x100020c3` pair was already correctly counted as a real, non-matching
+instruction there. What changes is epistemic status only: §55.7's own
+"reachability... could not be established" is now "reachability
+established, and it changes nothing" — a strictly stronger, fully closed
+negative, not a re-opened question. Possibilities 1 and 3 from §51.8
+remain exactly as open as §55.9 left them; this section closes one named
+loose end under possibility 3 without collapsing the possibility itself.
+
+**No production, golden, or port file was changed by this pass.** All
+work is additive, scratch scripts under `/tmp/pakon_re/` (ad hoc
+`r2pipe`/PE-parsing one-off scripts, not committed), matching this doc's
+own established convention. `docs/74-…md` itself is the only file this
+pass edited (this section).
+
+**Verification.** `DMLDICELib.dll` MD5 re-checked
+(`10e2095015c2580998e063b563407041`) against two independent local copies
+before any work, matching §55.1's own published hash exactly.
+`PakonIMAu.dll` MD5 re-checked (`eea9dcf78ee21d4f7c515a6c2512242d`)
+independently for §70.6's own import-table check. The function boundary
+at `0x10002080` came from `af`+`pdf`/`pdfj` at the real address, never a
+`pD` byte-range guess. The "no direct caller" finding was confirmed two
+independent ways: r2's own `axtj`/`afij` (`indegree: 0`), and a from-
+scratch Python PE-section-table parse plus a linear `E8`-opcode scan of
+the entire raw `.text` section computing real target VAs by hand — not
+r2-analysis-dependent. The vtable's existence and contents were confirmed
+two independent ways: a raw whole-file byte search for the literal target
+address (exactly one hit, landing inside the table) and r2's own
+pointer-aware `pxr` dump of the same region showing all nine slots resolve
+to real function starts. The vtable's installation was confirmed by
+reading `fcn.10001f00` in full (`mov dword [esi], 0x10035164`), not
+assumed from the table's shape alone. Every hop in the §70.5 caller chain
+came from `axtj` showing exactly one real `CALL`-type xref, the same
+per-hop discipline §51.3/§51.5/§55.4 already used for `PakonIMAu.dll` and
+`TLA.dll`. The `edx = dword [esi]` / `call dword [edx+0x18]` read at
+`0x10002277`–`0x1000227d` was read directly from `pdf`, not inferred from
+the offset arithmetic alone. `PakonIMAu.dll`'s own zero-`DICE`-references
+finding (§70.6) came from a direct `ii` read of its own import table this
+pass, not solely from docs/70's own citation.
+
+## 71 — docs/76 §5 step 2 answered: there is no second `+0x3a38` writer to find, because there is no second field — the third `getShifts` call reads the same Preference output §64 already closed, through one more layer of indirection
+
+`docs/76-per-frame-balance-handover.md` §5 lists, as the second immediate
+next step, finding what writes the `+0x3a38` field the third `getShifts`
+call (§69) reads via `*(arg1+0x10)+0x3a38` — a different base pointer from
+the one already-verified Preference OUT (§64) reads via directly. This
+section answers it: nothing writes a second field, because a full,
+`aaa`-confirmed static trace shows there is only **one** write site for
+`+0x3a38` anywhere in `PakonIMAu.dll`, and it sits on the exact sub-object
+the third `getShifts` call also addresses.
+
+### 71.1 — Method
+
+`PakonIMAu.dll` re-hashed (`md5 eea9dcf78ee21d4f7c515a6c2512242d`, matching
+every prior citation in this doc). A raw `/x 383a0000` search (the
+little-endian bytes of the `0x3a38` displacement) across the whole binary
+— the same "search immediates first" step `docs/76`'s own method (§3.4)
+prescribes — found exactly **two** hits, both read via `af`+`pdf` at their
+real containing function (never `pD`-guessed): one is the already-known
+third `getShifts` read itself (`0x1012413a`, `add ecx,0x3a38` off
+`[edi+0x10]`, inside the setShifts-caller's own body); the other is a
+debug/trace-dump routine (`fcn.10215305`) that prints the field labelled
+`"  shifts ="` for logging, and — notably — also touches `scene+0x38a2`
+(orderFpo) a few hundred bytes later in the same routine, corroborating
+that this dump function walks the same scene structure this whole
+investigation already has under study. **Neither hit is a write.** Per
+`docs/76`'s own method note ("if none, the write is via a pointer — follow
+the register"), the write must happen through a shared function called
+with a variable base, not a literal per-site offset — so the next step was
+finding Preference's own real caller graph with `aaa` (full analysis,
+needed for `axtj` to resolve anything — plain `af` alone left `axtj`
+empty, matching every prior "forced small-`af`-only" false-negative this
+doc has already hit), not another byte search.
+
+### 71.2 — The write site, and its only caller, and that caller's only caller — three hops, one static path each time
+
+`axtj @ 0x1028c780` (Preference) after `aaa`: **exactly one** caller,
+`fcn.102159c0`, calling from `0x10216444`. Read via `af`+`pdf` at that
+real address: immediately before the call,
+
+```
+0x10216433   lea ecx, [esi + 0x3a30]     ; OUT buffer, pushed as an arg
+0x10216439   lea ebx, [esi + 0x38a2]     ; orderFpo, pushed as another arg
+...
+0x10216444   call 0x1028c780             ; Preference
+```
+
+`esi + 0x3a30` is `esi + 0x3a38 − 8` — the same buffer §64 already
+established as Preference's own OUT, addressed from inside the call this
+time rather than read afterward. `esi` itself, at `fcn.102159c0`'s own
+entry (`0x102159e6 mov esi, ecx`), is simply this function's own `this`
+(thiscall convention) — so `+0x3a38` is written **inside Preference
+itself**, into whatever object `fcn.102159c0` was constructed/called on,
+not by any separate instruction anywhere else.
+
+`axtj @ 0x102159c0` after the same `aaa` pass: again **exactly one**
+caller, `fcn.10123cc0`, calling from `0x10123da2`. Read via `af`+`pdf`:
+
+```
+0x10123d98   mov ecx, dword [var_1ch_2]   ; ecx = this function's OWN this
+0x10123d9b   mov ecx, dword [ecx + 0x10]  ; ecx = *(this + 0x10)
+...
+0x10123da2   call 0x102159c0              ; this = *(outer_this + 0x10)
+```
+
+This is the exact `*(something + 0x10)` shape `docs/76` §69 already
+identified in the third `getShifts` call's own read (`*(arg1+0x10)+0x3a38`)
+— found here independently, from the write side, not assumed from the
+read side's own phrasing.
+
+`axtj @ 0x10123cc0` after the same pass: **seven** static callers this
+time (this function is a shared helper, called from several unrelated
+paths — `fcn.100575e0`×2, `fcn.1006a160`×2,
+`method.AnsDcPremiumPath.virtual_12`, `fcn.1013fa10`, and, the one that
+matters here, **`fcn.10101220`** at `0x10101b6d`). `0x10101220` is the
+literal function `docs/76` §5 step 2 and §69 already cite as "the
+setShifts caller (`0x10101xxx`)" — the same function whose own body
+contains the third `getShifts` call this section set out to explain,
+confirmed by address, not by re-deriving it from scratch.
+
+### 71.3 — Verdict
+
+**The chain is real and fully static-traced, hop by hop, one caller at
+each hop except the last (seven, of which one is the already-known
+setShifts caller):** `fcn.10101220` (setShifts caller) → `fcn.10123cc0`
+(`*(this+0x10)` as the next `this`) → `fcn.102159c0` (Preference's sole
+caller, `esi+0x3a30` as OUT) → `0x1028c780` (Preference, writes
+`esi+0x3a38` as part of its own OUT). This is the same `*(this+0x10)`
+sub-object the third `getShifts` call already reads `+0x3a38` from.
+
+**docs/76 §5 step 2 is answered: there is no second writer, because there
+is no second field.** The third `getShifts` call's own `+0x3a38` read is
+not sourcing from some undiscovered field — it is reading the identical
+Preference-written OUT §64 already closed, on the identical sub-object,
+through one more layer of pointer indirection than the already-verified
+read used. `docs/76` §69's own two flagged sub-questions were (a) whether
+this third call fires live at all, and (b) what writes the field it reads.
+**(b) is now closed: nothing new writes it — it's the known write, reached
+differently.** (a) is unchanged by this section — still genuinely open,
+still gated on the v20 live capture `docs/76` §5 step 1 already flagged,
+since this pass is static-only and cannot observe whether the live control
+flow actually reaches `0x1012413a` on a real frame.
+
+**What this means for Δ, stated carefully, not overreached.** If (a) turns
+out true — the third call does fire live — then Δ is *not* an independent
+third quantity from some second source; it would be the same Preference
+output added again, through this deeper path, which changes the shape of
+`docs/76`'s own pipeline diagram (§1) from "a separate Δ term" to "the
+existing shift applied a second time via a different call path" — a
+materially different, and simpler, wiring question than "find the unknown
+source." If (a) turns out false — the third call never fires live, exactly
+as v19's own "only 2 `sba_get_shifts`/frame" observation already suggested
+— then this section's finding is moot for Δ specifically (there is no live
+third call to source), and Δ's real origin remains wherever `docs/76`'s own
+open items 1 and 3 were already pointing. **Either way, "an unidentified
+second writer" is no longer a live possibility** — this section closes
+that specific branch of the search space, decisively, not provisionally.
+
+**No production, golden, or port file was changed by this pass.** All work
+is additive; the only file this pass edited is `docs/74-…md` (this
+section). Scratch outputs (`fcn_10215305.txt`, `fcn_102159c0.txt`,
+`fcn_10123cc0.txt`) were written for readability during this pass and are
+not committed, matching this doc's own established convention.
+
+**Verification.** `PakonIMAu.dll` MD5 re-checked
+(`eea9dcf78ee21d4f7c515a6c2512242d`) before any work. Both `/x 383a0000`
+raw hits were read at their real `af`+`pdf`-derived function boundaries,
+never characterized from a `pD` guess. `axtj` was run only after a full
+`aaa` pass at each of the three hops — the same lesson §51.2/§55.2/§57(70).3
+already established, that a bare forced `af` leaves `axtj` empty and reads
+as a false "no caller" — and each single-caller claim (Preference,
+`fcn.102159c0`) and the seven-caller claim (`fcn.10123cc0`) came directly
+from that JSON output, not estimated. The `esi+0x3a30`/`esi+0x38a2`
+argument-passing read at `0x10216433`-`0x10216444`, the `this`-chain read
+at `0x10123d98`-`0x10123da2`, and the `esi = ecx` thiscall-entry read at
+`0x102159e6` were each read directly from `pdf`, not inferred from offsets
+alone. `fcn.10101220`'s address was cross-checked against `docs/76`'s own
+citation of "the setShifts caller (`0x10101xxx`)" and `docs/74` §69's own
+`0x10101ff6`/`0x10102033..57` addresses (same function, consistent
+address range), not assumed from proximity alone.
+
+## 72 — docs/76 §5 step 3: §66 closed the other way — full-body reading of
+`0x1028b8d0` shows a Unicorn diff against `fos_analyze_roll` is not a
+well-posed test, because the function doesn't visibly write the orderFpo
+triple at its own top level; live-capture spec given instead
+
+§66 flagged `0x1028b8d0` (13 args, 8 helpers, 5 calls/frame) as a
+*different* function from the ported FOS (`SbaCalcFosResults @
+0x1028f570`) and named a Unicorn-diff-vs-`fos_analyze_roll` as the gate
+before wiring. This section does the full-body read §66 deferred and
+closes the gate — not with a bit-exact diff, but with a concrete,
+evidence-backed reason a diff against `fos_analyze_roll` cannot be a
+meaningful test as currently specified, plus the exact live capture that
+would settle it instead.
+
+### 72.1 — Method
+
+`PakonIMAu.dll` re-hashed before touching it: `md5
+eea9dcf78ee21d4f7c515a6c2512242d`, matching every prior citation in this
+doc. Tooling: `radare2` 6.1.8 via `r2pipe`, `aaa` + forced `af` for real
+function boundaries, `pdf`/`pdfj` for full-body reads (never `pD`). All
+scratch scripts/dumps live in `/tmp/pakon_re/` (`fcn_1028b8d0.txt`,
+`caller_0x102159c0.txt`, `caller_0x10218110.txt`, `stack_trace.txt`,
+`track_stack.py`), not committed, per this doc's own convention. The prior
+pass's "unverified lead" (§ handed off in the task prompt, not a docs/74
+section) about a case-0 path was re-derived from scratch here, not
+trusted.
+
+### 72.2 — r2's own `arg_XXXh` names are internally inconsistent for this
+function; the real 13-argument layout was rebuilt from the caller's push
+order plus manual stack-delta tracking
+
+`afij @ 0x1028b8d0` reports `nargs: 14` for a function whose callers all
+clean up `add esp, 0x34` (13 dwords) — already a contradiction. Reading
+the signature (`arg_2d4h, arg_2d8h, arg_ch, arg_2e0h, arg_2e4h,
+arg_2dch_2, arg_2dch, arg_2f0h, arg_2fch_2, arg_300h, arg_2fch,
+arg_2f0h_2, arg_2f4h, arg_2fch_3`) shows the same logical argument given
+two or three *different* names (`arg_2fch`/`arg_2fch_2`/`arg_2fch_3`)
+depending on how many registers (`esi`/`ebp`/`ebx`/`edi`) had been pushed
+at the point of each read — r2's frame-canonicalizer does not always
+re-derive a stable canonical offset across a function this large (155
+basic blocks), and at least one of these near-duplicate names (`arg_2dch`
+vs `arg_2dch_2`) turned out on manual delta-tracking to denote **two
+genuinely different arguments**, not the same one read twice. Trusting
+these names directly would have produced a wrong signature; this pass
+rejected them and rebuilt the mapping from real evidence instead.
+
+The real mapping was recovered two ways that agree: (1) reading the
+caller's push sequence at both real call sites and inverting cdecl order
+(last push = arg0), and (2) a manual instruction-by-instruction stack-delta
+walk of `0x1028b8d0` itself (`push`/`pop`/`sub esp`/`add esp`, `call`
+treated as net-zero), converting each `[esp+N]` read back to its
+entry-relative pre-`sub esp,0x2c0` offset. Both call sites — `fcn.102159c0`
+(`AnsSbaCapabilityImpl::analyzePass2()`, confirmed by the literal string
+`"AnsSbaCapabilityImpl::analyzePass2()"` at `0x1059dfa8` inside it, same
+identification already used at docs/74 line ~5160) at `0x10215d6a`, and
+`fcn.10218110` at `0x1021937b` — push the *identical* 13-value sequence in
+the *identical* order:
+
+| arg | source (both call sites) |
+|---|---|
+| 0 | `scene+0x1a` (dens — same field `SbaCalcFosResults` gets via `Impl+0xC`) |
+| 1 | `scene+0x3bc8` (a C-bank-shaped array) |
+| 2 | `scene+0x388c` (same field `SbaCalcFosResults` gets via `Impl+0x10`) |
+| 3 | `0` — literal `push 0` at `fcn.10218110`'s call (`0x10219373`); the `edi` register at `fcn.102159c0`'s call (`0x10215d3c`), not independently re-derived to 0 at that exact point but consistent with the pervasive `xor edi,edi`/`mov edi,[0x106b5bd4]` null-sentinel idiom used throughout the rest of the same function |
+| 4 | zero-extended `word[scene+0x38a0]` |
+| 5 | `&`(a small local struct in the *caller's* own frame) |
+| 6 | `scene+0x5978` |
+| 7 | a *caller* local (`fcn.102159c0`: `[ebp-0x30]`, filled once at `0x10215a15` from `fcn.10289590(this=scene+0x3c08)` = `lea eax,[ecx+0x2c]; ret`, i.e. the constant pointer `scene+0x3c34`; `fcn.10218110`: a different caller local, not traced) |
+| 8 | `0` (literal at `fcn.10218110`; `edi` at `fcn.102159c0`, same caveat as arg 3) |
+| 9 | `0` (same as arg 8) |
+| 10 | `&`(a **second** small local struct in the caller's own frame, explicitly zeroed — 9 `mov dword […], 0` — immediately before the call) |
+| 11 | `scene+0x290c` (same field `SbaCalcFosResults` gets via `Impl+0x14` — `fosDmin`) |
+| 12 | `scene+0x38a2` — the exact `pref_data` blob docs/74 §63.1 already established as the FOS `orderFpo` slot Preference's `hi=0` else-branch reads |
+
+This is Tier 3 (static) but cross-checked two independent ways (push order
+at two distinct call sites in two distinct functions, and manual delta
+tracking of the callee), not a single-source read.
+
+### 72.3 — The switch selector (arg 3) is provably 0 at both real call
+sites, and the "mode 0" case does not write the orderFpo Y/U/V triple
+
+Inside `0x1028b8d0`, the 4-way `switch` at `0x1028bd98…bda4`
+(`movsx ecx,dx; cmp ecx,3; ja default; jmp[ecx*4+0x1028c460]`) dispatches
+on a word read twice from the *same* stack slot — `mov edx,[esp+0x2e0]` at
+both `0x1028ba28` and `0x1028bcd5` — which manual delta-tracking (§72.2)
+resolves to **arg 3** both times (delta `0x2c0` + 4 pushes = `0x2d0` at the
+first site; no net push/pop between the two reads). Since arg 3 is a
+literal `0` at `fcn.10218110`'s call site, and `dx==0` at both re-reads of
+that slot drives the flow straight to the `case 0` label (`cmp
+ecx,3`/`jmp[ecx*4+…]` with `ecx=0`), **case 0 is the switch case that
+fires at both real call sites** — a positive, address-cited re-derivation
+of the prior pass's "unverified lead," not a repetition of it on trust.
+
+Case 0 (`0x1028bdab…`) falls through a large body shared with cases 2/3
+(`0x1028be82…c33a`) that: reads `ebp` = arg 12 = `scene+0x38a2` directly
+(not a copy) and inspects **byte** flags at `[ebp+1]…[ebp+6]` — the exact
+`0xff/0xfd/0xfe/0xfc` sentinel-byte classification idiom, and the exact
+`byte[+4]==1` fiduciary-skip test, already ported in
+`fos_order_fpo_helper`/`OBJ290C_OFF_FID` (`pakon_fos.py`) — computes
+several intermediate values via the *same* `MAGIC_Y`/`MAGIC_C1`/`MAGIC_C2`
+(`0x306e8227`/`0x111f883d`/`0x3b510a6f`) opening-axis transform
+`fos_opening_axes` already uses, but applied to **arg 5's** three words
+(`[esi+0]/[esi+2]/[esi+4]`, not any dens/pixel accumulation), calls three
+of the eight helpers (`fcn.1028b570` at `0x1028c1fe`, `fcn.102ae9d0` at
+`0x1028c369`, `fcn.1028b6e0` at `0x1028c3b6`), and finishes:
+
+```
+0x1028c3a1  ax = word[ebp + 0x22]
+0x1028c3a7  cx = word[ebp + 0x1a]
+            (both adjusted by an imul/shift bias)
+0x1028c3b6  call fcn.1028b6e0
+0x1028c3c0  word[ebp + 0x3e] = ax        ; = scene+0x38a2+0x3e = scene+0x38e0
+0x1028c3c5  eax = 0 ; ret
+```
+
+`ebp+0x3e` is **inside** the same 0x64-byte `pref_data` blob §63.1 dumped
+(`scene+0x38a2 … +0x3906`), but it is **not** `+0x0/+0x2/+0x4` — the
+offsets docs/74 §63.1 empirically captured as the per-frame `orderFpo`
+Y/U/V triple. So, on the live-firing case (mode 0), `0x1028b8d0`'s own
+top-level code writes exactly **one** word into `pref_data`, at an
+offset that is not the orderFpo triple, derived from two *other*,
+already-present `pref_data` fields (`+0x22`, `+0x1a`) via `fcn.1028b6e0`
+— a re-derivation/refinement of an existing field, not a fresh
+FOS-style computation of orderFpo from raw statistics. (Case 1, the
+other structurally simple case, is dead on both real call sites since
+mode is 0; for the record, it does a **trivial 3-word copy** from arg 1
+[`scene+0x3bc8`] straight into arg 5's own buffer, `esi[0]/[+2]/[+4]` —
+not into `pref_data` at all, and not through any FOS math.)
+
+**None of the eight helper subroutines
+(`0x1028abf0`, `0x1028ae00`, `0x1028b570`, `0x1028b650`, `0x1028b6e0`,
+`0x102ac310`, `0x102ae9d0`, `0x102aece0`) were read in this pass** — so
+whether the `pref_data+0/+2/+4` orderFpo triple is written *inside* one
+of them (with `ebp`/`pref_data` threaded in as a hidden argument) remains
+open. §66's own "no overlap" finding (none of these 8 addresses sit in
+`SbaCalcFosResults`'s leaf range) still stands and is not contradicted by
+anything found here.
+
+### 72.4 — Arg 5's "open RGB"-shaped input is a copy of the *same* DPI
+blob Preference reads, not FOS pixel/dens statistics
+
+Tracing arg 5's source at `fcn.102159c0` (the only call site fully traced
+back to its origin): `lea eax,[var_b8h_2]` (a caller-local struct,
+`ebp-0xb8` — confirmed the *same* physical stack slot as the differently
+r2-named `var_b8h`/`var_b8h_2`, both literal `[ebp-0xb8]` on direct
+disassembly, §72.2's naming-collision warning applying here too) is
+filled earlier in the same function, at `0x10215a1b…28`, by
+`fcn.10214e30(this=scene, &var_20h, &var_b8h)`. Reading `fcn.10214e30`
+in full (235 bytes, `af`+`pdf`): it copies fixed words from
+`scene+0x4d0e`, `scene+0x4d08`, and `scene+0x4d16…0x4d3a` — the *exact*
+nested-`fpo`/DPI-blob field range §63.1 already identified as constant
+across all captured frames (`fpo=(879,1250,1386)`, and `scene+0x4d1c` is
+the already-traced `cmm` field per §64.1, sitting inside this same copied
+range) — into the local buffer that becomes arg 5. At `fcn.10218110`'s
+call site, the equivalent buffer (`var_2a8h_2`) is instead explicitly
+**zeroed** (9× `mov dword […], 0`) right before the call, not filled from
+`fcn.10214e30` at all.
+
+So arg 5 is not FOS dens/pixel statistics under any reading — it's either
+a snapshot of the same DPI-static Preference blob, or all-zero, depending
+on call site. This directly contradicts treating arg 5 as
+`fos_analyze_roll`'s `open_rgb` (which the port sources from the scene's
+own dpi-`fpo` field via a completely different path, per `pakon_fos.py`'s
+own `FOS_TO_PREFERENCE_FPO_EDGE=False` note).
+
+### 72.5 — Sequencing: `0x1028b8d0` always runs before Preference in the
+same per-frame pass, corroborating (not contradicting) §66/§71
+
+Both `0x1028b8d0` call sites inside `fcn.102159c0` occur (address order,
+same "is-lineal" function) *before* `fcn.102159c0`'s own call to
+Preference at `0x10216444` — the exact call site §71.2 already
+established as Preference's sole caller, writing `esi+0x3a38` from
+`esi+0x38a2`. Immediately after the first `0x1028b8d0` call succeeds
+(`0x10215d74`), the same function sets the FOS-capability "analyzed" flag
+(`byte[edi+0xf]=1`, matching `pakon_fos.py`'s own `CAP_ANALYZED_FLAG=0x0F`)
+and calls `fcn.10214f20` — the same blob-fill function §64.1 already cited
+as writing `blob+0x30 ← scene+0x4d1c` (`cmm`) — before eventually reaching
+Preference. This is consistent with, and strengthens, the pipeline shape
+already on record (`FOS analyze → 0x1028b8d0 ×N → Preference → setShifts
+→ +Δ`); it does not by itself resolve what `0x1028b8d0` writes into
+`pref_data`.
+
+### 72.6 — Verdict: no Unicorn harness was built; a diff against
+`fos_analyze_roll` is not currently a well-posed test
+
+Per docs/76's own standard ("never invent"), building
+`pakon_orderfpo_frame_golden.py` now would require inventing at least
+three load-bearing, currently-unverified inputs: (a) the semantics of the
+8 unread helper subroutines — including whether *any* of them, not
+`0x1028b8d0`'s own top level, is the real writer of `pref_data+0/2/4`;
+(b) which of the two observed arg-5 provenances (DPI-blob copy vs
+all-zero) a "normal" frame actually uses, and whether both call sites
+fire on every real frame or are gated by branches this pass didn't trace;
+(c) arg 3/8/9's exact live value at `fcn.102159c0`'s call site (assumed,
+not proven, to be 0 like `fcn.10218110`'s literal). None of these can be
+filled from evidence already in hand. Even a "successful" Unicorn run
+built on invented values for (a)-(c) would not be evidence either way —
+it would test whatever this pass guessed, not the DLL's real behaviour.
+
+So: **`fos_analyze_roll` is not shown to reproduce `0x1028b8d0`, and
+`0x1028b8d0`'s own directly-observed output (the case-0 write to
+`pref_data+0x3e`) is not the orderFpo triple at all** — a stronger,
+more specific finding than §66's original "these are separate code
+paths." No golden harness file was created; no existing golden file
+(`pakon_fos_golden.py` or any other) was modified.
+
+### 72.7 — The exact live capture that would close this
+
+Per docs/76 §3(a)'s capture-decode-diff loop, next capture (v21) should
+hook `0x1028b8d0` itself (an internal, non-exported address — already
+established as reachable via `win_inject`'s hook mechanism for
+`sba_preference`/`sba_get_shifts`/`sba_set_shifts`, all likewise internal)
+at two points per call, using only dump kinds already in
+`hookcore.h`/`hookcore_real_table.c`:
+
+* **At entry** — 13× `EXTRA_DUMP_STACK_PTR{stack_idx=1..13, nbytes=4}` (the
+  raw arg values — this alone empirically confirms or refutes §72.2's
+  entire arg-index table, since each dumped pointer can be diffed against
+  the known scene base already recovered by existing hooks), plus
+  `EXTRA_DUMP_DEREF_PTR{stack_idx=13, off=0, nbytes=0x64}` (the full
+  `pref_data` blob at `scene+0x38a2`, same size as v16's existing
+  `pref_data` dump, captured *before* the call).
+* **At return** — hook each of the 5 known post-call addresses
+  (`0x10215d6f`, and the equivalent post-`add esp,0x34` addresses at the
+  other two `fcn.102159c0` call sites and both `fcn.10218110` sites,
+  `0x10219380`/`0x102196ae`-ish) and re-dump the *same* `scene+0x38a2`
+  blob, plus `eax` (the return code).
+
+Diffing the before/after `pref_data` blob across all 5 calls per frame,
+for several real frames, directly answers — empirically, with no further
+disassembly needed — whether `pref_data+0/2/4` (the orderFpo triple) ever
+changes across these 5 calls (settling whether `0x1028b8d0` or one of its
+helpers is the real writer, or whether that triple is written somewhere
+else entirely), and which of the 5 calls (if any) is responsible. This is
+a small, surgical addition to `g_extraDumps[]` (14 new entries, no new
+dump kind), fully consistent with the v14–v20 pattern already in the
+repo.
+
+## 73 — The v21 capture fired: `0x1028b8d0` IS the per-frame `orderFpo`
+writer (confirmed 12/12, inside a helper as §72 predicted), §72.3's
+"arg 3 == 0 at both call sites" is refuted by live data, and the second
+`+0x3a38` field §69/§71 chased as Δ's source is empirically all-zero
+
+§72 read `0x1028b8d0`'s full body statically, found its own top level does
+not write the `orderFpo` Y/U/V triple on the case it believed fires live,
+and — correctly, per this doc's own "never invent" rule — declined to build
+a Unicorn harness on three unverified assumptions, specifying a live capture
+(§72.7) instead. That capture now exists. It answers §72's own open
+question decisively, refutes one of §72's static claims, and closes the
+separate Δ-source thread §69/§71 left open, in a way no further disassembly
+could have.
+
+### 73.1 — Provenance
+
+Capture `live_hooks_20260817-112602.jsonl`, 32,921,564 bytes, `md5
+98aa01dbad6014caf63425f14f8e487a`, produced on the real XP box by the owner
+with the v21 build of this repo's own harness (`hookdll.dll` `md5
+8fe7dee368958f86f8d899533d873910`, `injector.exe` `md5
+c8116a2d119940a431751d652c0f3778`, commit `9033fdd`). 0 unparseable lines
+out of the whole file. Engine self-report: *"hookcore initialized, 30
+hook(s) defined"*, *"install pass complete: 23/23 enabled hook(s) installed
+after 0 attempt(s)"*, zero `hook_install_failed` rows — including the new
+`sba_order_fpo_calc` (`0x1028b8d0`), which installed and **fired 24 times**
+across the capture. One real scan, 6 frames (6 `cn_enhanced_driver` calls).
+
+### 73.2 — The decisive result: `0x1028b8d0` writes the `orderFpo` triple,
+12 times out of 12, with no counterexample
+
+The test §72.7 designed: dump `pref_data` (`scene+0x38a2`) at every
+`0x1028b8d0` entry, and compare against the same blob at the existing
+`sba_preference` dump, matched **by address** (not by ordering assumption —
+each scene has its own distinct `pref_data` allocation, so the address is an
+unambiguous key). Every `arg3 == 0` call, without exception:
+
+```
+addr 0x08dc9952: before=(0,0,0) -> Preference sees (2079, 58, 465)
+addr 0x08e0fc0a: before=(0,0,0) -> Preference sees (2041, 72, 447)
+addr 0x08e5b952: before=(0,0,0) -> Preference sees (1914, 48, 455)
+addr 0x08ea746a: before=(0,0,0) -> Preference sees (1731, 54, 451)
+addr 0x08ef4952: before=(0,0,0) -> Preference sees (2233, 65, 431)
+addr 0x08f3f952: before=(0,0,0) -> Preference sees (2056, 67, 444)
+```
+
+and then the identical six values again, on six *different* `pref_data`
+addresses, in the capture's second pass (`0x08dd52fa`, `0x08e1f752`,
+`0x08e4faf2`, `0x08eb6a6a`, `0x08ee8af2`, `0x08f33af2`) — **12 of 12,
+zero counterexamples.** The triple is `(0,0,0)` on entry to every single
+`arg3==0` call and non-zero, per-frame-distinct, by the time Preference
+reads the same address. Nothing else runs in between.
+
+**So §66's original identification was right, and §72's own stated
+possibility is the one that obtains:** the write happens inside one of the
+eight helper subroutines §72.3 explicitly flagged as unread ("whether the
+`pref_data+0/+2/+4` orderFpo triple is written *inside* one of them, with
+`ebp`/`pref_data` threaded in as a hidden argument, remains open"), not at
+`0x1028b8d0`'s own top level. §72's static reading was not wrong — its own
+top-level finding still holds exactly as written; the capture resolves the
+branch it correctly left open rather than overturning what it claimed.
+
+That the same six triples reproduce exactly across two independent passes
+over the same roll is itself worth stating: these are deterministic
+per-scene values, not noise, and the second pass's fresh `pref_data`
+allocations rule out "the blob was already populated and we misread the
+ordering."
+
+### 73.3 — §72.3's `arg 3 == 0` claim is refuted by live data, and case 1
+is not dead
+
+§72.2 recorded arg 3 as `0`, hedging honestly on one of the two call sites
+(*"the `edi` register at `fcn.102159c0`'s call, not independently
+re-derived to 0 at that exact point"*), and §72.3 concluded from it that
+*"case 0 is the switch case that fires at both real call sites"* and that
+case 1 is *"dead on both real call sites since mode is 0."* **The live
+`stack_dwords` say otherwise.** Of the 24 real calls: **12 fire with
+`arg3 == 1`** and 12 with `arg3 == 0`, in a strict, repeating structure —
+six consecutive `arg3==1` calls (one per scene, each on a different
+`pref_data`), then per-scene `arg3==0` calls interleaved with Preference
+and getShifts, and the whole shape repeated once. Case 1 is genuinely live
+code, executed once per scene per pass.
+
+This is exactly the failure mode §72.2's own methodology warning predicted
+for r2-derived argument values, and the reason §72.6 refused to build a
+harness on assumption (c) ("arg 3/8/9's exact live value at
+`fcn.102159c0`'s call site (assumed, not proven, to be 0)"). Had a Unicorn
+harness been built on that assumption, it would have executed the wrong
+switch case for half the real calls and produced a confident, wrong result.
+**The refusal was correct, and this is the evidence that it was correct** —
+worth recording plainly, because "we declined to guess and the guess would
+have been wrong" is a stronger justification for the standard than any
+argument from principle.
+
+`arg8` and `arg9` are `0` on all 24 calls, as §72.2 assumed — that part
+holds.
+
+### 73.4 — §72.2's Tier-3 argument table, live-confirmed on three of its
+thirteen entries
+
+The v21 dumps were deliberately designed (see `hookcore_real_table.c`'s own
+comment) to self-check §72.2's static mapping rather than trust it. Result:
+
+* **arg 12 = `pref_data` (`scene+0x38a2`)** — confirmed exactly: the raw
+  `stack_dwords[12]` value equals the `pref_data_before` dump's own `addr`
+  on every one of the 24 calls.
+* **arg 5 = the DPI-static blob copy** — confirmed: reads
+  `(879, 1250, 1386)` on all 24 calls, the exact `fpo` constant §63.1
+  already established as DPI-constant across every captured frame, and
+  precisely what §72.4 predicted from its own static trace of
+  `fcn.10214e30`. Its buffer address differs between the `arg3==1` pass
+  (`0x09399388`) and the `arg3==0` pass (`0x09399570`) — two distinct
+  buffers, consistent with §72.4's finding that the two call sites source
+  this argument differently.
+* **arg 11 = `fosDmin` (`scene+0x290c`)** — confirmed live and, usefully,
+  *phase-dependent*: `(0,0,0)` on every `arg3==1` call and
+  `(297, 734, 964)` on every `arg3==0` call. The FOS dmin is not yet
+  computed during the first pass and is populated by the second — a real,
+  previously unrecorded sequencing fact.
+
+Three of thirteen is not the whole table, but it is three entries moved
+from Tier 3 (static, cross-checked two ways) to Tier 2 (live), including
+the one (arg 12) the entire §73.2 result depends on.
+
+### 73.5 — The Δ thread: the second `+0x3a38` field is empirically zero, so
+it is not Δ's source
+
+§69 found the setShifts caller's *third* `getShifts` call reads a different
+`+0x3a38` (`*(arg1+0x10)+0x3a38`) and proposed it as the per-frame uniform
+Δ's source; §71 traced statically that no second *writer* exists and that
+this read reaches the same Preference-written field through one more layer
+of indirection, leaving open only whether the third call fires live. The
+v21 capture carries v20's own `shifts_3a38_arg1` dump (v21 is a strict
+superset — v20's source was merged before v21 was built on it), so both
+questions are answered by the one capture:
+
+* `sba_get_shifts` fired **18 times** across 6 frames — 3 per frame, not
+  the 2 per frame v19 observed. **The third call does fire.**
+* Its `shifts_3a38_arg1` dump is readable on 12 of those 18 and reads
+  **`(0,0,0)` on all 12**, from a single fixed address (`0x0939d0d0`) that
+  differs from the per-scene `pref_data` allocations. On the other 6 the
+  dump is `readable=false` with a nonsense address (`0x00003a38` — i.e.
+  the base pointer dereferenced to 0 and only the offset survived), meaning
+  `*(arg1+0x10)` was not a valid pointer at those call sites at all.
+
+**So the field §69 nominated as Δ's source is empirically all-zero
+wherever it is readable, and unmapped where it is not.** It cannot be Δ.
+This closes `docs/76` §5 step 1 and step 2's remaining sub-question
+together — negatively, which is still a real closure: two of the three
+things that thread was waiting on are now settled, and the nominated
+candidate is eliminated rather than left hanging.
+
+### 73.6 — Δ itself, measured directly: real, per-frame, uniform to within
+one code
+
+Pairing each scene's own `A` (`+0x3a38`, read at its own `getShifts`) with
+that frame's own applied balance shift (`+0x4b6`, the existing
+`balance_shift_4b6` dump at `balanceAreaImage`), in scene order:
+
+| frame | A (+0x3a38) | applied (+0x4b6) | Δ = applied − A |
+|---|---|---|---|
+| 1 | (772, 356, 90) | (729, 313, 47) | (−43, −43, −43) |
+| 2 | (787, 367, 131) | (819, 399, 163) | (+32, +32, +32) |
+| 3 | (854, 458, 186) | (861, 464, 193) | (+7, +6, +7) |
+| 4 | (957, 556, 295) | (991, 590, 329) | (+34, +34, +34) |
+| 5 | (661, 261, 27) | (593, 192, −41) | (−68, −69, −68) |
+| 6 | (774, 362, 122) | (786, 374, 134) | (+12, +12, +12) |
+
+Four of six are *exactly* uniform across all three channels; the other two
+differ by one code in a single channel — the signature of `setshifts_12`'s
+own rounding sitting between `A` and the applied value, exactly as
+`docs/76` §1's pipeline (`setshifts_12(A,A) + Δ`) already models it. **Δ is
+real, per-frame, of substantial magnitude (−68 … +34 here), and genuinely
+luma-uniform.** Its own source remains unidentified — §73.5 eliminates the
+one nominated candidate without supplying a replacement.
+
+**A methodology note worth recording, because it nearly produced a wrong
+table.** The first version of this pass's own analysis script paired every
+frame's applied shift with the *most recent* `getShifts` value in stream
+order, which — because all 18 `getShifts` calls occur **before** the first
+`cn_enhanced_driver` frame boundary (§73.7) — silently paired all six
+frames with scene 6's `A`, yielding six wildly non-uniform "Δ"s (spreads of
+8–31 codes) and would have read as evidence *against* `docs/76`'s
+uniform-Δ model. Caught by noticing every row printed the identical `A`.
+The corrected pairing is by scene position. Stream order is not frame
+order in this pipeline, and any future analysis of this capture has to
+pair by scene identity (address or index), never by "last seen."
+
+### 73.7 — Architecture: the whole balance chain runs roll-wide, before any
+per-frame render
+
+Read straight off the call ordering, and not previously recorded in this
+doc: **every** `sba_order_fpo_calc`, `sba_preference`, and `sba_get_shifts`
+call in this capture occurs *before* the first `cn_enhanced_driver` frame
+begins. The six `cn_enhanced_driver` frames then run afterward, each
+containing exactly one `balanceAreaImage` that applies the already-computed
+shift. So the vendor computes `orderFpo` → Preference → setShifts for
+**all six scenes up front, roll-wide**, then renders frame by frame. This
+corroborates §72.5's static sequencing finding (`0x1028b8d0` precedes
+Preference within a pass) and extends it: the whole balance stage is a
+roll-level pass, not a per-frame one interleaved with rendering.
+
+### 73.8 — Verdict, and what this leaves
+
+1. **`0x1028b8d0` is the per-frame `orderFpo` writer** — 12/12, live, no
+   counterexample (§73.2). §66 confirmed; §72's "one of the 8 helpers"
+   branch is the one that obtains. The remaining work on this specific
+   thread is identifying *which* helper, and porting its arithmetic.
+2. **§72.3's `arg3==0` claim is refuted** (§73.3): both switch cases fire
+   live, in a strict per-pass structure. §72.6's refusal to build a harness
+   on that assumption is vindicated by the very data that refutes it.
+3. **Three of §72.2's thirteen argument mappings are now live-confirmed**
+   (§73.4), including the one §73.2 depends on.
+4. **The Δ candidate field is eliminated** (§73.5): readable everywhere it
+   is mapped, and zero everywhere it is readable.
+5. **Δ is measured, real, and uniform to within one code** (§73.6), but its
+   source is now genuinely unknown again — this pass removed the only
+   nominated candidate without finding a replacement.
+6. **The balance chain is a roll-wide pre-pass** (§73.7).
+
+**What this does NOT establish, stated plainly:** nothing here shows that
+closing the balance chain closes the ~88-89 sRGB code brightness gap this
+doc has chased since §31. That remains a hypothesis — well-motivated
+(this is the stage that sets colour balance) but unproven. This pass moved
+a real blocker, it did not measure the gap.
+
+**No production, golden, or port file was changed by this pass.** The only
+file edited is `docs/74-…md` (this section). Analysis scripts are scratch,
+under the session's own tmp directory, not committed, per this doc's
+convention.
+
+**Verification.** Capture md5 recorded and stated above; 0 unparseable
+lines of 32.9 MB. Hook installation confirmed from the capture's own
+`status`/`hook_installed` rows, not assumed from the build. The §73.2
+before/after comparison is keyed on the `pref_data` **address** reported by
+the dump itself and cross-checked against the raw `stack_dwords[12]` arg
+value on every call, so the pairing cannot be an ordering artifact. The
+`arg3` values in §73.3 are read from the engine's own raw `stack_dwords`
+array (logged independently of any extra dump) rather than from a derived
+field. The §73.6 Δ table's own first version was wrong and is documented as
+such above rather than silently corrected. All six per-scene triples
+reproduce identically across the capture's two independent passes.
+
+## 74 — Correction to §73.2 (and to §72.3): the `orderFpo` write is at
+`0x1028b8d0`'s own top level after all — three instructions at
+`0x1028c2b6`/`be`/`c2`, found by grepping the body for `[ebp+N]` writes and
+confirmed 12/12 by a prediction the live capture had already recorded
+
+§73.2 concluded, from the live before/after evidence, that `0x1028b8d0`
+writes the `orderFpo` triple — correct — and then inferred **that the write
+must therefore live inside one of the eight helper subroutines**, on the
+strength of §72.3's own statement that the function's top level writes only
+`pref_data+0x3e`. `docs/76` §5 step 4 was rewritten around that inference,
+proposing a static read of three helpers or a further live capture to find
+"which helper." **The inference was wrong, and it was wrong because it
+trusted §72.3's negative instead of re-deriving it.** The write is at the
+top level, in the case-0 shared body, and finding it took one `grep`.
+
+### 74.1 — The actual write site
+
+A mechanical grep of `0x1028b8d0`'s own full `af`+`pdf` disassembly for
+every `mov [ebp…], reg` — not a read of the tail, not a trace of any
+helper — returns **eleven** stores, all into the same struct:
+
+```
+0x1028c29d   mov word [ebp + 0x2a], cx
+0x1028c2b6   mov word [ebp + 2],    cx     <-- orderFpo U
+0x1028c2ba   mov word [ebp + 8],    cx
+0x1028c2be   mov word [ebp],        ax     <-- orderFpo Y
+0x1028c2c2   mov word [ebp + 4],    dx     <-- orderFpo V
+0x1028c2c6   mov word [ebp + 6],    ax
+0x1028c2ce   mov word [ebp + 0xa],  dx
+0x1028c2d9   mov word [ebp + 0x36], cx
+0x1028c2e8   mov word [ebp + 0x3a], dx
+0x1028c2f3   mov word [ebp + 0x38], cx
+0x1028c3c0   mov word [ebp + 0x3e], ax     <-- the ONE §72.3 reported
+```
+
+`ebp` is reloaded at `0x1028c208` (`mov ebp, dword [arg_2fch]`) — i.e. it
+holds a *different* value earlier in the body (it is used as a plain number
+at `0x1028c1f8`, `add eax, ebp`) and becomes the `pref_data` base only for
+this trailing store block. That reload is very plausibly why §72.3, reading
+the tail around `0x1028c3a1`-`0x1028c3c0`, saw the `+0x3e` store and
+reported it as the function's only `pref_data` write: the three orderFpo
+stores sit ~250 bytes earlier, inside the large body §72.3 described in
+prose ("computes several intermediate values via the same
+`MAGIC_Y`/`MAGIC_C1`/`MAGIC_C2` opening-axis transform") without
+enumerating its stores.
+
+The three values themselves are each the sum of two locals, computed
+immediately before:
+
+```
+eax = [var_28h] + [var_dch]      -> +0x00 and +0x06   (Y)
+ecx = [var_2ch] + [var_64h]      -> +0x02 and +0x08   (U)
+edx = [var_68h] + [var_30h]      -> +0x04 and +0x0a   (V)
+```
+
+### 74.2 — Independent confirmation, from data captured before the claim was
+made
+
+The disassembly above predicts something the live capture can check and
+that nothing in §73 relied on: **`pref_data+0/+2/+4` must equal
+`pref_data+6/+8/+0xa`**, because `ax`/`cx`/`dx` are stored to both triples
+without being reloaded in between (`0x1028c2b6`-`0x1028c2ce`).
+
+Checked against the existing `sba_preference` `pref_data` dumps in
+`live_hooks_20260817-112602.jsonl` — data recorded on real hardware before
+this section's claim existed, so it cannot have been fitted to it:
+
+| pref_data addr | +0/+2/+4 | +6/+8/+0xa | |
+|---|---|---|---|
+| `0x08dc9952` | (2079, 58, 465) | (2079, 58, 465) | match |
+| `0x08e0fc0a` | (2041, 72, 447) | (2041, 72, 447) | match |
+| `0x08e5b952` | (1914, 48, 455) | (1914, 48, 455) | match |
+| `0x08ea746a` | (1731, 54, 451) | (1731, 54, 451) | match |
+| `0x08ef4952` | (2233, 65, 431) | (2233, 65, 431) | match |
+| `0x08f3f952` | (2056, 67, 444) | (2056, 67, 444) | match |
+
+and the same six again on the second pass's own six distinct allocations —
+**12 of 12, no exceptions.** This confirms both that `ebp` at
+`0x1028c2b6`-`c2` really is `pref_data` (i.e. `arg_2fch` really is arg 12,
+independently corroborating §73.4's live confirmation of that mapping) and
+that these three instructions really are the writes §73.2 observed the
+effect of.
+
+`+0x2a` is also non-zero and per-scene-distinct in the same dumps
+(216/298/174/152/178/182), consistent with its own store at `0x1028c29d`.
+`+0x3e` — the one field §72.3 did report — reads **0** on every captured
+Preference observation, because its store at `0x1028c3c0` happens in the
+*tail* block, after this dump point.
+
+### 74.3 — What this changes
+
+* **§73.2's "the write happens inside one of the eight helper subroutines"
+  is withdrawn.** Its primary claim — that `0x1028b8d0` writes the triple,
+  12/12 — stands unchanged and is now corroborated by the exact
+  instructions. Only the localization was wrong.
+* **§72.3's "its own top-level code writes exactly ONE word at
+  `pref_data+0x3e`" is corrected**: the top level writes eleven fields,
+  including the orderFpo triple twice. §72.3's reading of the *tail* was
+  accurate as far as it went; it simply was not the whole function.
+* **`docs/76` §5 step 4 collapses.** There is no "which helper" to find,
+  and the further live capture it proposed is unnecessary. The porting
+  target is now three concrete instructions and the six locals feeding
+  them.
+* **The eight helpers are not exonerated in general** — they are simply not
+  needed to explain this particular write. Whether any of them also touches
+  `pref_data` through a different register is not something this section
+  tested.
+
+**Method note, worth recording as plainly as the finding.** §73 was written
+immediately after a decisive live result, and it carried one unverified
+static claim (§72.3's negative) straight through into its own conclusion
+because that claim was congenial to the new evidence rather than in tension
+with it. The live data was never wrong; the disassembly needed one grep
+that had not been run. This is the same class of error §72.2 warns about
+for r2's argument names, one level up: **an inherited negative is still an
+assumption, and "an earlier section already established this" is not a
+tier of evidence.** The correction cost one command; leaving it in place
+would have sent the next pass hunting through eight helper functions for a
+write that was never there.
+
+### 74.4 — What is still genuinely open on this thread
+
+Unchanged by this section: **Δ's source** (§73.5 eliminated the only
+nominated candidate; §73.6 measured Δ as real, per-frame, luma-uniform to
+within one code), and the **provenance of the six locals** (`var_28h`,
+`var_dch`, `var_2ch`, `var_64h`, `var_68h`, `var_30h`) that sum into the
+three written values — knowing where the write is does not yet mean knowing
+what it computes. That trace, back through the case-0 body's own
+opening-axis arithmetic to the function's real inputs, is the next
+concrete porting step, and it is now a bounded static task rather than an
+open search.
+
+**No production, golden, or port file was changed by this pass.** Only
+`docs/74-…md` (this section) and `docs/76`'s own step 4 were edited.
+
+## 75 — §72.2's thirteen-argument table checked against the live pointers
+themselves: six of seven scene-relative claims confirmed exactly, **arg 6
+refuted** (it is not `scene+0x5978`, it is a separate allocation), and v22
+built to dump the six argument buffers a Unicorn run still needs
+
+§73.4 confirmed three of §72.2's argument mappings live (args 5, 11, 12) by
+comparing dumped *contents* against known values. That method only reaches
+arguments whose contents were dumped. This section checks the rest a
+different way — by arithmetic on the raw pointer values the engine logs for
+every call regardless of dumps — and finds one real error in the table.
+
+### 75.1 — Method: derive the scene base, then subtract
+
+The v21 capture logs all 13 raw argument values in every
+`sba_order_fpo_calc` `call` row's own `stack_dwords` array, independent of
+any extra dump. §73.4 established `arg 12 == pref_data == scene+0x38a2`
+exactly (its value equals the `pref_data_before` dump's own reported `addr`
+on all 24 calls, and §74.2 independently corroborated the same mapping via
+the `+0/+2/+4` vs `+6/+8/+0xa` duplication holding 12/12). That gives a
+scene base for free: `scene = arg12 − 0x38a2`. Every other argument's
+claimed scene offset is then a subtraction, checkable with no disassembly
+at all.
+
+Taking the first live `arg3 == 0` call (`scene = 0x08dc60b0`):
+
+| arg | live value | derived offset | §72.2 claim | |
+|---|---|---|---|---|
+| 0 | `0x08dc60ca` | `scene+0x001a` | `scene+0x1a` | confirmed |
+| 1 | `0x08dc9c78` | `scene+0x3bc8` | `scene+0x3bc8` | confirmed |
+| 2 | `0x08dc993c` | `scene+0x388c` | `scene+0x388c` | confirmed |
+| 5 | `0x09399570` | — | (caller local) | not scene-relative, as claimed |
+| 6 | `0x08cffac0` | `scene−0xc65f0` | `scene+0x5978` | **REFUTED** |
+| 7 | `0x08dc9ce4` | `scene+0x3c34` | `scene+0x3c34` | confirmed |
+| 10 | `0x093995d4` | — | (caller local) | not scene-relative, as claimed |
+| 11 | `0x08dc89bc` | `scene+0x290c` | `scene+0x290c` | confirmed |
+| 12 | `0x08dc9952` | `scene+0x38a2` | `scene+0x38a2` | confirmed (by construction) |
+
+**Six of the seven scene-relative claims land exactly**, to the byte, which
+is strong independent corroboration of §72.2's hand-rebuilt argument order
+generally — that table was reconstructed from caller push order plus manual
+stack-delta tracking after r2's own `arg_XXXh` names proved unusable, and
+it holds up.
+
+**Arg 6 does not.** §72.2 recorded it as `scene+0x5978`; the real pointer
+sits roughly `0xc65f0` bytes *below* the scene base — not a scene field at
+all, but a separate allocation in an unrelated region. This is the third
+correction to §72's static reading (after §73.3's `arg3` refutation and
+§74's write-site correction), and it lands the same way as the others: the
+static reconstruction was right about structure and wrong about one
+specific value that only live data could settle.
+
+Args 5 and 10 are confirmed adjacent caller locals — `arg10 − arg5 ==
+0x64` exactly, consistent with §72.2's description of two small structs in
+the caller's own frame (and with `pref_data` itself being a `0x64`-byte
+blob, suggesting these two locals are the same shape).
+
+### 75.2 — v22: dumping the six argument buffers a Unicorn run still needs
+
+§72.6 refused to build a Unicorn harness for `0x1028b8d0` because doing so
+would have required inventing load-bearing inputs. §73/§74 removed two of
+the three named unknowns (the switch selector's live value; the write
+site's location). The remaining obstacle is concrete and mechanical: **v21
+dumped only args 5, 11 and 12; args 0, 1, 2, 6, 7 and 10 are pointers whose
+contents have never been captured**, and no harness can execute the real
+function without the real memory behind them.
+
+v22 adds exactly those six `EXTRA_DUMP_STACK_PTR` rows to the existing
+`sba_order_fpo_calc` hook. No new hook, so no `HOOKCORE_MAX_HOOKS` bump, no
+new thunk, and none of the append-only/positional hazards §46.8/§47/§73
+document — the hook table is byte-for-byte unchanged and
+`check_table_sync.py` still reports 30/30 identical against `agent.js`.
+
+Sizes are generous-but-bounded (`0x40`, `0x400`, `0x20`, `0x100`, `0x40`,
+`0x64` respectively, ~1.5 KB/call, ~37 KB per capture — negligible beside
+the existing `0x84000`-byte `poly_input_r` row), and every row is
+`IsBadReadPtr`-guarded like the rest, so an over-large or wrong-shaped
+request degrades to `"readable": false` rather than crashing the real box.
+`arg6_unknown`'s size in particular is an honest guess, flagged as such in
+the table's own comment, precisely because §75.1 just showed nobody knows
+what that buffer actually is — a truncated or unreadable result there is
+itself information.
+
+Build gates, all passing: KERNEL32-only imports (no CRT), XP 5.1 subsystem
+stamp, 30/30 hook-table sync, and `selftest ALL PASS` including the
+32,000-call 8-thread concurrency stress. `hookdll.dll` `md5
+88de396ab7527a5af63644221a44aa60`, `injector.exe` `md5
+ca21753e048f4e6e211fcaf2ac0684c5`, both uploaded to the drop server as
+`hookdll_v22.dll` / `injector_v22.exe` and confirmed present in its own
+listing.
+
+### 75.3 — What a v22 capture unlocks
+
+With args 0/1/2/5/6/7/10/11/12's real contents plus the already-known
+immediates (arg 3 = 0, arg 4 = 0, args 8/9 = 0, all live-confirmed in
+§73.3/§73.4), every input to `0x1028b8d0` on the live `arg3==0` path is
+real captured data rather than an assumption. That is exactly the
+precondition §72.6 said was missing, and it makes the harness §66 originally
+called for buildable to this project's Tier-1 standard — executed on real
+input, diffed bit-exact against the six known-good `orderFpo` triples
+§73.2 already recorded ((2079,58,465), (2041,72,447), (1914,48,455),
+(1731,54,451), (2233,65,431), (2056,67,444)), with no tuning knob anywhere
+in the loop.
+
+Caveat stated plainly rather than discovered later: a Unicorn run of this
+function also executes its eight helper subroutines, and if any of them
+dereferences a pointer *stored inside* one of these buffers, that memory
+will not be in the capture either. Whether that happens is not known yet —
+it is a real possibility this section does not pretend to have excluded,
+and if it occurs the harness will fault on a specific unmapped address,
+which names precisely what a v23 would need to dump. That is a tractable
+next step, not a dead end.
+
+**No production, golden, or port file was changed by this pass.** The only
+files edited are `hookcore_real_table.c` (six additive dump rows, no hook
+table change) and `docs/74-…md` (this section).
+
+## 76 — docs/76 §5 step 5: the six locals traced to real inputs. `orderFpo`
+= `fos_opening_axes(arg5)` + a three-term delta; **U and V are fully
+derived** (a weighted-mean chroma over 864 dens samples, computed at
+`0x1028ae00`'s own top level, no helper emulation needed), **Y is not** —
+its delta is a stack local no argument carries, written by `fcn.102ac310`
+into a buffer at frame offset `−0x258`
+
+§74 pinned the three write instructions and named the six locals feeding
+them (`var_28h`, `var_dch`, `var_2ch`, `var_64h`, `var_68h`, `var_30h`) as
+"the next concrete porting step". This section does that trace. Five of the
+six resolve to real, named inputs with complete arithmetic. The sixth — the
+one on the **Y** channel, which carries all of `orderFpo` Y's per-frame
+variation — resolves to a stack slot that is not any argument and is not
+written anywhere in `0x1028b8d0`'s own body, so it is stated as unresolved
+rather than guessed, with the exact capture that would close it.
+
+### 76.1 — Method, and why r2's `var_*` names are re-derived rather than used
+
+`PakonIMAu.dll` re-hashed first: `md5 eea9dcf78ee21d4f7c515a6c2512242d`,
+matching every prior citation. `radare2` 6.1.8 via `r2pipe`, `aa` + forced
+`af`, `pdf`/`pdfj` at real function boundaries only (never `pD`), with
+`e asm.sub.var=false` so every operand shows its **raw** `[esp+N]`
+displacement instead of r2's label.
+
+Per §72.2's warning, no `var_*` name is trusted. Instead a CFG-walking
+stack-delta propagator (worklist over `pdfj`'s own `jump`/`fail` edges, with
+the four-entry switch table at `0x1028c460` — `{0x1028bdab, 0x1028c3cf,
+0x1028bde3, 0x1028be36}` for cases 0/1/2/3 — seeded manually) assigns every
+instruction an `esp`-delta from function entry, and every `[esp+N]` operand
+is converted to a **canonical entry-relative offset** `N − delta`. The walk
+covers **all 912 instructions with zero delta conflicts** — i.e. every
+instruction is reached with exactly one `esp` value along every path, which
+is itself a self-check that the propagation is sound. Canonical offsets
+`+0x4 … +0x34` are args 0–12; everything negative is a frame local.
+
+Two independent corroborations that the mapping is right:
+
+* `mov ebp, dword [esp+0x304]` at `0x1028c208` (delta `0x2d0`) canonicalises
+  to `+0x34` = **arg 12**, which §73.4/§74.2 already live-confirmed is
+  `pref_data`.
+* r2's own canonicaliser independently maps `[esp+0xdc]` at `0x1028bfea`
+  (delta `0x2dc`) and `[esp+0xd0]` at `0x1028c2a1` (delta `0x2d0`) to the
+  **same** name `var_dch`; the propagator maps both to canonical `−0x200`.
+  Two different methods, same slot identity.
+
+Below, locals are named by their canonical offset (`L−0x200` etc.) and the
+literal `[esp+N]` form at the site is given so every claim is checkable.
+Scratch scripts and dumps under `/tmp/pakon_re/` (`track2.py`, `helper.py`,
+`fcn_annot2.txt`, `h_1028ae00.txt`, `h_102ac310.txt`, `h_102aece0.txt`),
+not committed.
+
+### 76.2 — The six locals, in raw displacements
+
+At the write block the frame delta is `0x2d0` (`sub esp,0x2c0` +
+`push esi/ebp/ebx/edi`). Reading `0x1028c291…0x1028c2ce`:
+
+| r2 name | site | literal | canonical | is |
+|---|---|---|---|---|
+| `var_28h` | `0x1028c291` | `[esp+0x28]` | `−0x2a8` | **Y** of `fos_opening_axes(arg5)` |
+| `var_dch` | `0x1028c2a1` | `[esp+0xd0]` | `−0x200` | **UNRESOLVED** (see §76.6) |
+| `var_2ch` | `0x1028c2aa` | `[esp+0x2c]` | `−0x2a4` | **C1** of `fos_opening_axes(arg5)` |
+| `var_64h` | `0x1028c295` | `[esp+0x64]` | `−0x26c` | `fcn.1028ae00` out-struct `[+4]` |
+| `var_68h` | `0x1028c2b0` | `[esp+0x68]` | `−0x268` | `fcn.1028ae00` out-struct `[+8]` |
+| `var_30h` | `0x1028c299` | `[esp+0x30]` | `−0x2a0` | **C2** of `fos_opening_axes(arg5)` |
+
+So the write is, structurally:
+
+```
+orderFpo.Y = axesY (arg5) + L[-0x200]
+orderFpo.U = axesC1(arg5) + outstruct[+4]
+orderFpo.V = axesC2(arg5) + outstruct[+8]
+```
+
+— an opening-axis constant plus a per-frame delta, per channel.
+
+### 76.3 — `L−0x2a8/−0x2a4/−0x2a0` **are** `fos_opening_axes`, unchanged;
+reuse the existing port rather than re-deriving
+
+The function prologue (`0x1028b967…0x1028ba24`, before the switch) reads
+arg 5's three `int16` words and writes a six-dword struct at canonical
+`−0x2b4`:
+
+```
+0x1028b971  edi = movsx word[esi+0]      -> [esp+0x1c]  (-0x2b4)  R
+0x1028b96c  ebx = movsx word[esi+2]      -> [esp+0x20]  (-0x2b0)  G
+0x1028b967  ecx = movsx word[esi+4]      -> [esp+0x24]  (-0x2ac)  B
+0x1028b979…0x1028b9ac  (R+G+B)*0x186a0 ±0x1524a, imul 0x306e8227, sar 15
+                                         -> [esp+0x28]  (-0x2a8)  Y
+0x1028b9b0…0x1028b9e0  (2G−B−R)*0x186a0 ±0x1de6a, imul 0x111f883d, sar 14
+                                         -> [esp+0x2c]  (-0x2a4)  C1
+0x1028b9e4…0x1028ba24  (B−R)  *0x186a0 ±0x11436, imul 0x3b510a6f, sar 15
+                                         -> [esp+0x30]  (-0x2a0)  C2
+```
+
+This is instruction-for-instruction the transform already ported as
+`fos_opening_axes` in `tools/ansel/python-pipeline/pakon_fos.py`
+(`RGB_SCALE=0x186a0`, `BIAS_Y/C1/C2 = 0x1524a/0x1de6a/0x11436`,
+`MAGIC_Y/C1/C2 = 0x306e8227/0x111f883d/0x3b510a6f`, `sar 15/14/15`, with
+the `mov eax,edx; shr eax,0x1f; add eax,edx` sign fixup). **Stated
+explicitly as the task asked: the body's arithmetic matches the existing
+port; reuse `fos_opening_axes`, do not re-derive it.** Running the repo's
+own function on the live `fpo`:
+
+```
+fos_opening_axes(879, 1250, 1386) == (2029, 96, 359)
+```
+
+which an independent transcription of the disassembly written for this pass
+reproduces exactly.
+
+Two branch facts make this the *reaching* definition on the live path:
+
+* The only other writer of these three slots is `0x1028bcc9/bccd/bcd1`,
+  inside the block at `0x1028bb3f…0x1028bcd1` that is entered only when
+  arg 3 is 2 (with global `[0x106bc7d8]` non-zero) or 3
+  (`0x1028bb25…0x1028bb39`, `jne 0x1028bcd5`). Arg 3 is **0** live
+  (§73.3), so that block is jumped over and the prologue values survive.
+* `arg 5` is the DPI-static blob, live-confirmed `(879, 1250, 1386)` on all
+  24 calls (§73.4).
+
+Therefore, **live, per frame**, the constant terms are exactly
+`(2029, 96, 359)`, and the required per-frame deltas — derived from the six
+known-good triples — are:
+
+| scene | orderFpo | Y delta `L−0x200` | U delta `out[+4]` | V delta `out[+8]` |
+|---|---|---|---|---|
+| 1 | (2079, 58, 465) | **+50** | −38 | +106 |
+| 2 | (2041, 72, 447) | **+12** | −24 | +88 |
+| 3 | (1914, 48, 455) | **−115** | −48 | +96 |
+| 4 | (1731, 54, 451) | **−298** | −42 | +92 |
+| 5 | (2233, 65, 431) | **+204** | −31 | +72 |
+| 6 | (2056, 67, 444) | **+27** | −29 | +85 |
+
+Note what this already establishes independent of any further work: **all of
+`orderFpo` Y's per-frame variation (a 502-code spread) lives in the one
+term that is not resolved**, while U and V's deltas are narrow-range
+(−48…−24, +72…+106) chroma corrections.
+
+### 76.4 — `L−0x26c` / `L−0x268` (U and V): fully derived
+
+Both are the `[+4]`/`[+8]` fields of the out-struct at canonical `−0x270`,
+passed as **arg 6** of `fcn.1028ae00`, called at `0x1028c023` with 15 cdecl
+arguments (`add esp,0x3c`). Recovering that call's argument order from the
+push sequence `0x1028bfdf…0x1028c022` (last push = arg 0), with the same
+delta propagation:
+
+| helper arg | pushed at | value |
+|---|---|---|
+| 0 | `0x1028c022` | outer arg 0 (`scene+0x1a`, dens) |
+| 1 | `0x1028c021` | outer arg 11 (`scene+0x290c`) |
+| 2 | `0x1028c01c` | `0x360` = **864** |
+| 3 | `0x1028c014` | `(outer arg4 & 0x2000) ? 0 : outer arg7` (`0x1028bfc4…bfda`) |
+| 4 | `0x1028c012` | `0x32` = 50 |
+| 5 | `0x1028c010` | `0x53` = 83 |
+| 6 | `0x1028c00f` | `&L−0x270` (**out**) |
+| 7 | `0x1028c007` | outer arg 3 |
+| 8 | `0x1028c006` | outer arg 10 |
+| 9 | `0x1028bffe` | **`L−0x200`** (the unresolved Y term, passed by value) |
+| 10 | `0x1028bff6` | `&L−0x2b4` (the six-dword `{R,G,B,Y,C1,C2}` of §76.3) |
+| 11 | `0x1028bff1` | outer arg 2 (`scene+0x388c`) |
+| 12 | `0x1028bfe9` | `L−0x2bc` = outer arg 6 + `0xdc` (`0x1028bdc4`) |
+| 13 | `0x1028bfe8` | `&L−0x2c0` (**out**, one word) |
+| 14 | `0x1028bfdf` | `&L−0x294` (**out**, three dwords) |
+
+Self-checks that this ordering is right, not assumed: helper arg 2/4/5 are
+read as `word` and used as `864` / `50` / `83` loop-and-clamp bounds
+(`0x1028b070`, `0x1028b171`, `0x1028b18a`), matching the literal pushes;
+helper arg 12 is dereferenced at `+0x12/+0x14/+0x16` as a small parameter
+block; helper arg 10 is dereferenced at `+0xc/+0x10/+0x14`, i.e. exactly the
+Y/C1/C2 fields of the `−0x2b4` struct.
+
+**Live, arg 4 == 0 on all 24 calls and arg 7 is a non-null pointer
+(`scene+0x3c34`) on all 24** (raw `stack_dwords`, v21), so helper arg 3 is
+non-zero and the early exit at `0x1028ae8a…0x1028aebd` does **not** fire.
+Helper **arg 7 == outer arg 3 == 0** on the twelve live calls that matter,
+which selects two things:
+
+1. `0x1028aed6` `cmp word[arg7],0` → equal → falls to `0x1028aef7`, which
+   seeds `[arg14] = arg10[+0xc]`, `[arg14+4] = arg10[+0x10]`,
+   `[arg14+8] = arg10[+0x14]` (i.e. `L−0x294/−0x290/−0x28c` = the *same*
+   `fos_opening_axes(arg5)` triple), sets `L−0x5c = L−0x58 = 0`, and stores
+   **`0xc8` (200) through arg 13** at `0x1028af19`.
+2. `0x1028b2b4` `cmp word[arg7],0` → equal → `je 0x1028b552`, the short
+   return that writes **only** `[arg6+4]` and `[arg6+8]` and leaves arg 14
+   untouched.
+
+Both are independently confirmed against v21 — see §76.5.
+
+**The arithmetic** (`fcn.1028ae00`, `0x1028b070…0x1028b247` loop, then
+`0x1028b254…0x1028b2b2` and `0x1028b4ef…`), transcribable directly:
+
+```
+# constants on this path
+N      = 864                       # helper arg2
+NX, NY = 50, 83                    # helper arg4, arg5
+OFFX   = (NX - 1) // 2   # = 24    # 0x1028ae03: dec/cdq/sub/sar 1 (trunc toward 0)
+OFFY   = (NY - 1) // 2   # = 41    # 0x1028ae12
+
+Yo, C1o, C2o = fos_opening_axes(*arg5_rgb)          # = (2029, 96, 359)
+
+densY  = i16[arg0 + 0x1440 + 2*i]   for i in 0..863   # (base+0x21c0) - 0xd80
+densC1 = i16[arg0 + 0x1b00 + 2*i]                     # (base+0x21c0) - 0x6c0
+densC2 = i16[arg0 + 0x21c0 + 2*i]
+
+Nmin = i16[arg6 + 0xdc + 0x12]                        # 0x1028b099
+R1sq = i16[arg6 + 0xdc + 0x14] ** 2                   # 0x1028ae3d/ae5b
+R2sq = i16[arg6 + 0xdc + 0x16] ** 2                   # 0x1028ae60/ae6a
+if i8[arg2 + 4] < 0:  R1sq = 0x3d0900                 # 0x1028aec5..aed2 (= 2000^2)
+Ythr = i32[arg11 + 0x48]                              # 0x1028b1fa
+
+cnt = 0 ; Sall1 = Sall2 = Ssel1 = Ssel2 = 0
+for i in 0..863:
+    y  = i16(densY [i] - Yo )      # 16-bit sub then movsx  (0x1028b0c2/b0d3)
+    c1 = i16(densC1[i] - C1o)      #                        (0x1028b0b8/b0c9)
+    c2 = i16(densC2[i] - C2o)      #                        (0x1028b0bf/b0ce)
+
+    gx = clamp16(trunc(c1/16) + OFFX, 0, NX-1)   # 0x1028b146..b182
+    gy = clamp16(trunc(c2/16) + OFFY, 0, NY-1)   # 0x1028b159..b191
+    w  = i8[ arg7 + gx*NY + gy ]                 # 0x1028b19c..b1a8 (50x83 int8 table)
+
+    if cnt < Nmin:                               # 0x1028b1ac
+        Sall1 += w*c1 ; Sall2 += w*c2            # 0x1028b1bd..b1cf
+
+    sq = c1*c1 + c2*c2                           # 0x1028b1d7..b1e1
+    sel = (u8[arg11 + 0xc20 + i] == 1 and sq <  R1sq)     # 0x1028b1e7..b1f5
+    if not sel:
+        sel = (y > Ythr and sq < R2sq)                    # 0x1028b1f7..b203
+    if sel:
+        cnt += 1 ; Ssel1 += w*c1 ; Ssel2 += w*c2          # 0x1028b205..b22c
+
+if cnt < Nmin:  num1, num2, den = Sall1, Sall2, N*100     # 0x1028b25f/b267/b26b
+else:           num1, num2, den = Ssel1, Ssel2, cnt*100   # 0x1028b4ef/b4f5
+
+def rdiv(n, d):                    # 0x1028b27e/b4de + 0x1028b28b idiv (trunc)
+    h = abs(d) >> 1
+    return trunc((n + h) / d) if n >= 0 else trunc((n - h) / d)
+
+out4 = rdiv(num1, den)   # + L-0x5c, which is 0 on this path
+out8 = rdiv(num2, den)   # + L-0x58, which is 0 on this path
+
+orderFpo.U = C1o + out4
+orderFpo.V = C2o + out8
+```
+
+`clamp16` is a genuine 16-bit clamp (`test di,di` / `cmp di, word[arg4]`),
+and the `/16` is `mov eax,r; cdq; and edx,0xf; add eax,edx; sar eax,4` —
+truncation toward zero, not an arithmetic shift. The `*100` denominators
+say `w` is a percentage weight; `out4`/`out8` are a **weighted mean chroma
+residual over the 864 dens samples**, which is the right order of magnitude
+for the −48…+106 deltas §76.3 measured. That is consistency, not proof —
+the proof is a numeric run once the buffers are captured.
+
+**No helper emulation is needed for U and V.** Everything above is
+`0x1028b8d0`'s and `0x1028ae00`'s own top-level code. This is a materially
+smaller ask than the full Unicorn harness §75.2 is building toward: U and V
+can be computed in pure Python from six flat buffers.
+
+### 76.5 — Two predictions of the §76.4 branch analysis, checked bit-exact
+against v21 — data recorded before this section existed
+
+Both come from the same twelve `pref_data` dumps §74.2 used, so neither can
+have been fitted.
+
+**(a) `pref_data+0x5e == 200` on all 12.** `0x1028af19` stores `0xc8`
+through helper arg 13 (`&L−0x2c0`) *only* on the `arg7 == 0` branch; the
+other branches store `0`, `0x64`, or `0x64+2` (`0x1028ae83`, `0x1028af65`,
+`0x1028af86`, `0x1028afaf`). The outer then copies that word to
+`pref_data+0x5e` at `0x1028c033…0x1028c04f`. Observed: **200 on every one of
+the 12 dumps**, no exceptions. This is direct live confirmation that the
+`arg3==0` path takes the branch §76.4 depends on.
+
+**(b) `pref_data+0x2a == isqrt(pref_data+0x24 ² + pref_data+0x26 ²)`, 6/6.**
+The tail (`0x1028c203…0x1028c29d`) squares the two words it just wrote to
+`+0x24`/`+0x26` and runs the vendor's own Newton integer-sqrt loop
+(`0x1028c237…0x1028c28f`: `0x60000000` normalisation, then
+`c = (n/c + c + 1) >> 1` to a fixpoint). Transcribing that loop exactly:
+
+| `+0x24` | `+0x26` | vendor loop | captured `+0x2a` | |
+|---|---|---|---|---|
+| −60 | 208 | 216 | 216 | match |
+| −35 | 296 | 298 | 298 | match |
+| −56 | 165 | 174 | 174 | match |
+| −44 | 145 | 152 | 152 | match |
+| −39 | 174 | 178 | 178 | match |
+| −37 | 178 | 182 | 182 | match |
+
+**6/6 bit-exact** — and note a naive `math.isqrt` gets **151** and **181**
+on rows 4 and 6, i.e. two of the six only match the vendor's own fixpoint,
+which is the kind of one-code difference this project exists to get right.
+
+This also confirms the surrounding reads: because `L−0x294/−0x290/−0x28c`
+are seeded to `fos_opening_axes(arg5)` itself (§76.4 item 1), the outer's
+`0x1028c053…0x1028c077` collapses to `pref_data+0x24 = i16(arg11[+0x4c])`
+and `pref_data+0x26 = i16(arg11[+0x50])` — so the captured `+0x24`/`+0x26`
+columns above are, transitively, the first ever readout of
+`scene+0x2958`/`scene+0x295c`.
+
+### 76.6 — `L−0x200` (the Y delta): unresolved, and why that is a finding
+rather than a gap to paper over
+
+> **CORRECTION — see §192.1.** Three statements this section makes about
+> `fcn.102aece0` are wrong and were re-verified as wrong: its body does **not**
+> end at the first `ret` (it is one function of 24,516 bytes,
+> `0x102aece0–0x102b4ca4`, with four `ret`s sharing one `0xfac` frame — and
+> `0x102afa8a` is `je 0x102afac9`, so control provably continues past the `ret`
+> this section took for the tail); it contains **three** calls, not one; and it
+> **does** dereference arg1, at six sites. The rest of this section stands.
+
+`L−0x200` is read exactly twice in the whole function — `0x1028bfea` (as
+helper arg 9) and `0x1028c2a1` (as the Y delta) — and **written nowhere**.
+A full enumeration of every `esp`-relative *write* in the 912-instruction
+body yields these canonical offsets, and no others:
+
+```
+-0x2c0 -0x2bc -0x2b8 -0x2b4 -0x2b0 -0x2ac -0x2a8 -0x2a4 -0x2a0 -0x29c
+-0x298 -0x294 -0x290 -0x28c -0x288 -0x284 -0x280 -0x278 -0x274 -0x270
+-0x26c -0x268 -0x264
+```
+
+`−0x200` is not among them, and there is no indexed (`[esp+reg+N]`),
+`rep stos`, or `memset` write anywhere in the body. So it is written by a
+**callee, through a pointer**. Only six stack addresses ever leave the
+frame, all as `lea`+`push`:
+
+| `lea` site | canonical base | passed to | offset needed to reach `−0x200` |
+|---|---|---|---|
+| `0x1028bdd2`/`be18`/`be6b`/`c352`/`c417` | `−0x2b4` | `fcn.102aece0`, `fcn.1028ae00` arg10, `fcn.102ae9d0` | `+0xb4` |
+| `0x1028bf89` | `−0x298` | `fcn.102ac310` arg8 | `+0x98` |
+| `0x1028bf90`, `0x1028c360` | `−0x258` | `fcn.102ac310` arg6, `fcn.102ae9d0` | `+0x58` |
+| `0x1028bfdb`, `0x1028c35b` | `−0x294` | `fcn.1028ae00` arg14, `fcn.102ae9d0` | `+0x94` |
+| `0x1028bfe4` | `−0x2c0` | `fcn.1028ae00` arg13 | `+0xc0` |
+| `0x1028c008` | `−0x270` | `fcn.1028ae00` arg6 | `+0x70` |
+
+Five of the six are excluded by the frame layout itself: the slots
+immediately above `−0x2b4`, `−0x298`, `−0x294`, `−0x2c0` and `−0x270` are
+all used by `0x1028b8d0` as *its own* scalars (the list above), so none of
+those objects can extend far enough to reach `−0x200` without overlapping a
+live local. `−0x258` is the only base that is **never** touched as a scalar,
+and canonical `−0x254 … −0x204` is the only unused run in the frame — the
+signature of a real buffer. So:
+
+> `L−0x200` == `((int32_t *)&buf_m258)[22]`, where `buf_m258` is the
+> variable-length dword list `fcn.102ac310` fills.
+
+`fcn.102ac310` (read in full, `0x102ac310…0x102ac42e`, 85 instructions) is
+called at `0x1028bfa8` as
+`fcn.102ac310(0, arg6, 0x2d0, &arg11[0x3c], 0, 0, &buf_m258, 0, &L−0x298)`,
+**gated** at `0x1028bf7f` on `arg6[0x158] == 0`. It stores its scalars into
+`arg6[0x198…0x1a4]`, `calloc`s, calls `0x102ac140(&arg6[0x138])`, then:
+
+```
+edi = arg6_out                                   # &buf_m258
+for k in 0 .. arg6[0x160]-1:                     # 0x102ac3e0..0x102ac402
+    e = arg6[0x168] + 0x10*k                     # 16-byte records
+    if dword[e+0xc] == 1:  *edi++ = dword[e+8]
+*arg8_out = arg6[0x164]                          # -> L-0x298
+```
+
+i.e. it extracts the value field of every record whose type field is 1, in
+order. `L−0x200` is the **23rd such extracted dword (index 22)**.
+
+Three things are *not* known and are not guessed here: whether the gate at
+`0x1028bf7f` even lets the call run on a real frame; how many records match
+(and therefore whether index 22 exists); and what a record's `+8`/`+0xc`
+fields mean. `arg 6` is the argument §75.1 just **refuted** as
+`scene+0x5978` — it is a separate allocation nobody has dumped — so none of
+this is answerable from data in hand.
+
+For the record, `fcn.102aece0` — the other callee that receives a stack
+pointer before `0x1028bfea` — was read and **excluded**: its real body is
+`0x102aece0…0x102afac8` (the first `ret` at frame delta 0; r2's `af` merges
+several later functions into one 0x5f9b-byte blob, which is why the
+boundary matters), it reads only args 2/4/5/6/7, contains exactly one call
+(`calloc`), and **never dereferences its arg 1** at all. It cannot be the
+writer.
+
+### 76.7 — The precise v22 (or v23) dump list
+
+§75.2's v22 adds six `EXTRA_DUMP_STACK_PTR` rows with generous-but-guessed
+sizes. This section can now replace the guesses with derived requirements.
+Everything below is an offset **this** analysis showed is actually read.
+
+**To close Y — the single highest-value dump, and the only one that closes
+it without solving `arg 6`'s object model first:**
+
+* **Hook `0x1028ae00` at entry and log its raw `stack_dwords`.** `arg 9` of
+  that call *is* `L−0x200`. One 4-byte value per call gives the Y delta
+  directly, per scene, and — combined with §76.3's `axesY(arg5) = 2029` —
+  closes `orderFpo` Y numerically with zero further disassembly. It also
+  cross-checks §76.4's entire 15-argument table in one shot.
+* Failing that, dump `arg6 + 0x158` (4 bytes, the gate), `arg6 + 0x160`
+  (4, the record count), `arg6 + 0x168` (4, the record array pointer), and
+  then `*(arg6+0x168)` for `0x10 * count` bytes.
+
+**To compute U and V offline (§76.4), the exact requirement:**
+
+| buffer | address | bytes needed | v22's current size |
+|---|---|---|---|
+| dens Y/C1/C2 planes | `arg0 + 0x1440` | **`0x1440`** (3 × 864 × 2) | `arg0` `0x40` — far too small |
+| weight table | `arg7 + 0` | **`0x1036`** (50 × 83 int8) | `arg7` `0x40` — far too small |
+| sample mask | `arg11 + 0xc20` | **`0x360`** (864 bytes) | not dumped |
+| luma threshold | `arg11 + 0x48` | 4 | not dumped |
+| `arg11[+0x4c]`, `[+0x50]` | `arg11 + 0x4c` | 8 | not dumped (confirms §76.5b) |
+| params | `arg6 + 0xdc + 0x12` | 6 (`+0x12/+0x14/+0x16`) | `arg6` `0x100` — just covers it |
+| sentinel byte | `arg2 + 4` | 1 | `arg2` `0x20` — covered |
+
+The two "far too small" rows are the load-bearing ones: without the
+864-sample dens planes and the 4150-byte weight table, no U/V number can be
+produced, and a Unicorn harness executing the real code needs the same
+memory mapped anyway.
+
+**To validate the port once captured:** hook `0x1028ae00`'s return and dump
+`arg6`'s out-struct `[+4]`/`[+8]` (8 bytes). Those two dwords are exactly
+`out4`/`out8` above, so the port can be diffed against them per frame
+*before* the outer addition, which localises any mismatch to one side.
+
+### 76.8 — Verdict
+
+1. **Five of §74's six locals are resolved to real inputs with complete,
+   transcribable arithmetic** (§76.3, §76.4). Three of them are the existing
+   `fos_opening_axes` port, unmodified — stated explicitly as such and
+   reused, not re-derived.
+2. **`orderFpo` U and V are fully derived** and require no helper
+   emulation, only six flat buffers (§76.4, §76.7).
+3. **`orderFpo` Y is not derived.** Its entire per-frame variation
+   (−298 … +204 across the six scenes) sits in `L−0x200`, a frame local no
+   argument carries, written by `fcn.102ac310` into an unnamed record-list
+   buffer at frame offset `−0x258`, index 22. Per this doc's own "never
+   invent" rule no value is assumed for it; §76.7 gives the one-line capture
+   that closes it.
+4. **Two independent bit-exact confirmations of the branch analysis**
+   against data captured before this section existed: `pref_data+0x5e == 200`
+   (12/12) and the vendor isqrt → `pref_data+0x2a` (6/6, where two rows
+   distinguish the vendor's fixpoint from `math.isqrt`) (§76.5).
+5. **A refinement to §72.3's reading**: it described the case-0 body's
+   opening-axis arithmetic as applied to "arg 5's three words" — correct —
+   but did not note that those three results *are* two of the three written
+   `orderFpo` terms plus the Y constant.
+6. **§75.2's v22 buffer sizes are wrong for two of the six rows** (`arg0`
+   and `arg7`), by more than an order of magnitude in both cases; §76.7
+   gives the derived sizes. This is a live, actionable finding for the pass
+   currently building that capture, not a retrospective one.
+
+**No production, golden, or port file was changed by this pass.** No new
+file was created: the task's own gate for implementing the formula in
+Python was "if and only if every input is resolvable from data already in
+hand", and item 3 above says plainly that it is not. The only files edited
+by this pass are `docs/74-…md` (this section) and `docs/76`'s step 5.
+Scratch scripts live in `/tmp/pakon_re/` and are not committed, per this
+doc's convention.
+
+## 77 — The Unicorn harness for `0x1028b8d0` exists and executes the real
+DLL, but is not yet golden: it early-exits on a bounds check whose input
+falls **four bytes** past the end of v22's own dump. The constant term of
+§76's decomposition is confirmed exactly; v24 built to close the gap
+
+§76 derived `orderFpo`'s three outputs as `fos_opening_axes(arg5)` plus a
+per-scene residual, and named the inputs it could not resolve. This section
+records the first real execution of the function under Unicorn, what it
+proved, what it did not, and the precise, measured reason — not an estimate
+— that a further capture is required.
+
+### 77.1 — The harness
+
+`tools/ansel/python-pipeline/pakon_orderfpo_golden.py` (new this pass) loads
+`PakonIMAu.dll` (`md5 eea9dcf78ee21d4f7c515a6c2512242d`) and executes
+`fcn.1028b8d0` on the real argument buffers captured off the real scanner in
+v22 (`live_hooks_20260817-115157.jsonl`, `md5
+59911173a97f99a25f461768e2594774`, 33,012,376 bytes).
+
+One design decision is load-bearing and worth stating: **captured buffers are
+mapped at the addresses they really had in the vendor process**, not
+relocated into a synthetic heap. Every real address involved
+(`0x08dc…`/`0x0939…`/`0x08d0…`) lies below this harness's `IMAGE_BASE`, so
+this is straightforward — and it means that if any captured structure holds
+a pointer to another, it resolves to the right place instead of silently
+reading poison. Unmapped-but-touched pages are filled with `0xCD`, not
+zeros, on the same principle every other golden harness in this project
+uses: an under-supplied buffer must fail loudly rather than read as a
+plausible zero.
+
+Nothing in the harness models or re-implements the vendor's arithmetic. The
+real DLL bytes execute; the value the real code writes to `pref_data+0/+2/+4`
+is compared against the value the real hardware was observed to write for
+the same scene. There is no tuning parameter anywhere in the loop.
+
+### 77.2 — First run: clean execution, zero faults, and a loud, correct
+failure
+
+All 12 real `arg3 == 0` calls executed to completion with **zero memory
+faults** — the PE load, the real-address buffer mapping, the stack frame and
+the calling convention are all right, which is itself worth banking. But
+every one returned `0x18bd` and wrote nothing, leaving the triple `(0,0,0)`
+against expected values like `(1983, 65, 444)`.
+
+`0x18bd` is one of the four early-exit codes §72.3 catalogued. Tracing it
+back: it is reached from the four-way bounds check at
+`0x1028b928`/`938`/`945`/`94e`, which compares `word [esi+0xc]` and
+`word [esi+0xe]` against the range `[word [edx+0x104], word [edx+0x106]]`.
+Resolving the two registers by stack-delta arithmetic from their real load
+sites (`0x1028b8ea`, `0x1028b902`, displacements `0x2dc` under 0 and 1
+pushes respectively) gives `edx == arg 6` and `esi == arg 5`.
+
+**v22 dumped `0x100` bytes of arg 6. The check reads offsets `0x104` and
+`0x106`.** The harness therefore read `0xCD` poison, `cx` came back as
+`-12851`, and `ax = word[arg5+0xc] = 70 > -12851` took the `jg` to the
+failure exit. The observed failure is fully explained, instruction by
+instruction, with no residual mystery.
+
+**Measured, not estimated:** the arg 6 dump spans
+`0x08d04880`–`0x08d04980`; the check needs `0x08d04984`–`0x08d04988`.
+**Four bytes past the end.** A scan of every readable `buffer_dump` in the
+whole 33 MB capture confirms no other row covers that window either.
+
+This is exactly the size v22's own table comment flagged as a guess
+(*"`arg6_unknown`'s size in particular is an honest guess… a truncated or
+unreadable result there is itself information"*). It was, and the poison-fill
+convention did its job: the harness produced an unmistakable failure rather
+than a plausible wrong number.
+
+### 77.3 — What IS confirmed: the constant term, exactly
+
+§76's decomposition is
+
+```
+orderFpo.Y = fos_opening_axes(arg5).Y  + L[-0x200]
+orderFpo.U = fos_opening_axes(arg5).C1 + out[+4]
+orderFpo.V = fos_opening_axes(arg5).C2 + out[+8]
+```
+
+Two parts of this are checkable right now against data already in hand:
+
+1. **`arg5` really is constant.** Across both captures — 24 calls in v21 and
+   24 in v22, two separate scans — the `arg5_blob` dump reads
+   `(879, 1250, 1386)` every single time, with no exceptions. §72.4 predicted
+   this from a static trace of `fcn.10214e30`; §73.4 confirmed it live for
+   v21; it now holds across an independent second scan.
+2. **The constant term is exactly `(2029, 96, 359)`.** This project's own
+   `pakon_fos.fos_opening_axes` — an already-ported, already-Unicorn-verified
+   function (`pakon_fos_golden.py`, re-run green this pass) — returns
+   precisely `(2029, 96, 359)` for `(879, 1250, 1386)`, matching §76's
+   independently-derived claim to the digit.
+
+So the first term of all three outputs is settled, using a function whose
+own equivalence to the real DLL was established long before this thread
+existed.
+
+### 77.4 — The residuals, across twelve real scenes
+
+Subtracting the confirmed constant from the twelve real captured triples
+(six scenes × two independent scans):
+
+| | Y residual | U residual | V residual |
+|---|---|---|---|
+| v21 | +50, +12, −115, −298, +204, +27 | −38, −24, −48, −42, −31, −29 | +106, +88, +96, +92, +72, +85 |
+| v22 | −46, +231, −309, −114, −3, +89 | −31, −32, −41, −49, −24, −37 | +85, +74, +93, +96, +92, +107 |
+
+The shape is informative and corroborates §76's structural reading without
+being confused for proof of it: **the U and V residuals occupy tight bands**
+(−24…−49 and +72…+107 across all twelve, two scans, both captures) while
+**the Y residual swings by more than 500 codes** (−309…+231). That is
+precisely the signature §76's derivation predicts — U and V are a bounded
+chroma correction computed from a weighted mean, whereas Y carries a
+per-scene luma term. It is consistent evidence, not a verification; the
+verification is §77.5's, and it has not been done.
+
+The two scans do **not** produce identical triples for corresponding scenes
+(v21 scene 1 `(2079, 58, 465)` vs the nearest v22 value `(2118, 59, 466)`),
+which is expected — they are separate physical scans of the same strip with
+slightly different transport/framing — and is a useful reminder that
+"reproduces the captured value" must always be checked per-capture, never
+across captures.
+
+### 77.5 — Not golden yet, stated plainly
+
+**The harness has not reproduced a single `orderFpo` triple.** It executes
+the real code correctly and fails for a fully-diagnosed, four-byte reason,
+which is a much better position than a mysterious mismatch — but it is not
+the Tier-1 result this thread is aiming at, and nothing in §77.3/§77.4
+substitutes for it. Until the harness runs to completion on complete inputs
+and reproduces the captured triples exactly, `orderFpo` is **not** golden.
+
+### 77.6 — v23 and v24
+
+**v23** (`hookdll` `md5 384cdf135fbab29da39bee58f4bfd8be`) sized every
+pointer argument from a mechanical scan of the function's real memory
+operands. One methodology note that materially changed the answer: the scan
+had to exclude `lea`, because this function uses `lea` with very large
+constants (`+0x11436`, `+0x1524a`, `+0x1de6a`) as **plain arithmetic on
+values, touching no memory at all** — a naive grep for large displacements
+would have sized several buffers by roughly 100 KB each for no reason.
+Real deepest accesses: `[edx+0x106]`, `[edi+0x158]`, and a dword block
+spanning `[esi+0xb7c]…[esi+0xbac]`.
+
+**v24** (`hookdll` `md5 6cac66dbad1782e7fdc048beda988c89`, `injector`
+`md5 4d88b3e7d42e97211337b3d53af65d44`) supersedes v23 **before v23 was ever
+run**, on §76's own finding that v23's `arg0` and `arg7` rows were still
+roughly two orders of magnitude too small for what the U/V path actually
+reads (`arg0+0x1440`, `arg7+0x1036`, `arg11+0xc20+0x360`). Corrected.
+
+v24 additionally adds hook 31, `sba_order_fpo_helper` (`0x1028ae00`), for
+the one term §76 could not derive statically: `L[-0x200]`, an `int32` read
+from a stack slot that **nothing in `0x1028b8d0`'s own 912 instructions ever
+writes**, traced instead to this helper's own arg 9. The engine already logs
+the first 16 raw stack dwords on every entry and this function's 15 args all
+fall inside that window, so that dword is captured **with no extra dump row
+at all**, and the same log line cross-checks §76's entire 15-argument
+reconstruction for free.
+
+Safety audited to this table's own standard before adding: exactly one real
+CALL-type xref (`fcn.1028b8d0 @ 0x1028c023`), zero CODE-type `jmp`/`jcc`
+entries, `af` resolving to `0x1028ae00` itself, and a position-independent
+prologue (`sub esp,0x5c` + `movsx eax, word [esp+0x70]`) with no `rel32` in
+the first five bytes. `HOOKCORE_MAX_HOOKS` 30→31, `extern Thunk_30`,
+`DEFTHUNK 30` and `thunks[30]` all in the same commit, appended at the END
+of `table[]` — the §46.8/§47 "bumped the count without the thunk" bug class
+re-checked once more. Build gates all green: KERNEL32-only imports, XP 5.1
+subsystem stamp, 31/31 sync against `agent.js`, `selftest ALL PASS`
+including the 32,000-call concurrency stress.
+
+### 77.7 — What closes this
+
+A single v24 capture. With it, every input on the live `arg3 == 0` path is
+real captured data: the previously-missing arg 6 bounds words, the properly
+sized `arg0`/`arg7`/`arg11` buffers the U/V path reads, and Y's term direct
+from the helper's arg 9. The harness then either reproduces all six of that
+capture's own `orderFpo` triples bit-exactly — golden, Tier 1, no knob — or
+it diverges at a specific, nameable point.
+
+One risk stated in advance rather than discovered later, carried forward
+from §75.3 and still not excluded: if any of the eight helpers dereferences
+a pointer *stored inside* one of these buffers, that memory is not in the
+capture either. The harness's `0xCD` poison and `UC_HOOK_MEM_INVALID` fault
+handler mean this would surface as a fault at a specific named address
+rather than as a wrong number — which is precisely what a v25 would need to
+dump. Tractable, and instrumented for.
+
+**No production or port file was changed by this pass.** New:
+`pakon_orderfpo_golden.py`. Modified: the hook table/stub/`agent.js` (v23,
+v24) and `docs/74-…md` (this section).
+
+## 78 — v24 lands: **`orderFpo.Y` is verified bit-exact, 12/12, on real
+hardware data** — and the reason the full-function Unicorn run cannot
+complete is now known and is not a sizing problem: `0x1028b8d0` reaches a
+**bytecode interpreter**
+
+The v24 capture (`live_hooks_20260817-175818.jsonl`, `md5
+687ec517890358926c73e23eb6cddd32`, 34,167,081 bytes; 24/24 hooks installed,
+the new `sba_order_fpo_helper` firing 12 times, every large dump row
+readable) answers §77's open questions and produces this thread's first
+genuinely golden component.
+
+### 78.1 — `orderFpo.Y`, verified 12/12
+
+§76 derived `orderFpo.Y = fos_opening_axes(arg5).Y + L[-0x200]` and traced
+`L[-0x200]` — the one term it could not compute, an `int32` that nothing in
+`0x1028b8d0`'s own 912 instructions ever writes — to `fcn.1028ae00`'s own
+**arg 9**. v24 hooks that function; the engine already logs 16 raw stack
+dwords per entry, so arg 9 is captured directly.
+
+Against the constant term `fos_opening_axes(879, 1250, 1386) = (2029, 96,
+359)` — from this project's own already-Unicorn-verified
+`pakon_fos.fos_opening_axes`, not a re-derivation:
+
+| scene | observed Y | required `L` (= Y − 2029) | captured helper arg 9 | |
+|---|---|---|---|---|
+| 1 | 2134 | +105 | +105 | match |
+| 2 | 2036 | +7 | +7 | match |
+| 3 | 1912 | −117 | −117 | match |
+| 4 | 1728 | −301 | −301 | match |
+| 5 | 2217 | +188 | +188 | match |
+| 6 | 2069 | +40 | +40 | match |
+
+and the same six again across the capture's second pass — **12 of 12, exact,
+no tolerance, no fitted parameter.** The values span −301…+188, so this is
+not a degenerate match against near-zero numbers.
+
+Both halves of the claim come from independent sources: the constant from a
+function whose DLL-equivalence was established long before this thread, and
+`L` from a raw stack dword logged by the hook engine without any
+interpretation. **`orderFpo.Y` is golden.**
+
+### 78.2 — Why the whole-function Unicorn run still does not complete, and
+why it is not a buffer-sizing problem
+
+§77.7 flagged the risk that a helper might dereference pointers stored
+inside the captured buffers. It does, and the reason is more structural
+than "one more dump row":
+
+Three real blockers were cleared this pass, each diagnosed from the failure
+itself rather than guessed:
+
+1. **Bound imports.** This DLL ships with bound imports — its IAT already
+   holds real `MSVCR71`/`MSVCP71` addresses (`calloc` → `0x0068bd78`), so
+   the code calls straight into modules the harness never loads, faulting on
+   an *instruction fetch*. All 471 bound targets are now mapped and stubbed;
+   `calloc`/`malloc`/`free` get real implementations, and every stub records
+   its own name so an unimplemented CRT call surfaces as a named entry
+   rather than a silent wrong answer.
+2. **`_setjmp3`.** With a generic `ret`-only stub it returned whatever
+   happened to be in `EAX`, which the function reads as "an exception was
+   caught" and converts into an early-exit error return — observed as the
+   new code `0x18a9`. `setjmp` returns 0 when called directly; that is the C
+   standard's own semantics, not a value chosen to make the run succeed.
+   `longjmp` is stubbed to raise, since reaching it would mean the emulated
+   control flow had genuinely diverged.
+3. **The `arg6` bounds gate**, now settled with the real captured bytes:
+   `arg6+0x104 = −100` (min), `arg6+0x106 = +150` (max), against
+   `arg5+0xc = 70` and `arg5+0xe = 25`. Both inside the range, so the gate
+   **passes** on real data — retiring §77.2's blocker outright and
+   incidentally confirming the diagnostic probe's bracketing reasoning was
+   sound.
+
+With those cleared, execution runs far deeper and stops inside
+`fcn.102aadf0`, which — read in full — is **a bytecode interpreter**: it
+loads a program pointer (`mov edi, [ebp+4]`), reads a 16-bit opcode
+(`mov ax, word [edi]`), treats `0xff` as halt, dispatches through a
+**254-entry switch table at `0x102abf4c`** (with nested per-opcode tables,
+e.g. 7 cases at `0x102ac118`), and advances `edi` by 2 per operand.
+
+That fully explains the observed behaviour that no amount of buffer sizing
+would have fixed: the faulting addresses are scattered unpredictably across
+±200 KB of the scene base (`scene−0x36dd0`, `scene+0x20cd4`, …) and differ
+per scene, because they are operands of an interpreted program rather than
+fields of a fixed struct. It also explains, retrospectively, why §76's
+static trace could derive U and V but not Y: Y's term is produced by
+interpreted code, which no CFG walk over `0x1028b8d0` could ever have
+reached.
+
+**Emulating this path end-to-end would require capturing the bytecode
+program itself plus every buffer it references — a substantially larger
+surface than the argument buffers, and not merely a bigger dump.** That is
+recorded here as a real structural finding, not a to-do disguised as one.
+
+### 78.3 — What this changes about the goal
+
+The `Y` result shows the productive shape for this stage: **derive the
+decomposition statically, then verify each term against real captured data**
+— rather than emulate the entire function. That is exactly what §76's
+derivation plus one well-chosen hook achieved, and it sidesteps the
+interpreter completely.
+
+`U` and `V` are already fully derived by §76 (a weighted mean chroma
+residual over 864 dens samples, `50×83` `int8` weight table indexed by
+`(trunc(c1/16)+24, trunc(c2/16)+41)`, round-half-away-from-zero divide) and
+their remaining unknown is the same shape as Y's was: the helper's own OUT
+struct at its arg 6, which the helper *fills* — so an entry dump cannot see
+it. The required values are known exactly from the observed triples
+(U residuals −38, −26, −49, −42, −32, −30; V residuals +106, +88, +95, +92,
++70, +85), so this is a bounded, checkable target, not an open search.
+
+**Status, stated precisely: `orderFpo.Y` is golden (12/12, real data).
+`orderFpo.U` and `orderFpo.V` are derived but not yet verified. The
+whole-function Unicorn run is blocked on the interpreter, not on dump
+sizes.**
+
+**Verification.** Capture md5 recorded above; hook installation and the
+helper's 12 firings read from the capture's own `hook_installed`/`call`
+rows. The Y table's "observed" column is the real `pref_data` triple from
+the `sba_preference` dump, matched to its `order_fpo_calc` call **by
+`pref_data` address**, the same keying §73.2 established. The constant term
+was produced by running `pakon_fos.fos_opening_axes` directly, and
+`pakon_fos_golden.py` was re-run green this pass. The interpreter
+identification came from a full `af`+`pdf` read of `fcn.102aadf0` at its own
+real boundary, including the switch-table addresses cited.
+
+## 79 — **`orderFpo` is GOLDEN**: all three components (Y, U, V) reproduce
+bit-exactly on real hardware data, 12/12, with no fitted parameter anywhere
+
+The v25 capture closes this thread. Every component of the per-scene
+`orderFpo` triple that `fcn.1028b8d0` writes into `pref_data`
+(`scene+0x38a2`) is now reproduced exactly by ported code, verified against
+the values the vendor's own binary produced on the real scanner.
+
+### 79.1 — The result
+
+Capture `live_hooks_20260817-181440.jsonl` (`md5
+7f048c8fecbd314ed7080a3c4756775c`, 34,535,042 bytes). Runner:
+`tools/ansel/python-pipeline/pakon_orderfpo_triple_golden.py`.
+
+```
+scene  1: got (2116, 58, 465)  want (2116, 58, 465)   PASS
+scene  2: got (2038, 70, 447)  want (2038, 70, 447)   PASS
+scene  3: got (1906, 47, 454)  want (1906, 47, 454)   PASS
+scene  4: got (1730, 53, 450)  want (1730, 53, 450)   PASS
+scene  5: got (2229, 63, 429)  want (2229, 63, 429)   PASS
+scene  6: got (2073, 65, 444)  want (2073, 65, 444)   PASS
+   ... and the same six again on the capture's second pass ...
+pass 12  fail 0  of 12
+```
+
+Six distinct scenes, each reproduced on both of the capture's independent
+passes. Y spans 1730…2229, U spans 47…70, V spans 429…465 — a real range,
+not a degenerate match near zero.
+
+### 79.2 — What is actually being verified
+
+```
+Y = fos_opening_axes(arg5).Y  + L                      (L = helper arg 9)
+U = fos_opening_axes(arg5).C1 + rdiv(num1, den)
+V = fos_opening_axes(arg5).C2 + rdiv(num2, den)
+```
+
+* `fos_opening_axes` is this project's own **already-Unicorn-verified**
+  port function (`pakon_fos`, `pakon_fos_golden.py` green), not a
+  re-derivation for this thread.
+* `L` is captured directly — the helper `fcn.1028ae00`'s own arg 9, logged
+  as a raw stack dword by the hook engine with no interpretation applied.
+* The U/V residual is §76.4's derived weighted-mean chroma computation over
+  864 dens samples, transcribed instruction by instruction and implemented
+  in `pakon_orderfpo_uv_golden.compute_uv`.
+
+**Every input is real captured data; every expected value is the real
+triple the vendor's binary wrote**, read from the `sba_preference` dump and
+matched to its producing call by `pref_data` address (the keying §73.2
+established). There is no tolerance, no tuning knob, and no fitted constant
+in the loop.
+
+### 79.3 — Why this is not a whole-function emulation, and why that is the
+right answer rather than a compromise
+
+§75.2/§77 pursued a full Unicorn run of `0x1028b8d0` on captured buffers.
+That path was carried far — PE load, real-address buffer mapping, 471 bound
+imports stubbed, `calloc`/`malloc`/`free` implemented, `_setjmp3` corrected
+to its C-standard return, the `arg6` bounds gate resolved with real bytes —
+and it still cannot complete, for a reason that is structural rather than
+incidental: §78.2 found the function reaches a **bytecode interpreter**
+(`fcn.102aadf0` — 16-bit opcodes, 254-entry dispatch table at `0x102abf4c`,
+`0xff` halt), whose operands scatter unpredictably across ±200 KB and differ
+per scene. Emulating that would mean capturing the interpreted program and
+every buffer it touches.
+
+The decomposition approach reaches the same standard by a shorter route:
+**derive the arithmetic statically, then verify each term against real
+captured data.** It is the pattern that closed Y in §78 and U/V here, and
+it produces exactly what a full emulation would have produced — the ported
+code's output, checked against the vendor's own output, on real inputs.
+
+### 79.4 — The corroboration that accumulated along the way
+
+Independent of the final numeric result, several predictions made from
+static reading alone were confirmed by data captured afterwards:
+
+* The helper's own arguments read `arg2 = 864` (sample count),
+  `arg4/arg5 = 50/83` (weight-table dimensions) — exactly the constants
+  §76.4 derived from the push sequence before any of this data existed.
+* The weight table at the derived offset is exactly `50 × 83 = 4150` bytes
+  with values in `0…100`, matching §76.4's reading of them as percentages.
+* The selection mask at `arg11+0xc20` contains exactly `{0, 1}`, matching
+  the `== 1` test.
+* The dens block at `arg0+0x1440` reads 1339…2949, clustered around the
+  derived `Yo = 2029` — real luma density codes at the predicted offset.
+* `i8[arg2+4] < 0` on every live call, triggering §76.4's documented
+  `R1sq = 2000²` special case.
+
+Each of these would have been garbage had an offset been wrong.
+
+### 79.5 — Two real errors found and corrected, recorded rather than buried
+
+1. **`_rdiv`'s half-step.** First transcribed as `abs(d) >> 1`; the DLL's
+   own `mov eax,d; cdq; sub eax,edx; sar eax,1` at `0x1028b27e` is
+   *truncating division by two*. The two agree for every divisor that
+   occurs here (`N*100` = 86400, `cnt*100`, both positive) so it would never
+   have surfaced — corrected to the faithful form anyway, and both
+   primitives then checked against C truncation semantics over ~16,000
+   cases including negative divisors, zero mismatches.
+2. **The dens buffer size.** §76's requirement "`arg0+0x1440` × `0x1440`"
+   was read as a total rather than an offset-plus-length; the three dens
+   arrays end at `0x2880`. v24's `0x1500` covered ~96 of 864 samples. The
+   harness had already been pointing straight at it, faulting first at
+   `arg0+0x1440` and then `arg0+0x1b00`.
+
+### 79.6 — Scope, stated precisely
+
+**What is now golden:** the per-scene `orderFpo` triple — the head of the
+per-frame balance chain, and the input `Preference` consumes.
+
+**What this does NOT yet establish:** that closing the balance chain closes
+the ~88-89 sRGB code brightness gap this doc has chased since §31. That
+remains the motivating hypothesis, well-supported (this is the stage that
+sets colour balance) but unproven. `docs/76`'s remaining steps — Δ's source
+(§73.6: measured, real, luma-uniform, source still unidentified after §73.5
+eliminated the nominated candidate) and the wiring itself — are unchanged
+by this section.
+
+**Portability.** Nothing here is specific to the owner's unit. `dens` is
+derived from the film image, not from per-unit calibration; `arg5` is
+DPI-static configuration constant across every capture taken. The live
+scanner was the *instrument* for verification, not a dependency of the
+result — the verified formula applies to any F-135 and any frame, exactly
+as the six-subsystem tone chain and the colour matrix do.
+
+**Verification.** Capture md5 recorded above. The runner reads only real
+captured buffers and real captured arguments; it refuses to compute on a
+truncated `arg0` (reporting the exact byte shortfall) rather than producing
+a plausible wrong number. `pakon_fos_golden.py` re-run green this pass, so
+the constant term's own DLL-equivalence is current, not historical. Y was
+additionally verified independently on the v24 capture (§78.1, a different
+scan with different values) before U/V existed.
+
+## 80 — §61's outstanding re-diff finally run: the brightness gap is **not**
+closed — and the re-measurement surfaced a real, separate film_base bug
+(auto-detection landing one code off the 4095 rail), now root-caused and
+fixed for a measured 37-code improvement in R
+
+§61 landed a large, live-evidence-backed brightness change (the balance
+shift moved into the linear domain before the log) and explicitly deferred
+its own verification: *"the ~88-89 number is not claimed closed until the
+port is re-rendered against a real vendor reference and re-diffed."* That
+re-diff was never run. Sections since have repeated "the ~88-89 gap remains
+open" as though it were current, when in fact **nobody had measured it after
+the fix**. This section measures it.
+
+### 80.1 — The re-diff
+
+§31's own parameters, verbatim, against the same real vendor reference
+(`AA001.tif`, downloaded fresh; `scan-20260812-091633.bin`), current code,
+`PAKON_COLOUR_ENGINE=python`, `film_path="ColNeg"`, frame 0,
+`scale="preview"`:
+
+| | p0.1 | p1 | p5 | **p50** | p95 | p99 |
+|---|---|---|---|---|---|---|
+| R ours | 16 | 40 | 72 | **140** | 233 | 251 |
+| R AA001 | 0 | 10 | 17 | **90** | 235 | 252 |
+| G ours | 42 | 81 | 99 | **201** | 241 | 253 |
+| G AA001 | 8 | 11 | 17 | **103** | 239 | 251 |
+| B ours | 36 | 65 | 81 | **238** | 254 | 254 |
+| B AA001 | 7 | 10 | 18 | **139** | 246 | 255 |
+
+**Median delta after the fixes below: R +50, G +98, B +99**, against §31's
+original **R +88, G +89, B +78**.
+
+**So the gap is not closed.** R improved substantially; G and B did not.
+Whatever remains is now largely channel-specific rather than the uniform
+excess §31 described. Stated plainly because several sections have carried
+the "~88-89" figure forward on the strength of a measurement taken before
+§60/§61 changed the render path: that figure was stale, and the honest
+current numbers are the ones above.
+
+### 80.2 — The film_base bug the re-diff exposed
+
+The first re-diff run produced R +87, and its auto-detected `film_base` was
+`[4094, 2534, 2448]` — where §31 had used `[3107, 2490, 2414]`. An R base of
+**4094**, one code below the 4095 ceiling, is not a plausible Dmin.
+
+Instrumenting §41's own combine (which takes whichever of the film-side and
+leader-side candidates is HIGHER) on this roll:
+
+| ch | kept (film) | excluded (leader) | chosen | leader ceiling-bin |
+|---|---|---|---|---|
+| R | 3210 | **4094** | 4094 | 98.7% |
+| G | 2534 | 2251 | 2534 | 99.9% |
+| B | 2448 | 0 (sentinel) | 2448 | 100.0% |
+
+**The mechanism.** `exclude_ceiling` zeroes the `>= 4095` bin, which removes
+the saturated pixels but *not the clipping shoulder immediately below it*.
+On this roll R's leader population is 98.7% ceiling; the surviving 1.3% is
+essentially all shoulder, occupying bins 4090-4094, and that is still far
+more than FindDmin's own `n/1000` threshold — so the walk halts at 4094.
+That is a **censored** measurement ("clear film reads at the very top of the
+linear range"), not a Dmin, and the `max()` then lets it override a
+perfectly good film-side 3210.
+
+G and B escaped only by luck: G's leader walk happened to land low (2251,
+losing the `max()`), and B's was saturated hard enough to trip the vendor's
+own all-clipped sentinel (0, which §41 already refuses to promote). R sat in
+the one regime that produces a high-but-wrong number.
+
+### 80.3 — The fix
+
+`film_base_combine` now rejects a leader candidate that lands within
+`FILM_BASE_LEADER_RAIL_GUARD` (= 2) codes of the ceiling, returning the
+kept/film code unchanged. Deliberately the smallest guard that covers the
+measured failure (R's 4094), and well clear of the ~4070-4090
+unsaturated-leader band this function's own docstring cites as genuinely
+informative — so the roll §41 added this path for is untouched.
+
+Effect, measured on the same frame and reference: R's auto `film_base` goes
+`4094 → 3210` (against §31's independently-chosen 3107), and R's median
+delta goes **+87 → +50**. G and B are byte-unchanged, as expected — their
+`film_base` never came from the leader path.
+
+`tools/test_calib.py` 200/200 and `tools/test_render_f135.py` pass.
+
+### 80.4 — What this does and does not settle
+
+* **Settled:** §61's deferred verification is done; the gap is measured, not
+  assumed. A real auto-detection bug is found, root-caused to a specific
+  mechanism, fixed, and the fix's effect quantified.
+* **Not settled:** G and B remain ~+98/+99. That is now the dominant
+  remaining error and it is *not* explained by film_base, by §61's re-order,
+  or by anything §31-§53 ruled out. It is a narrower, better-shaped target
+  than the original uniform-excess framing, but it is open.
+* **Unrelated to `orderFpo`:** §79's golden result addresses per-frame
+  *variation* (the real balance shift moves ~290 codes across frames while
+  the port's `preference_shift_words` takes only DPI parameters and emits an
+  identical shift for every frame). That is a different defect from this
+  section's channel-specific offset, and wiring it remains gated on Y's `L`
+  term, which §78/§79 verified by capture rather than computation.
+
+**Verification.** `AA001.tif` and `scan-20260812-091633.bin` fetched fresh
+from the drop server for this pass. The film_base candidate table comes from
+wrapping `film_base_combine` in-process and recomputing the excluded-side
+walk with the function's own `film_base_code_from_hist`, not from
+re-implementing the walk. Both re-diff runs (before and after the fix) used
+identical parameters, and the pre-fix run was additionally repeated with
+§31's explicit `film_base` to confirm the difference was attributable to
+detection rather than to any other change.
+
+## 81 — §80's G/B excess localised by inverting the vendor's own ICC profile
+pair: the error is **not** G/B-specific and **not** clipping — it is a common
+~+480-code excess introduced at the balance/inversion boundary, and §61's
+re-order is **not in this branch's code at all**
+
+§80 closed with "G and B remain ~+98/+99 … it is a narrower, better-shaped
+target than the original uniform-excess framing, but it is open." This
+section runs that target to ground. The headline: the channel-specific
+framing is an artefact of *where each channel's median sits on the ICC
+curve*. Measured in the domain the pipeline actually works in, all three
+channels carry the same defect.
+
+### 81.1 — §80's baseline reproduced first, unchanged
+
+**All measurements in §81.1-§81.5 and §81.7-§81.8 are at `3561c9c`** (§80's
+own commit, this branch's HEAD when this pass started). §61's re-order landed
+mid-pass as `7584903` and is measured separately in §81.6.
+
+`rediff.py` re-run verbatim before touching anything: `AA001.tif`
+(md5 `483a9ec9399bb1b2ed606c2485072d94`), `scan-20260812-091633.bin`
+(md5 `b47bd402f5bc06c306f295c0bca3cdc7`), `PAKON_COLOUR_ENGINE=python`,
+`film_path="ColNeg"`, frame 0, `scale="preview"`. Auto `film_base` =
+`[3210, 2534, 2448]`, `setshifts_out = (683, 297, 151)`. Median delta
+**R +50, G +98, B +99** — identical to §80's, to the code. Everything below
+is measured against that run.
+
+### 81.2 — Stage-by-stage: nothing clips, at either rail, anywhere
+
+`f135_rom12_to_rpd12`, `sba_apply.apply_balance_shifts`,
+`pakon_ansel.apply_1d_lut`, `real_auto_tone` and `rpd12_to_icc_u8` wrapped
+in-process (production functions called, not re-implemented), frame 0,
+per-channel `[p1, p50, p99]` and the fraction of pixels sitting on each rail:
+
+```
+stage                     R                     G                     B          rails (0 / 4095)
+1 poly linear12    [ 548, 1408, 3112]    [ 652,  970, 2456]    [ 755,  951, 2353]   0.0% / R 0.3%, G 0.0%, B 0.0%
+2 rpd12 post-log   [ 893, 1267, 1774]    [1267, 1850, 2254]    [1409, 2145, 2567]   0.0% / 0.0%
+3 balanced (dens)  [1576, 1950, 2457]    [1563, 2146, 2550]    [1560, 2296, 2717]   0.0% / 0.0%
+4 post-FUGC lut    [1554, 1949, 2456]    [1531, 2145, 2549]    [1466, 2295, 2716]   0.0% / 0.0%
+5 post-autoTone    [1440, 1676, 2237]    [1436, 1880, 2314]    [1372, 2093, 2429]   0.0% / 0.0%
+6 sRGB             [  40,  140,  251]    [  81,  201,  253]    [  65,  238,  254]
+```
+
+**Question 3 of this pass, answered: there is no clipping in our pipeline.**
+Not one channel puts a measurable fraction of pixels on 0 or on 4095 at any
+stage after the polynomial (R's 0.3 % at the linear 4095 is the known
+poly-domain leader saturation of §31.2, and it is 0.3 %, not a mechanism).
+The top-end crush §80 flagged in B (`p50=238, p95=254, p99=254`) is created
+**at the ICC step and nowhere else**: driving a neutral ramp through the same
+`Rpd2Pcs_HR200_QS_v5s10.pf → Srgb_v2.pf` pair the render uses gives
+`2176→250, 2304→253, 2432→254`, and 254 is the ceiling — the profile pair
+never emits 255 on the neutral axis. 47.4 % of our *pre-tone* B and 1.6 % of
+our *toned* B sit above 2400. So B's crush is a **consequence** of B's
+distribution sitting high, not an independent clipping bug. Cause vs. effect,
+settled.
+
+### 81.3 — The vendor's TIFF inverted through the vendor's own profile pair
+
+The render's last stage is a vendor-shipped ICC pair —
+`vendor/ansel/anselinstalldir/dataPathItems/profile/Rpd2Pcs_HR200_QS_v5s10.pf`
+(md5 `c1d4f3bba8f06f3427ccfaff5c30b559`, 207 372 B) and `Srgb_v2.pf`
+(md5 `95bd003685a81450184af6aaf1d0e31c`, 124 246 B); the run's own
+`ICC: Rpd2Pcs_HR200_QS_v5s10.pf → Srgb_v2.pf` line confirms §21's silent
+fallback did **not** engage. That makes the transform invertible against
+real vendor data: `AA001.tif`'s percentiles can be carried *backwards*
+through the same profile pair into the toned-RPD12 domain, and compared with
+ours there instead of in sRGB.
+
+Inverted on a 3-D grid (RPD12 600..2600 step 16, 1 953 125 triples through
+one `ImageCms` call, nearest match; residual ≤ 2 sRGB codes on every row —
+so this is a real inverse, not a fit). A neutral-axis 1-D inverse run
+independently agrees to ≤ 12 codes at every percentile.
+
+```
+        vendor sRGB      vendor RPD12        ours RPD12        ours − vendor
+p1     [ 10, 11, 10]   [ 936,  952,  936]  [1440, 1436, 1372]  [+504, +484, +436]
+p5     [ 17, 17, 18]   [1048, 1032, 1064]  [1514, 1496, 1429]  [+466, +464, +365]
+p25    [ 48, 60, 83]   [1320, 1352, 1464]  [1601, 1632, 1606]  [+281, +280, +142]
+p50    [ 90,103,139]   [1480, 1512, 1624]  [1676, 1880, 2093]  [+196, +368, +469]
+p75    [149,177,200]   [1672, 1752, 1816]  [1760, 1961, 2218]  [ +88, +209, +402]
+p95    [235,239,246]   [2008, 2040, 2088]  [1995, 2101, 2325]  [ −13,  +61, +237]
+```
+
+**The shape of the defect, stated plainly.** At the shadow end the three
+channels are wrong by the *same* amount — +504/+484/+436 at p1, +466/+464/+365
+at p5. There is no G/B-specific term there at all. What differs per channel
+is *dynamic range*: the vendor's toned p1→p95 span is **1072 / 1088 / 1152**
+codes — three channels within 80 codes of each other — while ours is
+**555 / 665 / 953**, a spread of 398. Our R is contrast-starved, our G less
+so, our B is close to right.
+
+### 81.4 — Confirmed by construction: one number, not three
+
+Taking the toned RPD12 straight out of `real_auto_tone` and subtracting a
+**single uniform constant from all three channels** (not a per-channel fit —
+one number), then running the unmodified `to_srgb`:
+
+```
+offset      median sRGB      median delta      p1 sRGB
+  0        [140, 201, 238]   [+50, +98, +99]   [40, 81, 65]
+−300       [ 38, 116, 182]   [−52, +13, +43]   [ 0, 24, 18]
+−400       [ 23,  88, 154]   [−67, −15, +15]   [ 0, 16, 11]
+−450       [ 19,  74, 140]   [−71, −29,  +1]   [ 0, 13,  7]
+−500       [ 15,  63, 125]   [−75, −40, −14]   [ 0, 10,  5]
+vendor     [ 90, 103, 139]                     [10, 11, 10]
+```
+
+A single −450 puts **all three** shadow ends on the vendor's (`p1` 0/13/7
+against 10/11/10) and B's median exactly on the vendor's (140 against 139).
+What is left over is R −71 and G −29 — the contrast deficit of §81.3, not an
+offset. So of §80's "R +50 / G +98 / B +99": **B's error is entirely the
+common offset, G's is mostly it, and R's smaller number is not R being
+healthier — it is R's own contrast deficit cancelling about half of the same
+common offset at the median.** The channel-specific framing §80 arrived at is
+an artefact of the ICC curve's slope at three different operating points.
+This offset is a *measurement of the gap*, not a proposed correction — it is
+not wired anywhere and must not be.
+
+### 81.5 — Where the common offset is introduced: the balance/inversion boundary, and it is structural, not numerical
+
+Our own p1 density is `(893, 1267, 1409)` = `fpo (879, 1250, 1386)` +
+`(14, 17, 23)` — i.e. the frame's brightest linear pixels (`lin` p99 =
+`3112, 2456, 2353`) land essentially on the roll's `film_base`
+(`3210, 2534, 2448`), which `f135_rom12_to_rpd12` maps to `fpo` by
+construction. `apply_balance_shifts` then adds `setShifts (683, 297, 151)`,
+carrying that floor to `(1562, 1547, 1537)` — the port's own docstring
+(`tools/pakon_decode.py:1010-1014`) states this is the design: *"filmBase … is
+placed on the DPI's fpo … because the SBA balance that runs next is sized to
+carry it from there to the neutral balance point: fpo + setShifts =
+1567/1542/1516 against nbp 1550."* Measured post-balance p1 is
+`(1576, 1563, 1560)`. The design does exactly what it says.
+
+The problem is what 1550 *is*. §1 of this doc established, from the shipped
+`ansel-dra-default-default.dpi` and from bit-exact-verified `cna`, that 1550
+is the **mid-tone anchor**: `lowFixedPoint = highFixedPoint = 1550`,
+`paperMin = 1200`, `paperMax = 2000` bracketing it, `cna.tone_scale_lut[1550]
+= 1550` identity at the anchor, and — §1's own conclusion — *"nowhere in this
+… mechanism is there a step that says take whatever this scene's own darkest
+content is and pull it down to true black."*
+
+The measurement above closes that loop for the first time against a real
+vendor reference: **the vendor's own median lands on the anchor** (implied
+RPD12 p50 = 1480/1512/1624, straddling 1550), while **the port lands the film
+base — scene black — on the anchor** and pushes its median to 1676/1880/2093.
+The common ~+480-code excess is, to within the precision of this measurement,
+the distance from a scene's black to its mid-grey.
+
+**Localisation, stated as narrowly as the evidence supports:** the error is
+introduced **at the `f135_rom12_to_rpd12` + `apply_balance_shifts` boundary**
+— before `analyzeAutoTone`, which §1 already showed cannot and does not move
+a black point; not in FUGC, whose LUT is near-identity here (p50 1949→1949,
+2145→2145, 2295→2295); not in the ICC, which is the vendor's own profile pair
+and was used in both directions; and not by clipping, per §81.2. This is the
+same locus §31.4 nominated as one of two candidates and §60 attacked from the
+other side — now with the stage boundary fixed by measurement rather than by
+elimination.
+
+### 81.6 — §61's re-order was **not in this branch's code**, landed mid-pass, and measurably destroys the R channel
+
+Discovered while instrumenting, and load-bearing for how §80 should be read.
+On `worktree-tender-gliding-abelson` at `3561c9c`:
+
+- `tools/pakon_decode.py:1043-1045` computes
+  `dens = 1000·(log10(base−ped) − log10(lin−ped))` with **no** `setShifts`
+  term; the `setshifts` argument is consumed only by the `quiet=False` print
+  block at `:1046-1053`. The docstring at `:995` still carries the pre-§61
+  formula.
+- `tools/ansel/python-pipeline/pakon_ansel.py:847-850` still calls
+  `sba_apply.apply_balance_shifts(x, self.setshifts_out)` on the **density**.
+
+`git log -S"apply_balance_shifts" -- tools/ansel/python-pipeline/pakon_ansel.py`
+last touches this at `0d89eee` (the FUGC ebp18 wiring), and the
+`per-frame-balance` branch's own copy of both files is byte-identical to this
+branch's. §61's three edits exist only as **uncommitted working-tree
+modifications in the shared checkout** `/Users/guy/www/pakon-mac` (branch
+`calibration-and-tone-port`), where `pakon_decode.py` does carry
+`lin = clip(lin + setshifts, 0, 4095)` and `render_scene` does drop the
+density-domain apply.
+
+**So §80's measurement — and this section's baseline — are of *pre*-§61 code.**
+§80's own framing ("after §60/§61 changed the render path") is not true of the
+branch it measured. Nothing in §80's film_base finding is affected (that path
+is upstream of the balance and its numbers stand), but the "post-§61" label on
+`R +50 / G +98 / B +99` is wrong and is corrected here.
+
+Simulated exactly per §61's description (shift moved into the linear domain
+before the log, density-domain apply neutralised, everything else identical):
+
+```
+                       median sRGB       median delta      toned p1
+current (density)     [140, 201, 238]   [+50, +98, +99]   [1440, 1436, 1372]
+§61 (linear)          [  0, 125, 200]   [−90, +22, +61]   [ 790, 1200, 1374]
+vendor                [ 90, 103, 139]                     [ 936,  952,  936]
+```
+
+G and B move most of the way (+98→+22, +99→+61); R collapses, with **99.6 %
+of R pixels clipped to sRGB 0** by the ICC gamut once R sits that far below
+G/B. The reason is visible in the floors: in the linear order the `fpo` spread
+(879/1250/1386) is no longer cancelled by `setShifts`, so the black point
+lands at 790/1200/1374 — spread 584 — where the vendor's is 936/952/936,
+spread 16. §61's re-order has tier-2 evidence behind its *position* (§60) and
+is right to be pursued, but as written it replaces a neutral-but-too-high
+black point with a badly non-neutral one.
+
+**And it landed while this pass was running.** Commit `7584903` ("apply the
+SBA balance shift in the LINEAR domain, before the log … the code the docs
+already claimed was applied") makes exactly the three edits §61 describes —
+`lin = clip(lin + setshifts, 0, 4095)` in `f135_rom12_to_rpd12` and the
+dropped density-domain apply in `render_scene`/`pakon_parity` — and is now
+this branch's HEAD via merge `772f9ab`. Re-running `rediff.py` unmodified on
+that tree, same capture, same reference, same parameters:
+
+```
+              p0.1    p1     p5    p50    p95    p99   p99.9
+R  ours:         0     0      0      0      0      0      3
+R  AA001:        0    10     17     90    235    252    255
+G  ours:        17    34     39    125    153    177    190
+G  AA001:        8    11     17    103    239    251    255
+B  ours:        36    66     73    200    216    228    237
+B  AA001:        7    10     18    139    246    255    255
+median delta: R −90, G +22, B +61
+```
+
+**The R channel is gone** — zero at every percentile through p99, first
+non-zero at p99.9. This is not a percentile artefact: it is the ICC gamut
+clipping a channel that now sits 400-500 codes below the other two, exactly
+as the simulation above predicted, and it is destructive (the information is
+not recoverable downstream). Measured, on the real tree, not simulated.
+
+Stated plainly, without recommending an action this pass has no authority to
+take: `7584903` is correct about *position* (§60 is tier-2 bit-exact) and its
+G/B numbers do improve, but end to end it is a regression against `3561c9c`,
+because it removes the term that was incidentally neutralising `fpo`'s
+per-channel spread without supplying whatever the vendor uses in its place.
+The missing piece is named in §81.5 and §81.9: what the vendor's density
+anchor actually is once the balance no longer lands on it. Flagged here with
+the measurement rather than reverted, per this repo's rule that a
+just-committed change with real evidence behind it is the owner's call, not a
+passing pass's.
+
+### 81.7 — Clean negative: the per-frame `setShifts` gap does not explain it
+
+v25 (`live_hooks_20260817-181440.jsonl`, md5
+`7f048c8fecbd314ed7080a3c4756775c`) carries the vendor's **actually applied**
+balance shifts for six real frames, as `balance_area_image`'s
+`balance_shift_4b6`, cross-checked against the same scan's
+`area_image_apply_lut` `r/g/b_lut` ramp origins:
+
+```
+frame       1              2              3              4              5              6
+4b6    (717,303,35)  (818,400,162)  (873,478,205)  (990,591,330)  (592,196,−38)  (774,364,122)
+lut[0] (717,303,35)  (818,400,162)  (873,478,205)  (990,591,330)  (592,196,  0)  (774,364,122)
+3a38   (750,335,68)  (788,370,132)  (858,463,191)  (956,557,296)  (661,265, 30)  (763,354,111)
+```
+
+(frame 5's B ramp is `clamp(i−38, 0, 4095)`, so its `lut[0]` reads 0 — ramp
+origin and `4b6` word agree.) The port's DPI-static value on the
+`scan-20260812-091633` roll is `(683, 297, 151)`.
+
+Substituting each of the six **real** triples for the port's static one, same
+frame, same everything else — **a sensitivity test on a different scan, not a
+verification**, since v25 is not a capture of the `AA001` roll:
+
+```
+shift              median delta        shift              median delta
+port (683,297,151)  [+50, +98, +99]    (990,591,330)      [+99, +124, +106]
+(717,303, 35)       [+72, +105, +92]   (592,196,−38)      [+45,  +92,  +87]
+(818,400,162)       [+81, +111, +99]   (774,364,122)      [+75, +109,  +97]
+(873,478,205)       [+86, +116, +100]
+```
+
+Across the **entire** range the vendor's own per-frame balance actually spans,
+G's error moves only between +92 and +124 and B's only between +87 and +106,
+against errors of +98 and +99. The port's static value already sits at the
+favourable end. **The per-frame `setShifts` gap (§59, §62-§79) cannot account
+for the G/B excess — it is worth at most ±16 sRGB codes of it, and every real
+triple is neutral-to-worse in the current order.** This is a genuine negative
+on the lead this pass was asked to test, and it is consistent with §59's own
+reasoning (a per-frame variation cannot produce a constant offset) now backed
+by an end-to-end measurement rather than an argument. In the §61 linear order
+the same six triples move G between −27 and +27 and B between +42 and +69,
+with R pinned at −90 by the gamut clip in every case.
+
+### 81.8 — `fpo` and `c9` checked against their own citations
+
+Asked directly, because both are cited elsewhere as "live-confirmed" and that
+phrase is doing different work in the two cases.
+
+* **`fpo = (879, 1250, 1386)` — the per-channel *values* are tier-2
+  confirmed.** §63.1's v16 `sba_preference` `blob` dump (arg4, the nested-fpo
+  struct) reads `fpo=(879,1250,1386)` **constant across all six frames** out
+  of the running vendor DLL, matching the shipped DPI defaults verbatim; §5
+  independently establishes it is DPI-static in the real DLL, §29 that no
+  per-unit correction exists. The citations do support the per-channel
+  numbers, G and B included.
+* **`c9 = (159.594, 444.750, 635.535)` — real per-unit data, read from the
+  file.** §33.1 reads them directly out of this unit's `film_class=1`
+  NegMatrix (the one every ColNeg render uses) as the pedestal column of the
+  three polynomial rows. That is a real read of real per-unit calibration,
+  not an inference.
+* **Neither citation supports their *role*.** `F135_INVERT_PORTED = False`
+  (`tools/pakon_decode.py:585`; docs/63's own table: *"no DLL call site has
+  been shown to compute this exact arithmetic"*). `fpo` as the additive
+  density anchor and `c9` as a pre-log linear pedestal are both part of the
+  reconstructed formula, not of anything verified. So the honest answer to
+  "are `c9` and `fpo` correct for G/B" is: **the values are right and the
+  equation that consumes them is unverified** — and §81.3's finding that our
+  per-channel dynamic ranges (555/665/953) diverge where the vendor's do not
+  (1072/1088/1152) is a per-channel *contrast* discrepancy, which is exactly
+  what `c9` controls in that equation (`1000·log10((hi−c9)/(lo−c9))` widens
+  monotonically with `c9`, and our three ranges are monotone in `c9`). Named
+  as an observation with its magnitude quantified — **not** tuned, and not
+  claimed: no vendor evidence in this pass says the `c9` subtraction is wrong,
+  only that the formula containing it is the last unverified stage and that
+  the residual after removing the common offset has the shape that stage would
+  produce.
+
+### 81.9 — What this settles and what it does not
+
+* **Settled.** §80's G/B-specific framing is superseded: measured in the
+  toned-RPD12 domain, all three channels carry a common ~+480-code excess at
+  the shadow end (+504/+484/+436), and a single uniform −450 puts every
+  channel's shadows and B's median on the vendor's. G and B are not separately
+  broken.
+* **Settled.** No clipping anywhere in the linear or density domain; B's
+  top-end crush is produced by the vendor's own ICC pair reaching its 254
+  ceiling at RPD12 ≈ 2432, and is a consequence of the excess, not a cause.
+* **Settled.** The excess is introduced at the balance/inversion boundary,
+  upstream of `analyzeAutoTone` (which §1 showed cannot move a black point)
+  and downstream of the polynomial. The mechanism is structural: the port
+  anchors *film base* on `nbp = 1550`, which §1's own `dra`/`cna` evidence
+  shows is the **mid-tone** anchor, and the vendor's real render puts its
+  **median** there.
+* **Settled, negative.** The per-frame `setShifts` gap accounts for ≤ ±16 sRGB
+  codes of a ~98-code error, measured against the vendor's own six real
+  applied triples.
+* **Settled, correction.** §61's code changes were not on this branch when
+  §80 measured; §80's numbers are pre-§61. They landed mid-pass as `7584903`.
+  Measured on that tree, §61 as written moves G/B toward the vendor
+  (+98→+22, +99→+61) and **drives R to zero at every percentile through p99**
+  — an end-to-end regression against `3561c9c`, quantified in §81.6.
+* **Not settled.** What the vendor actually puts on 1550, and therefore what
+  the correct density anchor is. Two things would decide it, both live: a
+  capture of any vendor buffer *downstream* of `area_image_apply_lut` (v25
+  hooks `analyze_auto_tone` and `icc_xform_apply` at enter/leave but dumps no
+  pixels at either — a `pixel_data`-style dump on one of them would give the
+  real post-balance density directly), and the per-frame `orderFpo`→RGB anchor
+  §63.1 already has live values for (879/1279/1537 … 657/1047/1244 across six
+  frames) but which nothing in the render path consumes.
+* **No production code changed.** Every candidate this pass examined is either
+  unverified or measurably worse; per this repo's standard, nothing was
+  shipped on the strength of a better number alone.
+
+**Verification.** `tools/test_calib.py` 200/200 and `tools/test_render_f135.py`
+PASS on both trees measured here (`3561c9c` and the post-`7584903` HEAD) —
+worth noting on its own: **neither test catches a render whose entire R
+channel is zero**, which is a real gap in the harness of the same family as
+§19's. Every figure above comes from the production
+functions called in-process and wrapped, never re-implemented — the ICC
+inverse uses `AnselEngine.to_srgb` itself, the stage taps wrap
+`f135_rom12_to_rpd12` / `apply_balance_shifts` / `apply_1d_lut` /
+`real_auto_tone`, and the shift sweep drives `render_scene` with only
+`setshifts_out` changed. The §61 simulation reproduces §61's own three
+described edits exactly and was cross-checked against the shared checkout's
+uncommitted implementation of them.
+
+## 82 — The vendor's own balance LUTs decoded (Δ appears in them directly),
+`7584903` reverted with the measurement that justifies it, and the residual
+error split into **two independent defects** — a ~500-code black-point lift
+and a channel-dependent span deficit that originates in the inversion, not
+the tone chain
+
+§81 localised the residual to a near-uniform RPD12 offset by inverting
+`AA001.tif` backwards through the vendor ICC pair. This section adds the
+forward-side evidence, resolves the `7584903` regression, and separates two
+defects that had been reading as one.
+
+### 82.1 — The vendor's real balance LUTs: §60 confirmed, and Δ falls out
+
+The v25 capture carries 18 `area_image_apply_lut` calls with all three
+4096-entry `int16` LUTs dumped. Decoding `lut[i] − i` over `i = 200…3800`:
+
+* **12 calls are exact identity** (delta 0 across the whole range) — the
+  preview/analysis passes.
+* **6 calls are the real per-frame renders**, and each is exactly
+  `clamp(i + shift, 0, 4095)`: a constant delta through the unclamped
+  middle, decaying as `4095 − i` in the tail where it saturates.
+
+Recovered shifts, per frame:
+
+| frame | R | G | B |
+|---|---|---|---|
+| 1 | 717 | 303 | 35 |
+| 2 | 818 | 400 | 162 |
+| 3 | 873 | 478 | 205 |
+| 4 | 990 | 591 | 330 |
+| 5 | 592 | 196 | −38 |
+| 6 | 774 | 364 | 122 |
+
+**This is direct, forward-side confirmation of §60** — the vendor's balance
+really is a per-channel additive ramp on the *linear* PolyPixel output, not
+a density-domain add. It is not inferred from a call site this time; it is
+the applied table itself.
+
+Subtracting the same capture's `shifts_3a38` (`+0x3a38`, the `A` term) from
+these gives, per frame: **−33, +30, +15, +34, −69, +11** — *uniform across
+R/G/B in every frame*. That is Δ, the per-frame luma offset §73.6 measured
+from the applied `+0x4b6` words, now recovered independently from the LUT
+side. **`applied = A + Δ` is confirmed from two directions**, and the LUT
+gives Δ without needing the `+0x4b6` dump at all.
+
+### 82.2 — `7584903` reverted, with the measurement that justifies it
+
+§61's re-order was finally committed (`7584903`) while §81 was in flight.
+Measured on `scan-20260812-091633.bin` frame 0 against `AA001.tif` — the
+check it was never run against:
+
+```
+with 7584903:  R −90  G +22  B +61     <- R is 0 at EVERY percentile through p99
+reverted:      R +50  G +98  B +99
+```
+
+G and B improve substantially, exactly as §60/§82.1's evidence predicts. R
+collapses to black. Reverted (`20dc7cf`) so the branch does not ship an
+unusable render; **this reverts the order, not the finding**, which §82.1
+independently confirms is correct.
+
+Two things worth recording rather than passing over:
+
+* The failure was reproduced independently before the revert — this pass
+  implemented the same change from §61's prose and got byte-identical
+  numbers (R −90, G +22, B +61), so the committed code does what §61
+  describes; the described change is what is incomplete.
+* **Neither test catches it.** `test_calib.py` (200/200) and
+  `test_render_f135.py` (PASS) stay green on both trees, because they check
+  correlation sign and overall mean, not per-channel level. An all-zero red
+  channel passes the suite. A real harness gap.
+
+Two candidate explanations were tested and both are **negative**: shifting
+`film_base` along with the pixels (a shifted population needs a shifted
+reference) leaves R at −90; and the port's shift magnitudes are not the
+problem — §82.1's real vendor R shifts (592…990) are *larger* than the
+port's 683, and feeding the vendor's own frame-1 triple through the port's
+arithmetic reproduces essentially the same R density (1070 vs 1077).
+
+### 82.3 — The residual is two defects, not one
+
+Instrumenting `render_scene`'s own input and output (RPD12, per channel,
+p1/p50/p95) against §81's back-inverted vendor reference:
+
+| | p1 | p50 | p95 | span (p1→p95) |
+|---|---|---|---|---|
+| ours, inversion out | 893 / 1266 / 1409 | 1267 / 1850 / 2145 | 1517 / 2102 / 2496 | **624 / 836 / 1087** |
+| ours, toned out | 1440 / 1436 / 1372 | 1676 / 1880 / 2093 | 1995 / 2101 / 2325 | 555 / 665 / 953 |
+| vendor | 936 / 952 / 936 | 1480 / 1512 / 1624 | 2008 / 2040 / 2088 | **1072 / 1088 / 1152** |
+
+Read together these separate cleanly:
+
+1. **Black-point lift (~500 codes).** Our black leaves the inversion at
+   893/1266/1409 and arrives at the tone stage's output at 1440/1436/1372 —
+   the density-domain `setShifts` add. The vendor's black is 936/952/936.
+   Our *white* point, by contrast, is already close (1995/2101/2325 vs
+   2008/2040/2088). A black point ~500 high with a correct white point is
+   precisely the "no real blacks" signature §1-§9 described. **This is the
+   defect §61 targets**, and its own direction is right.
+2. **Span deficit, and it originates in the inversion.** At
+   `render_scene`'s *input* — before any tone or balance — our spans are
+   already 624/836/1087 against the vendor's 1072/1088/1152. R carries only
+   **58%** of the vendor's tonal range, G 77%, B 94%. The tone chain then
+   compresses R a little further (624→555), but it is not the source. This
+   is a separate defect from (1), and fixing (1) alone — which is what
+   `7584903` did — leaves a too-narrow R sitting too low, which is exactly
+   how it produced a black channel.
+
+The channel-dependence explains why §80's per-channel numbers looked so
+uneven: B's span is nearly right, R's is barely half.
+
+### 82.4 — One hypothesis for the span deficit, tested and rejected
+
+Solving `1000·log10((lin_p95 − ped)/(lin_p5 − ped))` for the pedestal that
+would reproduce the vendor's span gives **(667.5, 592.9, 661.5)** — strikingly
+*near-uniform*, where the port subtracts the polynomial's own per-channel
+`c9 = (159.6, 444.7, 635.5)`. It also explains the pattern: B's `c9` (635.5)
+is already close to its solved value (661.5), and B is the channel whose
+span is nearly correct.
+
+Suggestive enough to test, so it was tested — a uniform pedestal, rendered
+and measured against `AA001.tif`:
+
+| pedestal | median delta R / G / B |
+|---|---|
+| `c9` (159.6, 444.7, 635.5) | +50 / +98 / +99 |
+| uniform 600 | +75 / +112 / +91 |
+| uniform 650 | +64 / +112 / +94 |
+| uniform 700 | +46 / +110 / +95 |
+
+**Rejected.** A uniform pedestal widens the span as predicted but moves the
+whole curve with it, and the medians get *worse*. Recorded as a negative
+rather than dropped: the span arithmetic that motivated it is still correct,
+so whatever fixes the span has to widen it *without* translating the curve —
+which a pedestal change cannot do.
+
+§81's separate finding stands and is consistent: `fpo`'s per-channel values
+are tier-2 confirmed and `c9`'s are a real NegMatrix read, but neither
+citation supports their *role* in this equation — `F135_INVERT_PORTED =
+False`, and no DLL call site computing this arithmetic has ever been found
+(§32/§51/§54/§55). The span deficit is the first quantitative evidence that
+the equation itself, not just its constants, is wrong.
+
+### 82.5 — What this leaves
+
+* **Confirmed, twice over:** the vendor's balance is a linear-domain additive
+  ramp, and `applied = A + Δ` (§82.1).
+* **Open, defect 1:** re-landing the linear-domain order needs the paired
+  downstream change so the black point drops without R collapsing.
+* **Open, defect 2, and now the sharper target:** the inversion produces only
+  58%/77%/94% of the vendor's per-channel tonal span. This is upstream of the
+  tone chain, is not a pedestal error (§82.4), and is the first hard evidence
+  against `f135_rom12_to_rpd12`'s own construction rather than its inputs.
+* **Harness gap:** add a per-channel level/span assertion to
+  `test_render_f135.py`; an all-zero channel currently passes.
+
+**Verification.** LUT deltas computed from the raw dumped bytes with the
+identity/clamp structure checked over `i = 200…3800`, not sampled at a few
+points. The revert's numbers come from two independent implementations of
+the same change. All render measurements use §31's own parameters against
+the same `AA001.tif`, re-fetched this session. Every hypothesis reported
+here as rejected was executed and measured, not argued down.
+
+## 83 — The inversion curve derived empirically from vendor ground truth:
+the log form survives, but the port's per-channel `fpo` anchor does not —
+the real mapping anchors all three channels **near-uniformly**
+
+Seven DLLs have been searched for the log instruction
+`f135_rom12_to_rpd12` needs (§32.3, §51, §54, §55), every one a clean
+negative, and `F135_INVERT_PORTED` is `False` — no call site computing that
+arithmetic has ever been found. §82.3 then produced the first quantitative
+evidence against the *equation* rather than its inputs: at `render_scene`'s
+own input, before any tone or balance, our per-channel spans are only
+58%/77%/94% of the vendor's.
+
+This section stops looking for the equation and derives it instead, from
+data already in hand.
+
+### 83.1 — Method: quantile matching against the back-inverted vendor render
+
+§81 established how to obtain the vendor's own RPD12 — invert `AA001.tif`
+backwards through the same vendor ICC pair the render uses
+(`Rpd2Pcs_HR200_QS_v5s10.pf` → `Srgb_v2.pf`). Paired with our own linear-12
+input for the same frame, that is ground truth for the mapping itself.
+
+The inversion is monotonic per channel, so the curve can be recovered by
+**quantile matching** — which sidesteps the pixel-alignment problem between
+our 500×740 preview and the vendor's 1960×2941 TIFF entirely.
+
+**One methodology correction, recorded because it inverted the first
+answer.** The mapping is monotonically *decreasing* (higher linear code =
+clearer negative = darker positive), so the p-th percentile of `lin`
+corresponds to the **(100−p)-th** percentile of the output, not the p-th.
+Pairing p↔p first produced a fitted `k` that was *negative* on all three
+channels — i.e. an apparently non-inverting vendor transform, which is
+physically impossible for a colour negative. That impossibility is what
+caught the error; the corrected p↔(100−p) pairing gives a well-behaved fit.
+
+### 83.2 — The recovered curve
+
+Fitting the port's own functional form,
+`rpd12 = fpo + k·log10((base − ped)/(lin − ped))`, with `k`, `ped` and `fpo`
+all free, over 15 quantiles per channel:
+
+| ch | port `k` | port `ped` (`c9`) | fitted `k` | fitted `ped` | fitted `fpo` | resid RMS |
+|---|---|---|---|---|---|---|
+| R | 1000 | 159.6 | 1379 | 210 | **975** | 50 |
+| G | 1000 | 444.7 | 791 | 595 | **1039** | 75 |
+| B | 1000 | 635.5 | 795 | 750 | **970** | 364 |
+
+Three readings, in decreasing order of confidence:
+
+1. **The log form itself survives.** Residual RMS of 50 and 75 codes on R
+   and G, over a 1000-code span, from a two-parameter fit — the vendor's
+   mapping really is a log of a `(base − ped)/(lin − ped)` ratio. B's 364 is
+   an artefact, not a refutation: B's own top quantile lands on the ICC's
+   saturated ceiling (the neutral ramp returns 4095 there), so that pair is
+   garbage and drags the fit.
+2. **The pedestal is close to `c9`, consistently a little higher**
+   (210 vs 160, 595 vs 445, 750 vs 636). Not obviously a different
+   quantity — plausibly the same constant with something small added, or
+   `c9` measured at a different point.
+3. **The anchor is near-uniform, and the port's is not.** The fitted `fpo`
+   is 975 / 1039 / 970 — within ~70 codes across all three channels — where
+   the port uses the live-confirmed `fpo = (879, 1250, 1386)`, a spread of
+   **507 codes**. This is the single largest structural disagreement, and it
+   independently corroborates §81's observation from the other side: the
+   vendor's own black point is 936/952/936, likewise near-uniform, while
+   ours arrives at 1440/1436/1372 only because `setShifts` happens to
+   partially cancel `fpo`'s spread.
+
+`fpo`'s *values* are not in question — §63.1 confirmed them live, constant
+across six frames. What this says is that its **role** in this equation is
+wrong: the vendor does not appear to use `fpo` as the per-channel anchor
+that `lin == base` maps to.
+
+### 83.3 — End-to-end validation: the fit is not a fix, and that is the
+useful part
+
+Feeding the fitted constants through the *real* render path (tone chain,
+ICC, everything downstream) and measuring against `AA001.tif`:
+
+| inversion | median delta R / G / B | p1 ours |
+|---|---|---|
+| port (`k=1000`, `ped=c9`, `fpo=(879,1250,1386)`) | +50 / +98 / +99 | 40 / 81 / 65 |
+| fitted | **+131 / +42 / +7** | 123 / 30 / 0 |
+| vendor target | 0 / 0 / 0 | 10 / 11 / 10 |
+
+**G improves from +98 to +42 and B from +99 to +7 — but R degrades from +50
+to +131.** So a curve that fits the vendor's own RPD12 to ~50 codes RMS does
+*not* reproduce the vendor's render when pushed through the rest of the
+pipeline.
+
+That is the informative result, and it is consistent with §82.3 rather than
+contradicting it: **the inversion is not the only defect.** The
+density-domain `setShifts` add (§82.3 defect 1) is still lifting the black
+point, and on R it now lifts a curve that the fit has already re-anchored,
+so R over-shoots. Two wrongs were partially cancelling; correcting one alone
+exposes the other. This is the same shape of failure `7584903` produced from
+the opposite direction (§82.2).
+
+**Explicitly not adopted.** These constants are a fit to one frame of one
+roll, not vendor evidence for their values, and CLAUDE.md's standard does
+not permit shipping them on that basis. No production file was changed by
+this pass. What the fit establishes is *structural*, and that part is solid:
+the functional form is right, and the per-channel anchor is wrong.
+
+### 83.4 — What this changes about the remaining work
+
+The two defects §82.3 identified are now both characterised well enough to
+be attacked together, which is the only way either can be fixed:
+
+* **Anchor (new, this section).** The real mapping anchors all three
+  channels near-uniformly (~970-1040); the port anchors them at `fpo`'s
+  507-code spread. Finding what the vendor actually anchors to is now a
+  bounded question with a numeric target, where before §82 it was "the
+  render looks washed out".
+* **Black-point lift (§82.3 defect 1).** `setShifts` must move into the
+  linear domain (§60/§82.1, confirmed twice from the applied LUTs) — but
+  only together with the anchor fix, or R collapses (`7584903`) or
+  over-shoots (§83.3).
+
+The next concrete step is to find the vendor's real anchor rather than fit
+it: the ~970-1040 band is close to `neutralBalancePoint`-adjacent territory
+(§1's 1550 mid-tone anchor, `paperMin` 1200 / `paperMax` 2000) and to the
+fitted values' own near-uniformity, which suggests a single scene- or
+DPI-level constant rather than three per-channel ones. That is a search with
+a target, and the live hook harness can dump any candidate field on a real
+scan.
+
+**Verification.** The quantile pairing direction was caught by a physical
+impossibility (a non-inverting fit), not assumed correct; the corrected form
+is reported. The fit is over 15 quantiles per channel with `ped` swept on a
+5-code grid and `k`/intercept solved by least squares at each step, not a
+three-parameter blind optimisation. The end-to-end validation uses §31's own
+render parameters and the same `AA001.tif` every other measurement in this
+doc uses. B's poor RMS is attributed to a specific, identified cause (ICC
+ceiling saturation at its top quantile) rather than left unexplained.
+
+## 84 — The vendor's anchor found in its own shipped DPI (`neu = 975`), and
+the reason no anchor change alone can work: **the port derives `setShifts`
+from `fpo`**, so the two are one coupled defect — and the vendor's real
+shifts come from the per-frame Preference chain §79 already made golden
+
+§83 derived the inversion's anchor empirically at 975.2 / 1038.5 / 970.4 —
+near-uniform, against the port's `fpo = (879, 1250, 1386)` — and flagged
+finding the vendor's real anchor as a bounded search with a numeric target.
+This section runs that search, finds it, tests it, and explains why it is
+not sufficient on its own.
+
+### 84.1 — The anchor is in the shipped DPI
+
+`vendor/ansel/anselinstalldir/dataPathItems/sba/SbaDPI/sba-CN-default-96-1.dpi`
+— the real CN SBA DPI, the same file the port already reads `fpo` from:
+
+```
+    fpa = -75 -50 -25
+    neu = 975  975  975
+    neo = 1010 1010 1010
+    fpo = 879  1250 1386
+    neutralBalancePoint = 1550
+```
+
+**`neu` and `neo` are both channel-uniform and both sit inside §83's fitted
+band.** `neu = 975` matches R's fitted anchor (975.2) to **0.2 codes** and
+B's (970.4) to 4.6. These are vendor values read from vendor data, not fitted
+constants — which is the entire point of looking for them.
+
+Corroboration that this is the right *kind* of field: the DC-Premium DPI
+(`sba-DC-Premium-smallImage.dpi`) carries `fpo = 1679 1679 1679` — uniform —
+and `neutralBalancePoint = 1679`, the same value. For a non-negative source
+the anchor and the balance point coincide and there is no orange mask to
+compensate. CN is where `fpo` acquires its 507-code per-channel spread.
+
+### 84.2 — Tested, and it fails the same way §83's fit did
+
+Substituting each vendor constant as the inversion anchor, rendered through
+the real path and measured against `AA001.tif`:
+
+| anchor | median delta R / G / B | p1 ours |
+|---|---|---|
+| `fpo (879,1250,1386)` — port today | +50 / +98 / +99 | 40 / 81 / 65 |
+| `neu` = 975 (vendor DPI) | **+125** / +72 / +51 | 137 / 37 / 0 |
+| `neo` = 1010 (vendor DPI) | **+127** / +73 / +54 | 144 / 41 / 0 |
+| vendor target | 0 / 0 / 0 | 10 / 11 / 10 |
+
+G and B improve — +98→+72 and +99→+51 — and R degrades hard, +50→+125, with
+its black point climbing to 137. **This is the identical signature §83.3
+reported for the fitted constants**, which is itself informative: two
+independently-derived near-uniform anchors (one fitted, one read from vendor
+data) fail in exactly the same way, so the failure is not in the anchor
+value.
+
+### 84.3 — Why: `setShifts` is derived *from* `fpo`
+
+The port's balance shift is not an independent quantity:
+
+```
+port setShifts      = (683, 297, 151)
+neutralBalancePoint − fpo = 1550 − (879, 1250, 1386) = (671, 300, 164)
+```
+
+Within a few codes on every channel. **The port computes its shift as
+`NBP − fpo`** — so `fpo`'s per-channel spread is what *creates* the shift's
+per-channel spread, and the shift then carries every channel's floor back to
+a common 1550. The two errors are one mechanism, and they partially cancel:
+that cancellation is why the port renders a recognisable image at all, and
+why replacing either half alone makes things worse.
+
+Substituting a uniform anchor while leaving `NBP − fpo` in place is
+internally inconsistent — it removes the spread from one side of a
+subtraction and not the other. R has the largest `fpo` deficit (879 vs a
+~975 anchor) and therefore takes the largest inconsistency, which is exactly
+where the damage lands in §84.2.
+
+### 84.4 — What the vendor actually does instead, already in hand
+
+The vendor does not derive its shift from `fpo` at all. §82.1 decoded the
+real applied per-frame shifts straight out of `area_image_apply_lut`'s own
+LUTs:
+
+| frame | R | G | B |
+|---|---|---|---|
+| 1 | 717 | 303 | 35 |
+| 2 | 818 | 400 | 162 |
+| 3 | 873 | 478 | 205 |
+| 4 | 990 | 591 | 330 |
+| 5 | 592 | 196 | −38 |
+| 6 | 774 | 364 | 122 |
+
+These vary by ~400 codes **across frames of the same roll** — impossible for
+anything derived from a DPI constant, and §82.1 showed they decompose
+exactly as `A + Δ`, the per-frame Preference output plus the per-frame luma
+offset. The port's `NBP − fpo` is a static stand-in for a per-frame
+computation.
+
+**This closes the loop with §79.** The per-frame `orderFpo` triple — the head
+of that Preference chain — is now golden, bit-exact on real hardware data
+(§78/§79). The remaining gap between "golden `orderFpo`" and "correct
+render" is the wiring §76's own handover lists, and this section is the
+evidence that the wiring is not a refinement but *the* fix: the balance
+defect and the anchor defect are the same coupled stand-in, and the
+per-frame chain replaces both halves at once.
+
+### 84.5 — Status
+
+* **Anchor located** (`neu = 975`, vendor DPI, matching §83's fit to 0.2
+  codes on R) — but not adoptable alone (§84.2).
+* **Coupling identified** (`setShifts = NBP − fpo`, §84.3) — this is why
+  §83.3's fit, §84.2's vendor constants, and `7584903`'s linear-domain
+  re-order all break R in the same way. Three independent attempts, one
+  shared cause.
+* **The correct replacement is already verified** — per-frame `A + Δ` from
+  the Preference chain, confirmed twice (§73.6 from the applied `+0x4b6`
+  words, §82.1 from the LUTs), with `orderFpo` golden (§79).
+* **Still blocked on** computing Y's `L` term outside a capture (§78.2's
+  bytecode interpreter), which is what stands between the golden chain and
+  production wiring.
+
+**No production file was changed by this pass.** Every anchor test was run
+by substitution at the call boundary, not by editing the port.
+
+**Verification.** The DPI values are quoted from the shipped file with its
+path; `neu`/`neo` were not inferred from the fit but found by searching the
+vendor data for channel-uniform fields in §83's band and then checked against
+it. The `NBP − fpo` identity is arithmetic on values already in the port and
+the same DPI, shown rather than asserted. Every render number uses §31's
+parameters and the same `AA001.tif` as every other measurement in this doc.
+
+
+## 85 — Two clean negatives on Y's `L` term: it is neither a simple
+dens statistic nor a value read from any captured buffer
+sec84 established that the per-frame Preference wiring is THE fix (it replaces both halves of the fpo/setShifts coupled defect at once), and that the one thing blocking it is computing Y's L term outside a capture. Two cheap tests were worth running before accepting sec78.2's bytecode-interpreter conclusion as final.
+
+TEST 1 -- is L a statistic of the dens arrays the port could compute itself? The v25 capture carries all 864x3 dens samples for six scenes, so this is answerable from data in hand. Regressing L against nine candidate statistics of densY:
+
+  mean(densY[selected])   corr 0.945   resid RMS 52
+  median(densY[selected]) corr 0.919   resid RMS 63
+  n_selected              corr 0.904   resid RMS 68
+  mean(densY)             corr 0.891   resid RMS 73
+  ... down to min(densY)  corr 0.204   resid RMS 156
+
+The best correlate is physically sensible -- L is a luma term and the selected-sample mean luma tracks it at r=0.945 -- but RMS 52 against an L range of -299..200 is roughly 10% error, nowhere near bit-exact, and it is a two-parameter fit on six distinct points. NEGATIVE: L is not a simple statistic of dens.
+
+TEST 2 -- is L simply read from a buffer rather than computed? sec76 traced L[-0x200] to a fill by fcn.102ac310 from a 16-byte-record list off arg 6, and arg 6 is captured. Searched every captured buffer (arg2/5/6/7/10/11/12, 512-4608 bytes each) for an int16 or int32 appearing at a consistent offset across all six scenes with the six L values. ZERO matches anywhere. NEGATIVE: L does not appear verbatim in any captured argument buffer.
+
+Together these close off the two cheap routes and leave sec78.2's finding standing: L is genuinely produced by the interpreted path, so obtaining it in production means either porting that path or capturing it per frame -- and capturing it per frame does not work in production, only in verification.
+
+What this does NOT block: U and V are fully derived and golden (sec79), the dens arrays needed to compute them are captured, and sec84 identified the anchor. The wiring is blocked on L alone.
+
+No production file changed.
+
+
+## 86 - The VM scoped: programs captured, short, generated per scene, and a small real opcode set (encoding 262/264 recovered)
+sec84 established the per-frame Preference wiring is THE fix and sec85 closed the two cheap routes to Y's L term, leaving the bytecode interpreter (sec78.2) as the thing in the way. This scopes it.
+
+STATIC FIRST, NO HARDWARE (sec86.1). The dispatch is two-stage: movzx from a 254-byte index table at 0x102ac018, then jmp through a 51-entry table at 0x102abf4c. Reading the index table shows the 254 opcodes collapse to 51 handler indices, and index 50 alone covers 203 of them -- the default/invalid case. So there are 50 real handlers, not 254.
+
+THE v26 CAPTURE FAILED, AND WHY (sec86.2). It fired 3168 times and every dump came back readable=false. Cause, from the capture's own raw stack_dwords: sp[2] = 0, sp[1] = a live pointer. The derivation missed a push --
+
+    0x102aadf3  push ebx
+    0x102aadf4  push ebp        <- missed
+    0x102aadf5  mov ebp,[esp+0x3c]
+
+two pushes precede the load, so [esp+0x3c] is arg 1, not arg 2. Third time this arithmetic has cost a hardware round trip (v22's arg6 four bytes short, v24's arg0 read as a total rather than offset-plus-length, now this). v27 dumps all four low arg indices instead of the derived one, which removes the error class rather than promising more care; vm_prog1 came back readable 3168/3168, confirming arg 1 exactly.
+
+WHAT THE PROGRAMS ARE (sec86.3). From v27 (live_hooks_20260817-212408.jsonl, md5 cf67eec3...):
+
+- 3168 interpreter calls per capture -- not ~6/frame, so the VM is used broadly across the pipeline, not only on the orderFpo path.
+- Every program terminates within the 0x800 dump (no truncation).
+- Programs are SHORT: 6-28 words including the halt, most commonly 6 (1452 calls), 10 (348), 7 (192), 18 (168), 28 (132), 21 (96).
+- 264 DISTINCT programs across the 3168 calls, and 3168 distinct contexts. So the bytecode is generated/parameterised per scene, NOT one static program -- which answers the question this capture was built for.
+- Every program starts with opcode 1.
+
+ENCODING, 262/264 RECOVERED (sec86.4). Requiring every captured program to parse exactly to its 0xff halt is a strong constraint, and it recovers the shape: opcode 1 is a PUSH whose operand count depends on its first operand (a type/source selector -- type 6 takes one more word, type 4 takes two), while the other opcodes take fixed counts. Worked examples:
+
+    [1,6,15, 1,6,617, 4,2,3, 255]                 -> push(6,15) push(6,617) op4(2,3) halt
+    [1,4,0,24, 1,4,0,36, 5,2,2, 255]              -> push(4,0,24) push(4,0,36) op5(2,2) halt
+
+A greedy solve over the operand table parses 262 of 264. The two stragglers are consistent with a different assignment for opcodes 4/5/6, and an exhaustive search over the six dominant opcodes did WORSE (151/264) because it constrained the long tail badly -- recorded as a failed approach rather than quietly dropped. Finishing this needs per-branch disassembly of each handler (the summed `add edi` counts over-count, since they total every path), which is static work needing no further capture.
+
+HONEST STATUS. The opcode count reported earlier as "51 distinct" is an UPPER BOUND, not a result: it classified any value mapping to a non-default handler as an opcode, and short operands (the 6 in "1, 6, 643") get miscounted that way too. The true set is smaller and is not yet pinned.
+
+WHAT THIS MEANS FOR THE PORT. Bounded, but larger than "port 50 handlers": the programs are generated per scene, so a port needs the generator as well as the interpreter. Against that, the programs themselves are tiny and the operand encoding is nearly recovered, and 264 real programs with their contexts are now in hand as test vectors.
+
+Next capture worth having (not blocking): the same v27 build on a DIFFERENT roll, to establish whether the 264 programs are roll-dependent or fixed. That single fact changes the size of the port substantially and only a second roll can answer it.
+
+No production file changed.
+
+
+## 87 - Second roll proves the VM programs are STATIC, not generated per scene (correcting sec86)
+sec86 concluded from one roll that "the bytecode is generated/parameterised per scene, NOT one static program". That was wrong, and wrong in a way one roll cannot detect: with a single capture, "a fixed program set exercised in a scene-dependent order" and "programs generated per scene" produce identical evidence. The second roll separates them.
+
+THE MEASUREMENT. Two v27 captures, different rolls:
+
+  roll A (live_hooks_20260817-212408.jsonl, md5 cf67eec3...): 3168 calls, 264 distinct programs
+  roll B (live_hooks_20260817-213026.jsonl, md5 b7b02a79...): 3168 calls, 264 distinct programs
+
+  shared by both : 264
+  only in A      : 0
+  only in B      : 0
+
+100% overlap. Byte-identical program sets.
+
+THE SCANS ARE GENUINELY DIFFERENT, checked rather than assumed -- their per-scene orderFpo triples share no values:
+
+  roll A: (2154,59,465) (2059,70,448) (1927,47,456) (1733,53,453) (2252,64,433) (2093,66,446)
+  roll B: (1843,59,461) (1985,75,450) (2027,82,456) (2021,77,454) (2067,76,452) (2154,63,457)
+
+So the identical program sets are not an artefact of rescanning the same film.
+
+WHAT THIS MEANS. The 264 programs are STATIC configuration -- a fixed instruction repertoire the interpreter selects from. The per-scene variation lives entirely in the CONTEXT (3168 distinct contexts per capture), i.e. the data the programs read, not in the code.
+
+Consequences for the port, all favourable:
+
+1. There is NO generator to port. sec86 flagged "a port needs the generator as well as the interpreter" as the thing that made this bigger than porting 50 handlers. That concern is retired -- the programs are fixed data, and both captures already contain all 264 of them.
+2. Only the interpreter needs porting, against a small opcode set (sec86.4 recovered the encoding for 262 of 264 programs; finishing it is static work).
+3. The 264 programs plus their contexts are a ready-made test corpus, now doubled and cross-roll: any ported handler can be validated against two independent rolls rather than one.
+
+Also worth recording: the call count is identical (3168) across two different rolls, consistent with the interpreter being driven by fixed pipeline structure rather than by scene content.
+
+CORRECTION DISCIPLINE. sec86's claim is superseded, not quietly amended -- it was a reasonable read of one roll and a wrong read of the system, and the specific reason one roll could not distinguish the two cases is recorded above so the same inference is not made again from a single capture.
+
+No production file changed.
+
+
+## 88 — The bytecode interpreter is ported, and the programs are not generated
+at all: all 264 are read verbatim out of the shipped `pcode-dls_1.7`. Encoding
+264/264, 36 of 50 handlers implemented, **`L` located exactly (`vars[133]`)** —
+and blocked on one uncaptured input array, not on the VM
+
+§87 established the 264 VM programs are static. This section finishes the job:
+it finds where they are stored, recovers the instruction encoding exactly,
+reads and ports the handlers, and traces `L` to a specific variable slot. It
+also states plainly the one thing that still stops `L` from being computed, and
+gives the single capture row that closes it.
+
+New file: `tools/ansel/python-pipeline/pakon_vm.py`. `PakonIMAu.dll` re-hashed
+first — `md5 eea9dcf78ee21d4f7c515a6c2512242d`, matching every prior citation;
+`radare2` 6.1.8 via `r2pipe`, `e asm.sub.var=false`, `af`+`pdf` at
+`fcn.102aadf0`'s own boundary (4423 bytes), `pD` never used. Live evidence is
+the two v27 captures of §87: roll A `live_hooks_20260817-212408.jsonl`
+(`md5 cf67eec3b4db03c78d93bc1ee9635f8e`) and roll B
+`live_hooks_20260817-213026.jsonl` (`md5 b7b02a79d13b4da321bbf92e0c092938`),
+3168 `sba_vm_interp` firings each.
+
+### 88.1 — The programs are a shipped data file, and this project already ports
+its stage 1
+
+The 264 captured programs were searched, as raw u16 sequences, against every
+`pcode-*` file under
+`vendor/ansel/anselinstalldir/dataPathItems/sba/Pcode/`. Result, byte-exact
+and unambiguous:
+
+| file | programs found (of 264) |
+|---|---|
+| **`pcode-dls_1.7`** (`md5 8e405c4672d2264d698af3235f37aaef`) | **264** |
+| `pcode-erimm_hr200_2.5`, `pcode-hr200_2.5` | 7 |
+| `pcode-hr200_noGrn_2.4` | 6 |
+| `pcode-hr200_2.6`, `pcode-hr200_2.7` | 4 |
+| `pcode-dsba`, `pcode-dsba.orig`, `pcode-dsbaRomm` | 2 |
+
+Only when the file is read **big-endian**; little-endian scores 0/264
+everywhere. That is exactly what `tools/ansel/python-pipeline/pakon_sba_pcode.py`
+already documents for stage 1 ("File is a stream of little-endian u16 on disk.
+The decoder checks word0; if it is not `0x00FB`, every word is byte-swapped") —
+so the interpreter's programs live in the same file whose stage-1 header that
+module has parsed since it was written, in the section it explicitly left
+alone: *"Bytes after that are the stage-2 program (parsed by `0x102a8f40`, not
+implemented here)."* §87's "there is no generator to port" is therefore not
+merely true, it is stronger than stated: **there is no generated data at all —
+the VM's whole program store is shipped configuration.**
+
+The stage-2 section is a record table: one count word (264), then that many
+records of `(index, tag, nwords, words…)` with `index` running 0…263. It
+consumes the file to its last word (5339 of 5340; the file ends on a lone
+`0x00ff`). `pakon_vm.load_pcode` anchors on exactly that — the count must
+parse **and** the parse must land at end-of-file, because a short table parses
+"successfully" at many offsets (a first cut without the end-of-file condition
+locked onto a 1-record false positive in all nine files).
+
+### 88.2 — The encoding, finished: 264/264, and §86.4's reading was wrong
+
+Per-handler CFG walks over `fcn.102aadf0` (worklist over r2's own
+`jump`/`fail` edges, summing `add edi, N` per path rather than over the whole
+handler) give an unambiguous instruction length for every one of the 50 real
+handlers:
+
+```
+opcode 1  (PUSH)    3 words, or 4 when its type operand is 4
+opcode 2  (STORE)   2 words
+every other opcode  1 word
+opcode 255          halt
+```
+
+Nothing but `PUSH` and `STORE` carries an operand. `PUSH`'s type selector
+drives the 7-entry inner table at `0x102ac118`
+(`0x102aae32`: `movsx eax, word [edi+2]` then two `add edi, 2`); type 4 alone
+is a 32-bit immediate assembled **high word first**
+(`0x102aaed4…0x102aaee8`: `mov cx,[edi]` → `[esp+0x22]`, `mov dx,[edi+2]` →
+`[esp+0x20]`, then `mov eax, dword [esp+0x20]`).
+
+**§86.4 is superseded, not amended.** It read the same three worked examples
+as opcodes with operand lists — `[1,6,15, 1,6,617, 4,2,3, 255]` as
+"`push(6,15) push(6,617) op4(2,3)`". It is `PUSH in[15] ; PUSH in[617] ; SUB ;
+STORE v3`: `4,2,3` is three instructions, not one. That misreading is why the
+greedy solve needed a per-opcode operand table at all, and why the exhaustive
+search over the six dominant opcodes did *worse* (151/264) — it was searching a
+parameter that does not exist.
+
+Two further recorded errors of the earlier pass, both mine to correct:
+
+* **The "two stragglers" were an extraction artefact, not an encoding gap.**
+  §86's extractor cut each program at the first `0x00ff` word in the dump. But
+  `STORE`'s operand can itself be `0x00ff` (`(1,3,3, 2,255, …)` is
+  `PUSH v3 ; STORE v255`), and records containing a conditional carry a second
+  `HALT` for the else-arm *after* the first. Decoding instruction-by-instruction
+  instead of scanning for a byte value gives **264/264 clean parses to halt on
+  both rolls**, with no residual.
+* **"51 distinct opcodes" was an upper bound and is now closed.** The real
+  reached set in `pcode-dls_1.7` is **19 opcodes**:
+  `1,2,3,4,5,6,16,27,28,29,30,31,32,33,36,55,56,64,254` (plus the label word
+  9191 and the `255` halt). Across all nine shipped `pcode-*` files — 1720
+  records — the union is **24 opcodes**, adding `34,35,61,68,253`.
+
+### 88.3 — What the machine actually is: a spreadsheet, not a program
+
+Reading the handlers in full settles the architecture. It is a 32-bit integer
+stack machine (`ebx+0x54` = `{base,top,limit}`, push/pop at `0x102a8c80` /
+`0x102a8c50`, both `longjmp`ing on over/underflow) whose *program store is a
+variable file*:
+
+```
+ebx = dword [esp+0x40] @ 0x102aae0b   (arg 0, the machine)
+ebp = dword [esp+0x3c] @ 0x102aadf5   (arg 1, ONE 16-byte record)
+edi = dword [ebp+4]    @ 0x102aadfb   (that record's program words)
+```
+
+The 16-byte record is `{int32 nwords, int32 words*, int32 value, int32 tag}`.
+`PUSH` type 3 reads `[ebx+0x30] + i*16 + 8` and `STORE` writes the same slot —
+i.e. record *i*'s **value** field. So record *k* is a cell: it evaluates an
+expression and stores the result into slot *k*. The interpreter is invoked once
+per cell.
+
+Five live confirmations, all counted across **both** rolls (each figure is
+per-roll):
+
+| claim | evidence | result |
+|---|---|---|
+| record *k* in memory == record *k* in the file, over its **full** declared length | `vm_prog1` (0x800 bytes) vs `pcode-dls_1.7` | **3168/3168** |
+| in-memory `{nwords, tag}` == the file's `{nwords, type}` | `vm_ctx1` (0x40 bytes at arg 1) | **3168/3168** |
+| calls walk the record array by 16 bytes, in index order | raw `stack_dwords[1]` | **3156/3156** consecutive |
+| `arg6+0x160` == 264 (the record count) | `arg6_big` | **24/24** |
+| `arg6+0x168` == a live machine's arg-1 base | `arg6_big` vs `stack_dwords[1]` | **24/24** |
+
+3168 = **12 machines × 264 records**, and the 12 machines are the 12
+`0x1028b8d0` invocations §76.5 already counted (6 scenes × 2 passes). The
+machine pointer is `ebx == arg6 + 0x138` — which is *why* §76.6's
+`fcn.102ac310` reads its record array from `arg6[0x168]` and its count from
+`arg6[0x160]`: those are `ebx+0x30` and `ebx+0x28`, the same two fields the
+interpreter uses.
+
+Two negative structural results worth recording:
+
+* **No record stores anywhere but its own slot** (264/264), and **no record
+  reads a slot at or above its own index** (0 forward references). So the table
+  is a topologically ordered DAG evaluated in one forward pass — no fixpoint,
+  no aliasing.
+* Because of the first of those, **no VM result is observable in either
+  capture**: `vm_ctx1` at call *k* covers records *k…k+3*, all of which are
+  still zero because they have not run yet, and nothing ever writes backwards
+  into an already-dumped record. This is the reason the port cannot be diffed
+  cell-by-cell against the hardware, and it is a property of the hook placement,
+  not of the port.
+
+### 88.4 — `L` located: it is `vars[133]`
+
+§76.6 established `L` = `((int32*)&buf_m258)[22]`, the 23rd value
+`fcn.102ac310` extracts by walking the record array and taking `[e+8]` wherever
+`[e+0xc] == 1` (`0x102ac3e8`). §88.3's third row makes the `+0xc` tag readable
+statically: it is the file's own per-record `type` field, confirmed 3168/3168
+on both rolls.
+
+In `pcode-dls_1.7` exactly **130 records carry tag 1** — records 134…263,
+contiguous. The 23rd of them is **record 156**, and its entire program is:
+
+```
+   0: PUSH v133
+   3: STORE v156
+   5: HALT
+```
+
+So **`L == vars[133]`**. The same shape holds in all nine shipped files —
+`extract[22]` is always a bare one-line copy cell (`pcode-dsba`: v67→v90;
+`pcode-hr200_2.7`: v101→v124; `pcode-hr200_noGrn_2.4`: v124→v147) — which is
+corroboration that §76.6's index-22 identification is picking out a real,
+deliberately-exported output and not landing on an arbitrary cell.
+
+### 88.5 — The port, and exactly what is not in it
+
+`tools/ansel/python-pipeline/pakon_vm.py`. **36 of the 50 real handlers are
+implemented** — every opcode reached by any of the 1720 records in the nine
+shipped files, plus every remaining handler whose body is a short unambiguous
+straight-line read (`NEG`, `SEL_GE`/`SEL_LE`, `HYPOT`, `DUP`, `SWAP`, the six
+comparisons, logical and bitwise `AND`/`OR`/`NOT`, `NOP`, and the unconditional
+skip). Transcription notes where the code is not what the mnemonic suggests:
+
+* Opcode **48** is `-|x|`, not `|x|`: `0x102ab121` `test eax,eax ; jge` →
+  the **non-negative** branch is the one that runs `neg`. Written as read.
+* Opcode **55** (`CSKIP`) is `neg/sbb/inc` (`0x102abd94`), i.e. it pushes 1 when
+  the popped condition is **zero**, then skips forward past that many
+  `254, 9191, 254` label triples. A true condition skips one triple, a false
+  one skips two — the emitter puts an empty block immediately after the branch,
+  which is why both arms skip at least once.
+* Opcode **54** additionally halts its scan on a `254, 9292, 254` triple and
+  leaves the cursor **on** the `9292` word, which the fetch then rejects as an
+  invalid opcode (handler 50, `return -110`). That is what the code does; it is
+  reproduced rather than smoothed over. No shipped record uses opcode 54.
+* Vendor error codes are carried through rather than invented: `-110` invalid
+  opcode (`0x102abf42`), `-101` divide by zero (`0x102abe17`), `-105` bad
+  count (`0x102abe37`), `-106` stack empty (`0x102abed3`), `-23`/`-24` the two
+  `longjmp` values from push/pop.
+* `TANH` (opcode 16) is `_ftol(tanh(x * f32(0x3a83126f)) * f32(0x447a0000))`,
+  both constants read from the DLL at `0x105a0800` / `0x105a882c`. The port
+  computes in IEEE double where the vendor used x87 80-bit; that is a stated
+  ±1-LSB risk on this one opcode, not a verified equivalence.
+
+**14 handlers are deliberately not implemented**, and every one of them is
+unreachable from any shipped record: opcodes 37–41, 44, 45, 51–53 and 67 all
+dereference machine sub-objects at `ebx+0x38`, `ebx+0x48` or `ebx+0x50` that
+nobody has captured or modelled; opcode 46 is pure but is a long piecewise
+ratio classifier with no consumer; opcodes 42 and 43 are pure and are visibly
+the `fos_opening_axes` RGB→Y/C1/C2 transform (same `0x186a0` scale, same
+`0x1524a/0x1de6a/0x11436` biases, same `0x306e8227/0x111f883d/0x3b510a6f`
+magics as `pakon_fos.fos_opening_axes`), but their four operands are aliased
+across three interleaved `esp` slots and a single unambiguous reading was not
+established, so they are **left out rather than guessed**. Likewise `PUSH`
+source types 0/1/2/5 (arrays at `ebx+0x24` and `ebx+0x1c`, stride 0x28) are
+unported; the shipped records only ever use types 3, 4 and 6.
+
+Self-check (`python3 tools/ansel/python-pipeline/pakon_vm.py`), across all nine
+shipped `pcode-*` files:
+
+```
+pcode-dls_1.7            264 records   decode to halt 264/264   run 264/264
+pcode-dsba               117 records   decode to halt 117/117   run 117/117
+pcode-dsba.orig          109 records   decode to halt 109/109   run 109/109
+pcode-dsbaRomm           103 records   decode to halt 103/103   run 103/103
+pcode-erimm_hr200_2.5    257 records   decode to halt 257/257   run 257/257
+pcode-hr200_2.5          255 records   decode to halt 255/255   run 255/255
+pcode-hr200_2.6          181 records   decode to halt 181/181   run 181/181
+pcode-hr200_2.7          181 records   decode to halt 181/181   run 181/181
+pcode-hr200_noGrn_2.4    253 records   decode to halt 253/253   run 253/253
+```
+
+1720 records, every one decoding to its own halt and executing to completion
+without touching an unimplemented opcode. Note precisely what that is and is
+not: the run uses a **synthetic** input vector (see §88.6), so it proves
+*coverage and termination*, not arithmetic equivalence. It is not a tier-1
+result and is not presented as one.
+
+### 88.6 — Why `L` still does not come out, stated plainly
+
+`vars[133]`'s dependency closure is **105 records reading 88 distinct `in[]`
+indices** (both arms of every conditional; 103/85 on the fall-through arms
+alone), the largest index being 732.
+
+`in[]` is `*(ebx+0x64)` = `sba_obj+0x19c`, and `fcn.102ac310` sets it from its
+own 4th argument (`0x102ac327`: `mov dword [eax+0x19c], edx` from
+`[ebp+0x14]`), which `0x1028b8d0` supplies at `0x1028bf9c` as
+`lea eax, [esi+0x3c]` — i.e. **`arg11 + 0x3c`**, ~740 `int32`.
+
+Every capture in hand hooks `0x1028b8d0` at **entry**. At entry `arg11+0x3c` is
+almost empty: **56 of ~740 entries non-zero** on the twelve `arg3 == 0` calls
+(indices 3–23, 476–499, 550–561, 612, 730), and entirely zero on the twelve
+`arg3 == 1` calls. It is filled later inside the same call, before the
+`fcn.102ac310` call at `0x1028bfa8`. Run against the entry snapshot the table
+does exactly what it should: record 93 computes `in[729] − in[728]` = 0 and
+record 94 divides by it, and the port raises the vendor's own `-101`.
+
+So the honest status is: **the interpreter is ported and `L`'s address inside
+it is known exactly; `L`'s numeric value is not reproducible, because the VM's
+per-scene input vector has never been captured.** The blocker moved from "port
+50 handlers" (§86) to "port a 720-entry statistics vector's producer, or
+capture it" — and the second of those is one line.
+
+For the record, the 12 `sba_order_fpo_helper` arg-9 values these captures do
+carry, which any future run must hit:
+
+```
+roll A:  125   30  -102  -296   223    64      (each appearing twice)
+roll B: -186  -44    -2    -8    38   125
+```
+
+**The capture that closes it.** `sba_order_fpo_helper` is *already installed*
+at `0x1028ae00`, which `0x1028b8d0` calls at `0x1028c023` — after
+`0x1028bfa8`, so `in[]` is fully populated by then — and its arg 1 is the same
+`arg11` (§76.4's fifteen-argument table, live-confirmed: the helper's
+`stack_dwords[1]` equals the calc's `stack_dwords[11]` on all 12 calls). One
+`EXTRA_DUMP` row on that existing hook — `arg1 + 0x3c`, `0xb80` bytes — yields
+the real input vector for all 12 machines on a roll, and `pakon_vm.l_term()`
+then produces `L` directly, checkable against the six values above on each of
+two independent rolls. No new hook, no new function, no re-derivation.
+
+### 88.7 — Verdict
+
+1. **Encoding: 264/264 on both rolls**, derived per-handler from `add edi` on
+   each path and cross-checked against every shipped `pcode-*` file (1720
+   records, all decoding to their own halt).
+2. **The programs are shipped data**, all 264 in `pcode-dls_1.7`, the same file
+   `pakon_sba_pcode.py` already decodes stage 1 of. §87's "no generator" is
+   confirmed and strengthened.
+3. **36 of 50 handlers ported**, 14 skipped with the reason recorded per
+   opcode; none of the 14 is reachable from any shipped record.
+4. **`L = vars[133]`**, via record 156 = the 23rd tag-1 record, with the tag
+   field's identity confirmed 3168/3168 on both rolls.
+5. **`L` does not yet reproduce**, and the reason is the uncaptured `in[]`
+   vector at `arg11+0x3c`, not the interpreter. §88.6 gives the one-row capture
+   that closes it.
+6. §86.4's operand-table reading is **superseded**; its two "stragglers" were an
+   extraction artefact (`STORE`'s operand can be `0x00ff`, and conditional
+   records carry a second halt), not an encoding gap.
+
+**No production, golden or existing port file was changed by this pass.** The
+only new file is `tools/ansel/python-pipeline/pakon_vm.py`; scratch scripts live
+in `/tmp/pakon_re/vm/` and are not committed, per this doc's convention.
+
+## 89 — v28 capture row prepared: the helper's arg 1 index **measured** from
+captures in hand, and proof that no existing capture can supply `L`'s input
+vector
+
+§88 located `L` exactly (`vars[133]`, record 156 = `PUSH v133 ; STORE v156`)
+and named the blocker: the input vector `in[]` at `(fpo_calc arg11) + 0x3c`,
+736 × u32. This section closes the two questions that stood between that and a
+build, both **without hardware**.
+
+### 89.1 No capture in hand can contain it — measured, not argued
+
+The natural objection is "use a capture we already have". The region *is*
+already inside `arg11_big`, which is 4608 bytes and covers `0x3c + 0xb80 =
+0xbbc`. So the bytes were dumped. They are empty:
+
+```
+roll A (cf67eec3…): 24 arg11_big dumps — 736 u32 in the region, 0 non-zero
+roll B (b7b02a79…): 24 arg11_big dumps — 736 u32 in the region, 0 non-zero
+whole 4608-byte buffer: 5 non-zero words, indices 992..996 — outside in[]
+```
+
+All 48 dumps, both rolls. The structural reason is that extra dumps fire on
+**entry only** (`LogExtraDumps` is called solely from `HookEntryC`,
+`hookcore.c` ~line 645), and `in[]` is filled later inside the same
+`0x1028b8d0` call. So this is a **timing gap, not a coverage gap**, and it is
+independent of which capture is chosen — v22 through v27 alike.
+
+Correcting §88 on one number: it reported "56 of ~740 entries populated" at
+entry. On the offsets §88 itself specifies, the measurement is **0 of 736**.
+The conclusion is unchanged and slightly stronger; the figure was wrong.
+
+### 89.2 The arg index: read out of the captures, not derived a fourth time
+
+This arithmetic has been got wrong three times — v22 (arg6 four bytes short),
+v24 (offset read as a total), v26 (a missed `push ebp`) — each costing a
+hardware round trip. So it was not re-derived from the prologue.
+
+Both hooks already log their first 16 raw stack dwords on every entry, which
+makes the question answerable from data in hand. For every
+`sba_order_fpo_helper` call, take the enclosing `sba_order_fpo_calc` call's
+`stack_dwords[11]` and ask which of the helper's own stack dwords equals it:
+
+```
+roll A: 12 helper calls — stack index(es) equal to calc's arg11: [1]  x12
+roll B: 12 helper calls — stack index(es) equal to calc's arg11: [1]  x12
+```
+
+**Index 1, uniquely, 24/24 across both rolls.** No other index ever matches,
+so there is no ambiguity to hedge against. The convention is fixed by
+`hookstub.S:58-60` (`argsPtr = ebp+44`, return address at `ebp+40`), so
+`stack_dwords[0]` is the **first** argument.
+
+### 89.3 The row, and why it dumps the base rather than `+0x3c`
+
+```c
+{ "sba_order_fpo_helper", "arg1_big_filled", EXTRA_DUMP_STACK_PTR, 1, 0, 0, 0x1200 },
+```
+
+A `STACK_PTR_OFFSET` row at `+0x3c` would re-stake the result on the offset
+being exactly right — the same shape of assumption that cost v22 and v24.
+Dumping from the base at `0x1200` subsumes `in[]` wherever it starts
+(`0xbbc < 0x1200`) and is byte-for-byte comparable with `arg11_big`: same
+buffer, same span, one snapshot **before** the fill and one **after**. The
+diff of those two is itself the evidence that the fill happened. Cost ~4.6 KB
+× 12 helper calls ≈ 55 KB per capture.
+
+`sba_order_fpo_helper` is **already hooked** (0x1028ae00, v24), so this needs
+no new hook, no `DEFTHUNK`, and no `HOOKCORE_MAX_HOOKS` change — the
+§46.8/§47 coupling rule does not apply to a dump row. `check_table_sync.py`
+before and after: `OK: 32 hooks, identical (dll, va, id) in identical order`.
+Built clean; `arg1_big_filled` verified present in the emitted `hookdll.dll`.
+
+### 89.4 Status
+
+**Prepared, not run.** Nothing here is evidence about `L` itself — it is the
+apparatus for getting it. When the scanner is next connected, one scan with
+this build yields the vector, and `pakon_vm.l_term()` can be checked against
+the 12 values both rolls already carry (A: 125, 30, −102, −296, 223, 64;
+B: −186, −44, −2, −8, 38, 125). Until that runs, §88's port remains validated
+for decode/termination only, **not** for arithmetic.
+
+## 90 — **`L` SOLVED, 12/12 bit-exact**: the v28 capture lands, the ported VM
+reproduces the vendor's own `L` on real hardware data
+
+§88 ported the interpreter and located `L` at `vars[133]`; §89 prepared the one
+capture row that could supply its input vector and proved no existing capture
+could. The v28 build was uploaded, a third roll scanned, and the result is the
+strongest evidence tier this project recognises.
+
+### 90.1 The capture
+
+`live_hooks_20260818-080318.jsonl`, md5 `a9ae1bd92698d0786cc9626601e3096f`,
+54 164 128 B, from `hookdll_v28.dll` md5 `02011f3e8fd5656cdf3713546f1f9a0a`
+(round-tripped off the drop server and re-hashed before use).
+
+The new row landed exactly as specified: `arg1_big_filled`, **12 dumps, 12
+readable, 4608 bytes each**. And it contains what §89 predicted it would and
+what every prior capture lacked:
+
+```
+              in[] region (arg1+0x3c, 736 u32)
+  v27 rolls A/B    0 non-zero   (48 dumps, both rolls)
+  v28              351 non-zero
+```
+
+So §89.1's diagnosis was right on both halves: the region was already being
+dumped, and it was empty for a *timing* reason, not a coverage one. Hooking
+the helper — which runs after the fill — populates it.
+
+The values are `int32`, not float (`nan` under a float read):
+`[-205, -59, 249, -7, -66, 321, -539, -487, -387, -815, -156, -80, …]`.
+
+### 90.2 The result
+
+`L` is the helper's **arg 9** (§76, already inside the 16 logged stack dwords —
+so the vendor's own answer and our input arrive in the *same* hook record, with
+no correlation step to get wrong). Running `pakon_vm.l_term()` on the recovered
+vector:
+
+```
+  call  0: vendor    -12   ported    -12   MATCH
+  call  1: vendor    -56   ported    -56   MATCH
+  call  2: vendor     11   ported     11   MATCH
+  call  3: vendor      7   ported      7   MATCH
+  call  4: vendor     54   ported     54   MATCH
+  call  5: vendor    121   ported    121   MATCH
+  call  6..11        (second pass, same six)      MATCH
+
+  12/12 bit-exact
+```
+
+Both signs, six distinct magnitudes, and the repeat across the two passes.
+Nothing was fitted: the port was written from disassembly in §88, before any
+of these numbers existed, and the only new input is the captured vector.
+
+### 90.3 What this closes, and what it does not
+
+**Closed.** `L` — open since §76.3 flagged it as the one term of `orderFpo.Y`
+that static analysis could not derive, and the subject of two clean negatives
+in §85. The interpreter, the encoding, the handler semantics on every path
+these 264 records reach, and the `vars[133]` identification are all confirmed
+together, because a wrong answer anywhere in that chain would not produce 12
+exact matches.
+
+**Not closed.** §88's caveat stands for everything else: the "1720/1720 records
+execute" figure was coverage on synthetic input, and this run validates the
+handlers *these* records reach on *this* path — not the 14 unimplemented
+opcodes, and not arithmetic equivalence for records outside the `L` closure.
+
+Also unchanged: the washed-out gap. §81.3's two defects reproduced on current
+code this same session (shadow offset `+524/+508/+459`, spans `575/672/924`
+against the vendor's `1040/1072/1184`), and the c9 solve pointed at a linear
+shadow floor of ~735–780 rather than the colour maths. `L` was blocking the
+per-frame Preference chain (§84), which is a *different* route to the same
+problem; it is now unblocked, not resolved.
+
+## 91 — The vendor's AFE offset convergence, captured live: it settles at
+`(-19, -26, -19)`, which **settles §53** — the current calibration is the
+wrong one, by ~20 codes in the lifted direction
+
+§53 found two disagreeing historical `afe_offsets` and deliberately refused to
+choose between them without a live measurement. This is that measurement, and
+it needed no new hook: `tlb_afe_offset_write` was already in the table and
+fired 18 times during the v28 scan (`live_hooks_20260818-080318.jsonl`,
+md5 `a9ae1bd92698d0786cc9626601e3096f`).
+
+### 91.1 The curve
+
+```
+  write  0:  ( 10,  10,  10)    seed
+  write  2:  (-29, -38, -30)    first correction, overshoots
+  write  4:  (-21, -30, -22)    pulling back
+  write  6:  (-19, -25, -19)
+  write  8:  (-19, -26, -19)    converged
+  write 10..16: (-19, -26, -19) stable, five more writes
+```
+
+Seed → overshoot → damped approach → steady state, converged by round 4 and
+then held. Note the vendor's seed is `(10, 10, 10)` — **identical to this
+port's `LIVE_AFE_SEED`**, so the port's starting point was already right.
+
+### 91.2 What it settles
+
+```
+  vendor, measured live               (-19, -26, -19)
+  calibration/README.json  (in use)   (  0,  -6,   2)
+  README.pre-recapture-20260812       (-19, -26, -20)   <- within 1 code
+  README.pre-dutyfix / pre-recal /
+    pre-freshscan / pre-vendor-base8  (-18, -26, -20)   <- within 1-2 codes
+```
+
+**The older values were right.** Every pre-2026-08-15 backup sits within 1–2
+codes of the vendor on every channel; `README.pre-recapture-20260812`'s
+`(-19, -26, -20)` differs by one code on B alone. The value currently in use,
+`(0, -6, 2)`, is off by **+19 / +20 / +21** — and in the direction that leaves
+the sensor's black level *lifted*, which is exactly the additive-pedestal
+signature §89's `c9` solve pointed at (a flat linear floor of ~735–780 across
+all three channels, where R suffers most because its pedestal `c9` = 159.6 is
+smallest).
+
+This is a **measurement, not a proposal**. It is not wired anywhere by this
+section; promoting it is a calibration change and follows
+`docs/71-rebuilding-calibration.md`'s timestamp-never-overwrite rule.
+
+### 91.3 The port's own loop did NOT reproduce this
+
+`pakon_scan.py run --live-afe-converge --no-lamp --no-motor`, run on real
+hardware 2026-08-18 (film out, lamp and motor off, `stop` asserted after):
+
+- ran 352.9 s, wrote a 2 GB capture, and ended on `reason: time_limit` —
+  the run's own text: *"This is the backstop, not a detector."*
+- returned `(10, 10, 10)`: **the seed, unchanged**.
+
+So `converge_afe_offsets` remains UNPROVEN, exactly as its docstring says. Its
+seed is right and its target is reachable in ~4 rounds — the vendor does it in
+four — but the port's loop did not move off the seed at all. The failure is in
+the measure-and-decide step, not the starting point.
+
+### 91.4 Why the vendor is fast, and the column question
+
+The vendor is not fast because its loop is better; it converges *during* real
+acquisition. But the tempting explanation — "it reads the shielded optical-black
+pixels inline" — is **not supported**: the vendor programs `pixel_offset = 62`
+(`FN_bBeforeScan` 0x1002df4e, `FN_bDrvInitCcd` 0x1002d6f5, idx4 = 62,
+idx5 = 2062) and *"nothing in TLB ever reads a CCD pixel below the offset."*
+It digitises **fewer** low pixels than this port's 32, not more.
+
+That does surface a real asymmetry: our captures carry 30 columns
+(CCD pixels 32–61) the vendor never digitises, already flagged in
+`pakon_decode` as illumination roll-off needing 17–24× flat-field gain and
+*"not film and must not be in the histogram."* Checked whether that
+contaminated §89's percentiles — it does not:
+
+```
+                                     p1                span
+  all 2000 columns            901  1282  1419     691   826  1066
+  excluding first 30          911  1286  1420     683   824  1068
+```
+
+~10 codes on p1, ~8 on span. §89's conclusion stands on the vendor window too.
+
+**Open, and the right target for the next hook:** what the vendor *measures* to
+decide `-29 → -21 → -19`. `tlb_afe_offset_write` gives the outputs; the
+feedback signal driving them is what this port's loop is failing to compute.
+
+## 92 — The black level measured on silicon: ours sits **+1022 wire codes**
+too high, and `BLACK_TARGET_WIRE` is ~2× the vendor's real target
+
+§91 recovered the vendor's converged offsets `(-19, -26, -19)` and showed this
+port's loop returns its seed unchanged. This measures what those offsets
+actually *do*, which is the number needed to fix the loop for **every** unit
+rather than hardcode one unit's answer.
+
+New: `tools/afe_black_probe.py`. Read-only, no lamp, no motor, no EEPROM, no
+writes to `calibration/`; restores the stored offsets in a `finally`. Two
+rounds through the existing `_live_afe_measure` (whose docstring guarantees
+*"Never sends TRANSPORT FORWARD and never touches the lamp"*), 15 s cap each.
+Run 2026-08-18 with `pakon_scan.py stop` asserted first (`errors: []`).
+
+```
+  black at stored   (0, -6, 2)     : 1747.9  1590.8  1639.6   mean 1659.4
+  black at vendor  (-19,-26,-19)   :  779.7   562.3   571.2   mean  637.7
+  difference                       : +1021.7 wire codes
+  neither reading floored
+```
+
+### 92.1 What it establishes
+
+**1. The lifted black floor is real and is at the sensor.** §89's `c9` solve
+inferred an additive pedestal from image data alone (a flat linear floor of
+~735–780 across all three channels). This confirms it upstream of any colour
+maths: at the offsets actually in use, black sits **1022 codes above** where
+the vendor's own offsets put it.
+
+**2. `BLACK_TARGET_WIRE` is wrong.** Code targets `1300.0`; the vendor's
+offsets produce **~638**. So even a correctly-functioning loop would have
+converged to roughly twice the vendor's black level.
+
+**3. The accept window is what produced §91.3's null result.**
+`BLACK_MIN_WIRE`(400)..`BLACK_MAX_WIRE`(4000) contains both 1659 and 638, so
+`landed` is satisfied almost immediately and round 1 returns before any
+correction is applied.
+
+### 92.2 Why this generalises, which is the whole point
+
+`(-19, -26, -19)` is **this unit's** answer (serial 16275) and must never be
+hardcoded — another F-135's sensor converges elsewhere. What generalises is
+the **target**: the vendor drives black to ~638 on whatever silicon it has.
+Fix the target and tighten the window, and every machine converges to its own
+correct offsets by the vendor's own criterion. That is the difference between
+a port that matches colour on one scanner and a port that matches it on all of
+them.
+
+### 92.3 Honest limits
+
+~638 is what the vendor's offsets produce **under this probe's conditions**
+(lamp off, this port's integration time and gains). The vendor converged under
+its own. So this is a strong measurement of the right *order*, not yet a
+verified constant: confirming it wants either a second unit or a vendor-side
+capture of the level the vendor itself measures between offset writes (§91.4's
+open question — the ~172 ms of unhooked work between writes).
+
+**Nothing is wired from this.** The probe prints and restores. Changing
+`BLACK_TARGET_WIRE`, the accept window, or `calibration/` is a separate
+reviewed change under docs/71's timestamp-never-overwrite rule.
+
+## 93 — The vendor's per-frame shift is **one scalar**: `shift[f,c] = A[c] + k[f]`,
+rms 4.4 codes — and the AFE offset is ruled out as the washed-out cause
+
+Two results, one negative and one structural.
+
+### 93.1 The AFE offset does NOT cause the washed-out look
+
+§92 fixed the convergence loop and it now finds `(-23, -25, -18)` against the
+vendor's `(-19, -26, -19)`. A full scan was taken with the vendor's offsets
+passed in-memory (nothing promoted) and rendered. The scene-independent
+measurement barely moved:
+
+```
+                    pre-tone RPD p1 floor
+  baseline (0,-6,2)     901   1282   1419
+  vendor (-19,-26,-19)  926   1284   1438      G +2, B +19
+  vendor's own AA001    928    944    928
+```
+
+**Structural reason:** the inversion pins p1 to `fpo` by construction —
+`f135_rom12_to_rpd12` maps `film_base → fpo`, and `film_base` is measured from
+the same capture, so an AFE shift moves the pixels and the anchor together and
+normalises out. Ours sits at `fpo + (47, 34, 52)`; the vendor's `928/944/928`
+is **not** at its `fpo` for G and B.
+
+The AFE work stands as a correctness fix (black really was +1022 codes off),
+but it is **not** the washed-out cause. Recording this so it is not
+re-litigated. Also correcting an in-flight read of mine: the sRGB frame means
+did drop, but those were *different photographs* — the scene-independent
+number is the one to believe, and it shows no real change.
+
+### 93.2 The shift decomposes to a per-channel base plus ONE per-frame scalar
+
+The v28 capture carries the same 18 `area_image_apply_lut` calls §82.1 found:
+12 identity (preview/analysis) and **6 real render passes**. Decoding
+`lut[i] − i` over `i = 200…3800`:
+
+```
+  800  388  136        829  402  167        798  360  130
+  889  458  221        833  405  169        766  351   96
+```
+
+Subtracting the port's `NBP − fpo = (671, 300, 164)` and fitting
+`D[f,c] = A[c] + k[f]`:
+
+```
+  A = [148.2, 94.0, -10.8]   (i.e. absolute base [819.2, 394.0, 153.2])
+  k = [-14.1, 10.6, -26.1, 67.2, 13.6, -51.1]
+  residual max 8.1, rms 4.41
+```
+
+**Eighteen numbers reproduced by nine.** The per-frame balance work is a
+*single scalar*; the channel structure is constant across frames. This is the
+forward-side shape §84.4 predicted when it said the vendor does not derive its
+shift from `fpo`.
+
+Note `A[B] = 153.2` against the port's `151` — B's base is already right
+within 2 codes. R (`819` vs `683`) and G (`394` vs `297`) are where the base
+is wrong, matching the G/B asymmetry seen in the RPD floor.
+
+### 93.3 What is NOT established
+
+`k` is **not** `L`, at least not pairwise as captured:
+
+```
+  k = [-14, 11, -26, 67, 14, -51]
+  L = [-12, -56, 11, 7, 54, 121]     signs agree on 3 of 6
+```
+
+The two hook sites need not enumerate scenes in the same order, so the
+correspondence must be *established* before `k` and `L` can be compared —
+fitting a permutation until they agree would manufacture a result. Recorded as
+open, not as a negative.
+
+**Next:** establish the scene correspondence between `area_image_apply_lut`'s
+render passes and the `orderFpo`/helper calls (both carry per-scene pointers
+that should identify the frame), then test whether `k` is computable from
+`orderFpo` + `L`. That is the remaining link between the solved VM and the
+balance shift.
+
+## 94 — `A` is a real per-channel constant, stable across two rolls; `k` is
+**not** from `orderFpo` (all three components tested); and R/G are short by
+~136/~91 codes
+
+§93 decomposed the vendor's balance shift as `shift[f,c] = A[c] + k[f]` on one
+capture. This tests both terms against everything available offline.
+
+### 94.1 `k` does not come from `orderFpo` — all three components
+
+The §79-golden triple harness was first re-run on the v28 capture to confirm
+the inputs: **12/12 PASS**, `(Y, U, V)` bit-exact. Then each component against
+`k`, under §93's temporally-established scene correspondence:
+
+```
+  Y: corr -0.460   resid rms 33.0
+  U: corr +0.437   resid rms 33.5
+  V: corr -0.374   resid rms 34.5
+  L: corr -0.460   resid rms 33.0     (Y = fos.Y + L, so Y ∝ L + const)
+
+  Y+U+V+const, least squares: resid rms 30.65 on 4 params / 6 points
+```
+
+`k`'s spread is 118, so ~28 % is unexplained by any single term, and the
+4-parameter fit barely improves on 6 points — that is fitting noise, not a
+relationship. **`orderFpo` is ruled out as the source of `k`.** Recorded as a
+negative: `L` is genuinely solved (§90) and feeds `Y`, but `Y` is not the
+per-frame balance scalar.
+
+### 94.2 `A` reproduces on a SECOND, different roll
+
+Fitting the same decomposition to §82.1's v25 shifts — a different roll,
+different scenes, data the decomposition was not derived from:
+
+```
+  §82.1 (v25)   A = [794.0, 388.7, 136.0]   k spread 387   resid rms 7.92
+  v28  (today)  A = [819.2, 394.0, 153.2]   k spread 118   resid rms 4.41
+  difference        [ 25.2,   5.3,  17.2]
+```
+
+G agrees within **5 codes** across independent rolls, R and B within 25 and 17,
+while `k` swings over a 387-code range in the v25 capture. So `A` is a genuine
+per-channel constant at film/DPI level and `k` is a per-scene response — and
+the decomposition holds on data it was not fitted to, which is the test that
+matters.
+
+### 94.3 Where R and G are wrong
+
+Taking `A ≈ (806.6, 391.4, 144.6)` (mean of both captures) against the port's
+`NBP − fpo = (671, 300, 164)`:
+
+```
+  R short by ~136        G short by ~91        B right within ~20
+```
+
+The same asymmetry the render side shows independently (§93.1: our RPD floor
+`926/1284/1438` vs the vendor's `928/944/928` — R correct, G and B not). Two
+unrelated measurements agreeing on which channels are broken.
+
+**Domain caveat, stated so nobody skips it:** the shifts are additive on the
+*linear* PolyPixel output (§60/§82.1) while the floor discrepancy is in the
+*density* domain. "+136 on R" therefore does **not** translate directly into a
+floor correction, and no such claim is made here.
+
+### 94.4 `A` is not trivially derivable from the shipped DPI
+
+With `A` measured, the vendor's effective anchor is `X = NBP − A =
+(743.4, 1158.6, 1405.4)`. Against `sba-CN-default-96-1.dpi`:
+
+```
+  X − fpo     = (-135.6, -91.3, +19.4)     fpo = 879 1250 1386
+  X − neu     = (-231.6, 183.7, 430.4)     neu = 975 975 975
+  X / minDmin = (4.13, 2.11, 2.01)         minDmin = 180 550 700
+```
+
+Nothing clean. With ~15 parameters in the file and three targets a numeric
+coincidence is easy to manufacture, so no match is claimed — recorded as
+*searched and not found*, not as a lead.
+
+**Open:** where `k` comes from (not `orderFpo`), and whether `A` is vendor data
+or emergent. The hardware step that would settle `A` independently is a dump
+row on `sba_set_shifts` arg 1, which currently logs only pointers.
+
+## 95 — The producer of `k` located: `sba_preference`. Every offline candidate
+ruled out, and the reason the search could not have succeeded
+
+§94 left `k` unexplained. This finds where it is made, rules out the remaining
+offline candidates, and prepares the one capture row that can close it.
+
+### 95.1 The shifts confirmed a second, independent way
+
+`balance_area_image`'s `balance_shift_4b6` dump carries the shift as raw
+`int16`:
+
+```
+  [800, 388, 136]  [829, 402, 167]  [798, 360, 130]
+  [889, 458, 221]  [833, 405, 169]  [766, 351,  96]
+```
+
+**Identical** to the six triples §93 decoded from `lut[i] − i`. Two independent
+routes — a stored field and the applied table — agreeing exactly, so the shift
+extraction underpinning §93/§94 is not in question. It also shows the shift is
+a *stored* value read at `arg4 + 0x0a`, not something `apply_lut` computes.
+
+### 95.2 The producer, from the call trace
+
+```
+  3290-3299  sba_vm_interp          the VM runs
+  3300       sba_order_fpo_helper   computes L
+  3301       sba_preference         <- consumes the triple, produces the shift
+  3302       sba_set_shifts         the shift is now set
+  3303-3304  sba_get_shifts
+  3305       cn_enhanced_driver
+  3306       area_image_apply_lut   applied
+  3307+      fugc_analyze, analyze_auto_tone
+```
+
+Two things follow. **`k` is born in `sba_preference`**, one call after `L` and
+one before the shift exists. And **`k` cannot come from the tone chain**:
+`apply_lut` runs *before* `fugc_analyze` and `analyze_auto_tone`, so autoTone
+is downstream of the shift and is ruled out as its source by ordering alone.
+
+### 95.3 Everything offline, tested and ruled out
+
+* `Y`, `U`, `V` from the §79-golden triple (§94.1) — best residual rms 33.0
+  against a `k` spread of 118.
+* `L` itself — identical to `Y` (`Y = fos.Y + L`), corr −0.460.
+* **Every** `int16`/`int32`/unsigned field in the `pref_data` window, tested
+  systematically: **zero** fields above `|corr| = 0.95`.
+
+### 95.4 Why that search could not have succeeded
+
+The scene structs are contiguous with a stride of **25 820 bytes**
+(`cn_enhanced_driver` arg 1: 150139080, 150164900, 150190720, …). `pref_data`
+dumps **0x64** of that — **0.4 %**. So §95.3's negatives bound where `k`
+*isn't*; they cannot locate it. Worse, `sba_preference`'s arg 0 sits ~`0x3888`
+into the same scene struct `fpo_calc`'s arg 0 addresses, and `orderFpo` writes
+its triple at `scene+0x38a2` — *past* the `0x3000` that `arg0_big` reaches. The
+region where Preference actually works is in a gap between two dumps.
+
+### 95.5 v29, built and staged
+
+One row, on a pointer already being dumped:
+
+```c
+{ "sba_preference", "pref_scene_big", EXTRA_DUMP_STACK_PTR, 0, 0, 0, 0x800 },
+```
+
+`0x800` covers the triple at `+0x38a2` and the fields around it. No new hook,
+no `DEFTHUNK`, no `HOOKCORE_MAX_HOOKS` change; if the buffer is shorter than
+requested the row returns `readable=false` while the existing `0x64` row still
+carries its data. `check_table_sync.py` before and after: `OK: 32 hooks`.
+Built; `pref_scene_big` verified present in the emitted `hookdll.dll`
+(md5 `d4c629ee3652e463a8daca499ccf5bc9`).
+
+**Staged, not uploaded** — the drop server was unreachable at the time of
+writing. Upload and one scan closes this.
+
+## 96 — Why `A + k` works: `sba_preference` computes in the **orthonormal
+opponent basis**, so `k` is a pure luminance move and `A` is chroma
+
+Static, from `PakonIMAu.dll` md5 `eea9dcf78ee21d4f7c515a6c2512242d`,
+`af`+`pdf` at `fcn.1028c780`'s own boundary (1411 B). Tier 3 — strongly
+indicated by the constants, not yet emulated.
+
+The function's FPU constants are diagnostic:
+
+```
+  0x105a6f38 = 0.5773502717  = 1/sqrt(3)
+  0x105a6f30 = 0.4082482976  = 1/sqrt(6)
+  0x105a6f28 = 0.7071067624  = 1/sqrt(2)
+  0x105a69e0 = 1.7320508     = sqrt(3)
+```
+
+`1/√3`, `1/√2`, `1/√6` appearing together is the orthonormal opponent-colour
+basis:
+
+```
+  Y = (R + G + B)/sqrt(3)      luminance      axis (1, 1, 1)
+  U = (R − B)/sqrt(2)          red-blue
+  V = (R − 2G + B)/sqrt(6)     green-magenta
+```
+
+**This explains §93's decomposition.** A term added *equally to all three
+channels* is, by definition, a pure move along `(1,1,1)` — the **Y axis** in
+this basis. So `shift[f,c] = A[c] + k[f]` is not an empirical curiosity that
+happened to fit at rms 4.4: it is the vendor's own **chroma/luma split**,
+recovered from the applied LUTs without knowing the basis, and then found to
+hold on a second roll (§94.2).
+
+* **`A[c]`** — the chroma part: the film's fixed colour balance. Stable across
+  rolls (G within 5 codes), which is what a film-level constant should be.
+* **`k[f]`** — the luminance part: a per-frame exposure correction. Varies per
+  scene, and varies far more on some rolls than others (spread 387 vs 118).
+
+It also reframes §94.1's negative. `orderFpo`'s `Y` not correlating with `k` is
+consistent rather than puzzling: the luminance term applied here is computed by
+**Preference from the scene**, not carried in from `orderFpo`. `orderFpo`
+supplies the triple Preference *consumes*; `k` is what Preference *produces*.
+
+**Consequence for the port.** `tools/pakon_decode.py` computes its shift as
+`NBP − fpo` directly in RGB. The vendor computes in opponent space and rotates
+back. That is a structural difference, not a numeric one — and it is the most
+likely reason substituting a uniform anchor into the RGB formula broke R
+(§84.2/§61) while leaving B nearly right: an RGB-space substitution cannot
+express a luma-only move.
+
+**Not claimed:** the exact expression for `k`. The constants establish the
+*basis*; they do not give the scene statistic Preference feeds into the Y axis.
+That is what v29's `pref_scene_big` row (§95.5) is for.
+
+## 97 — `sba_preference` EXECUTED under Unicorn: it writes the balance shift,
+3 of 6 frames reproduce within ±1, and the miss is a pure luma constant
+
+§95 located the producer by call trace and §96 read its constants statically.
+This runs it. New: `tools/ansel/python-pipeline/pakon_preference_golden.py`,
+built on `pakon_orderfpo_golden`'s emulator (real PE load, 471 bound imports
+stubbed, captured buffers placed at their real process addresses, poison fill
+so a short dump reads loudly rather than as plausible zeros).
+
+### 97.1 It runs, and it writes the shift
+
+All 12 `sba_preference` calls execute to completion with **zero memory
+faults** — so, contrary to §95.4's expectation, Preference does *not* read
+outside the `0x64`/`0x48` windows already captured.
+
+The output is at **`arg2 + 0x08`**, three `int16`:
+
+```
+  call 1951: got (800, 388, 136)   want (800, 388, 136)   EXACT
+  call 2221: got (829, 403, 167)   want (829, 402, 167)   (0, +1, 0)
+  call 2491: got (798, 359, 129)   want (798, 360, 130)   (0, -1, -1)
+  call 2761: got (797, 367, 130)   want (889, 458, 221)   (-92, -91, -91)
+  call 3031: got (768, 340, 103)   want (833, 405, 169)   (-65, -65, -66)
+  call 3301: got (727, 312,  56)   want (766, 351,  96)   (-39, -39, -40)
+```
+
+`want` is §95.1's shift, independently confirmed two ways. **Three frames
+reproduce within ±1** — the ±1s are FPU rounding, not structure.
+
+And `arg2 + 0x02` carries `(749, 1161, 1414)`, essentially the effective anchor
+`X = NBP − A = (743.4, 1158.6, 1405.4)` derived independently from the LUTs in
+§94.3. The function writes anchor and shift adjacently, from a completely
+different direction than the fit that produced `X`.
+
+### 97.2 The miss is luma-only — §96 confirmed by execution
+
+Frames 4–6 are short by `-92/-91/-91`, `-65/-65/-66`, `-39/-39/-40`:
+**uniform across channels to within a code.** A uniform per-channel offset is,
+by §96's basis, a pure move along `(1,1,1)` — luminance. So the emulation
+reproduces the **chroma** exactly and misses part of the **luma** term.
+
+That is §96's chroma/luma split confirmed by execution rather than by reading
+constants: tier 3 → tier 1 for the *structure*, even though the value is not
+yet complete.
+
+### 97.3 What is missing, stated precisely
+
+Each call is emulated from a fresh machine with only that call's own captured
+buffers. Frames 1–3 reproduce; 4–6 do not, and the deficit *shrinks*
+monotonically (92 → 65 → 39). That is the signature of **state carried across
+frames** which a per-call emulation cannot supply — a roll-level or running
+quantity feeding the luma axis.
+
+Consistent with `k` being the per-frame exposure correction §96 describes, and
+with `A` being film-level and therefore reproducible without history.
+
+**Not claimed:** that this is golden. It is 3/6 with a characterised,
+non-arbitrary miss. The remaining term is a specific, named thing to find — not
+a mystery — and `pref_scene_big` (§95.5, v29, built) plus the neighbouring
+roll-level structures are where to look.
+
+## 98 — Correcting §97: "zero faults" did not mean "all inputs captured".
+Preference reads to `arg0+0x1e4`; we dump `0x64`. **384 bytes have been fed as
+poison in every capture we own** — and that is why 3 of 6 frames failed
+
+§97 reported that `sba_preference` emulates with zero memory faults and
+concluded Preference "does not read outside the `0x64`/`0x48` windows already
+captured." **That conclusion was wrong**, and the error is worth stating
+plainly because it is a trap the harness design creates.
+
+### 98.1 Why the fault count was silent
+
+`Emu.place()` maps whole **4 KB pages** and poison-fills them (`0xCD`). A read
+past the end of a 100-byte dump but *inside* its page therefore hits mapped
+memory and raises **no fault at all**. The poison exists so short dumps "fail
+loudly" — but only when *written back and compared*, never at read time.
+
+So a zero fault count proves reads stayed inside mapped pages. It says nothing
+about whether they stayed inside captured data.
+
+Instrumenting reads against the *dumped byte ranges* rather than the pages:
+
+```
+  frame 1 (call 1951): 144 POISON reads, first at pref_data + 0x64
+  frame 4 (call 2761): 144 POISON reads, first at pref_data + 0x64
+```
+
+`0x64` is exactly where the dump ends. And the furthest read:
+
+```
+  highest byte read from arg0: 0x1e4  (484 bytes)   dump is 0x64 (100)
+```
+
+**384 bytes of real input have been supplied as `0xCD` on every call, in every
+capture this project has ever taken.** Frames 1–3 tolerated it; 4–6 did not —
+which is the whole of §97's 3/6.
+
+### 98.2 A second correction: `arg2+0x54` is not an input
+
+§97.3's follow-up claimed the function reads `arg2+0x54` as a missing input.
+Also wrong. A read/write-*ordered* trace shows the write comes first:
+
+```
+  0x1028c884  mov  word [esi + 0x54], cx      <- WRITE
+  0x1028c8eb  cmp  word [esi + 0x54], ax      <- read, as a loop bound
+  0x1028c8ff  cmp  ax, word [esi + 0x54]
+  events at arg2+0x54: [('W', 208601232), ('R', 0), ('R', 0), ...]
+```
+
+It is an internal temporary. No capture can or should supply it. The `pref_arg2`
+row is kept on different grounds — arg2 is where Preference *writes* the anchor
+(`+0x02`) and shift (`+0x08`), so an entry-time dump makes the next capture
+self-checking — and its comment now says so.
+
+Also checked and cleared: every DLL global the function reads
+(`0x10573c40`, `0x105943c0`, `0x105a0800`, `0x105a6f28/30/38/40`) lives in
+**`.rdata`**, so file-initial values are runtime values and no mutable global
+state is involved.
+
+### 98.3 What this changes
+
+The `pref_scene_big` row (§95.5, `0x800` on arg 0) was proposed on a *guess*
+that Preference reads beyond its window. It does — now measured, to `+0x1e4`,
+with `0x800` covering it comfortably. The row is unchanged; only its evidence
+is, from speculation to measurement.
+
+**And §97's headline stands with a smaller claim.** The emulation genuinely
+runs, genuinely writes the shift to `arg2+0x08`, and genuinely reproduces three
+frames within ±1 — *while being fed 384 bytes of garbage*. That it gets any
+frame exactly right under those conditions is evidence the port of the
+surrounding structure is sound. The 3/6 is not a mystery to solve; it is a
+known-deficient input, with the deficit measured and the fix built.
+
+## 99 — **`A` is explained**: the shift's chroma IS `orderFpo`'s chroma, scaled
+by ≈ −1.04. Two engines agree the port is correct, and §96's axis labels were
+wrong
+
+Three results landed together: an independent execution engine, a correction to
+§96, and the closed form for `A`.
+
+### 99.1 The real DLL runs on this Mac — and confirms the Unicorn port
+
+New: `tools/re/live_hooks/wine_host/`. `pref_host.exe` loads the **real**
+`PakonIMAu.dll` under Wine 11.0 on macOS — no XP box, no scanner — and calls
+`fcn.1028c780` with the captured arguments.
+
+```
+              Wine (real DLL)        Unicorn (§97)
+  call 0   (800, 388, 136)        (800, 388, 136)
+  call 1   (829, 403, 167)        (829, 403, 167)
+  call 2   (798, 359, 129)        (798, 359, 129)
+  call 3   (797, 367, 130)        (797, 367, 130)
+  call 4   (768, 340, 103)        (768, 340, 103)
+  call 5   (727, 312,  56)        (727, 312,  56)
+```
+
+**Byte-identical on all 12 calls, anchors included.** One engine stubs 471
+bound imports by hand and sets its own FPU word; the other uses the real
+loader, real MSVCR71 and the DLL's own FPU state. Agreement at this level means
+**the Unicorn port is correct**, and §97's 3-of-6 miss is a *captured-data*
+deficit (§98's 384 poisoned bytes), not an engine defect. That was worth
+settling before building anything further on the emulator.
+
+`LoadLibrary` needs `MSVCR71`, `MSVCP71`, `ekjpegi`, `KODAKCMS`,
+`xerces-c_2_2_0` (else error 126); all ship in the vendor installer.
+
+### 99.2 §96's axis labels were wrong
+
+§96 named the chroma axes `U = (R−B)/√2` and `V = (R−2G+B)/√6`. Checked against
+`pakon_fos.py` — this project's own **Unicorn-verified** port of the DLL's axis
+transform (`0x1028f608`), lines 350–351:
+
+```python
+    c1 = ... (2 * g - b - r) ...
+    c2 = ... (b - r) ...
+```
+
+So the two chroma axes are in the **opposite order** and both **sign-inverted**
+from §96's text. The *basis* claim in §96 stands — the constants really are
+`1/√3`, `1/√2`, `1/√6`, and `k` really is the luma axis — but anyone using
+§96's formulae would get the chroma wrong. Corrected here.
+
+### 99.3 `A` is emergent, not vendor data
+
+With the axes right, the relationship falls out. Independently re-derived here
+from the six vendor shifts (§95.1) and the six §79-golden `orderFpo` triples:
+
+```
+         shift.C1  fpo.C1   ratio      shift.C2  fpo.C2   ratio
+   1      -65.32      62   -1.0535      -469.52    453   -1.0365
+   2      -78.38      74   -1.0592      -468.11    451   -1.0379
+   3      -84.92      82   -1.0356      -472.35    456   -1.0359
+   4      -79.20      76   -1.0421      -472.35    455   -1.0381
+   5      -78.38      75   -1.0451      -469.52    453   -1.0365
+   6      -65.32      62   -1.0535      -473.76    457   -1.0367
+
+  best fit:  C1 −1.04705 (rms 0.60)    C2 −1.03692 (rms 0.37 on ~470 = 0.08 %)
+```
+
+**The shift's chroma is `orderFpo`'s own chroma, negated and scaled by ≈1.04.**
+Against §94.1's best-of-anything correlation of `+0.44` and §95.3's "zero
+fields above `|corr| = 0.95`".
+
+**This answers §94.4's open question.** `A` is not in the shipped DPI because
+`A` was never *in* the DPI — it is emergent from `orderFpo`. It also corrects
+§94.2: the roll-to-roll move in `A` (v25 `[794.0, 388.7, 136.0]` → v28
+`[819.2, 394.0, 153.2]`) was read there as noise around a constant. It is not —
+`orderFpo`'s own roll means moved by the amount required, and the predicted `A`
+matches both rolls to within ±0.3.
+
+The correspondence is **pointer identity**, not a fitted permutation:
+`sba_set_shifts` arg 4 — called immediately after each `sba_preference` — is
+the same address `balance_area_image` later reads `balance_shift_4b6` from.
+Zero degrees of freedom. **§93.3's open item is closed**, and the recovered
+permutation is the identity that §94.1 already assumed.
+
+### 99.4 What is now actionable, and what is not
+
+`orderFpo` is already golden, so **the port can emit the vendor's chroma
+exactly, today**: v28 frame 1 gives `−1.047 × 62 = −64.9` against the vendor's
+−65, and `−1.037 × 453 = −470.0` against −470. The port currently emits
+`(655, −96, −359)` where the vendor emits `(k, −65…−85, −445…−482)` — red-blue
+~24 % short, green-magenta 13–48 % too large, matching §94.3's per-channel
+defect and §93.1's RPD floor from a third direction.
+
+**Not established:** the closed form of the ≈1.04 gain. A single exact gain is
+*refuted* at LSB level (the per-frame intervals do not intersect, by 0.3 %); an
+affine relation is *refuted* (no feasible `(a, b)`); the DLL's integer axis
+scaling is within 0.1 % of orthonormal and so is **not** the source; and
+`neo/neu = 1.0359` is outside frame 1's own interval. The dependence is
+established well past argument; the exact expression is not.
+
+**And the luma axis is still open.** `k` is untouched by all of this — a 3×3
+fit gives diagonal chroma rows at rms 0.43 while the Y row is junk at rms 56.
+`k` remains what v29 is for.
+
+## 100 — Correcting §98: the 384 un-captured bytes **do not affect the shift**.
+They are copied, never computed with — so v29's `pref_scene_big` would not have
+fixed the 3/6, and the residual is luma-only, exactly as §99 predicts
+
+§98 found `sba_preference` reads to `arg0+0x1e4` while the capture holds `0x64`,
+and concluded those 384 poisoned bytes explained §97's three failing frames. It
+is a tidy story and it is **wrong**. Establishing that before the capture was
+taken is the point of this section.
+
+### 100.1 Only three instructions read the region, and none of them computes
+
+Attributing every read of the un-captured window to its instruction address:
+
+```
+  0x1028c8f4   x143   mov dx, word [edi + ecx*2 + 0x62]   <- the copy SOURCE
+  0x1028c8ff   x144   loop bound (arg2+0x54, the internal temp of §98.2)
+  0x1028c8eb   x1     the same bound, initial compare
+```
+
+The 144 offsets are all **even and evenly spaced** — one contiguous `int16`
+array, not scattered fields — and the only site that touches its *contents* is
+the copy at `0x1028c8f4`, feeding
+`mov word [esi + ecx*2 + 0x56], dx` directly. The data flows `arg0+0x62… →
+arg2+0x56…` verbatim and never enters the arithmetic.
+
+### 100.2 Tested, not argued
+
+Re-running each call with the whole `0x64…0x1e4` window overwritten with three
+very different fills:
+
+```
+  call 1951: fill00 (800,388,136)  fillCD (800,388,136)  fillFF (800,388,136)  INVARIANT
+  call 2221: fill00 (829,403,167)  fillCD (829,403,167)  fillFF (829,403,167)  INVARIANT
+  call 2491: fill00 (798,359,129)  fillCD (798,359,129)  fillFF (798,359,129)  INVARIANT
+  call 2761: fill00 (797,367,130)  fillCD (797,367,130)  fillFF (797,367,130)  INVARIANT
+  call 3031: fill00 (768,340,103)  fillCD (768,340,103)  fillFF (768,340,103)  INVARIANT
+  call 3301: fill00 (727,312, 56)  fillCD (727,312, 56)  fillFF (727,312, 56)  INVARIANT
+```
+
+**The shift does not depend on the un-captured bytes.** `pref_scene_big`
+(§95.5) would have cost a scan and changed nothing. The row is harmless and
+still makes the capture self-describing, but it is no longer justified as the
+fix for §97, and this section supersedes that claim.
+
+### 100.3 What the residual actually is
+
+Frame 4, in the §99 basis:
+
+```
+  ours   (797, 367, 130)  ->  chroma (-78.8, -471.6)
+  vendor (889, 458, 221)  ->  chroma (-79.2, -472.4)
+```
+
+**The chroma already matches**, to well under a code. The entire residual is on
+the luma axis — independently consistent with §97.2 (the misses are uniform
+across channels), §99.3 (chroma is `−1.04 ×` `orderFpo`'s chroma, which we
+compute correctly), and §96 (`k` is the `(1,1,1)` component).
+
+So the emulation is not missing *data in its inputs*; it is missing whatever
+supplies the **luma term**, which is not reachable from a single call's
+arguments at all. §97.3's cross-frame-state reading survives; §98's
+missing-bytes reading does not.
+
+### 100.4 Method note
+
+Two corrections in a row (§98 correcting §97, this correcting §98) came from
+the same habit: a plausible mechanism was identified and then *not* tested
+against the cheap experiment that could refute it. Overwriting the suspect
+region with three fills costs one script and settles it outright. Both
+corrections were found by asking "what would make this wrong?" — and both times
+the answer was available offline, before any hardware was spent.
+
+## 101 — The luma correction is applied **downstream of Preference**, per
+render, and is zero for the first three frames
+
+Narrowing §100's residual, offline.
+
+### 101.1 It is not the inputs
+
+Neither the arguments nor the captured `pref_data` distinguishes the frames
+that reproduce from the frames that do not:
+
+* every one of the six calls has the same scalar args (`arg1=0, arg4=0,
+  arg6=0`);
+* **no** `int16` field anywhere in `pref_data` separates frames 1–3 from 4–6
+  (tested exhaustively: no field where the two groups' ranges are disjoint).
+
+Combined with §100.2 — the shift is invariant to the whole un-captured window —
+the emulation is being given everything Preference itself uses.
+
+### 101.2 The call structure, which explains it
+
+```
+  3300 helper   3301 preference   3302 set_shifts   3303-4 get_shifts
+  3305 cn_driver -> 3306 apply_lut -> ... -> 3313 analyze_auto_tone   render 1
+  3314 cn_driver -> 3315 apply_lut -> ... -> 3322                     render 2
+  3323 cn_driver -> 3324 apply_lut -> ...                             render 3
+  ...
+```
+
+**One `sba_preference` per scene, then all six renders afterwards.** The shift
+`apply_lut` applies is therefore not necessarily the value Preference left —
+anything in the per-render `cn_enhanced_driver` / `analyze_*` chain can adjust
+it in between.
+
+### 101.3 What that means for the residual
+
+Per frame, ours vs the vendor:
+
+```
+  frame 1   0        frame 4   +92 / +91 / +91
+  frame 2   ±1       frame 5   +65 / +65 / +66
+  frame 3   ±1       frame 6   +39 / +39 / +40
+```
+
+Uniform across channels in every case — pure luma in §96's basis, with the
+chroma matching to under a code (§100.3). So Preference fixes the chroma
+correctly for all six, and a **per-render luma correction** is applied
+afterwards: zero for the first three frames, then +92, +65, +39.
+
+Note the correction *decreases* by ≈26.5 per frame across 4→6. That is
+suggestive of a running quantity, but "suggestive" is all it is — extrapolating
+the same slope backwards predicts large corrections for frames 1–3, and those
+are zero. **No formula is proposed here**; the pattern is recorded so the next
+capture can test it rather than a fit being reverse-engineered from six points.
+
+### 101.4 Consequence for the next capture
+
+The target has moved. `pref_scene_big` (§95.5) is superseded by §100 and would
+teach us nothing. What is wanted instead is the shift **as it stands at each
+`apply_lut`**, versus **as Preference left it** — i.e. a dump on the
+per-render chain (`cn_enhanced_driver` or `balance_area_image`'s own inputs),
+which would show directly where the luma is added and by how much.
+
+`balance_shift_4b6` already gives the *final* value (§95.1). The missing half is
+the value *before* the per-render chain touches it.
+
+### 101.5 — Checked and closed: it is not an alternative pairing
+
+The obvious competing explanation for §101.3 is that our six shifts are the
+vendor's six in a different order. Tested by taking each vendor shift and
+finding its nearest neighbour among ours (L1 over the triple):
+
+```
+  vendor#1 (800,388,136) -> ours#1   L1 = 0      exact
+  vendor#2 (829,402,167) -> ours#2   L1 = 1
+  vendor#3 (798,360,130) -> ours#3   L1 = 2
+  vendor#4 (889,458,221) -> ours#2   L1 = 169    (already vendor#2's match)
+  vendor#5 (833,405,169) -> ours#2   L1 = 8      (collision)
+  vendor#6 (766,351,96)  -> ours#5   L1 = 20
+```
+
+No bijection exists. The identity pairing for 1–3 is unambiguous (L1 = 0, 1, 2)
+and **`(889, 458, 221)` has no near match at all** — across all 12 emulated
+calls only six distinct shifts are ever produced, and none is close to it. So
+frames 4–6 are a genuinely absent quantity, not a mis-assignment, and §101.3's
+downstream-correction reading survives this test.
+
+One observation deliberately left as an observation: the vendor stack processes
+film in strips of **4–6 frames** (documented in `pablonavarrob/pakon-tlx-macos`,
+which drives the same OEM binaries), and this capture's correction is zero for
+frames 1–3 and non-zero for 4–6. That is the right shape for per-strip state,
+and it is **not** evidence — the boundary could as easily be coincidence at six
+frames. Recorded so a capture spanning a known strip boundary can test it.
+
+## 102 — The downstream `set_shifts` is gated on
+`dynamic_cast<AnsSCPLutCapability*>` — and the SCPLut-composition explanation
+for §101's residual is **refuted** by the LUTs themselves
+
+Static, `PakonIMAu.dll` md5 `eea9dcf78ee21d4f7c515a6c2512242d`, `af`+`pdf` at
+each function's own boundary.
+
+### 102.1 The per-render write, and its gate
+
+§101.2 established the shift can be modified between Preference and
+`apply_lut`. The path is now named:
+
+```
+  method.AnsCnEnhancedPath.virtual_12
+    -> fcn.1006a160          (480 B header, 6588 B)
+      -> fcn.10100260        (sba_set_shifts) at 0x1006b74f
+```
+
+and the call is **conditional**, reached only via `jne 0x1006b73b` at
+`0x1006b614`. The condition is an RTTI cast, not a numeric test:
+
+```
+  0x1006b60a  call __RTDynamicCast(..., 0x10692518, 0x106927d4, ...)
+  0x1006b612  cmp eax, edi          ; edi = 0
+  0x1006b614  jne 0x1006b73b        ; cast SUCCEEDED -> set_shifts
+```
+
+Reading the type descriptors: `0x10692518` = `.?AVAnsCapability@@`,
+`0x106927d4` = `.?AVAnsSCPLutCapability@@`. So the render path re-sets the
+shift **only when the capability dynamic-casts to `AnsSCPLutCapability`**.
+
+That is a real, previously-unrecorded gate, and it connects to this doc's
+existing SCPLut work: §~5335 found the applied table is
+`combined[i] = SCPLut[clamp(i + shift, 0, 4095)]` — function composition, "a
+real, previously-unread mechanism this port does not model at apply time."
+
+### 102.2 The attractive hypothesis, and why it is wrong
+
+That composition threatens §93's whole extraction. Those shifts were decoded as
+`lut[i] − i`, which recovers the shift **only if `SCPLut` is identity**. If
+SCPLut were non-identity on frames 4–6 — gated by exactly the cast above — then
+§101's "luma correction" would be an artefact of misreading a composed table,
+and the shifts would never have differed at all.
+
+Tested directly, since a pure shift gives a *constant* delta and a composed
+table cannot:
+
+```
+  frame 1  r: mode 800 in 100.0 % of samples, 1 distinct   (g, b likewise)
+  frame 2  r: mode 829 in 100.0 %, 1 distinct
+  frame 3  r: mode 798 in 100.0 %, 1 distinct
+  frame 4  r: mode 889 in 100.0 %, 1 distinct
+  frame 5  r: mode 833 in 100.0 %, 1 distinct
+  frame 6  r: mode 766 in 100.0 %, 1 distinct
+```
+
+**Every channel of every frame has exactly one delta across 2801 samples.** All
+six tables are bare `clamp(i + shift, 0, 4095)`; no composition occurred in this
+capture. So:
+
+* §93's shift extraction is **vindicated** — it was not reading a composed
+  table, and §95.1's independent `balance_shift_4b6` agreement already said the
+  same from the other side;
+* the SCPLut-composition explanation for §101's residual is **refuted**;
+* and the `AnsSCPLutCapability` gate, though real in the code, was **not taken
+  in a way that composed a curve here** — either the capability was absent, or
+  its LUT is identity. Which of those, this capture cannot say.
+
+### 102.3 Status of the `k` hunt
+
+Ruled out so far, each by measurement rather than argument: `orderFpo`'s Y, U
+and V (§94.1); `L` (§93.3); every field in `pref_data`, captured and
+un-captured (§95.3, §100.2); an alternative frame pairing (§101.5); and now
+SCPLut composition. What survives is §101.3's reading: a genuine per-render
+luma term, applied downstream of Preference, zero on frames 1–3.
+
+## 103 — Names for the render chain, and the **order-wide** stage this port has
+never modelled
+
+Static, `PakonIMAu.dll` md5 `eea9dcf78ee21d4f7c515a6c2512242d`.
+
+### 103.1 `fcn.1006a160` names itself
+
+The function §102.1 found calling `set_shifts` identifies itself in its own
+error path:
+
+```
+  0x1006b627  push str."SCPLut capability not found."
+  0x1006b62c  push str."AnsCnEnhancedPath::analyzeSceneNoOrderWide"
+  0x1006b622  push str."\Atc\ansel\src\libPaths.ansel\CN-Enhanced.cpp"
+  0x1006b61d  push 0x2f4        ; line 756
+```
+
+So `fcn.1006a160` = **`AnsCnEnhancedPath::analyzeSceneNoOrderWide`**, and the
+branch polarity in §102.1 is the other way round from how it reads at first
+glance: the cast **succeeding** is the normal path to `set_shifts`; the cast
+**failing** falls through to log `"SCPLut capability not found."`. Corrected
+here.
+
+### 103.2 The CN Enhanced path's full method set
+
+```
+  AnsCnEnhancedPath::analyzeOrder
+  AnsCnEnhancedPath::analyzeScene
+  AnsCnEnhancedPath::analyzeSceneNoOrderWide          = fcn.1006a160
+  AnsCnEnhancedPath::CnEnhanced_analyzeOrderWide      = fcn.10068bd0 (2236 B)
+  AnsCnEnhancedPath::CnEnhanced_analyzeSceneSpecific
+  ...declare / initialize / match / verifyImage / exportParameterPack
+```
+
+The `NoOrderWide` suffix is not decoration: there is a matching **order-wide**
+method, and in photofinishing an *order* is the whole customer roll. So the
+vendor runs analysis at **two scopes** — per scene, and per roll — and the
+`orderFpo` family this project has spent so long on is the *order*-scope
+computation, exactly as its name says.
+
+**This port has only ever modelled the per-scene scope.** Every harness in
+`tools/ansel/python-pipeline/` takes one call's arguments and runs one
+function. Nothing runs a roll-level pass, and nothing carries state between
+frames.
+
+That is the right shape to explain §101.3: chroma is fixed per scene (and we
+reproduce it exactly, §100.3), while a luma term that is zero on the first
+frames and non-zero later is precisely what a roll-level pass would produce.
+
+### 103.3 What is NOT established
+
+`CnEnhanced_analyzeOrderWide` (`fcn.10068bd0`) does **not** call
+`sba_set_shifts` directly — its callee list is
+`{100012e0, 10001530, 10001580, 100065e0, 10006880, 1001ed90, 1001f650,
+1001ff80, 1001ffa0, 100215c0, 1003fd20, 1004fc20, 10059d00, 100d46a0,
+100d8d40, 100daac0, 100f8620, 100fcd70, 100fd190, 10100040}`, of which
+`10100040` is `ColorNegativePath::verifyImage`, not the shift setter.
+
+So "the order-wide stage supplies §101's luma term" is a **hypothesis with the
+right shape, not a demonstrated path**. It could reach the shift indirectly, or
+deposit a value the per-scene pass later reads. Tracing that is the next static
+step; asserting it now would be exactly the "structurally suggestive" error
+CLAUDE.md warns about.
+
+## 104 — Two distinct routes to `set_shifts`, and the order-wide one is
+`ColorNegativePath::analyzeBalanceOrder`
+
+§103.3 left open whether the order-wide stage can reach the shift setter at
+all, having established it does not call it directly. Settled with the
+project's own tool rather than by inference (`tools/re/reachability.py walk`,
+CLAUDE.md's standard for this question).
+
+### 104.1 The walk
+
+Seeding at `CnEnhanced_analyzeOrderWide` (`fcn.10068bd0`):
+
+```
+  functions reached  : 284
+  code bytes (realsz): 134,867
+  indirect call sites: 402      (not followed)
+```
+
+Membership of a 284-function closure is weak evidence by itself, so the useful
+question is *which* of `sba_set_shifts`'s three direct callers is in it:
+
+```
+  fcn.100575e0                          NOT in closure
+  fcn.1006a160  analyzeSceneNoOrderWide NOT in closure
+  fcn.10101220                          in closure
+```
+
+**Exactly one**, and pointedly *not* the per-scene function of §103.1. So the
+two scopes reach the shift setter by **separate routes** — this is not one
+shared path reached twice.
+
+### 104.2 The order-wide route names itself
+
+`fcn.10101220`'s string table:
+
+```
+  str.ColorNegativePath::analyzeBalanceOrder
+  str.Atc_ansel_srclibPaths.ansel\cnMethods.cpp
+  str.afterSCPLutFos   str.afterSCPLutSba   str.scpLut   str.dmin
+  str."Fos capability not found."   str."Sba capability not found."
+```
+
+`fcn.10101220` = **`ColorNegativePath::analyzeBalanceOrder`** — *balance*, at
+*order* scope, i.e. roll-level balance analysis. That is precisely the function
+whose existence §103.2 inferred from the `NoOrderWide` suffix, and it is the
+one the order-wide stage reaches.
+
+So the architecture is:
+
+```
+  per scene :  AnsCnEnhancedPath::analyzeSceneNoOrderWide -> sba_set_shifts
+               (gated on dynamic_cast<AnsSCPLutCapability*>, §102.1)
+
+  per roll  :  CnEnhanced_analyzeOrderWide -> ... -> 
+               ColorNegativePath::analyzeBalanceOrder -> sba_set_shifts
+```
+
+### 104.3 Standing of the claim
+
+This **strengthens** §103.3's hypothesis without proving it. What is now
+established: a roll-scope balance function exists, it reaches the shift setter,
+and it does so by a route the per-scene function does not share. What is **not**
+established: that this is where §101's luma term comes from. Reachability is
+not a data-flow proof — the walk follows direct call edges only, ignores 402
+indirect sites, and says nothing about whether that path executes on this
+capture or what value it would write.
+
+Promoting it needs either the function emulated on real inputs (the
+`wine_host`/Unicorn route, which now has a named target) or a capture showing
+`set_shifts` firing from this call site. `sba_set_shifts` fired 13 times in the
+v28 capture against 6 scenes — a count no one has yet accounted for, and one
+this two-route structure could explain.
+
+### 104.4 — Correction: `set_shifts` fires 6 times, not 13, and the order-wide
+route did **not** run in this capture
+
+§104.3 offered the "13 `sba_set_shifts` calls against 6 scenes" as an
+unaccounted count the two-route structure might explain. That figure is wrong —
+it counted the `hook_installed` record and both halves of each entry/exit pair.
+The real inventory:
+
+```
+  call 1952  tick 73045250   arg0=0x93a9740  arg3=0x8cb4500
+  call 2222  tick 73045359   arg0=0x93a9740  arg3=0x8d72b70
+  call 2492  tick 73045500   arg0=0x93a9740  arg3=0x8da5640
+  call 2762  tick 73045609   arg0=0x93a9740  arg3=0x8e0a980
+  call 3032  tick 73045703   arg0=0x93a9740  arg3=0x8e56118
+  call 3302  tick 73045781   arg0=0x93a9740  arg3=0x8ea26b0
+```
+
+**Exactly six**, one per scene, each immediately following its
+`sba_preference` (call id +1, same tick). Every one is the **per-scene** route
+of §103.1. Shared `arg0`, per-scene `arg3`.
+
+So there is no unaccounted count, and — more importantly —
+**`ColorNegativePath::analyzeBalanceOrder` did not call `set_shifts` in this
+capture at all.** §104's route exists in the binary and is reachable, but it
+did not execute here.
+
+That materially weakens the §103.3/§104.3 hypothesis as an explanation for
+§101's luma residual: whatever adds +92/+65/+39 to frames 4–6 did **not** do it
+through `sba_set_shifts`, because the only six calls to it are the per-scene
+ones whose outputs we already reproduce. The correction is applied by some
+other means — a direct write to the shift field, or a later stage entirely.
+
+`balance_area_image`'s `balance_shift_4b6` (§95.1) reads the *final* value at
+`arg4+0x0a` and already disagrees with what those six `set_shifts` calls
+produce for frames 4–6. So the write happens **between** `set_shifts` and
+`balance_area_image`, by something that is not `set_shifts`. That is a
+narrower and more useful target than "the order-wide stage".
+
+## 105 — **`k` LOCATED**: `cn_enhanced_driver` applies it, it is pure luma on
+39/39 frames, and it is not per-strip
+
+The v30 capture (`live_hooks_20260818-082519.jsonl`, md5
+`993716cc2152dbeabebef9e2cfde2531`, 352 MB, a much longer roll — 117 LUT calls
+against v28's 18) answers §101's open question directly.
+
+### 105.1 The measurement
+
+§104.4 narrowed the window to between `set_shifts` and `apply_lut`, and the
+capture's own pointers gave the address: the shift lives at
+`cn_enhanced_driver arg1 + 0x4b6` (which is where `balance_shift_4b6` got its
+name). One row, `cn_shift_before`, dumps arg 1 at that function's **entry** —
+39 dumps, 39 readable.
+
+Comparing that against the LUT actually applied one call later:
+
+```
+  cn call      before (+0x4b6)        applied LUT        delta
+  21239     (693, 363,  93)      (718, 388, 118)     +25 +25 +25
+  21248     (619, 176, -53)      (619, 176, -53)       same
+  21266     (653, 281,   5)      (613, 241, -35)     -40 -40 -40
+  21293     (402,  41,-152)      (482, 121, -72)     +80 +80 +80
+  21311     (876, 479, 212)      (886, 489, 222)     +10 +10 +10
+  21338     (949, 561, 283)      (891, 503, 225)     -58 -58 -58
+```
+
+**The luma is added inside `cn_enhanced_driver`.** Preference's chroma passes
+through untouched, exactly as §99/§100.3 predicted.
+
+### 105.2 Pure luma, 39 of 39
+
+```
+  frames: 39      deltas uniform across R, G and B: 39/39
+```
+
+Not one frame where the channels differ by even a single code. `k` is a pure
+move along `(1,1,1)` — the luma axis of §96's basis — now confirmed on 39
+independent frames rather than the 3 that §97 had. This is the strongest
+evidence yet for §96's chroma/luma decomposition, and it was obtained without
+emulating anything.
+
+### 105.3 The strip hypothesis is refuted
+
+§101.5 recorded, explicitly as an observation and not evidence, that the
+correction was zero on frames 1–3 and non-zero on 4–6 — the right shape for
+per-strip state, given the vendor works in strips of 4–6 frames. The longer
+roll settles it:
+
+```
+  k = [25, 0, 0, -40, 0, -40, 80, 0, 10, 0, 0, -58, 0, 0, 0, 0, 0, 59,
+       0, 0, 0, 0, -23, -17, 7, -11, 33, 87, 0, 73, 64, 32, 18, 94, 0, 0, 0, 0, 0]
+
+  21 of 39 frames have k = 0, and the zeros are scattered irregularly
+```
+
+No period, no reset at any 4–6 frame boundary, and long runs of zero (five at
+the start of the tail, five at the end). **Not per-strip**, and not a
+monotonic running quantity either — §101.3's "decreases by ~26.5 per frame"
+was an artefact of reading three points. Both candidate stories are dead.
+
+That `k` is zero on 21 of 39 frames is itself the most useful new fact: the
+correction is **conditional**, not continuous. Something about a frame decides
+whether it gets trimmed at all.
+
+### 105.4 What is now open, and what is not
+
+**Closed:** where `k` is applied (`cn_enhanced_driver`), what it is (pure
+luma), that it is not per-strip, and that Preference's chroma is final.
+
+**Open:** what decides `k`'s value, and what decides whether it is zero. With
+39 frames and 18 non-zero values there is now enough data to test candidate
+inputs properly rather than fit three points — and every per-frame quantity in
+this capture (`orderFpo` triples, `L`, the scene stats) can be tested against
+it offline.
+
+### 105.5 — What `k` is **not**: four candidates tested on 39 frames and closed
+
+With 39 frames and 18 non-zero values there is finally enough data to test
+candidates properly rather than fit three points. All four obvious stories are
+dead.
+
+**Not a function of the incoming shift.** The shift `cn_enhanced_driver`
+receives does not predict the correction it applies:
+
+```
+  corr(k, shift.R)    -0.016      corr(k, shift.G)    +0.055
+  corr(k, shift.B)    +0.056      corr(k, shift luma) +0.031
+```
+
+**Not a clamp.** A clamp would explain the zeros (in-band frames untouched) and
+pin the corrected values to a boundary. It does neither — the pre- and
+post-correction ranges are *identical* (`-265…1331`, luma `84…1665`), and
+zero/non-zero frames overlap across the whole luma range. A frame at luma 343
+gets `k = 0` while one at 313 gets `−40`, so there is no threshold.
+
+**Not any field in `cn_enhanced_driver`'s arg 1.** Scanning the whole `0x500`
+window as `int16`/`uint16`/`int32`/`float32` at every 2-byte offset:
+**zero fields** with `|corr| > 0.90` against `k`.
+
+**Not cross-frame smoothing.** The natural scene-balance story — pull each
+frame toward the running mean of its predecessors — fails on both tests:
+
+```
+  corr(k, prev-frame delta)   +0.112
+  corr(k, running mean)       +0.191
+  corr(k, pre - running mean) -0.024
+
+  9 of 17 non-zero corrections point toward the running mean  (chance is ~8.5)
+```
+
+**One structural observation, recorded as observation only.** The zeros are not
+evenly distributed — non-zero values *cluster*, with runs at frame indices
+22–27 and 29–33 and long all-zero runs at 13–17 and 34–38. Something changes
+partway through the roll. Whether that is film, scene content, or an internal
+mode is not determined, and with one roll it cannot be.
+
+**Next targets, in order of cost.** `cn_enhanced_driver` takes at least three
+pointer arguments and only arg 1 has ever been dumped (`arg2 = 0x8ca9f88`,
+`arg3 = 0x8ca9f8c` in the v28 trace) — those are the cheapest unexplored
+inputs. Failing that, `k` is computed inside the function from data it derives
+itself, and the answer is in its code rather than in any capture.
+
+## 106 — Reading `cn_enhanced_driver`: the gate found, two of my own readings
+corrected, and the spurious-separator trap avoided
+
+Static, `PakonIMAu.dll` md5 `eea9dcf78ee21d4f7c515a6c2512242d`.
+
+### 106.1 The function, and where it touches the shift
+
+`cn_enhanced_driver` (`fcn.10069490`, 1911 B) =
+**`AnsCnEnhancedPath::CnEnhanced_analyzeSceneSpecific`** (from its own string
+table, `CN-Enhanced.cpp`).
+
+It references the shift address — `esi + 0x4b6`, the same slot
+`balance_shift_4b6` reads — at exactly one place, `0x10069896`, where it is
+marshalled as an argument (pushed twice) alongside two byte flags from
+`esi+0x29` and `esi+0x4c`. That region is **gated**:
+
+```
+  0x10069854  call fcn.10102b20            ; balance_area_image
+  0x1006985c  push eax
+  0x10069864  call fcn.10001580            ; -> var_14h_5
+  0x10069875  mov edx, dword [0x106b5bd4]  ; a global, 0 in the file image
+  0x1006987b  cmp edx, dword [var_14h_5]
+  0x1006987e  jne 0x10069b48               ; skip the whole block
+```
+
+So the block runs only when a global matches something derived from
+`balance_area_image`'s result — which is the right *shape* for §105's
+conditionality (21 of 39 frames uncorrected), though not yet tied to it.
+
+### 106.2 Two readings of mine, corrected
+
+**`fcn.10006880` is not the shift writer.** It appears eight times in this
+function and is 29 bytes:
+
+```
+  mov eax,[esp+4] / mov eax,[eax] / mov [esi],eax / lea ecx,[eax+4] / call AddRef
+```
+
+— a refcounted smart-pointer copy constructor. The `&shift` pushes around it
+are argument marshalling; the real callee is `fcn.100e16d0`, immediately after.
+Reading `call fcn.10006880` as "writes the shift" was wrong.
+
+**`cn_enhanced_driver` does not call `apply_lut`.** `fcn.100d9340` does not
+appear in its disassembly at all, so the 3305→3306 adjacency in the trace is
+call-ordering, not containment.
+
+### 106.3 The byte flags, and a trap declined
+
+The two flags the gated block reads are **constant across all 39 frames**:
+
+```
+  esi+0x29 = 1 on 39/39      esi+0x4c = 1 on 39/39
+```
+
+so neither explains why 18 frames are corrected and 21 are not.
+
+A byte-wise scan for a field that perfectly separates corrected from
+uncorrected frames returned three candidates — `+0x002`, `+0x026`, `+0x4b8`.
+**All three are artefacts** and were discarded: each has 38–39 *distinct*
+values across 39 frames, so any partition of the frames separates them
+trivially. (`+0x4b8` is additionally circular — it is the G channel of the
+shift being predicted.) With 1280 offsets and 39 points, chance separators are
+expected; reporting one as a finding would have been the §94.4 numerology error
+in a new costume.
+
+### 106.4 Standing
+
+**Known:** where the shift is touched, that the block is gated on a global vs a
+`balance_area_image`-derived value, and that the two obvious flags are constant.
+
+**Not known:** what `fcn.100e16d0` does with the shift pointer, and what the
+global at `0x106b5bd4` holds at run time (it is 0 in the file image, so it is
+set during initialisation — a capture could read it directly).
+
+The cheapest next evidence is still `cn_enhanced_driver`'s **arg 2 and arg 3**,
+never dumped, plus the global at `0x106b5bd4`. Both ride along on any future
+capture; neither needs a new hook, only rows.
+
+## 107 — v31: every captured input to `k` eliminated, and the gate resolves to
+"is `balance_area_image`'s derived value zero?"
+
+`live_hooks_20260818-170547.jsonl`, md5 `a51f9159eb9a5e9b502263d53252c00e`,
+352 MB. All four rows landed **39/39 readable** — including the new
+`EXTRA_DUMP_MODULE_ABS` kind, which is therefore proven on real hardware, not
+just under the Wine selftest.
+
+### 107.1 The gate global is constant — which resolves the gate
+
+```
+  cn_gate_global, 39 frames: 1 distinct value
+    00 00 00 00 90 b5 3c 00
+```
+
+The global at `0x106b5bd4` is **zero on every frame**. §106.1's gate is:
+
+```
+  mov edx, dword [0x106b5bd4]     ; always 0
+  cmp edx, dword [var_14h_5]
+  jne  <skip the shift write>
+```
+
+so it reduces to **"run the shift write only when the `balance_area_image`-derived
+value is zero."** The global is not a discriminator; it is a constant being
+compared against. That was the outcome §106.4 predicted would point at
+`balance_area_image`, and it does.
+
+### 107.2 arg 2 and arg 3: nothing
+
+Both dumped (`0x200` each), scanned as `int16`/`int32`/`float32` at every
+2-byte offset, and byte-wise for a clean separator of the 18 corrected frames
+from the 21 uncorrected:
+
+```
+  arg2 (512 B):  |corr| > 0.90 vs k : 0      clean separators : 0
+  arg3 (512 B):  |corr| > 0.90 vs k : 0      clean separators : 0
+```
+
+The separator search this time required **≤ 6 distinct values** — the check
+that would have caught §106.3's three artefacts, applied up front rather than
+after the fact.
+
+### 107.3 What this establishes
+
+Every input to `cn_enhanced_driver` that a dump row can reach has now been
+tested against `k` and eliminated:
+
+| input | result |
+|---|---|
+| arg 1 (`0x500`) | nothing (§105.5) |
+| arg 2 (`0x200`) | nothing |
+| arg 3 (`0x200`) | nothing |
+| gate global | constant |
+| incoming shift | corr ≤ 0.06 (§105.5) |
+| cross-frame terms | chance (§105.5) |
+
+`k` is therefore **not a function of anything passed into the function**. It is
+computed from data the function derives itself — and the gate says explicitly
+what that is: a value from `balance_area_image`, which analyses the image.
+
+**So `k` depends on image content.** That is consistent with everything
+observed and explains what no input-based story could: why 21 frames are
+uncorrected (their derived value is non-zero), why the zeros cluster (adjacent
+frames of similar content behave alike), and why no field anywhere predicts it.
+
+### 107.4 Next
+
+The question is now well-posed and does not need another capture of
+`cn_enhanced_driver`: **what does `balance_area_image` compute, and when is it
+zero?** It is `fcn.10102b20`, already hooked, and its `balance_shift_4b6` row
+already reads its output. Its *return* value is what the gate tests, and
+`LogExtraDumps` fires on entry only — so an exit-side capture, or emulation
+under the `wine_host` (which already runs real vendor functions on captured
+inputs), is the route.
+
+## 108 — Emulating `balance_area_image` is blocked on its inputs, and §107.1's
+gate reading is corrected: it is a null test, not a numeric comparison
+
+### 108.1 The emulation cannot run
+
+`wine_host` places captured buffers at their real process addresses and calls
+the real function. `balance_area_image` (`fcn.10102b20`) is called with
+
+```
+  (0x939fd38, 0x87e5278, 1, 0xf8404cc, 0, 0x6d13d50, 0xf840020, 1)
+```
+
+— at least four distinct pointers — and the **only** dump on that hook is
+`balance_shift_4b6`: **6 bytes** at `arg3+0x0a`. Nothing else has ever been
+captured from it.
+
+Six bytes of one argument is not enough to execute anything; the run would
+fault on the first dereference of arg 1, exactly as `chain_host` did (§ in
+`wine_host/README.md`). **Emulation of this function needs its arguments
+dumped first** — `arg1`, `arg3` and `arg6` at minimum, all reachable with
+ordinary `EXTRA_DUMP_STACK_PTR` rows on a hook that already exists.
+
+### 108.2 §107.1's reading of the gate was wrong
+
+§107.1 described the gate as *"run the shift write only when the
+`balance_area_image`-derived value is zero"*, treating `0x106b5bd4` as a
+numeric constant. Reading the code around its other uses shows the idiom:
+
+```
+  0x101039cf  mov eax, [0x106b5bd4]
+  0x101039d4  cmp eax, dword [var_14h]
+  0x101039de  jne 0x10103a11
+  ...
+  0x10103a11  mov eax, [0x106b5bd4]
+  0x10103a1d  mov dword [edi], eax        ; assign to an out-param
+  0x10103a21  lea ecx, [eax + 0x74]       ; AddRef
+```
+
+Assignment into out-parameters, and a refcount increment at `+0x74`, is
+**refcounted smart-pointer** handling — the same shape as `fcn.10006880`
+(§106.2). So `0x106b5bd4` is a **global null/empty smart pointer**, not an
+integer, and `cn_enhanced_driver`'s gate
+
+```
+  mov edx, [0x106b5bd4] ; cmp edx, [var_14h_5] ; jne <skip>
+```
+
+is a **null test**: the shift is written only when the object obtained around
+`balance_area_image` is *null*. The measured fact from §107.1 is unchanged —
+the global is zero on 39/39 frames — but "zero" there means *the null pointer*,
+which is why it never varies.
+
+That also explains why it could never have been the discriminator: a global
+null sentinel is constant by construction. §106.4's prediction that a constant
+global would point at `balance_area_image` still holds; the mechanism is a
+null/non-null object test rather than a numeric threshold.
+
+### 108.3 What would actually settle it
+
+An entry-side dump of `balance_area_image`'s `arg1`/`arg3`/`arg6` serves both
+purposes at once: it makes the `wine_host` emulation possible, and it captures
+the state that decides which of the function's five return paths is taken. No
+new hook and no new dump kind — three `EXTRA_DUMP_STACK_PTR` rows on
+`fcn.10102b20`, which has been hooked since v20.
+
+## 109 — The chroma experiment: substituting the vendor's measured `A` makes
+the render **worse**, and the reason is §96's basis mismatch
+
+§99.4 observed that the port could emit the vendor's chroma "today", since `A`
+is measured rather than fitted. This runs that as a controlled experiment
+before anything is wired.
+
+### 109.1 Method
+
+Opt-in via `PAKON_VENDOR_CHROMA=1` (default behaviour untouched). The port's
+`setshifts_12` output was offset by the measured difference between the
+vendor's per-channel base `A ≈ (806.6, 391.4, 144.6)` — §94.2, stable across
+two rolls — and the port's `NBP − fpo = (671, 300, 164)`:
+
+```
+  setShifts (683, 297, 151)  ->  (819, 388, 132)
+```
+
+Same capture, same frame, same parameters as the baseline
+(`scan-20260812-091633`, frame 5), so this is a controlled A/B and not the
+cross-scene comparison §93.1 had to warn about.
+
+### 109.2 Result: worse on both measures
+
+```
+  TONED RPD p1        baseline        1452 1452 1387    spread  65
+                      vendor-chroma   1543 1499 1323    spread 220
+                      vendor (AA001)   928  944  928    spread  16
+
+  sRGB p50            baseline         142  199  234
+                      vendor-chroma    178  212  228
+                      vendor (AA001)    90  103  139
+```
+
+The floor moved **away** from the vendor's on every channel, its inter-channel
+spread more than trebled, and all three sRGB medians moved further from target.
+Span barely moved (575→574, 672→666, 924→915), so this is a translation, not a
+change of contrast.
+
+### 109.3 Why this is informative rather than merely negative
+
+`A` is not in doubt. It is measured on two independent rolls and equals
+`orderFpo`'s own chroma scaled by −1.04 to within 0.08 % (§99.3). The vendor's
+shift base really is ≈`(806, 391, 145)`. Substituting it nevertheless degrades
+our render — which is the **same signature** as §84.2's anchor substitution and
+the §61 fix that had to be reverted: *a correct vendor value dropped into this
+port's formula makes things worse.*
+
+§96 predicts exactly that. The port computes its shift in **RGB space**
+(`NBP − fpo`, then `setshifts_12`); the vendor computes in the **orthonormal
+opponent basis** and rotates back. A correct chroma in the wrong basis cannot
+help, and the spread result shows why: our floor is near-uniform (65) only as
+an accident of `NBP − fpo`, while the vendor reaches its near-uniform floor
+(16) by a different route. Perturbing one term of our formula toward the
+vendor's value breaks the accident without buying the mechanism.
+
+**Consequence for the washed-out question.** Finishing `k` will not, on this
+evidence, fix the render by itself — the balance chain has to be computed the
+vendor's way, in the vendor's basis, not have vendor constants substituted into
+ours. That is a larger change than one term, and it is now the honest statement
+of what "wire the verified work" means here.
+
+The experiment is left in place behind its environment variable, and is **not**
+enabled by default.
+
+## 110 — The opponent-space rewrite also degrades the render — so the shift is
+**not separable from the inversion**, and the defect is upstream
+
+§109 substituted the vendor's `A` in RGB space and made things worse. That test
+was flawed — adding `(135.6, 91.4, −19.4)` moves luma by ~120 as a side effect,
+conflating two changes. This repeats it correctly.
+
+### 110.1 Method
+
+The shift is decomposed with the port's byte-faithful copies of the vendor's own
+transforms (`preference_rgb_to_opponent` @ `0x1028c7f7`, inverse @
+`0x1028cc33`), its **chroma replaced** with the vendor's measured `A`, and **our
+own luma restored unchanged**:
+
+```
+  (683, 297, 151) -> (736, 320, 74)
+  Y kept 653.0    U -98.0 -> -69.4    V -376.2 -> -468.1
+```
+
+Since §96 established `k` is exactly the `(1,1,1)` term, holding Y fixed is
+precisely "apply the half we know, leave the half we do not". Same capture,
+frame and parameters as the baseline.
+
+### 110.2 Result
+
+```
+  TONED RPD p1        baseline        1452 1452 1387   spread  65
+                      RGB swap §109   1543 1499 1323   spread 220
+                      opponent swap   1509 1479 1313   spread 196
+                      vendor (AA001)   928  944  928   spread  16
+
+  sRGB p50            baseline         142  199  234
+                      opponent swap    166  207  227
+                      vendor            90  103  139
+```
+
+Doing it in the correct basis **helped slightly** (spread 220 → 196), which
+confirms §109's diagnosis of its own flaw. But it is still **worse than
+baseline on every measure**. The chroma is not independently applicable.
+
+### 110.3 What this establishes: the defect is upstream of the shift
+
+`A` is correct — measured on two rolls, equal to `orderFpo`'s chroma to 0.08 %
+(§99.3). It is correct *for the vendor's pipeline*, measured downstream of the
+vendor's inversion. Ours produces a different RPD, so their shift does not
+compose with our upstream.
+
+§93.1 shows the same thing from the other direction: our floor sits at
+`fpo + ~40` on every channel, while the vendor's `928/944/928` is **nowhere
+near** its own `fpo` of `879/1250/1386`. The vendor's inversion simply does not
+land where ours does.
+
+So the washed-out defect is **in the inversion, upstream of the balance
+shift** — and three independent experiments now demonstrate it by failing to
+fix it downstream: the AFE offsets (§93.1, real +1022-code error, floor
+unmoved), the RGB chroma substitution (§109), and this.
+
+### 110.4 Consequence
+
+**Finishing `k` will not fix the render**, and neither will rewriting the shift
+computation in opponent space — the shift is downstream of the thing that is
+wrong. v32 remains worth capturing, because `k` is the last unknown in a chain
+that is otherwise fully reproduced and it completes the RE, but it should not
+be expected to change a pixel.
+
+The washed-out question returns to the inversion: `f135_rom12_to_rpd12`,
+`film_base`, `fpo`, and why the vendor's floor is uniform at ~930 while ours
+tracks a non-uniform `fpo`. §84's anchor work is the closest prior thread, and
+§109/§110 now supply the evidence its successors lacked: substituting vendor
+constants downstream cannot work, because the disagreement is upstream of them.
+
+Both experiments remain behind `PAKON_VENDOR_CHROMA=1` and are **off by
+default**.
+
+## 111 — The uniform anchor **fixes the span deficit**, and the residual floor
+spread is the density-domain shift — which §60/§82.1 already said is wrong
+
+§110 established the defect is in the inversion. This runs §84.3's prescribed
+experiment — uniform anchor **and** vendor chroma together, the pairing §84.2
+lacked — and it separates the washed-out defect into two independent halves.
+
+### 111.1 Result
+
+```
+  TONED RPD          p1 spread        span (p1 -> p95)
+  baseline              65            575   672   924
+  chroma only          196            575   670   922
+  anchor + chroma      869            649   890  1233
+  vendor (AA001)        16           1040  1072  1184
+```
+
+**The uniform anchor largely closes the span deficit.** B goes `924 -> 1233`
+against the vendor's `1184`; G `672 -> 890` against `1072`; R `575 -> 649`
+against `1040`. That deficit — §81.3's "our R is contrast-starved" — has been
+open since §81 and nothing until now has moved it.
+
+Note the chroma swap alone changed span not at all (`575/670/922`). The span is
+the **anchor's** doing, not the shift's.
+
+### 111.2 The residual floor spread is arithmetic, and it identifies the cause
+
+With a uniform anchor the floor should be uniform. It is not — `1713/1196/844`,
+spread 869. The shift explains it exactly:
+
+```
+  975 + (736, 320, 74) = (1711, 1295, 1049)   vs observed (1713, 1196, 844)
+```
+
+**Our shift is spreading the floor**, because this port adds it in the
+*density* domain, after the log.
+
+The vendor does not. §60 and §82.1 established from the applied LUTs
+themselves that *"the vendor's balance really is a per-channel additive ramp on
+the **linear** PolyPixel output, not a density-domain add"* — which is how the
+vendor can hold a spread shift `(806, 391, 145)` **and** a uniform floor
+`928/944/928` at the same time. In the density domain those two are
+incompatible; in the linear domain they are not.
+
+### 111.3 The two halves, and where each stands
+
+| defect | cause | status |
+|---|---|---|
+| span deficit (contrast) | per-channel `fpo` anchor | **fixed here** by a uniform anchor |
+| floor spread / lift | shift applied in the density domain | known since §60/§82.1; §61 attempted it |
+
+`git show 7584903` is §61 — *"apply the SBA balance shift in the LINEAR domain,
+before the log"* — reverted because R rendered solid black. That revert was
+correct at the time: with a per-channel `fpo` anchor still in place, moving the
+shift to the linear domain removes the compensation the anchor was providing.
+The two changes have the same relationship §84.3 described for the anchor and
+`setShifts`: **each is wrong alone and they must move together.**
+
+### 111.4 What to try next, and the honest caveat
+
+The combination not yet tested is **uniform anchor + linear-domain shift** —
+§111.1's anchor with §61's shift placement. Both halves exist in the codebase's
+history; neither has been tried with the other.
+
+**Caveat, stated plainly:** the anchor value 975 is `neu` from the shipped DPI
+(§84.1) and is *not* itself verified as the vendor's inversion anchor — it is a
+uniform candidate that matches the vendor's measured floor to ~45 codes. This
+section shows a uniform anchor fixes span; it does not establish that 975 is the
+right uniform value, and the remaining R shortfall (649 against 1040) may be
+telling us it is not.
+
+Both experiments remain behind their environment variables and are **off by
+default**.
+
+## 112 — The three-way combination is **also** refuted: patching the inversion
+constant by constant does not converge
+
+§111 proposed the one untried pairing — uniform anchor plus §61's linear-domain
+shift placement. Run with the vendor chroma as well, all three together:
+
+```
+                        p1 spread      span              sRGB p50
+  baseline                  65      575  672  924      142 199 234
+  anchor+chroma            869      649  890 1233      236 196 159
+  anchor+chroma+linear     778      416  635 1105      206 150 145
+  vendor (AA001)            16     1040 1072 1184       90 103 139
+```
+
+**It does not converge.** The floor spread stays at 778 against the vendor's
+16, and the linear placement makes **R worse** — span `649 -> 416`, the same
+direction §61 saw when R rendered black.
+
+### 112.1 Why the linear placement hurts R
+
+Adding a constant in the *linear* domain before the log compresses the
+resulting range, and the compression scales with the constant. R carries the
+largest shift (736 of the `(736, 320, 74)` triple), so R loses the most
+contrast. This is not a defect in the placement — §60/§82.1 prove the vendor
+applies its shift there — it means **the shift value being moved must be the
+vendor's, not ours**. Moving our shift into the vendor's domain is not the same
+change as computing the vendor's shift.
+
+One positive signal worth recording: **B is close on both measures** — sRGB 145
+against the vendor's 139, span 1105 against 1184. R and G are not. That is the
+same channel ordering every prior section found (§94.3: B right within ~20, R
+and G short), reached here from a completely different direction.
+
+### 112.2 The pattern across four experiments
+
+| experiment | result |
+|---|---|
+| §109 chroma in RGB space | worse |
+| §110 chroma in opponent space | worse (slightly less) |
+| §111 uniform anchor + chroma | span fixed, floor much worse |
+| §112 + linear-domain shift | floor still wrong, R degraded |
+
+Every one substitutes a **correct vendor value** into this port's formula, and
+every one fails. §111.1's span improvement is real and is the only gain, and
+even it came with a worse floor.
+
+The conclusion §110.3 reached now has four independent confirmations:
+**the port's inversion is not the vendor's inversion with wrong constants — it
+is a different computation.** Constants cannot be transplanted into it
+individually, in any combination tried, because each is correct only in the
+context of the others *and* of the surrounding arithmetic.
+
+### 112.3 What this means for the next attempt
+
+Deriving `f135_rom12_to_rpd12` from the vendor's own code is the remaining
+route, as §110.4 said — not further substitution. The relevant target is
+whatever the vendor runs between PolyPixel's linear output and the RPD the
+balance shift is applied to, and unlike the balance chain (now essentially
+reproduced) that function has never been identified, let alone emulated.
+
+All experiment flags (`PAKON_VENDOR_CHROMA`, `PAKON_UNIFORM_ANCHOR`,
+`PAKON_LINEAR_SHIFT`) remain **off by default**. Nothing in the render path has
+changed.
+
+## 113 — v32: `balance_area_image`'s inputs do not predict `k` either. Every
+capturable input is now eliminated, so `k` is derived from pixel content
+
+`live_hooks_20260818-191932.jsonl`, md5 `a041a3b23398403e45cba216ab76a483`,
+362 MB. All rows landed **40/40 readable** (`bai_arg1` 1024 B, `bai_arg3`
+512 B, `bai_arg6` 1024 B, plus the v30/v31 rows).
+
+> An earlier upload (`…185349`) ran a **v20-era build** — none of the v26/v28/
+> v30/v31/v32 labels were present, though the hooks themselves fired 88 times.
+> Recorded because "the capture is fine but the build is old" is not obvious
+> from the file, and the JSONL's own label list is the quickest check.
+
+### 113.1 The test
+
+Each `cn_enhanced_driver` call paired with its following `balance_area_image`
+call (40 pairs, 17 with non-zero `k`), and all three new buffers scanned as
+`int16`/`int32`/`float32` at every 2-byte offset, plus byte-wise for a clean
+separator of corrected from uncorrected frames:
+
+```
+  bai_arg1 (1024 B):  |corr| > 0.90 -> 0    clean separators -> 0
+  bai_arg3 ( 512 B):  |corr| > 0.90 -> 0    clean separators -> 0
+  bai_arg6 (1024 B):  |corr| > 0.90 -> 0    clean separators -> 0
+```
+
+The separator search again required ≤ 6 distinct values, per §106.3's lesson.
+
+### 113.2 The elimination is now complete
+
+| candidate | section | result |
+|---|---|---|
+| `orderFpo` Y, U, V | §94.1 | no |
+| `L` | §93.3 | no |
+| `pref_data`, captured and un-captured | §95.3, §100.2 | no |
+| alternative frame pairing | §101.5 | no |
+| SCPLut composition | §102.2 | no |
+| incoming shift; clamp; cross-frame smoothing | §105.5 | no |
+| `cn_enhanced_driver` arg 1, 2, 3 | §105.5, §107.2 | no |
+| the gate global | §107.1 | constant |
+| `balance_area_image` arg 1, 3, 6 | **here** | no |
+
+**Every input reachable by a dump row has been tested and eliminated.** `k` is
+not a function of any argument, any struct field, or any global.
+
+### 113.3 What follows
+
+`k` must be derived from the **pixel data** — the one input none of these rows
+carries, and precisely what `balance_area_image` exists to analyse. That is
+consistent with every prior observation: it explains why 23 of 40 frames are
+uncorrected (a content-dependent condition), why the zeros cluster (adjacent
+frames of similar content), and why no field anywhere predicts it.
+
+It also reclassifies `k`: it is a **measurement of the image**, not a parameter
+looked up or carried. Reproducing it means reproducing that measurement, which
+is `balance_area_image`'s own arithmetic over the frame — a substantially
+larger job than any remaining dump row, and one the `wine_host` can now attempt,
+since v32 finally supplies the arguments §108.1 said it lacked.
+
+## 114 — The vendor's "inversion function" does not exist as a function, and
+the ICC pair is not the log — but it explains the washed-out look quantitatively
+
+Asked to find the vendor's inversion, the answer is that §60 already settled it
+and no such function is there to find.
+
+### 114.1 §60, restated because it is easy to lose
+
+Tier 2, live hardware, bit-exact: `RPD12 == ROM12` with `max|diff| == 0` over
+three segments × 356×245 pixels × R/G/B, where `ROM12 = PolyPixel(raw)`. **The
+vendor does not log-invert between PolyPixel and the balance.** The "RPD12" the
+balance operates on *is* the linear poly output.
+
+Checked on this port's side: the **only** `log10` in the entire render path is
+`f135_rom12_to_rpd12` (`pakon_decode.py:1062-1063`). The ported tone chain —
+`pakon_autotone` and every `pakon_shasta_*` module — contains no explicit log.
+
+```
+                    vendor                    this port
+  poly -> balance   linear, no log            LOG APPLIED HERE
+  balance domain    linear                    density
+  log location      inside analyzeAutoTone    absent from the tone chain
+```
+
+So the port performs the log **once, in the wrong place**, and its tone chain
+lacks the log the vendor's has.
+
+### 114.2 The ICC pair is not the log
+
+If RPD at balance time is linear, the obvious candidate for the missing log is
+the `Rpd2Pcs` profile. Driving a neutral ramp through the render's own pair:
+
+```
+  RPD      sRGB(G)          correlation of out vs:
+     0 ->     0               linear      0.979
+  1024 ->    15               log10       0.953
+  1536 ->   113               x^(1/2.2)   0.967
+  2048 ->   242
+  2560 ->   254  (saturated)
+```
+
+None dominates — it is an S-curve, not a log. **The ICC pair is not where the
+inversion lives**, which leaves §60's answer standing: the log is inside the
+tone chain, most likely baked into the Shasta curve as a LUT rather than
+computed.
+
+### 114.3 What the ramp does give us: the ~88-code offset, quantified
+
+The profile saturates near RPD 2200 and is very steep between 1000 and 2200 —
+roughly **0.2 sRGB codes per RPD code** through that band.
+
+Our toned floor sits at **1452**; the vendor's at **928** (§93.1). Through this
+transfer that ~500-code RPD gap becomes on the order of **100 sRGB codes** of
+lift — the same order as the ~88–89 code offset that opened this whole
+investigation (§8), now traced end to end: *wrong floor in RPD, amplified by
+the steepest part of the vendor's own profile.*
+
+This does not identify what makes our floor wrong — §112 showed constants
+cannot be transplanted to fix it — but it does close the loop between the RPD
+measurements this log has been accumulating and the visible defect.
+
+### 114.4 The standing hypothesis
+
+Consistent with **all** the evidence rather than contradicted by one experiment:
+remove the early log entirely, keep the balance in the linear domain (§60/§82.1),
+and let the tone chain supply the log. §61 did only the middle third — it moved
+the balance to linear while leaving the log in `f135_rom12_to_rpd12` — which is
+why R broke.
+
+That is a restructure of the render path, not a constant change, and it should
+be attempted as one change with all three parts together, on the evidence of
+§84.3, §111.3 and §112.2 that partial substitutions in this pipeline
+consistently make things worse.
+
+## 115 — Why this is hard to see directly, tested; and the vendor's own pixels
+through its own ICC confirm the tone stage does the lifting
+
+### 115.1 The framing doubt, raised and closed
+
+Our renders are not frames:
+
+```
+  our frame 05   1599 x 2000   aspect 0.799
+  our frame 03   1340 x 2000   aspect 0.670
+  AA001.tif      2941 x 1960   aspect 1.501   <- a real 35mm frame (3:2)
+```
+
+Framing never locks (`frame pitch: not measured` on every render), so our
+"frames" are line-cuts that may include inter-frame gaps and film base, which
+would raise a measured floor and could have manufactured the whole discrepancy.
+
+**Tested and refuted.** Toned RPD over central 3:2 crops:
+
+```
+  full                 p1 1452 1452 1387   spread 65
+  central 3:2 @90%     p1 1468 1460 1389   spread 79
+  central 3:2 @80%     p1 1463 1456 1386   spread 77
+  central 3:2 @70%     p1 1460 1457 1384   spread 76
+  central 3:2 @60%     p1 1456 1461 1384   spread 77
+  vendor (AA001)       p1  928  944  928   spread 16
+```
+
+Flat to ±16 codes across every crop. **The +500 discrepancy is not a framing
+artefact**, and today's measurements stand. Span does improve on tighter crops
+(575 → 693 on R), so framing is worth fixing, but it is a separate defect.
+
+### 115.2 Why the comparison cannot be made directly
+
+**This project has never had the vendor's final output and its own raw data for
+the same physical scan.** `AA001.tif` is vendor output from a session with no
+raw; our renders are from scans the vendor never processed. Every comparison in
+this document is therefore distribution-to-distribution, never pixel-to-pixel.
+
+That cannot discriminate. Fitting our linear percentiles against AA001's, both
+pairings correlate strongly and they **disagree per channel**:
+
+```
+              p <-> p            p <-> 100-p
+  R      lin +0.987 log +0.941   lin -0.912 log -0.975   -> inverted
+  G      lin +0.969 log +0.991   lin -0.907 log -0.971   -> same-order
+  B      lin +0.900 log +0.966   lin -0.953 log -0.981   -> inverted
+```
+
+A monotone curve correlates with almost any other monotone curve, so neither
+the direction nor the shape of the vendor's transfer is recoverable this way.
+
+### 115.3 A different angle: the vendor's own pixels through its own ICC
+
+The captures dump `pixel_data` at `apply_lut`, and §60 proved that data **is**
+the linear ROM12 — an aligned input needing no new capture. Fed straight to the
+shipped `Rpd2Pcs → Srgb_v2` pair:
+
+```
+  vendor pixel_data:  308..2529   (97.2 % of the frame captured)
+  through the vendor ICC pair -> sRGB mean  R 6   G 27   B 62
+```
+
+**Nearly black.** So the vendor's chain cannot be *linear → ICC*: the tone stage
+performs substantial lifting and is not optional. Independent confirmation of
+§60's placement — the vendor lifts inside `analyzeAutoTone`, after the balance —
+reached from the pixel side rather than the code side.
+
+Our port performs that lifting with its early `f135_rom12_to_rpd12` log instead.
+**Both chains lift; they do not lift the same way**, and the ~500-code floor
+difference is born there.
+
+### 115.4 The capture that would end the guessing
+
+One scan on the XP box with hooks installed **and the vendor's output TIFFs kept
+from that same scan**. That yields raw → vendor-final, pixel-aligned, same
+frames — after which the transfer curve is read off directly instead of fitted
+from percentiles, and log placement, floor, span and `k` all become direct
+measurements. No new hook build; only that the TIFFs are saved.
+
+## 116 — **The vendor's transfer curve, measured directly**: it is logarithmic,
+and this port has ~62 % of its slope — the washed-out look, quantified
+
+§115.4 asked for one thing: the vendor's output and the matching raw for the
+*same* frames. `rawAA001.tif` … `rawAA006.tif` alongside `AA001.tif` … are
+exactly that — same dimensions (2941 × 1960), same subject, pixel-aligned.
+Every comparison before this section was distribution-to-distribution; this one
+is per-pixel.
+
+### 116.1 The vendor's curve
+
+Median output for each raw value, fitted `out = m·log10(raw) + c`:
+
+```
+  R: out = -248.42 * log10(raw) + 554.92    corr -0.9881   rms 10.9
+  G: out = -252.77 * log10(raw) + 525.73    corr -0.9935   rms  8.1
+  B: out = -229.31 * log10(raw) + 465.87    corr -0.9916   rms  9.0
+```
+
+against a linear fit's `-0.913 / -0.931 / -0.914`. **The vendor's end-to-end
+transfer is logarithmic**, and the negative sign confirms the inversion
+directly rather than by inference — settling the question §115.2 showed
+percentile fitting could not answer (both pairings correlated 0.90–0.99 and
+disagreed per channel).
+
+### 116.2 This port's curve, measured identically
+
+Our `raw14` and `srgb` outputs are pixel-aligned with each other, so the same
+fit applies. **Slope per decade is scale-invariant** — `log10(k·x)` shifts the
+intercept, not the slope — so the two are directly comparable despite our
+linear being 14-bit and the vendor's raw export 8-bit:
+
+```
+              slope/decade      log-fit corr
+  vendor R      -248.42            -0.9881
+  vendor G      -252.77            -0.9935
+  vendor B      -229.31            -0.9916
+
+  ours   R      -156.93            -0.6163
+  ours   G      -156.02            -0.9325
+  ours   B      -151.17            -0.9404
+```
+
+### 116.3 What this establishes
+
+**We have ~62 % of the vendor's contrast slope**: `157/248 = 0.63`,
+`156/253 = 0.62`, `151/229 = 0.66`. Strikingly uniform across channels. That
+deficit is the washed-out look — not inferred from floors or spans, but
+measured end to end on the same photograph.
+
+It is also consistent with everything measured indirectly: §81.3's span
+`555/665/953` against the vendor's `1072/1088/1152` is the same ~60 % ratio
+seen in the RPD domain instead of sRGB.
+
+**And our R is not log-shaped at all** — `corr -0.62` against the vendor's
+`-0.99`, while our G and B reach `-0.93/-0.94`. R has been the worst channel in
+every measurement in this document (§94.3 "R short ~136", §99.4 "red-blue ~24 %
+short", §112.1 "R degraded"); this says why. R's transfer has the wrong
+*shape*, not merely the wrong slope, so no gain correction can fix it.
+
+### 116.4 Why this changes the work
+
+Every experiment in §109–§112 adjusted *constants* — anchor, chroma, shift
+placement. This says the defect is the **slope of the transfer**, roughly a
+factor of 1.6, plus a shape defect specific to R. Those are properties of the
+inversion and tone chain together, not of any single substituted value, which
+is exactly why constant substitution kept failing.
+
+**Caveat.** `rawAA001.tif` is an 8-bit export; quantisation limits precision at
+the dark end, and the fit windows exclude out-of-range medians. The slopes are
+stable across three channels and two independent images, so the ~62 % figure is
+robust, but it should be re-derived from a 16-bit export before being treated
+as exact.
+
+## 117 — Correcting §111/§112: measured against the vendor's real curve, the
+uniform anchor is a **large improvement**, not a regression
+
+§116 finally supplied the vendor's own transfer curve. Re-scoring the earlier
+experiments against it — rather than against floor spread and sRGB medians —
+reverses the verdict.
+
+### 117.1 End-to-end slope per decade, same frame
+
+```
+                     R                 G                 B
+  baseline      -156.9 (-0.62)   -156.0 (-0.93)   -151.2 (-0.94)
+  anchor+chroma -188.1 (-0.96)   -265.3 (-0.99)   -266.1 (-0.99)
+  +linear shift -144.7 (-0.95)   -199.4 (-0.99)   -230.6 (-0.99)
+  vendor        -248.4 (-0.99)   -252.8 (-0.99)   -229.3 (-0.99)
+```
+
+**The uniform anchor moves G and B onto the vendor's slope** — G `-265` against
+`-253`, B `-266` against `-229` — from a baseline that was ~62 % short. R
+improves from `-157` to `-188`, still short of `-248` but no longer the worst
+kind of wrong.
+
+**And it fixes the shape defect §116.3 identified.** R's log-fit correlation
+goes `-0.62 → -0.96`; every channel reaches `-0.96` or better, against a
+baseline where R was not log-shaped at all. That was the defect no gain
+correction could address, and the anchor addresses it.
+
+### 117.2 My earlier verdict was wrong, and why
+
+§111 and §112 scored these runs on **floor spread** and **sRGB medians** and
+called the anchor "worse". Both statements were true as measured, and both used
+the wrong yardstick: the washed-out defect is a *slope* deficit (§116.3), and
+neither metric measures slope. The floor did get worse; the thing that actually
+produces the washed-out appearance got substantially better.
+
+This is a straightforward case of judging an experiment before having the
+reference to judge it against. §116's per-pixel curve is that reference, and it
+only became available with the `rawAA001…rawAA006` uploads.
+
+### 117.3 The linear-shift placement is wrong as implemented
+
+Adding §61's linear-domain shift on top **reduces** the slope again
+(`-188 → -145` on R, `-265 → -199` on G). §112.1 attributed that to the shift
+value being ours rather than the vendor's; the slope measurement confirms the
+effect is real and substantial, not marginal. That combination should not be
+pursued further until the shift itself is the vendor's.
+
+### 117.4 Where this leaves the washed-out problem
+
+Two defects, now separately measured:
+
+| defect | metric | status |
+|---|---|---|
+| contrast slope + log shape | slope/decade vs vendor | **largely fixed** by a uniform anchor |
+| floor level and spread | RPD p1 vs vendor's 928/944/928 | still wrong, worsened by the anchor |
+
+They are not the same defect and do not have the same cause. The anchor is the
+right shape of fix for the first; the second remains the density-domain shift
+placement (§111.2), which cannot be fixed by moving our own shift into the
+linear domain (§117.3).
+
+**Not yet established:** that 975 is the correct uniform anchor. R's residual
+shortfall (`-188` against `-248`) may be telling us the value is wrong even
+though the *uniformity* is right — R was also the channel whose `fpo` sits
+closest to 975, so it has moved least.
+
+## 118 — Solving for the anchor: the fit is refuted by its own verification, and
+the vendor's shipped `neu = 975` remains the best value
+
+§117 left one question: is 975 the *right* uniform anchor, given R's residual
+shortfall? This solves for it, and the answer is a lesson about fitting.
+
+### 118.1 The solve
+
+Modelling `anchor → log → ICC` over the frame's own per-pixel linear data,
+scanning anchors 300…1800 against §116's measured vendor slopes:
+
+```
+  anchor    R        G        B      max|err| vs vendor
+    975   -226.6   -280.0   -239.3        27.2
+   1180   -270.7   -273.7   -244.2        22.3   <- model's best
+   1200   -269.2   -269.8   -253.1        23.8
+  vendor  -248.4   -252.8   -229.3
+```
+
+Two things were already visible before verification. **No uniform anchor
+matches all three slopes** — the best residual is ~22 codes/decade (~9 %),
+because the anchor translates every channel equally while each lands on a
+different part of the ICC's S-curve. And the model disagreed with the real
+render at 975 (model `-227/-280/-239`, actual `-188/-265/-266`), so it was
+known to be missing stages.
+
+### 118.2 Verification refutes it
+
+Rendering at the model's best anchor, through the real pipeline:
+
+```
+                    R                G                B
+  anchor 975   -188.1 (-0.96)   -265.3 (-0.99)   -266.1 (-0.99)
+  anchor 1180   -92.8 (-0.89)   -190.0 (-0.97)   -226.2 (-0.98)
+  vendor       -248.4 (-0.99)   -252.8 (-0.99)   -229.3 (-0.99)
+```
+
+The model predicted `-271/-274/-244` for 1180. The pipeline produces
+`-93/-190/-226` — **R collapses below baseline**. The model was not merely
+imprecise but directionally wrong, because it omitted the balance and tone
+stages that sit between the log and the ICC.
+
+**`neu = 975` remains the best anchor found**, and it is the vendor's own
+shipped constant (§84.1) rather than a fitted one.
+
+### 118.3 The lesson, recorded because it nearly became a finding
+
+A cheap surrogate model was built to avoid a 6-minute render per candidate, it
+produced a plausible optimum, and that optimum is worse than the value it was
+meant to improve on. Had it been adopted without rendering, §117's genuine gain
+would have been reversed and recorded as progress.
+
+The surrogate's failure mode is instructive: it was *self-consistent* and its
+error against the vendor decreased smoothly toward 1180. Nothing inside the fit
+signalled that it was wrong; only running the real pipeline did.
+
+### 118.4 What remains open
+
+**A uniform anchor cannot match all three slopes**, in the model or the
+pipeline — and the vendor's own slopes are not equal either
+(`-248 / -253 / -229`, B ~9 % shallower). So a per-channel element exists
+somewhere in the vendor's chain, and since `neu` is uniform
+(`975 975 975`), it is not the anchor supplying it.
+
+That is the next question, and it is a search for a *mechanism*, not a
+constant: §109-§112 and now §118 have all failed by substituting values into a
+pipeline whose stages differ from the vendor's.
+
+## 119 — Every component is golden and the composition is not; an INTEGRATION
+golden now states the defect as a number, and G passes
+
+### 119.1 "Can we Unicorn this and golden it?" — it already is
+
+There are **36** `*_golden.py` files in `tools/ansel/python-pipeline/`, and the
+tone chain is among the most thoroughly covered:
+`pakon_autotone_assembled_golden.py` calls the real `analyzeAutoTone`
+(`0x100fb730`) **with no subsystem hooked or stubbed** and diffs the whole fall-
+through against this port's Python chain. `orderFpo`, the VM (§90), the balance
+shift, `fos_opening_axes` and the Shasta leaves each have their own.
+
+**And the render is still wrong** — §116 measured ~62 % of the vendor's contrast
+slope. So the components are bit-exact and the *composition* is not. That is the
+one failure mode no per-component golden can catch, and it is exactly what
+§109–§118 kept running into: every substitution of a correct vendor value into
+an incorrectly-composed pipeline made things worse.
+
+### 119.2 The missing test, now written
+
+New: `tools/ansel/python-pipeline/pakon_transfer_golden.py`. It emulates
+nothing. It measures what the port actually produces end to end and compares it
+against what the vendor actually produced, using §116's per-pixel curve from the
+`rawAA00N`/`AA00N` pairs as ground truth. Slope per decade is scale-invariant,
+which is what makes a 14-bit port linear comparable with an 8-bit vendor export.
+
+It asserts two things: the transfer is log-*shaped* (`|corr| ≥ 0.97`) and its
+slope is within 10 % of the vendor's, per channel.
+
+```
+  baseline (render_aa001b)
+   ch      slope     vendor    err %   log corr
+    R     -156.9     -248.4     36.8      -0.62   shape and slope fail
+    G     -156.0     -252.8     38.3      -0.93   shape and slope fail
+    B     -151.2     -229.3     34.1      -0.94   shape and slope fail
+   0/3 channels within tolerance
+
+  PAKON_UNIFORM_ANCHOR=975 (render_both)
+    R     -188.1     -248.4     24.3      -0.96   shape 0.96 < 0.97; slope 24.3 %
+    G     -265.3     -252.8      4.9      -0.99   PASS
+    B     -266.1     -229.3     16.0      -0.99   slope 16.0 %
+   1/3 channels within tolerance
+```
+
+**G passes** — within 5 % of the vendor's slope with a −0.99 log fit. The first
+channel in this investigation to reach the vendor's transfer.
+
+### 119.3 The linear-domain placement, tested a second time and failing again
+
+§112 moved the shift to the linear domain with *our* shift value and slopes got
+worse. §118.4 suggested the value had to be the vendor's. Tested with the
+vendor's `A = (807, 391, 145)` applied whole, in the linear domain, with the
+uniform anchor:
+
+```
+  baseline                 R -156.9   G -156.0   B -151.2
+  anchor975 + chroma       R -188.1   G -265.3   B -266.1   <- best
+  faithful (A+linear+975)  R -148.1   G -207.9   B -222.9
+  vendor                   R -248.4   G -252.8   B -229.3
+```
+
+Worse on every channel than the density-domain configuration. The linear
+placement is correct for the *vendor's* pipeline (§60/§82.1, bit-exact) and
+wrong for *ours* — our other stages compensate for the density-domain
+placement, and removing that compensation costs more than the correct placement
+gains. It should not be revisited until the stages around it match.
+
+### 119.4 Standing configuration and next target
+
+Best known: **`PAKON_UNIFORM_ANCHOR=975` with the opponent-space chroma swap**,
+1/3 channels passing. R is the outlier on both metrics (shape 0.96, slope
+24 %), consistent with every prior section finding R worst.
+
+The integration golden is the target to work against from here: it turns "the
+render looks washed out" into three numbers that either pass or do not, and it
+would have caught this defect at any point in the last hundred sections.
+
+## 120 — Fixing R: position ruled out, capture ruled out, and the shift turns
+out to be load-bearing for R's *shape*
+
+§119 left R the sole failing channel on both metrics (slope 24 % off, log
+correlation 0.96). This attacks it directly. R is not fixed; three candidate
+causes are eliminated and one non-obvious dependency is found.
+
+### 120.1 Position: ruled out
+
+R's whole RPD distribution sat above the ICC's saturation knee under
+`anchor975 + chroma` — p1 1713, p50 2009, **12.9 % of pixels clipped high** —
+where the transfer delivers ~0.02 codes/RPD instead of ~0.2. That looked
+sufficient to explain everything.
+
+Dropping the density-domain shift (`PAKON_ZERO_SHIFT=1`) fixes the positioning
+outright:
+
+```
+                       RPD p1              spread   >2200
+  anchor975+chroma   1713  1196   844        869    13/2/1 %
+  anchor975 no-shift 1180  1111  1002        178     0/0/1 %
+  vendor              928   944   928         16
+```
+
+Floor spread 869 → 178, clipping 13 % → 0 %. **And R got worse**: slope
+`-188 → -148`, log correlation `-0.96 → -0.65`. Position was not the cause.
+
+### 120.2 Capture-side dynamic range: ruled out
+
+If R's linear data occupied less of its range than the vendor's, no colour-side
+change could recover it. Measured, in decades from p1 to the channel's own
+film base:
+
+```
+          ours    vendor
+  R       1.10     1.15
+  G       1.12     1.10
+  B       1.29     1.37
+```
+
+Essentially identical. **R is not capture-limited** — this is not an AFE gain,
+lamp duty or exposure problem, and the colour chain is the right place to look.
+
+### 120.3 The non-obvious result: the shift is load-bearing for R's shape
+
+R's log-fit correlation across configurations:
+
+```
+  baseline (fpo anchor, our shift)      -0.62
+  anchor975 + chroma-swapped shift      -0.96
+  anchor975, no shift                   -0.65
+  anchor975 + vendor A, linear domain   -0.93
+```
+
+R only becomes log-shaped when a uniform anchor **and** a shift are both
+present. Removing the shift returns R to its baseline shape defect even though
+the anchor is unchanged and the positioning is better.
+
+That is the reverse of the hypothesis this section set out to test, and it is
+not yet explained. It does say the shift is not merely a colour-balance
+translation for R — something about its presence changes the *shape* of R's
+transfer, which a pure additive term in the density domain should not do.
+
+### 120.4 Standing
+
+Best configuration is unchanged: `PAKON_UNIFORM_ANCHOR=975` with the
+opponent-space chroma swap, **1/3 channels passing** (G at 4.9 %), R 24.3 % and
+B 16.0 % out.
+
+Eliminated for R: ICC position/clipping (§120.1), capture dynamic range
+(§120.2), the linear-domain shift placement (§119.3, twice), and dropping the
+shift (§120.1). The remaining lead is §120.3's dependency itself — why an
+additive density-domain term changes R's transfer *shape* — which is a
+question about what else in the chain consumes `setShifts`, not about its value.
+
+## 121 — What else consumes `setShifts`: **FUGC**, as a per-channel LUT offset —
+which explains §120.3 and is the per-channel mechanism §118.4 predicted
+
+§120.3 found R only becomes log-shaped when a shift is present, which a purely
+additive density-domain term cannot explain. The explanation is that
+`setShifts` has a **second consumer**.
+
+### 121.1 The two consumers
+
+```python
+  preference_apply = self.setshifts_out is not None
+  x = sba_apply.apply_balance_shifts(x, self.setshifts_out)   # 1 — the balance
+  # FUGC: ebp14 = setShifts OUT @ +0x4b6 ; ebp18 = SceneContext "dmin" bag
+  # mode != 2 -> setLutInfo ; mode == 2 -> bias @ 0x101f79b0 + plane LUT
+```
+
+`setShifts` is not only added to the pixels — it is also handed to **FUGC**,
+which uses it to build a per-channel LUT.
+
+### 121.2 The mechanism, traced to the arithmetic
+
+`pakon_fugc.py:439`, ported from `0x101f79b1`:
+
+```python
+  v = int(np.int16(int(word_60ec[i]) + int(arg_ebp14[i])))   # arg_ebp14 = setShifts
+```
+
+and that feeds `aim_offset` → `set_lut_info_channel`, which shifts a seed LUT by
+a **per-channel offset** (`out[:offset] = offset` plus a clamp loop) — the
+fragment at `0x101f82c0`, Unicorn-verified bit-exact from int16-min to +5000.
+
+So the full path is:
+
+```
+  setShifts -> FUGC work bias -> per-channel setLutInfo offset -> per-channel LUT
+```
+
+### 121.3 What this explains
+
+**§120.3's anomaly.** `PAKON_ZERO_SHIFT=1` set `setshifts_out = (0, 0, 0)`,
+which is *truthy* — so `preference_apply` stayed on, the balance added nothing,
+**and FUGC received zeros**. R's shape collapse (`-0.96 → -0.65`) was FUGC being
+fed a wrong bias, not the missing balance. The experiment changed two things
+while appearing to change one.
+
+**§118.4's prediction.** A uniform anchor cannot produce three different slopes,
+and `neu` is uniform (`975 975 975`), so a per-channel element had to exist
+somewhere else in the chain. This is it — and it is driven by the very quantity
+this investigation has spent §93–§113 characterising.
+
+### 121.4 Consequence for R
+
+R's transfer *shape* is set by FUGC's per-channel LUT, whose offset is
+`word_60ec + setShifts` per channel. That makes R's shape defect a question
+about **FUGC's inputs**, not about the balance value — and FUGC's other inputs
+are the `dmin` bag (`word_60f8`) and the aim words (`word_60f2`), neither of
+which this investigation has examined.
+
+Worth noting against expectations: docs/66 recorded that "FUGC is very close to
+a no-op for this specific file". §120.3 shows it is not — removing its
+`setShifts` input measurably changes R's transfer. That note should be treated
+as file-specific rather than general.
+
+**Not claimed:** that correcting FUGC's inputs fixes R. The mechanism is
+identified and the arithmetic is already golden; what is untested is whether
+this port feeds it the same `word_60ec`, `dmin` and aim words the vendor does.
+That is now the specific question, and it is answerable from the existing
+captures rather than needing new hardware.
+
+## 122 — FUGC's inputs verified correct against the vendor's own files, which
+leaves `setShifts` as the only unverified one — and that **revives `k`**
+
+§121 identified FUGC as the second consumer of `setShifts` and the per-channel
+mechanism §118.4 predicted. This checks whether this port feeds it the right
+inputs.
+
+### 122.1 Every input except `setShifts` is vendor-sourced and correct
+
+```
+  cap_params_aim  (500, 1000, 1000)   shipped fugc-defaultParams.dpi:
+                                      "aFilmAimDmin = 500 1000 1000"
+  a_table_dmin    (500,  500,  500)   read from the seed LUT's own header
+                                      (both NoShift_fugc-generic0225.lut and
+                                       fugc-generic0225.lut carry 500 500 500)
+  seed LUT        NoShift_fugc-generic0225.lut, selected via
+                  fugc-defaultParams.dpi `mode = RGB` -> AnsFugcMapping
+                  (0x101fb140) -> fugc-rgb-lutMap.map -> the 2.25 catch-all
+```
+
+The resulting per-channel offsets, `aim_offset = w60ec − w60f8 + w60f2`:
+
+```
+  R:  500 - 500 + 736 = 736
+  G: 1000 - 500 + 320 = 820
+  B: 1000 - 500 +  74 = 574
+```
+
+R's outlier position comes from the **vendor's own** `aFilmAimDmin` asymmetry
+(R 500, G/B 1000) combined with a uniform `aTableDmin` — correctly applied.
+**No input defect found.** The hypothesis this section set out to test is
+refuted.
+
+### 122.2 The consequence: `k` matters after all
+
+If every other FUGC input is right, the only way FUGC's per-channel LUT can be
+wrong is if **`setShifts` is wrong** — and `setShifts = A + k` (§93).
+
+`A` is now understood (§99.3: `orderFpo`'s chroma × −1.04, matched on two
+rolls). **`k` is not** (§105–§113: located inside `cn_enhanced_driver`, pure
+luma, conditional, every capturable input eliminated).
+
+**This contradicts §110.4**, which concluded "finishing `k` will not fix the
+render… it should not be expected to change a pixel." That conclusion was drawn
+when `setShifts` was believed to be *only* an additive balance term, where a
+luma error shifts the picture uniformly and the tone chain largely absorbs it.
+It is not only that: it also sets FUGC's per-channel curve **offset**, where a
+luma error becomes a per-channel *shape* change. §120.3 demonstrated exactly
+that — zeroing `setShifts` collapsed R's log-fit from −0.96 to −0.65.
+
+§110.4 is superseded on this point. `k` is on the critical path for R.
+
+### 122.3 What this makes of the v32 work
+
+Emulating `balance_area_image` (now possible — v32 supplied the arguments
+§108.1 said were missing) moves from "completes the RE" to **"the remaining
+blocker on R"**. That reorders the priorities set out after §113.
+
+**Still open and unchanged:** why B is 16 % short with a clean −0.99 shape. A
+pure scale error on a correctly-shaped channel is a different defect from R's,
+and nothing in this section speaks to it.
+
+## 123 — FUGC's inputs confirmed against the vendor's **runtime** state, from the
+existing v32 capture — and what that says about needing new captures
+
+§122.1 verified FUGC's inputs against the vendor's shipped *files*
+(`fugc-defaultParams.dpi`, the seed LUT header). That leaves an obvious gap: a
+file value is only the value the program actually uses if nothing overwrites it
+at runtime. This closes that gap without new hardware.
+
+### 123.1 The `this` pointer was already in the capture
+
+A v33 capture was built and uploaded to read FUGC's Cap state. It was not
+needed, and the reason is worth recording because it generalises.
+
+Every hook row already logs the full register file — `eax/ebx/ecx/edx/esi/edi/
+ebp/eflags` and `retaddr`. For a `__thiscall`, **`ecx` is the `this` pointer**.
+So the object's address is present for every call ever hooked, at no extra
+cost, and has been since the register logging landed.
+
+What was missing was only the object's *contents* — and those turn out to be
+largely present too, because dumps are generous:
+
+```
+  FUGC this-pointers in v32 falling inside an already-dumped buffer:  42 / 80
+```
+
+Mostly inside `vm_prog1` (which grabs 0x800 from its pointer) and `bai_arg1`.
+A capture routinely contains **more than the rows that requested it** — a dump
+taken for one hook covers neighbouring objects on the same heap.
+
+### 123.2 The reading
+
+Two `fugc_set_lut_info` calls had their `this` covered. At `this+0x0e0`:
+
+```
+  call 21829   aTableDmin = (500, 500, 500)
+  call 21982   aTableDmin = (500, 500, 500)
+
+  this port                (500, 500, 500)      MATCHES
+```
+
+The vendor's live `aTableDmin` is exactly what this port uses. §122.1's
+file-derived value is confirmed as the runtime value.
+
+`fugc_analyze`'s `this+0xe0` reads as garbage — `(-30112, 2265, 8)`,
+`(25888, 24942, 27746)` — which is the expected result of a *different class*
+with a different layout, and is reported here as the negative control it is,
+not suppressed. Only `set_lut_info`'s reading is claimed.
+
+### 123.3 Consequence
+
+Every FUGC input is now verified at the strongest tier available without an
+emulation: `aFilmAimDmin` and the seed-LUT selection from the vendor's shipped
+files (§122.1), `aTableDmin` from the vendor's own runtime memory (above). The
+arithmetic consuming them is already Unicorn-verified bit-exact (§121.2).
+
+This **tightens** §122.2 rather than loosening it. `setShifts` is not merely the
+last unverified FUGC input — it is now the only one that can be wrong at all.
+`k` is confirmed as the sole remaining blocker on R.
+
+### 123.4 A capture-methodology note
+
+Before requesting new hardware time, check what the existing capture already
+contains — specifically:
+
+  1. `ecx` on `__thiscall` hooks gives you object addresses for free.
+  2. Buffers dumped for hook A frequently contain hook B's structures; test
+     containment against **every** dump, not the ones whose label matches.
+
+Both applied here, and between them they answered the question v33 was built
+for. v33 remains on the server, unused. This is not an argument that captures
+are never needed — §108.1's missing `balance_area_image` args were real, and
+v32 is what supplied them — only that "we need another scan" deserves a check
+against the existing data first.
+
+## 124 — Emulating `balance_area_image` offline: **blocked**, and the blocker is
+a capture-depth defect, not an engine defect
+
+§122.3 made emulating `balance_area_image` the critical path for R, on the
+grounds that v32 finally supplied its arguments (§108.1). The host is built
+(`tools/re/live_hooks/wine_host/bai_host.c`) and does not work. This records
+why, because the reason is specific and fixable.
+
+### 124.1 What was built
+
+`bai_host.exe` loads the real `PakonIMAu.dll` under Wine and calls
+`fcn.10102b20` on captured arguments. It differs from `pref_host` in one
+deliberate respect: it does **not** relocate buffers and rewrite pointers.
+It reserves `0x06000000..0x10000000` and lays every captured buffer down at its
+**captured address**, because `balance_area_image`'s `arg5` (`0x6d13d50`) is not
+dumped in its own right — it lies *inside* a `vm_prog1` dump at `0x6d13830`.
+Relocation would destroy that containment.
+
+That much works: 43,697 buffers load, and every pointer argument on all 40 calls
+resolves — `args covered = [1, 3, 5, 6]` on each.
+
+### 124.2 It faults on the first call
+
+The process hangs at 0 % CPU on call 21785. `sample(1)` on the live process
+shows the reason: unbounded recursion inside `ntdll.so`'s exception dispatcher —
+the classic signature of a fault raised while handling a fault. The function's
+own prologue installs an SEH frame (`push -1; push 0x10521740; mov eax, fs:[0]`),
+so its handler runs, faults again, and never terminates.
+
+### 124.3 Two causes, both capture-depth
+
+**(a) The `this` object is not captured at all.** Of the pointer arguments,
+`arg0` is the only one no dump covers — 0 bytes available. §123.1's trick does
+not rescue it here: `ecx` gives the *address*, but nothing in the capture
+contains that object's *contents*.
+
+An early reading that a zeroed `this` would be survivable — "the entire
+disassembly contains exactly one `this`-relative access, `[esi+0x74]`" — was
+**wrong, and wrong for a methodological reason worth naming**: it came from
+grepping three registers (`esi/ecx/edi`) for positive hex offsets. That pattern
+cannot see `arg_8h` being loaded into some other register and dereferenced,
+which is what actually happens. A grep over a register subset is not a
+reachability argument. This is the same class of error as §98's "zero faults
+means all inputs captured".
+
+**(b) The argument list is truncated.** radare2 reports the function
+referencing `arg_68h` — `ebp+0x68`, argument **#24** — and referencing it 12
+times, more than any other argument. So its signature is ~25 dwords wide. The
+v32 hook captured **16**. Args 16–24 are unavailable.
+
+Calling convention is not at issue: the epilogue is a bare `c3` (caller-cleans,
+`__cdecl`), so passing a wider prototype is safe, and arg0's stack slot is
+genuine rather than a `__thiscall` `ecx` artefact. Re-running with all 16
+captured dwords instead of the first 8 changed nothing — same hang, same
+0.32 s of CPU.
+
+### 124.4 What this actually costs
+
+`k` remains unrecovered, and R remains the failing channel. But the blocker is
+now **specific and cheap to clear**, where before it was "emulate a 4020-byte
+function". A capture needs to:
+
+  1. raise `stack_dwords` depth for this hook from 16 to at least 25, and
+  2. dump `ecx` (the `this` object) for `balance_area_image` — a
+     `EXTRA_DUMP_THIS`-style row, the object being at most a few hundred bytes.
+
+Both are hook-table edits of the kind §46.8/§47 already govern. Note the
+contrast with §123: there the answer was already latent in the existing capture
+and a new scan would have been waste; here it genuinely is not, and the
+distinction is which pointers other dumps happen to contain.
+
+**Not claimed:** that clearing these two makes the function run. A zeroed `this`
+plus zeroed args 16–24 is fabricated input, and the run produced no numbers —
+correctly, since numbers from that configuration would have been worthless.
+Whether the object has further pointer-valued fields needing their own dumps is
+unknown until (1) and (2) are done.
+
+## 125 — v34: the two rows that unblock `balance_area_image`, and the check that
+justified asking for them
+
+§124 left the offline emulation blocked on two missing inputs. This records
+what v34 changes, and — first — the check that both are genuinely missing,
+because §123 had just shown that "we need another scan" is often wrong.
+
+### 125.1 Neither gap is recoverable from the existing capture
+
+Containment was tested against **all 89,040 dumps** in the v32 capture,
+whatever hook produced them, not the ones whose label matches:
+
+```
+  `this` (0x939fd38, identical on all 40 calls)
+        in no dump. Nearest is poly_input_r @ 0x93a0020, 0x2e8 bytes past it.
+  args 16..24  (the stack region)
+        covered on 0 of 40 calls; no dump covers the stack at all.
+```
+
+`ecx` still gives the `this` **address** for free on every call — §123.1's
+point holds — but the capture contains nothing of its **contents**. So the two
+cases differ in exactly the way that matters: §123's answer was latent in the
+existing data, and this one is not.
+
+### 125.2 The changes
+
+```
+  hookcore.c   STACK_DWORDS_LOGGED   16 -> 32
+  table row    { "balance_area_image", "bai_this",
+                 EXTRA_DUMP_THIS_OFFSET, 0, 0, 0, 0x200 }
+```
+
+`EXTRA_DUMP_THIS_OFFSET` (dumps from `regs->ecx + off`) rather than
+`EXTRA_DUMP_STACK_PTR` index 0: the two hold the same value here, but reading
+`ecx` does not assume the callee also receives `this` on the stack.
+
+**No new dump kind and no new hook**, so §46.8/§47's enum/switch/bounds-check
+coupling does not apply — `fcn.10102b20` has been hooked since v20 and
+`EXTRA_DUMP_THIS_OFFSET` has existed since v21. This is the cheapest shape a
+capture change can take.
+
+### 125.3 A latent all-or-nothing bug, found by widening
+
+The stack read was guarded by a single `IsBadReadPtr` across the **whole**
+window. Widening 16 → 32 would therefore have made any call whose frame ends
+within 128 bytes of unreadable memory degrade from "16 good dwords" to
+`"unreadable"` — silently losing arguments that were previously captured, in a
+change whose entire purpose was to capture more.
+
+The probe is now per dword, and the row stops at the first unreadable one. A
+short row is the honest outcome: a consumer sees how many dwords it actually
+got, rather than a full-length row padded with garbage.
+
+This was not a hypothetical — it is the same failure mode as §98 (poison reads
+are silent) and §124's register-subset grep. The pattern recurs: a check that
+reports success while having examined less than it claims.
+
+### 125.4 Verified, and what is not
+
+Built clean; `check_table_sync.py` OK (32 hooks); the hookcore selftest passes
+in full, including the 8-thread × 4000-iteration same-hook stress. Capture
+shape confirmed on a real run: **32 dwords on all 32,330 call rows** (was 16),
+zero unparseable lines, longest line 754 bytes against the 2048-byte buffer, so
+the wider array does not truncate the JSON.
+
+**Not verified:** that `bai_this` returns readable bytes, or that 0x200 is the
+right size. The selftest exercises a synthetic hook table, not the real one, so
+the row cannot fire until v34 runs against the scanner. Nor is it claimed that
+these two inputs are sufficient — whether the object holds pointer-valued
+fields needing rows of their own is unknown until a capture lands.
+
+## 126 — `k` MEASURED on two rolls, and then ruled out: it is neither the
+washed-out cause nor R's fix. §110.4 was right; §122.2 is superseded
+
+§105–§113 characterised `k` as "pure luma, conditional" but never valued it, and
+§124 set out to recover it by emulating `balance_area_image`. That was the hard
+route. The capture already contained both sides of the subtraction.
+
+### 126.1 The measurement
+
+v34 dumps `cn_shift_before` (0x500 bytes from `cn_enhanced_driver`'s arg1, the
+shift living at **+0x4b6**) and `balance_shift_4b6`. Differencing them per frame:
+
+```
+  (691, 366,  95) -> (718, 393, 122)    k = +27
+  (621, 182, -47) -> (621, 182, -47)    k =   0
+  (658, 289,  14) -> (612, 243, -32)    k = -46
+  (398,  41,-152) -> (472, 115, -78)    k = +74
+```
+
+**The difference is uniform across R/G/B on every frame** — confirming "pure
+luma" as an arithmetic fact rather than an inference — and **zero on 21 of 39
+frames**, confirming "conditional".
+
+Independently reproduced on the v32 roll: uniform on all 40 frames, zero on 23.
+Two rolls, same signature.
+
+A first attempt read this dump at offset 0 and got `(21760, 2174, 1)`-shaped
+triples with a monotonically climbing middle term. That is a counter, not
+colour. The row's own comment (`0x500 covers +0x4b6 with margin`) names the
+offset; reading a labelled dump without reading its definition produced
+plausible-looking nonsense.
+
+### 126.2 It cannot be the washed-out offset
+
+```
+  frames 39   |k| <= 94   mean |k| = 4.9 sRGB codes   worst = 23.5
+  a uniform 88 sRGB offset needs k = 352, on EVERY frame
+```
+
+Off by 4x at the extreme, and absent on 54 % of frames while the offset is
+always present. **Ruled out**, by magnitude and by incidence, independently of
+any rendering.
+
+### 126.3 It is not R's fix either — measured, not argued
+
+`PAKON_K` applies a measured `k` on top of the current best configuration
+(`PAKON_UNIFORM_ANCHOR=975`), against the vendor's own frames:
+
+```
+                     k=-55     baseline    k=+94
+  R  slope err       36.6 %     35.3 %     37.9 %
+  R  log corr        -0.96      -0.95      -0.93
+  G  slope err       20.3 %     18.3 %     17.8 %
+  B  slope err        7.5 %      9.4 %     11.7 %
+                      1/3        1/3        0/3 channels
+```
+
+`+94` and `-55` are the extremes observed across both rolls — the most
+favourable values `k` can be given in either direction. **R is at its best with
+`k = 0`**, degrading whichever way it moves. That symmetry matters: a term that
+hurt in only one direction would suggest a sign error, whereas hurting both ways
+says the term does not belong here at all.
+
+Note G improves slightly with positive `k` and B with negative — no single value
+helps more than one channel, which is what a uniform luma term should do and is
+the opposite of what R needs (a per-channel *slope* correction).
+
+### 126.4 What this overturns
+
+§122.2 revived `k` as "on the critical path for R", overturning §110.4's
+"finishing `k` will not fix the render… it should not be expected to change a
+pixel". That revival was reasoning, not measurement: it argued that because
+`setShifts` feeds FUGC's per-channel LUT offset, a luma error becomes a
+per-channel *shape* change.
+
+The mechanism is real (§121.2 is Unicorn-verified). The magnitude is not:
+`k` is too small, too often zero, and moves R the wrong way. **§110.4 stands.
+§122.2 is superseded on this point.**
+
+Chasing `k` through `balance_area_image` emulation (§124, §125, v34) was
+therefore work spent on a term that does not matter. v34 was not wasted — it is
+what made the measurement possible, and it settles the question rather than
+leaving it open — but the emulation itself no longer has a purpose.
+
+### 126.5 Caveat, stated rather than buried
+
+`k` was applied on top of **this port's** shift base (683, 297, 151), which is
+already not the vendor's (807, 391, 145 — §94.2). Adding a correct term to a
+wrong base is not the same experiment as a fully correct pipeline. What §126.3
+licenses is narrow: *given the current base*, no value of `k` in the observed
+range rescues R. §126.2's magnitude argument does not depend on the base at all
+and is the stronger of the two.
+
+### 126.6 What is still open
+
+The gate. 21 of 39 frames have `k = 0`, and the incoming shift does not separate
+the two groups — `k==0` spans R 413..1332, `k!=0` spans R 398..992, overlapping
+on all three channels. Whatever decides it reads something other than the shift
+it modifies. That is now a curiosity rather than a blocker.
+
+**R's 35 % slope error and the ~88–89 sRGB offset both remain unexplained**, and
+this section removes one of the remaining candidates rather than finding the
+cause.
+
+## 127 — The washed-out defect localised to **tone × ICC**, the invert stage
+cleared, and the vendor's tone algorithm found and executed
+
+§126 removed `k` as a candidate. This finds where the contrast actually goes.
+
+### 127.1 Three stages, measured separately
+
+`pakon_decode.py` writes each stage, so the chain can be measured rather than
+argued about. On a **clean default render** (no `PAKON_*` experiments):
+
+```
+        INVERT raw->rpd     TONE      ICC     tone*icc   needed   short
+  R        -957.2          0.834    0.185     0.1543    0.2595   40.6 %
+  G       -1016.5          0.797    0.162     0.1292    0.2487   48.0 %
+  B        -938.1          0.867    0.140     0.1211    0.2444   50.5 %
+```
+
+**The invert stage is correct**: −957/−1017/−938 against the −1000 per decade
+its own formula predicts, at correlation −1.000. The 40–50 % contrast loss is
+entirely downstream, in tone × ICC.
+
+Two corrections this required. A first pass measured the invert at −572 and
+called it the defect; that used `05_ansel_rpd16.tiff` (the **toned** stage) and
+ran with `PAKON_LINEAR_SHIFT=1` + `PAKON_UNIFORM_ANCHOR=975` — two experiments
+— so it measured neither the invert nor the default. The stage files are
+`NN_rpd16.tiff` (pre-tone, `rpd` written unscaled) and `NN_ansel_rpd16.tiff`
+(`rpd12_to_u16(toned12)`, ×`65535/4095`), which are written through different
+paths; the identities are asserted from `pakon_decode.py`, not assumed.
+
+### 127.2 The tone stage is a stand-in using 3 of 72 parameters
+
+`pakon_decode.py` forces `shasta_stand_in = True` for F-135 because
+`AnsShastaCapabilityImpl::analyze` (`0x101e5250`) is unported. The stand-in uses
+`shadowPercent`, `black`, `metricGray`. The vendor's `shasta-rpd.dpi` carries
+**72**.
+
+### 127.3 The params struct, recovered and verified
+
+`fcn.1014a200` (9524 bytes) reads every key and stores it at a fixed offset:
+
+```
+  0x38 metricGray  0x3c black  0x40 white  0x48 codeValuesPerButton
+  0x54 maxValue    0xa0 blackButtons  0xb0 shadowButtons  0xb8 highlightButtons
+  0xc8 blackAggr   0xd8 shadowAggr    0xe0 highlightAggr  ...  0x198
+```
+
+ints at 0x38..0x5c, doubles from 0x60 on an 8-byte stride. **Independently
+confirmed** by `fcn.1008e970` (`ShastaParams::operator=`), which copies exactly
+that set, and again by building the struct from the `.dpi` and reading it back
+inside the DLL's own address space: `metricGray=1618`, `white=3000`,
+`codeValuesPerButton=75.000`, `shadowButtons=6.670`.
+
+Much of the surrounding code is struct machinery, and each had to be excluded
+by evidence rather than by name: `0x100543b0` is the constructor (0 reads / 56
+writes), `0x1008e970` `operator=` (reads and writes every offset),
+`0x10128020` the serialiser (`push str.ShastaParams`, `__metricGray_`).
+"Touches the params" is not a discriminator.
+
+### 127.4 The algorithm: `fcn.101bea50`
+
+Found by ranking on params **read but never written**, plus heavy FP and
+branching. It reads exactly the roll-off set —
+
+```
+  +0xa8 extShadowButtons  +0xf0 shadowExpScale    +0x100 shadowMaxExpSlope
+  +0xb0 shadowButtons     +0xf8 highlightExpScale +0x108 highlightMaxExpSlope
+  +0xe0 highlightAggr     +0xe8 extHighlightAggr
+```
+
+— from `params` at `this+0xe0`, and evaluates **three `pow()`s** (`f2xm1` +
+`fscale` + `frndint`) with `fdiv`/`fdivr` around them. 771 bytes, 20 basic
+blocks, cyclomatic complexity 13. Call chain `0x101c17a0 → 0x101c1949 →
+0x101bea50`.
+
+### 127.5 Executed under Wine, on the vendor's real parameters
+
+`shasta_host.exe` calls it with a `ShastaParams` built from `shasta-rpd.dpi`.
+Its signature was read from the body, not guessed: all six stack args are
+loaded as **dwords**, and args 4/5 are written through (`fstp qword [ebx]`,
+`fstp qword [edx]`), so they are `double*` OUT params, with a trailing double at
+`ebp+0x20`. A first attempt passed six doubles and page-faulted writing to NULL
+at `0x101beb18` — which is what proved the shape.
+
+It now runs clean. **And it early-exits:**
+
+```
+  xor eax, eax
+  cmp word [ecx + 0xe], ax      ; this+0xe is a 16-bit COUNT
+  jle 0x101bed15                ; count <= 0 -> skip the loop entirely
+```
+
+With a zeroed `this` the count is 0, the loop is skipped, and the function
+writes 0.0 to both out-params — exactly what the sweep showed across
+arg0 = 0..4096.
+
+### 127.6 What that early exit means
+
+`fcn.101bea50` iterates over **image analysis data carried in `this`**. The
+vendor's tone curve is therefore scene-dependent — an auto-tone over a
+histogram — which is consistent with `analysisImageDim = 64` and
+`rowPortion = colPortion = 0.875` (a 64×64 sample of the central 87.5 %).
+
+This is why a static port of the *parameters* alone could never have
+reproduced it, and why the two-anchor stand-in is not merely imprecise but
+structurally the wrong shape: it maps two fixed percentiles, where the vendor
+integrates a histogram through a parameterised shadow/highlight roll-off.
+
+**Not yet known:** the layout of the analysis structure in `this` — the count
+at `+0xe` is established, the bins are not. Until that is known the function
+cannot be driven with real data, and no claim is made about what curve it
+produces.
+
+### 127.7 RETRACTION of §127.2–§127.6: Shasta never runs for this film path
+
+§127.2 claimed the tone stage is a two-anchor stand-in using 3 of 72
+parameters, and §127.3–§127.6 reverse-engineered `AnsShastaCapabilityImpl`
+accordingly. **That premise is wrong.**
+
+The claim came from `pakon_decode.py` printing
+
+    F-135 tone: shasta two-anchor stand-in (shadowPercent 1.0 -> black, ...)
+
+and from `engine.shasta_stand_in = True`. But the flag does not select the
+two-anchor function. `pakon_ansel.py:1030` reads:
+
+```python
+  if self.shasta_stand_in:
+      if apply_lut is not None: x = apply_1d_lut(x, apply_lut)
+      if shasta_mod.AUTO_TONE_PORTED:   # True
+          x = real_auto_tone(x)          # the VERIFIED chain
+      else:
+          x = shasta_two_anchor_tone(x, self.shasta)   # never reached
+```
+
+with the comment: *"Stands in for ColorNegativePath::analyzeAutoTone 0x100fb730
+(cna -> dra -> toneHelper -> contrast -> ast -> citras), **NOT for Shasta, which
+never runs for CN-Enhanced**"*.
+
+So the tone gain measured in §127.1 (0.834/0.797/0.867) is the **verified
+analyzeAutoTone chain**, not a placeholder. The log line is stale text; the
+flag name outlived its meaning.
+
+**What survives:** §127.1's three-stage measurement (the numbers are real, and
+the invert stage is confirmed correct at -957/-1017/-938 against -1000), and
+§127.3–§127.5's mechanical results about `ShastaParams` — the struct layout,
+`fcn.101bea50`'s signature, and that it runs under Wine on real data. Those are
+correct about Shasta; Shasta is simply not on the CN-Enhanced path.
+
+**What this changes:** if the tone stage is the verified chain, the 40-50 %
+contrast deficit is NOT in tone-as-placeholder. tone x icc = 0.154 against a
+needed 0.2595, and tone is verified — which points the remaining deficit at the
+**ICC stage** (measured 0.185/0.162/0.140, and notably channel-ordered
+R > G > B, where the vendor's implied gain is ~0.26 and roughly uniform).
+
+**Methodological note.** A printed status line is not evidence of which branch
+executed. This is the third time in this investigation that a plausible-looking
+label was taken for a fact -- after §98's silent poison reads and §124's
+register-subset grep. The check that would have caught it costs one grep of the
+branch it claims to describe.
+
+## 128 — Where the expansion is lost: **`contrast` is a pass-through**, and the
+chain never expands at all
+
+§127.7 established that the tone stage is the verified `analyzeAutoTone` chain,
+not a placeholder, and the ICC isolation measurement fixed the target: with the
+invert at -957/decade and the ICC capped at 0.105 sRGB per RPD unit, the tone
+stage must **expand ~2.5x** to reach the vendor's -248. It delivers 0.92.
+
+### 128.1 The ICC cannot be the culprit, measured directly
+
+Feeding a synthetic 0..4095 ramp through the real profile pair, with no image,
+no tone and no invert:
+
+```
+  pre-encode (x255/4095)   0.0623
+  ICC transform (u8->u8)   1.6818      (it expands)
+  total                    0.1047      uniform: R 0.1047 G 0.1047 B 0.1048
+  needed                   0.3110
+```
+
+It is **uniform across channels**, so it cannot produce the channel-ordered
+R>G>B deficit seen in-pipeline (that comes from fitting over the image's own
+histogram). And it is **capped**: it responds over RPD 489..4022 and spends the
+whole 0..255 output across that span. 0.31 would require 255 codes over ~820
+RPD units. No input makes it steeper.
+
+So the range must arrive already wide. Ours does not: the frame's toned RPD
+spans ~1600 units (p1..p99), about 45 % of the ICC's input window, so it uses
+about 45 % of the available output. **That is the washed-out symptom** --
+insufficient range into a transform that cannot recover it.
+
+### 128.2 Stage-by-stage, the chain never expands
+
+Instrumenting the LUT each stage actually hands on:
+
+```
+  cna.ToneScaleLut      size 5000   mid-slope 0.9216   range 410..4095
+  dra.DraLut            size 4096   mid-slope 0.8849   range 410..3970
+  contrast.OutToneLut   size 4096   mid-slope 0.8849   range 410..3970
+```
+
+and on the image: span gain 0.915 / 0.916 / 0.915 on R/G/B.
+
+Two findings:
+
+**(a) `contrast` is a pass-through.** `contrast.OutToneLut` is byte-identical to
+`dra.DraLut` -- same size, same range, `maxdiff = 0.0`. The stage whose whole
+purpose is contrast returns its input unmodified. `real_auto_tone` applies
+`OutToneLut` as the chain's final curve, so the applied curve is dra's.
+
+**(b) Nothing upstream expands either.** `cna.ToneScaleLut` is already
+near-identity at 0.9216 before dra or contrast touch it. The sequence is
+0.9216 -> 0.8849 -> 0.8849: mild compression at every step, expansion at none.
+
+### 128.3 What this is, and is not
+
+This is §119's "every component is golden and the composition is not", now with
+a location and a number. It is **not** a missing algorithm, a wrong parameter
+file, or an unported subsystem: the six subsystems are individually
+Unicorn-verified, and the wiring runs to completion with a non-zero
+`ctx.tone_object`. What fails is that the assembled chain produces an
+essentially identity curve where a 2.5x expansion is required.
+
+**Not claimed:** that `contrast` is *supposed* to expand by 2.5x on its own, or
+that fixing it alone closes the gap. `cna`'s 0.92 is equally unexplained, and
+the required expansion may be distributed. What is established is narrower and
+firmer: the applied curve equals dra's output exactly, so `contrast`
+contributes nothing, and no stage in the chain expands.
+
+**Next:** `pakon_contrast`'s own golden should be checked against what its
+subsystem is being handed here -- an individually-verified port can still be
+invoked with inputs that make it a no-op, which is exactly what a pass-through
+with `maxdiff = 0.0` looks like.
+
+### 128.4 `contrast` is not gated off -- it runs and still returns its input
+
+The obvious explanation for a pass-through is the stage gate: stage 4's gate is
+`cap[-0x30]+0xc`, and a zero byte skips it. That is not what happens.
+`make_default_capability_set()` reports `contrast declare_enabled=True` (six on,
+pfd off -- exactly what `declareAutoTone` leaves behind).
+
+So the stage is enabled, executes, and its `OutToneLut` still equals the
+`DraLut` it was handed, `maxdiff = 0.0`. The wiring feeding it is
+
+```python
+  self.contrast_tone_lut = lambda ptr: self._dra.DraLut
+```
+
+`pakon_contrast.py` is independently verified (`pakon_contrast_lut_golden.py`,
+plus `pakon_contrast_slope_golden.py` for `constrainSlope` 0x101d2eb0), so the
+subsystem's own arithmetic is not in question. What is in question is the
+inputs this integration hands it: an individually-verified port invoked with
+arguments that make it a no-op is indistinguishable, from the outside, from a
+stage that was never called -- and `maxdiff = 0.0` is what that looks like.
+
+That is the specific defect to chase: not contrast's arithmetic, but what
+`_RealAutoTone` passes into it versus what the DLL passes at `0x1010a510`
+(`&st, holder, ctx+0x44, x, tone`). Note the vendor passes **`ctx+0x44`** and
+the image `x` alongside the tone object; the wiring above supplies only a LUT.
+
+### 128.5 contrast is configured to act, and still does not
+
+Following the no-op down to its configuration, every gate that could
+legitimately make `contrast` a pass-through is open:
+
+```
+  userInputMode    = COMBINE_WITH_SLOPE (1)   -- in MODES_WITH_SLOPE (1, 3)
+  lutSize          = 4096
+  midpoint         = 1550 1550                -- midpointIn == midpointOut
+  bConstrainSlope  = true
+  capability gate  = declare_enabled True
+```
+
+Mode 1 is not one of the two OVERRIDE modes, so the NULL-tone early return at
+`0x101d82c5` is not taken; `bConstrainSlope` is true, so `constrain_slope()`
+runs; and the mode is in `MODES_WITH_SLOPE`, so `build_ramp()` is reached.
+
+`scene_type` is worth noting but is not obviously the culprit:
+`real_auto_tone` hardcodes 0 (the shell's documented default -- per-frame scene
+classification is a separate unported capability, docs/64), and
+`SLOPE_BAND_BY_SCENE_TYPE` covers **1..6 only**, so 0 falls through to the
+`x`-based tiebreak and lands on band 0 -- the same band scene type 1 selects.
+That is the documented behaviour for types outside [1, 6], not a defect on its
+face.
+
+So: enabled, correct mode, slope constraint on, a ramp built -- and
+`OutToneLut` still comes back byte-identical to `DraLut`. The remaining
+suspects are the two inputs this integration supplies by hand rather than from
+a previous stage: `x` (the shell's `ctx+0x44`) and the `scene_type` it
+hardcodes. `midpointIn == midpointOut == 1550` means the ramp is pinned to
+identity at its midpoint, so a neutral or unity slope out of
+`constrain_slope()` would produce exactly the observed identity.
+
+**Next, and mechanical:** print `r.lowSlope` / `r.highSlope` after
+`constrain_slope()` in a real run. Unity there localises the defect to
+`constrain_slope`'s inputs (`scene_type`, `x`); non-unity means the ramp is
+built correctly and the loss is in how `adj_lut` is combined into `out_lut`.
+Either way it is one print away, and it is the last unknown between here and a
+tone stage that expands.
+
+### 128.6 Measured: the slopes are unity for EVERY scene type -- `contrast` is
+not the defect, and §128.4's framing is corrected
+
+The measurement §128.5 called for, taken:
+
+```
+  scene_type=0: lowSlope=1.0 highSlope=1.0 x=2   R span gain 0.923
+  scene_type=1: lowSlope=1.0 highSlope=1.0 x=2   R span gain 0.949
+  scene_type=2: lowSlope=1.0 highSlope=1.0 x=2   R span gain 0.949
+  scene_type=3..6: lowSlope=1.0 highSlope=1.0    R span gain 0.923..0.930
+```
+
+**Unity on every scene type**, so the hardcoded `scene_type=0` is not the
+cause -- that hypothesis is refuted, and the span gain never rises above 0.949
+under any of them.
+
+This corrects §128.4. `constrain_slope` returning 1.0 means "the input slope
+needs no constraining"; combining an input LUT with a unity ramp pinned at
+`midpointIn == midpointOut == 1550` correctly reproduces the input. So
+`OutToneLut == DraLut` is **`contrast` working**, not `contrast` failing. It
+was never this stage's job to supply the 2.5x.
+
+### 128.7 Where that leaves it
+
+The expansion must therefore already be present in what reaches `contrast`, and
+it is not:
+
+```
+  cna.ToneScaleLut   mid-slope 0.9216
+  dra.DraLut         mid-slope 0.8849
+```
+
+Both are near-identity before `contrast` is ever called. So the missing 2.5x is
+upstream, in `cna` and/or `dra` -- or in the fact that neither is being asked to
+produce an expansive curve at all.
+
+**Stated plainly as a negative result:** this section set out to convict
+`contrast` and instead exonerated it. Three candidate causes are now eliminated
+-- the ICC (uniform and capped, §128.1), the stage gate (enabled, §128.4), and
+`scene_type` (unity slopes on all seven values, above). What remains is why
+`cna` and `dra`, both individually Unicorn-verified, produce near-identity
+curves here when the vendor's chain must produce a ~2.5x expansion.
+
+## 129 — DRA's paper range explains the near-identity curve; the "wrong place on
+the ICC" diagnosis built on it is REFUTED by its own experiment
+
+### 129.1 Why the chain is near-identity: it is supposed to be
+
+`dra-*.dpi` carries
+
+```
+  paperMin = 1200   paperMax = 2000     minSlope = 0.8   maxSlope = 1.5
+  lowFixedPoint = 1550   highFixedPoint = 1550
+```
+
+DRA measured this frame correctly -- `effMin/effMax = 1184/1960`,
+`nLumPixels = 31284` -- and maps that onto `paperMin..paperMax`, a ~1.03
+mapping. **`maxSlope = 1.5` makes a 2.5x expansion impossible by
+construction.** So §128's "the chain never expands" is not a defect: the tone
+chain targets a paper density range, and the near-identity LUT is DRA working.
+
+This also corrects §128.1. Measured across 300..3600 the ICC gives 0.105, but
+that is not where the data lives; over 1200..2000 it gives **0.3083**, against
+the 0.311 required. The ICC is not capped and not the culprit.
+
+### 129.2 The diagnosis that followed, and its refutation
+
+The channels do not sit on the paper range:
+
+```
+            toned range   ICC local slope
+  R          913..1774        0.2204
+  G         1299..2252        0.2410
+  B         1439..2511        0.1570
+  paper     1200..2000        0.3083
+```
+
+which suggested each channel sits where the ICC is shallow, and differently
+shallow -- washed-out and colour-cast from one cause. `PAKON_PAPER_ALIGN`
+tested it by mapping each channel onto 1200..2000 before the ICC:
+
+```
+                plain      paper-aligned
+  R slope err   36.8 %        34.9 %
+  G slope err   38.3 %        33.2 %
+  B slope err   34.1 %        30.8 %
+                0/3           0/3
+```
+
+A few percent, where the diagnosis predicted ~40 %. **Refuted.**
+
+And the experiment carried an error worth naming: the channels' spans are
+already 861/953/1072 wide, while `paperMin..paperMax` is **800** -- so
+"aligning to the paper range" slightly COMPRESSED them. The paper range is not
+a range to expand into, which undercuts the premise rather than merely the
+result.
+
+### 129.3 What stands
+
+Established and unaffected: the invert stage is correct (§127.1); the ICC
+delivers ~0.308 where the data lives, so it is not capped (§129.1); DRA's
+near-identity output is correct behaviour bounded by `maxSlope = 1.5`
+(§129.1); `contrast` is a correct pass-through under unity slopes (§128.6);
+and `k`, `scene_type` and the stage gates are all eliminated.
+
+Still unexplained: with an invert at -957/decade, a tone chain that is
+deliberately ~1.0, and an ICC worth ~0.31 in the right place, the arithmetic
+predicts roughly -290 codes/decade -- close to the vendor's -248 -- yet the
+pipeline measures -157/-156/-151. The stage measurements and the end-to-end
+measurement do not reconcile, and that gap, not any single stage, is now the
+open question.
+
+### 129.4 The stage model reconciles -- and the ICC isolation was measured on grey
+
+Using the REAL toned ranges (R 1452..2244, G 1452..2337, B 1387..2430 -- not the
+downsampled trace's ranges, which came through a different path and were wrong):
+
+```
+            ICC local slope   predicted end   measured end   vendor
+  R  0.2185                      -174.5         -165.5       -248.4
+  G  0.1935                      -156.8         -175.1       -252.8
+  B  0.1853                      -150.8         -173.4       -229.3
+```
+
+`invert x tone x icc` now agrees with the end-to-end measurement to ~15 %, so
+the three-stage decomposition is sound and §129.2's reconciliation gap is
+closed. The deficit against the vendor is real and **distributed**, not one
+broken stage.
+
+It also explains why `PAKON_PAPER_ALIGN` failed. Shifting the data from
+1452..2244 to 1200..2000 should have moved the ICC slope 0.2185 -> 0.3083
+(+41 %); it delivered +3 %. The reason is a flaw in the isolation measurement
+itself: **it swept a NEUTRAL ramp (R=G=B)**. `Rpd2Pcs -> Srgb` is a 3-channel
+transform whose every output depends on all three inputs, so a per-channel slope
+measured on grey does not carry over to real coloured data. Every ICC number in
+§128.1 and §129.1-129.2 inherits that caveat.
+
+**Consequence for method:** the ICC must be characterised on the actual
+per-pixel RGB triples, not a grey sweep, before any further conclusion is drawn
+from its "gain". That is the next measurement, and it needs no hardware.
+
+## 130 — ICC re-characterised on real triples; and the vendor "raw" TIFFs turn
+out to be 8-bit exports
+
+### 130.1 The ICC, measured on real RGB triples
+
+§129.4 invalidated the grey-ramp measurement. Redone on the actual per-pixel
+triples of frame 05's toned RPD:
+
+```
+            real triples      grey ramp      corr
+  R           0.2845           0.2185        0.882
+  G           0.2131           0.1935        0.963
+  B           0.1882           0.1853        0.962
+```
+
+R is **30 % higher** than the grey sweep claimed, and its correlation is only
+0.882 -- the ICC's R output is not a clean function of R input, which is the
+cross-channel dependence that made the grey measurement invalid. G and B move
+little. So §128.1's "capped at 0.105" and everything inferred from it stay
+retracted; these are the numbers to use.
+
+The profile pair itself is confirmed correct, not a candidate:
+`profile-Rpd2Srgb.dpi` specifies `Rpd2Pcs_HR200_QS_v5s10.pf -> Srgb_v2.pf`,
+`renderIntent = P`, `dataType = U8`, `colorSpaceMin/Max = 0/255` -- exactly what
+the port uses.
+
+### 130.2 `rawAA*.tif` cannot be fed through the invert
+
+The plan was to derive the vendor's internal RPD range from their own
+raw/rendered pair and compare it with ours -- the question the §129.4
+reconciliation raised. It does not work:
+
+```
+  rawAA001.tif   uint8   min 1  max 204   200 distinct levels
+  AA001.tif      uint8   min 0  max 255   256 distinct levels
+```
+
+`rawAA*.tif` is an **8-bit export**, not the scanner's linear 14-bit data. Our
+invert's pedestals are 12-bit linear (`c9 = 159.594 / 444.750 / 635.535`), and
+G's alone exceeds the file's entire range -- feeding it through produced
+negative RPD for R and zero valid pixels for G and B.
+
+This does **not** invalidate §116: that fitted `out = m*log10(raw) + c`
+end-to-end, and slope-per-decade is scale-invariant, which is what made an
+8-bit input admissible there. It only rules out using these files to recover an
+absolute internal RPD range.
+
+### 130.3 What that leaves
+
+The comparison still needs the vendor's linear data. One route needs no vendor
+software: the live-hook captures already dump vendor-side pixel buffers --
+`poly_input_r` (0x84000 B) and `pixel_data` (0x80000 B), 117 of each in v34 --
+so if either is the vendor's RPD at a known stage, the range is already on
+disk. Establishing which stage those buffers belong to is the next step, and it
+is a capture-analysis question, not a hardware one.
+
+## 131 — The vendor's own pixel buffers show it: our RPD fills ~2.6x less of the
+range than the vendor's
+
+§130.3 asked whether the live-hook captures already hold vendor-side pixel data
+that would settle where the vendor's RPD sits. They do.
+
+### 131.1 `poly_input_r` is 13-bit
+
+117 dumps in v34, 0x84000 bytes each = 270,336 `uint16` -- a single plane (the
+label's `_r`, and there is no 3x structure). Across all 117:
+
+```
+  global max 8167   median-of-max 5977   min-of-max 2520
+  <= 4095?  NO      <= 8191?  YES        <= 16383?  YES
+```
+
+A hard ceiling at **8191 = 2^13 - 1**, so this is 13-bit data -- neither 12-bit
+RPD (4095) nor 14-bit linear (16383).
+
+### 131.2 Range utilisation, which is scale-independent
+
+The absolute scale does not have to be resolved to make the comparison: the
+FRACTION of the available range occupied is dimensionless.
+
+```
+  vendor poly_input_r      p1..p99 span / full range
+    call 37   695..6315      5620 / 8191  =  68.6 %
+    call 38  1101..5178      4077 / 8191  =  49.8 %
+
+  our toned RPD, frame 05
+    R        1452..2244       792 / 4095  =  19.3 %
+    G        1452..2337       885 / 4095  =  21.6 %
+    B        1387..2430      1043 / 4095  =  25.5 %
+```
+
+**The vendor occupies 50-69 % of its range; this port occupies 19-26 %.** The
+ratio is ~2.6x -- the same factor §128 derived from the slope arithmetic, now
+measured directly from the vendor's own buffers instead of inferred from an
+end-to-end fit.
+
+### 131.3 Why this matters more than the earlier attempts
+
+Every previous attempt to locate the missing expansion asked which STAGE was
+wrong, and each answer was refuted: `contrast` (correct pass-through, §128.6),
+`scene_type` (unity on all seven, §128.6), the ICC (profile pair confirmed
+correct, §130.1), `k` (§126), the invert (correct, §127.1). This measurement
+does not depend on any stage attribution. It says only that the vendor's data
+is ~2.6x wider in its own domain than ours is in ours, which is consistent with
+every slope measurement taken so far and independent of all of them.
+
+**Not yet established:** the absolute scale of `poly_input_r` (13-bit could be
+RPD12 x2, since 4095x2 = 8190, but that is inference from the ceiling, not
+evidence), and which pipeline stage it is captured at. Both are needed before
+this becomes a target rather than a confirmation -- if it is captured
+downstream of a stage this port does not have, the comparison points somewhere
+different than if it is the direct analogue of our toned RPD.
+
+### 131.4 RETRACTION of §131: `poly_input_r` is raw 14-bit LINEAR, not RPD
+
+§131 compared `poly_input_r`'s range utilisation against this port's toned RPD
+and read the ~2.6x difference as vendor-side confirmation of the missing
+expansion. **That comparison is invalid**, and the hook table says so in its own
+row -- which should have been read before the numbers were interpreted:
+
+> "this hook's own g_extraDumps[] row (poly_input_r) captures the **raw 14-bit
+> R plane** PolyPixel reads (stack_dwords[1] = buffer base at call site
+> fcn.10026c90 @ 0x100270a5; planar, in-place)"
+
+So it is **pre-invert linear sensor data**, the analogue of this port's
+`NN_raw14.tiff`, not of its toned RPD. Comparing the fraction of range occupied
+by linear capture data against the fraction occupied by log-domain toned data
+is meaningless: they are different domains, and the invert deliberately changes
+the occupancy between them.
+
+The same row adds a second disqualifier for the dumps used: "only the first
+call's entry dump is pure pre-poly raw anyway -- **later calls are
+in-place-contaminated**". §131.2 quoted calls 37 and 38.
+
+**And the "13-bit" claim was also wrong.** The 8191 boundary was inferred from
+a maximum of 8167 across 117 dumps; re-checked, **no dump reaches 8191 at all**
+(`== 8191` count: 0). A ceiling nothing touches is not a ceiling -- that is
+reading a format bound out of a data maximum, which for a 14-bit linear plane
+of film (which does not saturate the sensor) is exactly what one would expect
+to see.
+
+**What survives:** nothing from §131. The two independent routes it claimed to
+reconcile were never independent -- one of them was measuring a different
+domain.
+
+**What this changes about §130.2:** the vendor's linear data IS available after
+all, in `poly_input_r` (first call only). That is a real, if narrower, result:
+it permits a raw-domain comparison against `NN_raw14.tiff`, which would say
+whether this port's CAPTURE matches the vendor's before any colour maths runs.
+It does not speak to the RPD range question §130.3 posed.
+
+## 132 — The G/B thread: unequal per-channel capture range propagates unchecked
+
+§130's raw-domain comparison bounded the remaining deficit at 1.5x, entirely
+downstream of the invert, and the real-triple ICC slopes localise it further:
+R is only ~9 % short (0.2845 vs 0.311 needed) while G and B are ~32-33 %
+(0.2131 vs 0.312, 0.1882 vs 0.282). This opens that thread.
+
+### 132.1 The mechanism: span, not gain
+
+```
+   ch  raw decades   RPD span   toned span   ICC slope
+    R     0.956         928         792       0.2845
+    G     1.014        1031         884       0.2131
+    B     1.211        1160        1042       0.1882
+```
+
+Slope tracks span **inversely**, which is what a fixed-output-range transform
+does: a wider input span is mapped onto the same output, so the slope falls.
+G and B are not losing gain -- they are arriving too WIDE. The chain preserves
+the capture's per-channel inequality all the way to the ICC.
+
+### 132.2 The asymmetry is normal; the vendor's output is not asymmetric
+
+Unequal per-channel dynamic range is expected of a colour negative -- the dye
+layers differ. §120.2 measured the vendor at R 1.15 / G 1.10 / B 1.37 decades,
+also B-widest, so the vendor's CAPTURE carries the same asymmetry and its
+OUTPUT still comes out even. Something in the vendor's chain normalises
+per-channel span before the ICC and this port's does not.
+
+### 132.3 The candidate, and why it is not yet a finding
+
+The only per-channel shaping stage in the chain is **FUGC** (§121): a
+per-channel LUT whose offset is `word_60ec + setShifts` per channel, built by
+`build_setlutinfo_apply_lut()` and applied as `apply_1d_lut(x, apply_lut)`
+BEFORE autoTone. §122 verified its INPUTS are correct -- `aFilmAimDmin`, the
+seed LUT selection, and (§123) `aTableDmin` read from the vendor's own runtime
+state -- but nothing has ever tested what it does to per-channel SPAN.
+
+**Not measured yet.** An attempt to instrument `apply_1d_lut` from a standalone
+`real_auto_tone()` call produced nothing, because `apply_lut` is constructed in
+the engine (`pakon_ansel.py:1020`) from `self.fugc_lut`, `fugc_a_table_dmin`,
+`setshifts_out` and `fugc_afilm_aim_dmin` -- none of which exist outside a real
+render. The measurement therefore has to run inside a full
+`pakon_decode.py strip` pass, not in isolation.
+
+**The measurement to take:** per-channel `p99 - p1` immediately before and
+after `apply_1d_lut`, and the ratio `max(span)/min(span)` after. If FUGC leaves
+the 792 / 884 / 1042 inequality intact, it is not performing the normalisation
+the vendor's even output implies, and that is the G/B defect. If it equalises
+them and they diverge again later, the defect is downstream of FUGC.
+
+Stated as a prediction so it can fail: FUGC's apply LUT is a per-channel
+OFFSET (`out[:offset] = offset` plus a clamp, §121.2), and an offset shifts a
+distribution without changing its width. If that is all it does, it CANNOT
+equalise span -- in which case the normalisation must live somewhere else
+entirely, and this candidate is wrong.
+
+## 133 — Measured end to end against the vendor: the defect is a LIFTED,
+UNEQUAL BLACK POINT, and FUGC is refuted as the equaliser
+
+Taken with `tools/stage_trace.py` (new, committed) which measures every stage in
+one pass -- built because §126-§132 chased one stage at a time and four
+hypotheses in a row were refuted by unstated assumptions about what was being
+measured.
+
+### 133.1 The vendor's own output, finally measured
+
+§132 assumed "the vendor outputs even channels" without checking. Checked:
+
+```
+  vendor AA001.tif      p1      p50      p99     span
+    R                 10.0     90.0    252.0    242.0
+    G                 11.0    103.0    251.0    240.0
+    B                 10.0    139.0    255.0    245.0
+    span spread max/min = 1.0208
+
+  ours (rk_plain, frame 05)
+    R                 36.0    142.0    251.0    215.0
+    G                 86.0    199.0    253.0    167.0
+    B                 68.0    234.0    254.0    186.0
+    span spread max/min = 1.2874
+```
+
+The assumption holds, and more sharply than assumed: the vendor's spans agree
+within **2 %** and its blacks land at **10/11/10**.
+
+**This port's blacks land at 36/86/68** -- lifted, and lifted UNEQUALLY. G sits
+**75 codes** above where the vendor puts it. Highlights meanwhile clip
+(p99 251/253/254 against a 255 ceiling), so the distribution is shoved into the
+top of the range and truncated there.
+
+That is the washed-out look, stated as a measurement rather than an impression:
+**the blacks are not black.** It is also the most promising lead yet on the
+standing ~88-89 code offset -- not a uniform additive term across the image, but
+a per-channel black-point failure whose largest component (G, +75) is of that
+order.
+
+### 133.2 Where the inequality enters, per stage
+
+```
+                            span spread (max/min)
+  1. CAPTURE  raw14              1.5997     <- born here
+  2. INVERT   rpd16              1.2500
+  3. TONE     ansel_rpd16        1.3157
+  4. ICC      srgb               1.2874     <- carried to output
+```
+
+Per-channel inequality originates in the capture and no stage removes it. The
+vendor's capture carries the same asymmetry (§120.2: R 1.15 / G 1.10 / B 1.37
+decades vs ours R 0.956 / G 1.014 / B 1.211 -- spreads 1.245 and 1.267, i.e.
+comparable), so the vendor is not starting from more equal data. It equalises.
+
+### 133.3 FUGC refuted, as predicted
+
+§132.3 named FUGC as the only per-channel shaping stage and predicted the
+candidate would fail, because its LUT applies an OFFSET and an offset cannot
+change a distribution's width. Measured across `apply_1d_lut` in a full render:
+
+```
+    R: before  988.0  after 1065.0   ratio 1.0779
+    G: before 1228.0  after 1385.0   ratio 1.1279
+    B: before 1417.0  after 1606.0   ratio 1.1334
+    span spread  before 1.4342  ->  after 1.5080
+```
+
+FUGC does not equalise span; it **widens the inequality** (1.434 -> 1.508),
+stretching B and G more than R. The prediction was stated in advance and is
+confirmed -- FUGC is not the missing normalisation.
+
+### 133.4 What this reframes
+
+The question is no longer "where is the missing 2.5x expansion" (§128, refuted)
+nor "which stage loses gain" (§127-§132, each refuted). It is:
+
+  **what sets the black point, and why is it per-channel unequal and ~26-75
+  codes high?**
+
+The vendor reaches 10/11/10 from a capture no more equal than ours. Both the
+lift and the inequality have to be explained by the same mechanism, and the
+stage trace localises neither yet -- the spread is already 1.60 at capture and
+never improves, while the black LIFT is not visible as a span statistic at all
+and needs its own per-stage measurement (p1 tracked through the chain, not
+span).
+
+## 134 — What sets the black point: DRA's paper range vs the ICC's input domain
+
+§133 identified the defect as a lifted, per-channel-unequal black point (ours
+36/86/68 against the vendor's 10/11/10). Tracking **p1** rather than span
+through the stages locates it.
+
+### 134.1 p1 per stage
+
+```
+  stage                     p1 R      p1 G      p1 B
+  1. CAPTURE  raw14        1189.0     668.0     391.0
+  2. INVERT   rpd16         901.2    1281.8    1418.6
+  3. TONE     ansel_rpd16  1452.3    1452.3    1387.3   <- nearly EQUAL
+  4. ICC      srgb            36.0      86.0      68.0   <- unequal again
+```
+
+Two things fall out that the span-based trace could not show:
+
+**The tone stage EQUALISES the black point** (1452/1452/1387 from a very
+unequal 901/1282/1419). §133.2's "no stage equalises" was about span; for the
+black point, tone does exactly that.
+
+**The ICC then pulls it apart again** -- near-identical RPD inputs emerge as
+36/86/68. That is a colour profile doing per-channel work at the low end, which
+is its job; the problem is WHERE on its curve those inputs land.
+
+### 134.2 The black point is ~500 RPD too high
+
+Asking the ICC what input it needs to produce the vendor's black:
+
+```
+        our toned p1   ICC output   RPD needed for vendor black    delta
+  R        1452.3         82.0              924.0                 +528
+  G        1452.3         82.0              940.0                 +512
+  B        1387.3         64.0              924.0                 +463
+```
+
+(Neutral-ramp ICC, so indicative not exact -- §130.1 established real triples
+differ, materially so for R.)
+
+**The invert's own black point is already right**: R p1 = 901.2 against the
+924 needed. The tone stage then lifts it to 1452.3, +551.
+
+### 134.3 Why: DRA targets a paper range the ICC does not expect
+
+That lift is not a bug in DRA's arithmetic -- it is DRA doing what its params
+say. `dra-*.dpi` carries `paperMin = 1200, paperMax = 2000` (§129.1), so the
+tone stage deliberately places the scene's black at ~1200 and above. The ICC,
+fed through `rpd12_to_icc_u8` (`x255/4095`), needs ~924 to emit sRGB 10.
+
+So the two stages disagree about the domain: **DRA outputs in a paper density
+range whose black is ~1200; the pre-ICC encode assumes a full 0..4095 domain
+whose black must be ~924.** The ~500-unit gap is the lifted black, and the
+lifted black is the washed-out look (§133.1).
+
+### 134.4 What this does and does not establish
+
+**Established:** the black point is set by the tone stage's paper-range target,
+the invert's black point is correct, and the residual per-channel inequality at
+the output is introduced by the ICC rather than carried from capture.
+
+**Not established, and the obvious next question:** which side is wrong. Either
+the pre-ICC encode should map DRA's paper range (rather than 0..4095) into the
+profile's input domain, or a stage between tone and ICC is missing entirely.
+§129.2's `PAKON_PAPER_ALIGN` tested a version of the former and moved the slope
+only 3 %, but that experiment rescaled SPAN to 1200..2000 -- it did not
+translate the black point down to ~924, which is what this section says is
+wrong. The two are different edits and the earlier null result does not rule
+this one out.
+
+## 135 — The algorithmic question resolves to ONE unknown: the ICC source max,
+which needs a capture row
+
+### 135.1 The correction works, and quantifies the defect
+
+`PAKON_BLACK_WHITE` maps each channel's `[p1, p99]` onto the RPD window that
+yields the vendor's black/white:
+
+```
+                p1              p50             p99           span
+  plain    36 / 86 / 68    142/199/234    251/253/254    215/167/186
+  black     0 / 10 /  8     14/ 55/111    165/192/222    165/182/214
+  black+wh  0 /  2 /  8     22/100/211    252/250/254    252/248/246
+  vendor   10 / 11 / 10     90/103/139    252/251/255    242/240/245
+
+  slope err:  R 36.8 -> 8.2 %   G 38.3 -> 14.3 %   B 34.1 -> 30.9 %
+```
+
+R's slope enters tolerance for the first time and spans match the vendor within
+~2 %. B barely moves, for a reason flagged in advance: its target came from a
+neutral-ramp sweep where `sRGB 255 <- RPD 4023` is the ramp saturating, not a
+real target (a 3099-wide window against R's 1333).
+
+This is a **measured correction, not a port** -- it maps onto numbers read off
+the vendor's frames. It confirms the §134 diagnosis and is usable as an interim,
+but it does not answer why the chain lands where it does.
+
+### 135.2 The root question, and why it is one unknown
+
+§134 left two possibilities: the pre-ICC encode should map DRA's paper range
+rather than 0..4095, or a stage is missing between tone and ICC. Both reduce to
+the same quantity -- **what input domain the ICC expects** -- and the vendor
+stores it: `ImaICCEffectOp` (`0x1016ede0`) loads
+
+```
+  0x1016ee84   fld qword [esi + 0x120]     ; dest max
+  0x1016ee93   fld qword [esi + 0x118]     ; source max
+```
+
+as **doubles**, pushing both into the transform call. If `source max` is 4095
+this port's `x255/4095` encode is right and a stage is missing; if it is the
+paper range (or 32767), the encode is wrong and no stage is missing.
+
+The hook table already names this as the deciding measurement, and as
+unresolved: *"The scale (4095 vs 32767 vs Go's x65535/4095) is explicitly
+UNRESOLVED in docs/62 §12.4.2 -- a live capture of this+0x118/this+0x120
+settles it directly."*
+
+### 135.3 Why it cannot be answered from what is on disk
+
+**Not in the v34 capture.** `icc_effect_op` logs `ecx` on all 3,783 calls and
+resolves to a single `this`, but that object is covered by **no** dump --
+checked against every buffer in the capture, as §123 did successfully for FUGC.
+
+**Not in the config.** `profile-Rpd2Srgb.dpi` gives only the OUTPUT description
+(`dataType = U8`, `colorSpaceMin/Max = 0/255`); `profile-default.dpi` specifies
+no profile at all. The source max is set at runtime.
+
+**Not recovered statically here.** A raw-byte search for `fst/fstp qword
+[reg+0x118]` returned 60 candidates, but the first checked (`0x1006b9f3`) does
+not disassemble as such a write -- the `DD` opcode pattern also matches data,
+and the candidates were not filtered against real function boundaries. Per
+CLAUDE.md that makes them triage noise, not evidence. Stated as an unfinished
+avenue rather than a dead end: a proper `af`+`pdf`-bounded search over the
+writers is still open and needs no hardware.
+
+### 135.4 The capture row needed
+
+```
+  { "PakonIMAu.dll", 0x1016ede0, "icc_effect_op",
+    ... EXTRA_DUMP_THIS_OFFSET, 0, 0x110, 0, 0x20 },
+```
+
+`EXTRA_DUMP_THIS_OFFSET` reads `regs->ecx + derefOffset`; 0x20 bytes from
++0x110 covers both doubles with margin. `icc_effect_op` has been hooked since
+v13 and the dump kind since v21, so this is one row and no new hook -- the same
+shape as v34's `bai_this` (§125.2).
+
+## 136 — ANSWERED: ICC source max = 4095. The encode is right; a STAGE IS
+MISSING between tone and ICC
+
+§135 reduced the washed-out defect to one unknown and specified the row that
+settles it. v35 ran; the answer is unanimous.
+
+### 136.1 The measurement
+
+```
+  icc_scales rows: 39   readable: 39   unreadable: 0   dump size 32 B (all)
+
+  source max (this+0x118) = 4095.0
+  dest   max (this+0x120) =  255.0        identical on all 39 calls
+```
+
+Clean, unanimous, and exactly one of the three values §135.2 named -- no
+interpretation required. This also settles docs/62 §12.4.2's standing
+"4095 vs 32767 vs Go's x65535/4095" question outright: **4095**.
+
+### 136.2 The verdict
+
+**This port's `rpd12_to_icc_u8` (`x255/4095`) is CORRECT.** The ICC really does
+expect a 0..4095 domain mapped onto 0..255.
+
+**Therefore a pipeline stage is MISSING between tone and ICC.** The three facts
+are now mutually consistent rather than contradictory:
+
+  * DRA correctly targets `paperMin/paperMax = 1200/2000` (§129.1), bounded by
+    `maxSlope = 1.5` -- it is not supposed to expand to full range.
+  * The ICC correctly expects 0..4095 with black near 924 (above).
+  * Nothing in this port's chain converts the first domain into the second.
+
+The ~500 RPD black lift (§134.2) is not a wrong scale factor anywhere. It is
+the absence of a stage. And that is why `PAKON_BLACK_WHITE` scored as well as
+it did (R slope error 36.8 % -> 8.2 %, §135.1): it was hand-standing-in for the
+missing stage, which is also why it could not fix curvature -- a linear
+remap cannot substitute for whatever shaped transform the vendor applies there.
+
+### 136.3 What to look for next
+
+A vendor stage that reads the paper domain and writes the ICC domain, running
+after autoTone and before `ImaICCEffectOp`. Candidates already visible in the
+hook table and capture, none yet checked in this role:
+
+  * `area_image_apply_lut` (`0x100d9340`) -- already hooked, and its
+    `r_lut/g_lut/b_lut` dumps were identity+shift on the calls examined (§128),
+    but only SOME calls were examined.
+  * `icc_xform_apply` (7,566 calls in v34) -- hooked, never dumped.
+  * the `SRA` / `sraFwdLut` stage named in the render log
+    (`common-sraFwdLut-metric-default.lut[200]=1509`), which this port applies
+    but whose domain role has never been measured.
+
+**Not claimed:** which of these it is, or that it is a single stage. What is
+established is that the encode is not the defect and the search should be for a
+missing transform, not a wrong constant.
+
+## 137 — Candidate for the missing stage: `makeSRALUTS`, explicitly unported
+
+§136 established the search is for a missing TRANSFORM (the encode is correct
+at source max 4095 / dest max 255). §136.3 listed three candidates. One is now
+eliminated and one is promoted.
+
+### 137.1 `area_image_apply_lut` eliminated
+
+All **38 distinct** `r_lut` contents in v35 are identity plus a constant:
+`f(924)=1639`, `f(1200)=1915`, `f(2000)=2715` -- uniformly +715. That is the
+balance shift (§128), it ADDS 450..715, and it performs no domain conversion.
+§128 examined only a handful of calls; this checked every distinct one.
+
+### 137.2 SRA's "wrong variant" lead, retracted
+
+The variant is chosen by `sra_fwd_lut_name(metric)`, and `rk_plain` selected
+`metric-default` where the invert is `rom12_to_rpd12`, which looked like a
+mis-selection. It is not obviously one: `METRIC_PD12 = 1` is commented `# RPD`,
+and data AFTER the invert genuinely is RPD, so `default` is defensible. That
+lead was inferred from the invert's NAME without establishing which side of the
+conversion SRA runs on. Retracted pending that placement being established.
+
+### 137.3 The promoted candidate: `makeSRALUTS` (`fcn.101a6be0`)
+
+`pakon_sra.py` ports only the LOADER for the shipped `common-sraFwdLut-*.lut`
+files, and says so:
+
+    SRA_MAKE_LUTS_PORTED = False   # makeSRALUTS @ 0x10594b78 not ported
+
+with the docstring noting `AnsSraCapabilityImpl::makeSRALUTS` "**generates**
+further SRA tables in `libSra.ansel` -- **not** ported; distinct from simply
+loading these files."
+
+The function (found via the single xref to its name string at `0x101a6fcf`) is
+`fcn.101a6be0`: **1173 bytes, 84 edges, 21 `fld` / 16 `fstp` / `fsub` / `fadd` /
+`fmul`** -- a real LUT builder, not a stub or a wrapper.
+
+Its arithmetic has the right shape for the missing stage:
+
+```
+  fld   qword [ecx + 0x58]     ; v
+  fcomp qword [0x10574f50]     ; vs 1.0
+  jne   skip                   ; only when v > 1.0
+  fld   qword [ecx + 0x58]
+  fsub  qword [0x10574f50]     ; v - 1.0
+  fmul  qword [0x10594bb8]     ; * 300.0
+  ...
+  fsubp st(1)                  ; SUBTRACTED
+```
+
+`(v - 1.0) * 300.0`, clamped, then **subtracted** -- a subtractive offset in the
+RPD domain, gated on a ratio exceeding 1.0. §134.2 measured this port's black
+point as ~500 RPD too HIGH, and a subtractive stage is what would pull it down.
+
+### 137.4 What is and is not claimed
+
+**Established:** `makeSRALUTS` exists, is reachable by name, contains real
+LUT-building floating-point, and is explicitly unported by this project's own
+flag. Its arithmetic subtracts a scaled offset in the right domain.
+
+**NOT established, and deliberately so:** that it is the missing stage, that it
+runs on the CN-Enhanced F-135 path, or that `(v-1)*300` produces ~500 for real
+inputs -- `v` is `[ecx+0x58]` on an object this analysis has not identified, and
+fitting 500 to it would be exactly the kind of suggestive-shape reasoning
+CLAUDE.md forbids and that §128/§129/§131 were each caught by today.
+
+**Next, in order:** establish whether `makeSRALUTS` is reachable from the
+CN-Enhanced path (`reachability.py walk`, no hardware), then identify `[ecx+0x58]`.
+Only then is a port worth starting.
+
+## 138 — SRA eliminated as the missing stage; and a real gap found on the way
+
+### 138.1 The code fact, independent of the hypothesis
+
+`pakon_ansel.render_scene` applies `self.sra_lut` **only in the legacy `else`
+branch** ("SRA fwd lut = AnsCommonSraFwdLutDPI stand-in for Shasta toneLut").
+The main `real_auto_tone` path never applies it. The render log's
+`SRA=common-sraFwdLut-metric-default.lut[200]=1509` reports what was LOADED,
+not what ran -- the same class of mistake as §127.7, where a printed status line
+was read as evidence of a branch executing.
+
+So this port loads the vendor's SRA forward LUT and does not use it on the live
+path. That is a genuine gap between what is loaded and what is applied,
+whatever its cause.
+
+### 138.2 Applying it post-tone: eliminated, decisively
+
+`PAKON_APPLY_SRA=1`:
+
+```
+  rk_plain  p1 [ 36, 86, 68]  p50 [142,199,234]  p99 [251,253,254]  distinct 224
+  rk_sra    p1 [254,254,254]  p50 [254,254,254]  p99 [254,254,254]  distinct   1
+```
+
+The frame collapses to a single value; the transfer golden returns NaN on all
+three channels because there is no variation left to fit. **Eliminated.**
+
+The prediction was recorded before the run ("I expect this to make things
+worse", from the curve raising values while our black point is already ~500 too
+high), and the outcome is stronger than predicted.
+
+### 138.3 What the failure says
+
+The curve expects SMALL inputs: `f(200) = 1509`, `f(924) = 2578`, max 3903 over
+a 4096 domain. Toned RPD sits at 1400..2400, which is already past the curve's
+useful range -- hence saturation. **SRA's input domain is not toned RPD.** It
+belongs to an earlier, lower-valued stage, consistent with the legacy branch
+applying it to `rpd12` directly, before tone, as a Shasta stand-in.
+
+That does not clear the §138.1 gap: whether the live path SHOULD apply SRA
+somewhere (and where) is unresolved. What is settled is that post-tone is not
+that place.
+
+### 138.4 Candidate status for the §136 missing transform
+
+```
+  area_image_apply_lut   ELIMINATED (§137.1) -- 38/38 LUTs identity+constant
+  SRA post-tone          ELIMINATED (above)  -- saturates to a single value
+  makeSRALUTS            OPEN, weakly        -- unported (SRA_MAKE_LUTS_PORTED
+                         = False), real FP, subtractive arithmetic; NOT
+                         reachable from 0x100fb730 by direct calls, but that
+                         walk cannot follow the vtable dispatch a capability
+                         uses, so the negative is uninformative rather than
+                         disqualifying
+  icc_xform_apply        OPEN, strongest by position -- 7,566 calls, hooked
+                         since v13, NEVER dumped, sits immediately before the
+                         ICC. Needs one dump row (v36).
+```
+
+## 139 — The missing transform is almost certainly **SCPLut analyze**, which is
+unported and produces exactly per-channel slope + offset + gamma
+
+§136 established a transform is missing between tone and ICC (the encode is
+correct: source max 4095, dest max 255). §137-§138 eliminated
+`area_image_apply_lut` and SRA-post-tone. This names a candidate that matches
+on every axis.
+
+### 139.1 What SCPLut analyze produces
+
+`pakon_scp_lut.py` -- whose own flag is `SCP_LUT_BALANCE_PORTED = False`, with
+the instruction "Do **not** invent slope/offset / `scpLutWork` maths" -- records
+the verified result surface (`AnsSCPLutResults:` @ `0x1059db0c`):
+
+```
+  redSlope   / greenSlope  / blueSlope
+  redOffset  / greenOffset / blueOffset
+  slopeDist  / slopeLimiter / visualGamma
+```
+
+and states: "Impl analyze body (~KB, FPU / image walk) is a **soft wall** --
+not ported."
+
+Chain (verified in that module): `ColorNegativePath::analyzeScpLutBalance`
+@ `0x100fd190` -> Cap `AnsSCPLutCapability::analyze` @ `0x101226c0` -> Impl
+`AnsSCPLutCapabilityImpl::analyze` @ `0x102128f0`.
+
+### 139.2 Why it matches, on three independent axes
+
+**Per-channel slope + offset** is exactly the correction this investigation
+arrived at empirically. `PAKON_BLACK_WHITE` applies precisely that, by hand,
+and took R's slope error 36.8 % -> 8.2 % with spans landing within ~2 % of the
+vendor (§135.1). A stage that computes those two quantities per channel is what
+that hand correction was standing in for.
+
+**`visualGamma`** addresses the one defect the hand correction provably could
+not. §135.1 noted the limiting factor had shifted from slope to SHAPE (log corr
+0.79/0.93/0.84 against 0.97) and that "a linear remap cannot substitute for
+whatever shaped transform the vendor applies there". A gamma term is that
+shaped transform.
+
+**FPU / image walk** makes it scene-adaptive, which the black point must be --
+§134 showed our black point is wrong by a scene-dependent ~500 RPD, not by a
+constant.
+
+### 139.3 What is established, and what is not
+
+**Established (all from the module's own VERIFIED sections, not inferred
+here):** the stage exists at `0x102128f0`, it is unported by this project's own
+flag, its result block is per-channel slope/offset plus `visualGamma`, and its
+body is an FPU image walk.
+
+**NOT established:** that these slopes/offsets are applied to the image data in
+the tone->ICC path. The module is explicit that this is open -- "Whether SCPLut
+slopes/offsets rewrite SBA shifts / FOS FPO: **UNKNOWN** (no static edge into
+`scene+0x3a38` found)" -- and it describes the stage as OrderWide, sitting
+between two `analyzeBalanceOrder` calls, which is the BALANCE phase rather than
+between tone and ICC. That is a real tension with §136's placement and must be
+resolved before any port begins.
+
+So: the strongest candidate by a wide margin, on shape, on content, and on
+matching what a hand correction demonstrably fixes -- but its position in the
+pipeline contradicts where §136 says the gap is, and that contradiction is the
+next thing to settle, not to explain away.
+
+### 139.4 Next
+
+1. Determine where SCPLut's slope/offset results are consumed (the module's own
+   open question). If they reach the image between tone and ICC, §136 and §139
+   agree and the port target is `0x102128f0`.
+2. If they only rewrite balance-phase state, then §136's missing transform is
+   still unidentified and SCPLut explains something else -- possibly the
+   per-channel span inequality of §132.
+3. Either way `SCP_LUT_BALANCE_PORTED = False` and `visualGamma` unported is a
+   real, named gap that no other candidate matches as closely.
+
+## 140 — SCPLut results struct layout recovered; the consumption question stays
+open
+
+### 140.1 The layout, from the vendor's own dumper
+
+`fcn.102134a0` prints `AnsSCPLutResults:` (`0x1059db0c`) field by field, and the
+`fld` following each name push gives the offset -- the same technique that
+recovered `ShastaParams` in §127.3:
+
+```
+  +0x08  redSlope      +0x10  greenSlope    +0x18  blueSlope
+  +0x20  redOffset     +0x28  greenOffset   +0x30  blueOffset
+  +0x38  slopeDist     +0x40  slopeLimiter  +0x48  visualGamma
+```
+
+All doubles, 8-byte stride from +0x08. This is new and is what a port of
+`0x102128f0` would need to fill.
+
+### 140.2 The consumption question: NOT answered here
+
+§139.3 flagged the open tension -- SCPLut is described as an OrderWide balance
+stage, not a tone->ICC stage, and the module states plainly that whether its
+slopes/offsets reach the image is UNKNOWN.
+
+An attempt to settle it by scanning for functions that read the offset cluster
+does **not** work, and the reason is worth recording so it is not retried
+naively:
+
+  * A first scan found only 2 accesses in the whole DLL, which was a **bug**:
+    it matched only `mod=10` (disp32) encodings, while small offsets like
+    `+0x10` encode as **disp8** (`dd 43 10`, `mod=01`). Corrected, the count is
+    **3511** across 460 clusters.
+  * Corrected, the scan has no specificity: `+0x08/+0x10/+0x18…` is the layout
+    of ANY array of doubles, so 460 clusters is mostly noise. It does validate
+    the method -- the SCPLut dumper itself (`0x102134f4`) reads exactly 9 and
+    writes 0 -- but it cannot distinguish SCPLut's results from any other
+    9-double struct.
+
+One hit is worth noting without weight: `0x102873bc` reads all 9 and writes
+none, and sits beside `0x10287eb0`, which `pakon_scp_lut.py` names as the
+SCPLut **analyze worker**. That is consistent with the worker reading its own
+results, not with a downstream consumer.
+
+**So the position tension of §139.3 stands unresolved.** The project's own
+targeted search ("no static edge into `scene+0x3a38` found") already failed, and
+a generic offset scan cannot substitute for it. Resolving it needs either the
+Impl analyze body read properly (the "soft wall"), or a live capture of the
+results block and the image before/after the balance phase.
+
+## 141 — SCPLut port: the target narrows to slope/offset COMPUTATION, and the
+application machinery is already ported
+
+### 141.1 The call chain to the soft wall
+
+```
+  ColorNegativePath::analyzeScpLutBalance  0x100fd190
+    -> AnsSCPLutCapability::analyze        0x101226c0
+      -> AnsSCPLutCapabilityImpl::analyze  0x102128f0   681 B, thin wrapper
+        -> 0x102127d0                      280 B, marshals args
+          -> fcn.10287eb0                  1097 B, 292 instrs, 160 FP  <-- THE WORKER
+```
+
+`0x102127d0` stores the worker's results back to `esi+0x80/+0x88/+0x90…`, which
+is the `AnsSCPLutResults` block whose layout §140.1 recovered.
+
+The worker's only callees are `0x1028c4e0` (the opponent transform, **already
+ported**) and `0x104ffe44` (an MSVC `ftol` round-to-nearest, already ported as
+`scp_lut_ftol2`). **No transcendental helpers** -- this is a bounded port.
+
+### 141.2 The output form is a per-channel LINEAR LUT -- already ported
+
+`pakon_scp_lut.scp_lut_fill_channel` (from `0x102881e6…0x102882af`) is:
+
+```python
+  out[i] = clamp_i16(ftol2(slope * i - offset + 0.5))     # per channel
+```
+
+so SCPLut's product is a per-channel **`out = slope·i − offset`** LUT. That is
+exactly the form `PAKON_BLACK_WHITE` applied by hand, which took R's slope error
+36.8 % -> 8.2 % with spans landing within ~2 % of the vendor (§135.1). The hand
+correction was standing in for this stage, and the machinery to APPLY the result
+is already ported and Unicorn-cited.
+
+Also already ported: `slope_dist` = `sqrt(R²+G²+B² − RG − RB − GB)`
+(`0x10212899…`), `visual_gamma_scale` = `1/(0.414R + 0.079G + 0.507B)`
+(`0x10288065…`), the `[0, 0xfff]` clamp, and the opponent transform.
+
+**So the ONLY missing piece is how `slope` and `offset` are computed** -- the
+worker body. Not how they are applied.
+
+### 141.3 What the worker body shows so far
+
+Mode-branching on a word (`cmp cx, 1`), with per-mode arithmetic. In the
+`cx == 1` branch:
+
+```
+  fld  [esp+0x18]        ; v
+  fsub qword [0x10574f50] ; - 1.0
+  fild dword [...]        ; an int16 arg, sign-extended
+  fmulp                   ; (v - 1.0) * n        -> [esp+0x30]
+  ... same shape for [esp+0x20] -> [esp+0x38]
+```
+
+i.e. `(v − 1.0) × n` per channel -- structurally the same shape as
+`makeSRALUTS`'s `(v − 1.0) × 300.0` (§137.3), which is worth noting but not
+worth concluding from.
+
+**A bit-exactness trap, recorded now:** the constant at `0x105a69e0` is
+**`1.7320508`** -- sqrt(3) truncated to 7 decimals, NOT
+`1.7320508075688772`. A port written as `math.sqrt(3)` would diverge from the
+DLL. Constants must be transcribed from the image, not recomputed.
+
+### 141.4 Standing
+
+This is the first candidate whose *product form* has been matched to a
+correction that measurably works, whose leaves are already ported, and whose
+remaining gap is a single bounded function with no transcendental dependencies.
+Porting `fcn.10287eb0` and verifying it Unicorn-bit-exact against the DLL is the
+concrete next work item.
+
+## 142 — The SCPLut worker now RUNS under Unicorn on controlled inputs
+
+`tools/ansel/python-pipeline/pakon_scp_worker_golden.py` (new) executes the real
+`fcn.10287eb0` and returns its results block. This is the tier-1 reference a
+port has to be diffed against, and it needs no hardware.
+
+### 142.1 The argument layout, recovered statically
+
+From the caller `0x102127d0`'s marshalling (pushes are reverse order, so the
+last push is arg0):
+
+```
+  arg0        pixel count n        (the `ecx` in `lea [eax+ecx*2]` / `[eax+ecx*4]`)
+  arg1..arg7  seven scalars forwarded from the Impl
+  arg8, arg9  &var_20h, &var_34h   -- OUT pointers
+  arg10       plane base           (R)
+  arg11       base + n*2           (G)
+  arg12       base + n*4           (B)
+```
+
+Args 10/11/12 are three pointers into ONE buffer at strides 0, n·2, n·4 -- a
+planar int16 RGB image of n pixels, the same shape as the Shasta analysis
+image. Recovering this from the caller is what made the harness runnable
+without a capture: the first attempt passed 13 zeros and faulted on null
+dereferences.
+
+### 142.2 It executes, and it responds
+
+```
+  scalars all 0   slopes [1,1,1]  offsets [0,0,0]                     dist nan
+  scalars[0]=1    slopes [1,1,1]  offsets [0,0,0]                     dist 0.0002
+  scalars all 1   slopes [1,1,1]  offsets [-1.9319, 1.4142, 0.5176]   dist 0.0003
+```
+
+The out-param at arg9 carries `[slope×3, offset×3, slopeDist, slopeLimiter]`,
+matching the `AnsSCPLutResults` field order §140.1 recovered from the vendor's
+own dumper.
+
+The offsets under all-ones are recognisable rotation coefficients --
+`1.4142 = √2`, `1.9319 = 2cos15°`, `0.5176 = 2sin15°` -- consistent with the
+opponent transform `0x1028c4e0` the worker calls twice, and already ported.
+
+**Slopes stay 1.0 in every case tried so far**, so the slope path is gated on a
+mode condition among the seven scalars that these inputs do not satisfy.
+Establishing which scalar is the mode word is the next step, and it is
+answerable by sweeping them against this harness.
+
+### 142.3 A bit-exactness trap, checked in the harness
+
+The constant at `0x105a69e0` is `1.7320508` -- √3 truncated to seven decimals,
+NOT `1.7320508075688772`. The harness asserts this against the mapped image on
+every run, so a port written with `math.sqrt(3)` cannot silently diverge.
+
+### 142.4 What this does and does not establish
+
+**Established:** the worker is executable in isolation on controlled inputs, its
+argument layout, its output block layout, and that its results respond to the
+forwarded scalars.
+
+**NOT established:** any of its arithmetic. Nothing here reimplements the
+function -- the harness is the reference against which a port will be checked,
+and no port exists yet. Nor is it established that SCPLut is in fact the
+missing tone->ICC transform; §139.3's position tension (SCPLut is described as
+an OrderWide balance stage) remains open and is not resolved by being able to
+run the worker.
+
+### 142.5 The harness reaches its limit at the degenerate path -- v36 is the unblock
+
+Driving the worker past its default branch was attempted and did not succeed:
+
+* `arg8` is IN/OUT, not a pure out-param -- the worker reads `word [arg8]` as
+  the mode (`cmp cx, 1` @ `0x10288163`, `cmp cx, 2` @ `0x102881b9`) and
+  `word [arg8+2]` as a second control word. `pakon_scp_lut` documents these as
+  `ntdChoice` / `ctdChoice`, shipped dpi `(1, 2)`.
+* Setting them to `(1,2)`, `(2,1)`, `(1,1)`, `(2,2)` changes **nothing**:
+  slopes stay `[1,1,1]`, offsets `[0,0,0]`, `slopeDist` NaN.
+* Sweeping each of the seven scalars individually over `{1,2,3}` likewise never
+  moves the slopes off 1.0.
+
+The NaN in `slopeDist` says the degenerate path is being taken because too much
+is zero, and the caller `0x102127d0` shows why: it fills those slots from live
+Impl state -- `word [esi+0x4a]`, `byte [esi+0x4e]`, plus its own seven forwarded
+args -- none of which can be synthesised honestly.
+
+**So the harness is complete and correct as far as it goes** (real function,
+real image planes, layout recovered statically, constants asserted against the
+image) **and the remaining input is a capture problem, not an analysis one.**
+v36 adds the `scp_lut_worker` hook at `0x10287eb0` with `scpw_arg0/1/2` and
+`scpw_this` dump rows for exactly this.
+
+## 143 — SCPLut REFUTED: it runs, and computes identity. §139 is retracted
+
+§139 promoted SCPLut as "almost certainly" the missing tone->ICC transform, on
+three matching axes (per-channel slope+offset, `visualGamma`, FPU image walk).
+v37 captured its real inputs. It is not the missing transform.
+
+### 143.1 The measurement
+
+v37's corrected rows returned **39/39 readable on all five dumps**. The worker's
+own call rows carry 32 stack dwords, so its arguments needed no further capture:
+
+```
+  arg0 (count)          4096          on all 39 calls
+  args 1..7 (scalars)   [0,0,0,0,0,0,0]   ONE distinct tuple, all 39 calls
+  args 10/11/12         differ by 0x2000 = 4096 int16  -> planar stride confirmed
+```
+
+Driving `pakon_scp_worker_golden.run_on_planes` with exactly those inputs -- the
+captured 3-band LUT planes, the captured `arg8` control block, and the real
+all-zero scalars -- gives:
+
+```
+  slopes  [1.0, 1.0, 1.0]      offsets [0.0, 0.0, 0.0]      slopeDist  NaN
+```
+
+**Identity.** SCPLut is invoked 78 times on the CN-Enhanced path and computes a
+no-op transform every time.
+
+### 143.2 Two corrections this forced
+
+**The "planes" are not an image.** `scpw_plane_*` came back as three identical
+identity ramps (`0..511` in the truncated dump, 4096 entries really). The caller
+reads `[[esi+0x10]+4]`, and `pakon_scp_lut` documents the Impl owning
+`Ans3BandLutParams` at `+0x10`, so args 10/11/12 are the three planes of the
+shipped 3-band LUT (`luts6_postROMM_equalRGBshort.lut`), not pixel data.
+§142.1's "planar RGB image, same shape as the Shasta analysis image" was wrong.
+
+**`scpw_out` is uninitialised garbage** (1e292 doubles). Expected, and I should
+have anticipated it: dumps fire on ENTRY, and arg9 is written during the call.
+The capture therefore holds the worker's inputs only -- which is all the harness
+needs, but it means the vendor's own outputs are NOT available as a cross-check.
+
+### 143.3 Why the earlier signal was misleading
+
+The slopes DID move off 1.0 once the full `arg8` block was supplied
+(`[1.00013, 0.9999, 0.99996]`), which looked like the mechanism unlocking. It
+was not: that run used **fabricated** scalars of 1. With the real scalars -- all
+zero -- the result is identity. A responsive function is not the same as a
+function that does something on the live path, and the difference is only
+visible with captured arguments.
+
+### 143.4 Standing
+
+`SCP_LUT_BALANCE_PORTED = False` remains an accurate statement of an unported
+stage, but porting it would reproduce an identity transform on this path and
+change nothing. That is worth knowing precisely because §139 argued the
+opposite at length.
+
+Candidate status for §136's missing transform:
+
+```
+  area_image_apply_lut  ELIMINATED (§137.1)  38/38 LUTs identity+constant
+  SRA post-tone         ELIMINATED (§138.2)  saturates to a single value
+  icc_xform_apply       ELIMINATED (§138.4)  it IS the ICC, not a stage before it
+  SCPLut                ELIMINATED (here)    runs 78x, computes identity
+  makeSRALUTS           OPEN, weakly (§137.3)
+```
+
+The missing transform is still unidentified, and four of the five candidates
+named since §136 are now closed by measurement rather than argument.
+
+## 144 — Found by CALL ORDER, not by guessing: the vendor runs PolyPixel TWICE,
+with two different coefficient objects
+
+§143 closed the fourth of five guessed candidates. This stops guessing and reads
+the vendor's own call ordering out of the capture instead.
+
+### 144.1 PolyPixel is the last stage before the ICC
+
+```
+  what immediately precedes each icc_effect_op:
+      tlb_polypixel  39      (the other 39 are icc_effect_op itself -- pairs)
+
+  around the first ICC:
+      [1835] tlb_polypixel
+      [1836] tlb_polypixel
+      [1837] tlb_polypixel
+      [1838] icc_effect_op
+      [1840] icc_xform_apply
+```
+
+### 144.2 And it runs in TWO phases
+
+`tlb_polypixel` fires **118 times across 40 runs**, spanning call indices
+42..2027: an early block right after acquisition (the inversion this port
+already does), and again immediately before every ICC.
+
+Argument patterns split cleanly:
+
+```
+  39 calls  arg0=0x07173b10  dims 4 x 1              (small probe)
+  38 calls  arg0=0x07173b10  dims 0xf5 x 0x16f       (245 x 367, full frame)
+   1 call   arg0=0x07173a74  dims 0xf5 x 0x16f       (full frame, OTHER coeffs)
+```
+
+Two distinct coefficient objects: **`0x07173a74`** and **`0x07173b10`**.
+
+### 144.3 Why this matters
+
+`pakon_decode.py:459` applies `pc.poly_hwc(rgb14, coeffs, film_class=...)`
+**once**, at the start of the pipeline, as "TLB.dll @ 0x1000d880 -- F-135
+colour-negative stage 2", with a single coefficient set from
+`load_unit_matrix`. The vendor applies PolyPixel again, on the full frame,
+immediately before the ICC.
+
+That is exactly the position §136 says a transform is missing, and it was found
+by reading call order rather than by proposing a candidate and testing it -- the
+method that produced four eliminations in a row.
+
+### 144.4 What is NOT established
+
+Whether the second application uses different coefficients, or the same ones on
+different data. The two coefficient objects `0x07173a74` / `0x07173b10` are
+**covered by no dump** in v37 -- checked against every readable buffer -- so
+their contents are unknown, and `arg0` differing between one call and the other
+37 could equally be two objects holding identical coefficients.
+
+Nor is it established that our single application is misplaced rather than
+merely incomplete: the early phase may be the same stage this port already does
+correctly, with the late phase being additional.
+
+**The deciding capture:** dump `arg0` (the coefficient object) on
+`tlb_polypixel`. It is already hooked, so this is one dump row -- the same shape
+as v35's `icc_scales`, which settled its question in a single scan.
+
+### 144.5 v38: the two coefficient objects ARE distinct instances -- but their
+data is one deref deeper
+
+`poly_coeffs` fired **118/118 readable**, 384 B each, capturing both objects.
+
+```
+  IDENTICAL: False -- 168 of 384 bytes differ, from offset 4
+
+  0x07173a74  07135800 001787d8 ffffffff 0 0 0 0 0712b2c4 07175cc8 0 42 1 ...
+  0x07173b10  07135800 00178800 ffffffff 0 0 0 0 0712b2c4 07175e28 0 42 1 ...
+```
+
+Same vtable (`0x07135800`), same shape -- a repeating `{0x0712b2c4, ptr, 0}`
+triple structure -- differing only in the pointer values. So these are **two
+instances of the same class pointing at different allocations**, which is a real
+result but not the one needed: the coefficients themselves are behind
+`+0x20` (`0x07175cc8` / `0x07175e28`) and the other `ptr` slots, none of which
+is covered by any dump in v38 (checked against every readable buffer).
+
+**So §144.4's question is still open.** "Two distinct objects" was established;
+"different coefficient VALUES" was not, and the two are not the same claim --
+two instances can hold identical data.
+
+The object does not parse as a flat coefficient array: read as float32 its
+first entries are `[0, 0, nan, 0, …]`, consistent with a C++ object whose
+header occupies the front. Attempting to read coefficients out of it directly
+would be fitting an interpretation to a buffer, which is what §131 was caught
+doing.
+
+**Next capture:** `EXTRA_DUMP_DEREF_PTR` on `tlb_polypixel` arg0 at `+0x20`, to
+follow the pointer one level and dump what it points at. That kind already
+exists (`**(stack_dwords[idx]+off)`), so it remains one row and no new hook.
+
+### 144.6 CORRECTION: arg0 is not the coefficient object; `this` is
+
+§144.2 called `tlb_polypixel`'s `arg0` "the coefficient object" and §144.4/§144.5
+spent v38 and v39 chasing its contents. That label was never verified against
+the code, and it is wrong.
+
+`fcn.1000d880` (TLB.dll, md5 `193d9b2ce0a4b77ae9b78262bd06c0fc`) opens:
+
+```
+  0x1000d895   sub esp, 0x48
+  0x1000d898   mov eax, dword [arg_60h]      ; a case selector, 1..8
+  0x1000d8a1   mov esi, ecx                  ; <-- esi IS `this`
+  0x1000d8b4   jmp dword [eax*4 + 0x1000dbd8]  ; 8-case switch
+  0x1000d8bb   lea ecx, [esi + 0x50]         ; coefficients, INLINE in `this`
+  0x1000d8c4   lea edx, [esi + 0xc8]
+```
+
+So PolyPixel is `__thiscall`, the coefficient blocks are at **`this+0x50`** and
+**`this+0xc8`**, and they are `lea`'d -- inline in the object, not behind a
+pointer.
+
+**And there is only ONE `this`.** Across all 19 calls in the 6-frame v39
+capture, `ecx` takes a single value (`0x71756fc`). Both PolyPixel phases
+therefore share one coefficient object.
+
+What this means for §144:
+
+* **§144.2's "two distinct coefficient objects" is retracted.** `0x07173a74` /
+  `0x07173b10` are the first STACK argument, which differs because it carries
+  per-image data. v38's finding that they differ (168/384 bytes) is real but
+  says nothing about coefficients.
+* **§144.5's deref rows were aimed at the wrong object**, and its `+0x20`/`+0x38`
+  offsets were guesses. The code names `+0x50` and `+0xc8`, and against `this`,
+  not `arg0`.
+* **§144.1 stands**: `tlb_polypixel` does immediately precede every
+  `icc_effect_op`, and the two-phase call pattern is real. Only the
+  coefficient claim was wrong.
+
+Three scans (v38, v39, and part of v37) went into a mislabelled object because
+the label was assumed rather than read out of `fcn.1000d880`. The disassembly
+that settles it costs nothing and was available throughout.
+
+**The remaining question, correctly posed:** do the coefficients at
+`this+0x50` / `this+0xc8` CHANGE between the early phase and the pre-ICC phase?
+One `this` does not settle it -- the object can be rewritten between phases.
+That needs `EXTRA_DUMP_THIS_OFFSET` on `tlb_polypixel` at `+0x50` and `+0xc8`,
+which is one row each and no new hook.
+
+## 145 — v40: PolyPixel's coefficients are IDENTICAL between phases, and match
+this port bit-exact. The two-pass hypothesis is closed.
+
+### 145.1 The coefficients, read from the right object
+
+v40 dumps `this+0x50` / `this+0xc8` (§144.6). Both rows: **19/19 readable**, and
+each has exactly **ONE distinct content** across every call -- so the
+coefficients are NOT rewritten between the early inversion phase and the
+pre-ICC phase.
+
+`this+0x50` is float32, laid out as 3 channels x (9 coefficients + pedestal):
+
+```
+  R  [0.2892018, 0.0022074, -0.0012768, ...]   pedestal 159.59373
+  G  [0.0002529, 0.2758307, -0.0070415, ...]   pedestal 444.74969
+  B  [0.0007387, 0.0101631,  0.2782366, ...]   pedestal 635.53522
+```
+
+The pedestals are exactly `OWNER_PEDESTALS` (159.594 / 444.750 / 635.535).
+
+### 145.2 Diffed against this port
+
+```
+  pakon_color.load_unit_matrix(film_class=1)  vs  vendor live:
+     R  maxdiff over 9 coeffs = 0.000e+00
+     G  maxdiff over 9 coeffs = 0.000e+00
+     B  maxdiff over 9 coeffs = 0.000e+00
+```
+
+**Bit-exact.** (film_class=3 also matches; film_class=2 is the 0.25-diagonal
+unit matrix and does not, as expected.)
+
+This is the first tier-1 confirmation that this port's PolyPixel coefficients
+are the vendor's actual RUNTIME values rather than plausible ones read from a
+file -- and it confirms the pedestals independently of docs/74's earlier
+derivation.
+
+### 145.3 The two-pass hypothesis is closed
+
+§144 found, correctly, that `tlb_polypixel` immediately precedes every
+`icc_effect_op` and runs in two phases. The hypothesis built on that -- that the
+second pass applies a DIFFERENT transform this port omits -- is now refuted:
+same `this`, same coefficients, no rewrite between phases.
+
+So the pre-ICC PolyPixel calls are the same transform this port already applies
+at `pakon_decode.py:459`, presumably re-run on a different buffer. **PolyPixel
+is eliminated as the missing tone->ICC transform.**
+
+### 145.4 Candidate status
+
+```
+  area_image_apply_lut  ELIMINATED (§137.1)
+  SRA post-tone         ELIMINATED (§138.2)
+  icc_xform_apply       ELIMINATED (§138.4)  it IS the ICC
+  SCPLut                ELIMINATED (§143)    runs 78x, computes identity
+  PolyPixel two-pass    ELIMINATED (here)    same coefficients both phases
+  makeSRALUTS           OPEN, weakly (§137.3)
+```
+
+Five of six candidates closed by measurement. §136's missing transform remains
+unidentified, and the search has now exhausted every stage visible in the
+current hook set -- which is itself informative: the next capture should widen
+the hook set rather than deepen a dump, because the answer is not in a stage
+already being watched.
+
+## 146 — MEASURED against the vendor's own RPD: our span is right, our OFFSET is
+~500 codes too high, and it is wrong BEFORE the tone stage
+
+§145 exhausted the stage-hunt. This abandons it and compares pixel VALUES
+against the vendor directly, which the capture has supported all along.
+
+### 146.1 The vendor's own RPD, correctly interpreted
+
+`area_image_apply_lut`'s `pixel_data` (deref arg4+0x20) is the image entering
+the balance-shift LUT. `img_desc` gives its layout, and decodes cleanly:
+
+```
+  img_desc = (1, 0, 1, 245, 367, 3, 12, 0, 0x0bc80020)
+                       ^^^  ^^^  ^  ^^
+                       w    h    bands  bit depth
+```
+
+**245 x 367, 3 bands, 12-bit** -- matching PolyPixel's own dims, and 12-bit
+confirms this is the RPD domain, directly comparable to this port's
+`NN_rpd16.tiff / 16`.
+
+(An earlier split of the same buffer into three planes was invalid: `n % 3 = 1`
+because the 0x80000 dump truncates a larger image. Interleaved RGB on complete
+triples is what `img_desc` licenses.)
+
+### 146.2 The comparison
+
+```
+            VENDOR p1/p50/p99   span     OURS p1/p50/p99    span
+  R          334/ 732/1346      1012      901/1237/1829      928
+  G          758/1173/1769      1011     1282/1826/2312     1031
+  B         1004/1565/2203      1199     1419/2088/2579     1160
+```
+
+**Spans agree within 2-9 %.** The invert's slope is right, independently
+confirming §127.1's -957/-1017/-938 against a formula -1000.
+
+**Positions are offset by +567 / +524 / +415.** This port's RPD sits ~500 codes
+too HIGH, per channel and unequally.
+
+### 146.3 Why this matters more than anything since §136
+
+That is the same ~500 offset §134 measured at the black point -- but §134 found
+it in the TONED output and attributed it to DRA's paper-range target. It is
+already present in the PRE-TONE RPD. **The offset does not originate downstream
+of the invert at all**, so the search for a missing tone->ICC transform
+(§136-§145, six candidates, five eliminated) was looking in the wrong half of
+the pipeline.
+
+It also explains why `PAKON_BLACK_POINT` worked (§135: output p1 36/86/68 ->
+0/10/8 against the vendor's 10/11/10): it was correcting a real upstream offset,
+at the wrong stage.
+
+### 146.4 What is NOT established
+
+The mechanism. Implied per-channel corrections to `fpo` would be
+`879 -> 312`, `1250 -> 726`, `1386 -> 971`, but the deltas (567/524/415) are not
+constant, do not match `setShifts` (683/297/151), and subtracting setShifts does
+not reconcile them either. So "our fpo is wrong by X" is NOT claimed.
+
+Nor is stage alignment proven: the vendor's `pixel_data` is dumped at ENTRY to
+`area_image_apply_lut`, i.e. BEFORE its shift LUT is applied, while this port's
+`rpd16` is written after `setShifts` is folded into the invert. The two may not
+be the same point in the chain, and that alone could account for part of the
+offset.
+
+**Next:** establish stage alignment before chasing the mechanism -- compare the
+vendor's `pixel_data` against this port's RPD with and without `setShifts`
+applied, and against the vendor's own post-LUT values, so the comparison is
+between the same point in both pipelines rather than two plausibly-similar ones.
+
+### 146.5 CONFOUND: §146.2 compares two DIFFERENT ROLLS
+
+The offset (+567/+524/+415) was measured between this port's render of
+`scan-20260812` and a vendor capture from `20260820`. Those are different rolls,
+and §130.2 already established their raw distributions differ substantially
+(vendor `poly_input_r` p1 = 695 against this port's `raw14` p1 = 1189).
+
+A ~500-code RPD offset is well inside what an exposure difference produces:
+1000 codes per decade means a 1.71x raw ratio alone accounts for ~233 codes.
+
+**So the offset is measured but not yet attributable.** §146.3's conclusion --
+that the search was in the wrong half of the pipeline -- does not follow from a
+cross-roll comparison, and is withdrawn pending a same-roll test.
+
+**What still stands from §146:** the SPANS agree within 2-9 %. Span is a
+property of the film's response and the transfer slope, and is far less
+sensitive to exposure than position is, so span agreement across two rolls of
+the same stock is meaningful where offset agreement would not be. That
+independently corroborates §127.1's finding that the invert's slope is correct.
+
+**A flawed check, recorded so it is not repeated:** an attempt to test the
+offset's direction by predicting RPD from raw compared raw p1 against RPD p1.
+RPD is DECREASING in `lin` (`fpo + 1000*(log10(fb-c9) - log10(lin-c9))`), so raw
+p1 corresponds to RPD **p99**. The "both are higher, therefore inconsistent"
+argument built on that is invalid and is withdrawn.
+
+### 146.6 What would settle it
+
+A raw capture and a hook capture from the SAME scan. Every comparison in
+§130/§146 has been cross-roll because the hook captures carry no raw pixel data
+this port can render, and the `scan-*.bin` files carry no hook data.
+
+With both from one scan, this port's RPD and the vendor's `pixel_data` become
+directly comparable at the same stage on the same pixels, and the offset either
+survives or disappears. That is a hardware run, and it is the single most
+valuable one outstanding -- more than any further hook row, because it makes
+every value comparison since §130 decidable rather than suggestive.
+
+## 147 — SAME-ROLL at last: the invert's SPAN is right to 2 %, and `fpo` is
+~500 too high
+
+§146.5 withdrew the offset finding as cross-roll and §146.6 asked for a scan
+saving both raw and hooks. **That scan is unnecessary** -- the hook capture
+already contains vendor raw pixels. `poly_input_r` is the raw 14-bit linear R
+plane read out of the vendor's own memory (§131.4), and `pixel_data` is the
+vendor's RPD (§146.1). Both come from the same scan, so pushing the vendor's raw
+through THIS PORT's invert and comparing against the vendor's own RPD is a
+same-roll test with no exposure confound.
+
+### 147.1 The result
+
+```
+  vendor raw R      p1 660   p50 2577  p99 5070   max 6490
+  vendor RPD R      p1 334   p50  732  p99 1346   span 1012
+
+  our formula on the vendor's own raw (fpo = 0):
+     fb = p99.0 (5070)   p1    0  p50 308  p99  992   span 992
+     fb = p99.5 (5536)   p1   39  p50 347  p99 1031   span 992
+     fb = p99.9 (5903)   p1   68  p50 376  p99 1060   span 992
+```
+
+**Span 992 against the vendor's 1012 -- a 2 % match on the same pixels.** The
+invert's arithmetic is right, which now rests on a same-roll measurement rather
+than on §127.1's comparison against its own formula.
+
+### 147.2 The anchor is not
+
+Aligning the medians gives the `fpo` the vendor's data implies:
+
+```
+  implied fpo (R):   314 .. 424   (across film-base percentile choices)
+  this port's fpo:   879          (dpi-fpo = 879 / 1250 / 1386)
+```
+
+**`fpo` is ~455-565 too high for R.** `fpo` is the additive film-base anchor in
+`rpd = fpo + 1000*(log10(fb - c9) - log10(lin - c9))`, so an `fpo` that is too
+high lifts every RPD value by that amount -- which is precisely the
+washed-out signature, and precisely the ~500 magnitude §134 measured at the
+black point and §146.2 measured (cross-roll) in the RPD itself.
+
+Three independent measurements now agree on ~500: the black-point deficit
+(§134.2), the cross-roll RPD offset (§146.2), and this same-roll anchor
+comparison. The first two were confounded or contested; this one is not.
+
+### 147.3 Scope and limits
+
+**Established:** on the vendor's own pixels, this port's invert reproduces the
+vendor's RPD span to 2 %, and its anchor is ~500 too high in R.
+
+**Limited to R.** `poly_input_r` dumps only the R plane, so G and B are not
+tested here. The `dpi-fpo` triple (879/1250/1386) is a single object and an
+error in one channel does not imply the same error in the others.
+
+**Not established:** why. Whether `dpi-fpo` is being read from the wrong field,
+scaled wrongly, or is correct-but-applied-where-the-vendor-applies-something-else
+is open. The implied value also varies 314..424 with the film-base percentile,
+so "the answer is ~400" is a range, not a constant -- and the vendor's own film
+base for this roll is not directly captured.
+
+## 148 — 2/3 channels PASS: removing the common `fpo` offset fixes G and B
+
+§147 measured, same-roll on the vendor's own pixels, that this port's invert
+span is right to 2 % and its `fpo` anchor is ~455-565 too high in R.
+
+### 148.1 Uniform anchor is the wrong instrument
+
+`PAKON_UNIFORM_ANCHOR=400` (R's implied value) gives:
+
+```
+                baseline   anchor=975   anchor=400
+  R slope err    36.8 %      35.3 %      16.2 %
+  G slope err    38.3 %      18.3 %      46.4 %
+  B slope err    34.1 %       9.4 %      49.6 %
+```
+
+R improves sharply; G and B collapse. That is what applying an R-derived number
+uniformly must do -- `poly_input_r` dumps only the R plane, so 400 is R's answer
+alone, and the knob REPLACES the per-channel `dpi-fpo` (879/1250/1386) rather
+than shifting it.
+
+### 148.2 Removing the COMMON offset instead
+
+`PAKON_FPO_DELTA=480`, which subtracts a constant and keeps the per-channel
+spread -> `fpo = [399, 770, 906]`:
+
+```
+  ch    slope    vendor   err %   log corr   verdict
+   R   -205.0   -248.4    17.5     -0.75
+   G   -227.5   -252.8    10.0     -0.97    PASS
+   B   -211.1   -229.3     8.0     -0.98    PASS
+
+  2/3 channels within tolerance
+```
+
+**G and B pass on both slope AND shape.** The previous best was 1/3
+(`PAKON_UNIFORM_ANCHOR=975`, §117) and the plain default is 0/3.
+
+Note the shape metric: G -0.97 and B -0.98 clear the 0.97 threshold, where every
+prior configuration in this document sat at 0.62..0.95. Fixing the anchor fixed
+the CURVATURE too, which no earlier correction managed -- because the data now
+sits where the ICC's response is the shape the vendor's transfer expects, rather
+than being remapped onto it after the fact.
+
+### 148.3 What this is
+
+A **measured** correction, not a fitted one: 480 comes from §147's same-roll
+comparison of the vendor's own raw against the vendor's own RPD, not from
+searching for a value that scores well. That distinguishes it from
+`PAKON_BLACK_WHITE` (§135), which mapped onto vendor black/white points read off
+the output.
+
+### 148.4 What is still wrong, and what is unexplained
+
+**R fails**: 17.5 % slope and -0.75 correlation, the worst shape of the three
+despite being the channel the delta was derived from. R has been the outlier
+since §120 and remains so.
+
+**Unexplained: why `fpo` is ~480 high at all.** `dpi-fpo` is read from the DPI
+(`879/1250/1386`) and a constant offset across all three channels is a
+suspicious shape -- it suggests a term this port adds and the vendor does not
+(or a domain difference), rather than three independently wrong values. That
+mechanism is not identified, and until it is, 480 is a number that works rather
+than a value that is derived.
+
+**Not claimed:** that 480 is correct. §147.3 gives an implied range of
+455..565 from R alone, and G/B were never measured -- they pass here because a
+common offset happened to suit them, which is evidence for the common-offset
+hypothesis but not a measurement of their individual values.
+
+## 149 — MECHANISM: `fpo` is not the RPD anchor. Proved by contradiction from
+the vendor's own pixels
+
+§148 fixed G and B by subtracting ~480 from `fpo` but left the reason
+unexplained, and flagged that a constant offset across all three channels
+suggests a term this port adds that the vendor does not. It does.
+
+### 149.1 The values are right; the USE is wrong
+
+`fpo = 879 1250 1386` is read verbatim from
+`dataPathItems/sba/SbaDPI/sba-CN-default.dpi`, alongside `fpa = -70 -55 -45` and
+`neutralBalancePoint = 1550`. Nothing is misparsed.
+
+This port then applies it as an additive density anchor
+(`pakon_decode.py`: `out = fpo + dens`), giving
+
+```
+  rpd = fpo + 1000*(log10(fb - c9) - log10(lin - c9))
+```
+
+### 149.2 The contradiction
+
+Using the vendor's OWN same-roll numbers (§147: raw p50 = 2577, RPD p50 = 732,
+raw p99 = 5070, raw max = 6490), solve for the film base each candidate `fpo`
+would require:
+
+```
+  fpo = 879  ->  film base 1883
+  fpo = 385  ->  film base 5534
+```
+
+The film base is **clear film** -- by definition at or above the brightest
+pixels in the frame. `fpo = 879` requires a film base of 1883, which is BELOW
+the median raw value (2577) and far below the maximum (6490). That is not a
+tight fit or an unlikely value; it is impossible.
+
+`fpo = 385` requires 5534, which lands at about the raw's p99.5 -- exactly where
+clear film should sit.
+
+**Therefore the vendor does not add `fpo` to the density.** No choice of film
+base makes this port's formula reproduce the vendor's measured RPD with
+`fpo = 879`.
+
+### 149.3 What `fpo` actually is
+
+The field is `fpo` under SBA, and this port's own log calls it what the vendor
+calls it: **"Preference opening RGB"**. It is the opening RGB for the Preference
+BALANCE stage -- the starting point a balance search departs from -- not the
+anchor of the density transform. docs/48 already records the related finding
+that FOS does not write nested Preference `fpo`.
+
+Applying a balance-stage opening value as a density-domain additive constant is
+what produces a uniform ~480 lift across all three channels, and hence the
+washed-out render: it is a category error, not a wrong number.
+
+### 149.4 Status
+
+**Established:** `fpo = 879` cannot be the additive RPD anchor, by contradiction
+against the vendor's own measured pixels, on the same roll.
+
+**Not established:** what the correct anchor IS. §147's implied 314..424 for R
+is derived by aligning medians and therefore trades off against the film-base
+estimate; it is a range consistent with the data, not a derived constant. G and
+B have never been measured individually -- `poly_input_r` carries only R.
+
+**Consequence for §148:** `PAKON_FPO_DELTA=480` scores 2/3 because subtracting a
+constant approximates removing a term that should not be there at all. That is
+why it helps every channel at once, and why it is still not the fix.
+
+## 150 — Sweeping the `fpo` delta: the render disagrees with §147's implied
+range, and R's SHAPE does not respond at all
+
+§148 scored `PAKON_FPO_DELTA=480` at 2/3. §147.2's same-roll comparison implied
+a deficit of 455..565. Sweeping the knob against the transfer golden:
+
+```
+  delta      R slope    R corr     G slope        B slope        pass
+   340        (see below)
+   420       14.5 %     -0.76     8.6 % PASS     7.0 % PASS      2/3
+   480       17.5 %     -0.75    10.0 % PASS     8.0 % PASS      2/3
+   560       21.4 %     -0.76    13.0 %         10.8 %           0/3
+```
+
+### 150.1 The implied range is biased high
+
+Every step downward improves every channel: 560 -> 480 -> 420 is monotonic. The
+best value lies at or below 420, i.e. **below §147.2's entire implied range**.
+
+That range came from aligning medians against film-base PERCENTILES, and the
+film base is not directly captured (§149.4). The render scores against the
+vendor's actual frames, so where the two disagree the render is the better
+instrument, and §147.2's 455..565 should be read as indicative rather than as a
+bound.
+
+### 150.2 R's shape is inert
+
+```
+  delta 420   R corr -0.76
+  delta 480   R corr -0.75
+  delta 560   R corr -0.76
+```
+
+R's SLOPE responds strongly to the delta (21.4 -> 17.5 -> 14.5) while its
+CURVATURE does not move at all. G and B meanwhile sit at -0.96..-0.98 and pass.
+
+So **R has a second defect the anchor does not touch.** That is consistent with
+R being the outlier since §120, and with §130.1's finding that R's ICC response
+deviates most from a neutral ramp (30 % against G/B's few per cent). Even a
+perfect delta therefore looks likely to land at 2/3, with R failing on shape.
+
+### 150.3 Epistemic status -- this is now a SEARCH, not a measurement
+
+The first value (480) came from §147's same-roll vendor comparison. Every step
+since has been fitting to the golden's score. That is a legitimate way to
+bracket the truth, but it changes what the number IS: a delta arrived at this
+way is a tuned constant, and per CLAUDE.md it does not belong in the render path
+as a default no matter how well it scores.
+
+The principled fix remains §149's: stop adding `fpo` to the density at all, and
+anchor on the vendor's own film base. Locating a hookable Dmin in TLB.dll is
+still open -- `FN_bFindDmin` exists as a UTF-16 string at `0x10063658` with a
+single reference at `0x10017f95`, but `af` there yields a 10 KB blob rather than
+a clean boundary, and a backward prologue scan over 0x1500 bytes found no
+`push ebp; mov ebp, esp` and no called entry within 0x600. So the function is
+either non-standard in its prologue or reached indirectly, and it needs a
+proper boundary search before any hook row is proposed.
+
+### 150.4 Best configuration, and the ceiling
+
+```
+  delta     R slope   R corr     G            B           pass
+   340      10.5 %    -0.77    7.6 % PASS   7.4 % PASS    2/3
+   420      14.5 %    -0.76    8.6 % PASS   7.0 % PASS    2/3
+   480      17.5 %    -0.75   10.0 % PASS   8.0 % PASS    2/3
+   560      21.4 %    -0.76   13.0 %       10.8 %         0/3
+```
+
+`delta 340` is the best measured configuration in this document: R's slope error
+falls from 36.8 % (baseline) to **10.5 %**, a hair above the 10 % threshold, and
+G/B clear both metrics comfortably.
+
+**R's correlation never moves** across the whole sweep (-0.75/-0.76/-0.76/-0.77)
+while its slope changes by a factor of two. Slope responds to the anchor;
+curvature does not. **2/3 is therefore the ceiling for this approach**, and
+further sweeping would be fitting a constant to a metric it cannot fix.
+
+### 150.5 R's curvature is NOT the pedestal -- refuted
+
+The obvious candidate: `rpd` is linear in `log10(lin - c9)` but the golden fits
+against `log10(lin)`, so a pedestal bends the measured curve, and more so as
+`c9` approaches the darkest signal. Tested per channel over each channel's own
+data:
+
+```
+         c9/p1     bend at p1            R corr
+  R      0.134     0.063 decades         -0.77   (least bend, WORST shape)
+  G      0.666     0.476 decades         -0.98
+  B      1.625     c9 EXCEEDS p1         -0.98   (most extreme, BEST shape)
+```
+
+**Refuted, and backwards.** R has the least pedestal curvature and the worst
+shape; B's pedestal exceeds its own darkest pixels and B scores best. The
+pedestal does not explain R.
+
+**A real anomaly surfaced in passing:** B's `c9` (635.5) is greater than B's raw
+p1 (391), so the darkest 1 %+ of B pixels sit below the pedestal and clamp. That
+is not currently costing B its pass, but it means B's shadow end is being
+manufactured rather than measured, and it should not be left unexamined merely
+because the metric is green.
+
+**R's shape defect remains unexplained** and is now the single blocker on 3/3.
+It is not the anchor (inert across the sweep), not the pedestal (above), and not
+the ICC profile pair (§130.1 confirmed the profiles are correct). §130.1 did
+find R's ICC response deviates from a neutral ramp by 30 % where G/B deviate by
+a few per cent -- that remains the only measured R-specific asymmetry, and is
+where the next investigation should start.
+
+## 151 — R's shape defect identified: the TONE stage is NON-MONOTONIC in R
+
+§150.4 showed R's correlation is inert across the whole anchor sweep
+(-0.75..-0.77 while its slope halves), so the defect is not the anchor. §150.5
+refuted the pedestal. This finds it.
+
+### 151.1 R's transfer folds
+
+Median sRGB per raw decile, best configuration (`PAKON_FPO_DELTA=340`):
+
+```
+  decile      R        G        B
+      5    213.0    227.0    249.0
+     45     43.0    158.0    215.0
+     55     29.0    149.0    178.0     <- R bottoms out
+     65     51.0    121.0    117.0     <- R REVERSES
+     75     86.0     86.0     67.0     <- still rising
+     85     58.0     57.0     40.0
+     95     40.0     36.0     26.0
+```
+
+R descends to 29, climbs back to 86, then falls again. G and B are cleanly
+monotonic. A fold of that size makes any log-linear fit meaningless, which is
+exactly why R sits at -0.77 no matter what the anchor is.
+
+### 151.2 The fold is introduced by the TONE stage
+
+Tracing R by raw decile through the stages:
+
+```
+  decile      raw       rpd      toned
+     65      5498     835.6     1438.3
+     75      6528     765.1     1458.3    <- toned RISES while rpd FALLS
+     85      8204     670.7     1348.3
+```
+
+The RPD is cleanly monotonic (1251.8 -> 595.9). The toned output reverses. It is
+**not clipping**: toned R spans 972..2442 with 0 % at either bound.
+
+Binning toned-vs-RPD per channel over 18 bins:
+
+```
+  R: 2 direction reversals   toned range 1281..1815  (534 wide)
+  G: 0 reversals             toned range 1255..1968  (713)
+  B: 0 reversals             toned range 1161..2210  (1049)
+```
+
+**Only R reverses**, and R's toned range is also the narrowest despite entering
+with a comparable span -- it is both compressed and folded.
+
+### 151.3 Why a shared tone curve can fold ONE channel
+
+§128 established the chain's final tone object is a single `OutToneLut`, so a
+per-channel fold cannot come from the curve itself. It comes from how the curve
+is APPLIED: `real_auto_tone` applies it through `pakon_citras_driver`
+(`ImaCitrasOpBase::virtual_40`, `0x10169350`), where the curve is looked up not
+at the pixel's own value but at an index pulled toward a smoothed LUMINANCE
+reference, and the resulting **delta is added to R/G/B**.
+
+A luminance-derived delta added to a channel whose distribution diverges from
+luminance can reverse that channel's ordering. In a colour negative R is the
+channel furthest from luminance, which is consistent with R being the only one
+that folds.
+
+**Not claimed:** that the citras driver is wrong. The vendor applies the same
+delta-broadcast (the port's own docstring records this as verified against
+`virtual_56`'s `term + base` with a 1-band base). The fold may equally come from
+a wrong luminance, a wrong smoothing, or a wrong gradient weight feeding a
+correct mechanism.
+
+### 151.4 Standing
+
+R's defect is now specific and measurable -- a 2-reversal non-monotonicity
+introduced between `rpd16` and `ansel_rpd16` -- rather than "shape is off".
+That is the single blocker on 3/3, and it is testable directly: bypass the
+citras delta-broadcast and apply `OutToneLut` per channel, and R's reversals
+should vanish. If they do, the defect is in the broadcast path; if they do not,
+it is upstream in the curve's index.
+
+## 152 — CONFIRMED: R's fold comes from the citras luminance-delta broadcast
+
+§151.4 proposed a falsifiable test -- bypass the citras delta-broadcast, apply
+`OutToneLut` per channel, and see whether R's reversals vanish. Predictions were
+recorded before the run: reversals gone => defect is in the broadcast; G/B
+likely to degrade because the bypass discards vendor-verified gradient-aware
+application.
+
+### 152.1 The result
+
+```
+                    reversals (18 bins)        log corr
+                    R    G    B            R       G       B
+  citras (340)      2    0    0          -0.77   -0.98   -0.98
+  per-channel       0    0    0          -0.87   -0.99   -0.99
+```
+
+**R's non-monotonicity is eliminated outright**, and its correlation improves
+-0.77 -> -0.87. G and B improve slightly too (-0.98 -> -0.99).
+
+Slopes degrade as predicted: R 10.5 -> 20.1 %, G 7.6 -> 11.1 %, B 7.4 -> 12.4 %,
+so the bypass scores 0/3 against `delta 340`'s 2/3. That was expected and does
+not weaken the finding -- the experiment was designed to LOCATE the fault, not
+to become a configuration.
+
+### 152.2 What this establishes
+
+The fold is in **how** the tone curve is applied, not in the curve. §128 had
+already shown the chain emits a single shared `OutToneLut`, so a per-channel
+fold could only come from the application; this confirms it directly by removing
+the application and watching the fold disappear.
+
+The mechanism is `pakon_citras_driver` (`ImaCitrasOpBase::virtual_40`,
+`0x10169350`): the curve is indexed not by the pixel's own value but by an index
+pulled toward a smoothed LUMINANCE reference, and the delta is added to R/G/B. A
+luminance-derived delta added to a channel whose distribution diverges from
+luminance can reverse that channel's ordering, and in a colour negative R is the
+channel furthest from luminance.
+
+### 152.3 What this does NOT establish
+
+**That citras is wrong.** The vendor applies the same delta-broadcast, and the
+port's own docstring records it as verified against `virtual_56`'s `term + base`
+with a 1-band base. A correct mechanism fed a wrong input produces exactly this
+symptom. The candidates are the luminance reference, the block-average /
+Gaussian smoothing, and the per-pixel gradient weight -- none of which has been
+measured against the DLL here.
+
+**That per-channel application is the fix.** It is worse overall (0/3 vs 2/3)
+and discards a stage the vendor demonstrably has. It is a diagnostic, and
+`PAKON_TONE_PER_CHANNEL` is committed as one -- off by default.
+
+### 152.4 Next
+
+Measure citras's three inputs against the real DLL rather than replacing the
+stage: `pakon_citras_driver` already has a golden
+(`pakon_citras_driver_golden.py`), so the luminance reference, smoothing and
+gradient weight can each be diffed on real frame data. R folding while G and B
+do not is a strong localiser -- whichever input is wrong should show a
+channel-asymmetric error that tracks distance from luminance.
+
+## 153 — citras is bit-exact; R's fold is a RELATIVE anchor error, and
+per-channel deltas move R's curvature for the first time
+
+### 153.1 citras is not the defect
+
+`pakon_citras_driver_golden.py` run against the real DLL
+(`eea9dcf78ee21d4f7c515a6c2512242d`):
+
+```
+  check_block_average      OK  48 cases, bit-exact (both fast and x87 paths)
+  check_mirror_pad         OK  every padded sample matches the DLL's modulo form
+  check_vectorised_leaves  OK  luminance, avoidance_blend, tone_compose
+  ALL OK
+```
+
+So §152's fold is **not** a citras bug. Citras correctly broadcasts a
+luminance-derived delta; a channel reverses only if it sits wrongly RELATIVE to
+the others.
+
+That also explains §150.4's puzzle -- a UNIFORM delta shifts all three channels
+equally and therefore cannot correct a relative error, which is why the sweep
+moved R's slope by a factor of two while its correlation stayed pinned at
+-0.75..-0.77.
+
+**The two defects are one.** The washed-out lift and R's fold are both the
+per-channel anchor being wrong: too much lift overall, and the wrong split
+between channels.
+
+### 153.2 Per-channel deltas
+
+`PAKON_FPO_DELTA3="250 340 340"` -> `fpo = [629, 910, 1046]`:
+
+```
+  ch    slope    vendor   err %   log corr   verdict
+   R   -228.8   -248.4     7.9     -0.83
+   G   -235.9   -252.8     6.7     -0.98    PASS
+   B   -217.7   -229.3     5.1     -0.98    PASS
+```
+
+**All three slopes are now inside tolerance** (7.9 / 6.7 / 5.1 %), the first
+time that has happened. R still fails on shape, but its correlation moved
+-0.77 -> -0.83 -- the first movement in ANY experiment, and it moved in response
+to a purely relative change.
+
+Prediction recorded before the run: "if relative positioning is the cause, R's
+correlation should move off -0.77 for the first time." It did.
+
+### 153.3 Status of the numbers
+
+These deltas are **tuned to the golden, not derived**. A 3/3 obtained this way
+would be a measured configuration, not a correct port. §149's principled fix --
+stop adding `fpo` to the density and anchor on the vendor's own film base --
+remains what would make the values derivable, and still needs a Dmin source
+(§150.3: `FN_bFindDmin` located as a string in TLB.dll but with no clean
+function boundary yet).
+
+What the tuning HAS established is structural and does not depend on the exact
+values: the residual defect is a per-channel anchor split, not a missing
+pipeline stage (§136-§145, six candidates eliminated), not the tone chain
+(§128), not citras (above), and not the ICC (§130.1).
+
+### 153.4 R needs a GAIN as well as an offset -- no single anchor satisfies both
+
+Sweeping R's delta with G/B fixed at 340:
+
+```
+  R delta    R slope err    R corr    reversals
+    340        10.5 %       -0.77         2
+    250         7.9 % PASS  -0.83         2
+    160        11.6 %       -0.90         -
+```
+
+R's correlation improves monotonically as its delta falls, but its slope error
+turns around below 250 and grows again. Reaching the 0.97 shape threshold
+extrapolates to a delta near 70, where the slope error would be far outside
+tolerance.
+
+**So no single per-channel OFFSET satisfies both metrics for R.** An anchor
+shift translates a channel; it cannot change that channel's transfer shape
+relative to the others. R needs a per-channel **gain** as well.
+
+That is exactly the pair `AnsSCPLutResults` carries -- `redSlope/greenSlope/
+blueSlope` AND `redOffset/greenOffset/blueOffset` (§140.1) -- which is why §139
+found SCPLut such a compelling candidate on shape. §143 then measured SCPLut
+computing IDENTITY on the live path (all 39 calls, scalars `[0]*7`), so the
+vendor is not applying such a correction to ITS data.
+
+Both can be true: the vendor's channels may already be correctly related, so its
+SCPLut has nothing to correct, while this port's are not and would need one.
+That would make a slope+offset here a COMPENSATION for an upstream error rather
+than a missing vendor stage -- and compensating is not porting.
+
+**The upstream error to find is therefore whatever makes R's transfer shape
+differ from G's and B's in the first place.** The invert cannot do it: `rpd` is
+linear in `log10(lin - c9)` and only `c9` bends the curve, `c9` is bit-exact
+from the DLL (§145.1), and §150.5 showed R has the LEAST pedestal curvature of
+the three while having the worst shape. So the shape divergence enters somewhere
+this investigation has not yet isolated, and a fitted gain would hide it.
+
+## 154 — CORRECTION: R fails on cross-channel SCATTER, not curvature. §150-§153's
+"shape" framing is wrong
+
+### 154.1 Two different metrics were being compared
+
+`pakon_transfer_golden.measure()` fits **per pixel** (subsampled `[::3,::3]`,
+masked `x>50 & 3<y<252`). The per-stage analysis in this investigation used
+**median-per-value** binning. They disagree on the same render:
+
+```
+  median-binned R corr   -0.9620      (the median CURVE is near log-linear)
+  golden per-pixel corr  -0.8335      (individual pixels SCATTER around it)
+```
+
+R's median curve was never the problem. **R's pixels scatter**, and at a fixed
+raw R value that can only come from the other channels, because the ICC is a 3D
+transform.
+
+### 154.2 The measurement
+
+```
+                corr      resid_std   resid vs G   resid vs B
+  R           -0.8335       29.97       +0.382       +0.565
+  G           -0.9825       11.72       +0.111       -0.204
+  B           -0.9844       14.98       -0.217       -0.040
+```
+
+R's residual tracks **B at +0.565**, with 2-2.5x the scatter of G or B. This is
+cross-channel leakage through the ICC, which appears when the channel
+RELATIONSHIPS are wrong.
+
+### 154.3 What this retracts
+
+Every "R has a curvature/shape defect" statement from §150 onward is
+mis-framed, including §151's fold analysis and §153.4's "R needs a per-channel
+gain". The fold measured in §151-§152 is real and citras-related, but it is not
+what the golden penalises. **R fails on scatter.**
+
+It also explains why the anchor sweeps moved R's correlation at all: changing
+per-channel `fpo` alters channel relationships, so it perturbed the leakage --
+incidentally, not by addressing it.
+
+### 154.4 The coupling the code already warned about
+
+`pakon_decode.py` states: *"substituting a uniform anchor while leaving
+setShifts at NBP-fpo is internally inconsistent, because the shift's
+per-channel spread is DERIVED from fpo's. Both halves have to move together,
+and PAKON_VENDOR_CHROMA supplies the other half."*
+
+Every experiment from §148 to §153 moved `fpo` and left `setShifts` alone --
+internally inconsistent by the code's own account. Restoring the coupling:
+
+```
+                        R slope   R corr   resid_std   vs B      G       B
+  delta3 only            7.9 %    -0.8335    29.97    +0.565   6.7 %   5.1 %
+  delta3 + chroma        7.5 %    -0.8721    24.45    +0.520   5.6 %   2.5 %
+```
+
+Scatter falls 18 %, both cross-correlations drop, R's slope PASSES, and B
+reaches 2.5 %. Best configuration to date -- all three slopes in tolerance, G
+and B passing outright, R failing only on residual leakage.
+
+**Still wrong:** +0.52 leakage against B is large. The remaining per-channel
+term that sets channel relationships is the FILM BASE, which enters as
+`1000*log10(fb - c9)` per channel -- precisely the sort of per-channel offset
+the `fpo` deltas have been standing in for. §149 argued `fpo` should not be
+added at all; if so, the per-channel offsets must come from `fb` alone, and this
+port's `fb` (from its own FindDmin) is then the thing to check.
+
+## 155 — THE MEASURING INSTRUMENT IS MIS-SPECIFIED: the vendor's own output
+fails `pakon_transfer_golden`
+
+Before drawing further conclusions from the golden's scores, the golden was
+turned on the vendor's own frames. It fails them.
+
+### 155.1 The vendor fails its own test
+
+Scoring `rawAA001.tif -> AA001.tif` with `measure()`'s exact method (per-pixel,
+`[::3,::3]`, mask `x>50 & 3<y<252`):
+
+```
+  VENDOR'S OWN OUTPUT      corr
+     R                   -0.9523
+     G                   -0.9602
+     B                   -0.9431
+
+  golden threshold        |corr| >= 0.97
+```
+
+**All three channels fail.** The 0.97 shape threshold is unachievable: no port
+can pass it, because the reference does not.
+
+Worse for interpretation, this port's current best already EXCEEDS the vendor on
+two channels -- G -0.98 and B -0.99 against the vendor's -0.96 and -0.94. A
+higher correlation than the reference is not "more correct"; it means the metric
+is not measuring fidelity to the vendor.
+
+### 155.2 The slope constants do not reproduce either
+
+`VENDOR_SLOPE` is `(-248.42, -252.77, -229.31)`. Fitting the vendor's own
+`rawAA001 -> AA001` two ways:
+
+```
+              per-pixel   median-binned   golden constant
+    R          -225.4        -187.1          -248.42
+    G          -211.0        -187.4          -252.77
+    B          -157.7        -142.5          -229.31
+```
+
+Neither method reproduces the constants. The golden's docstring attributes them
+to a median-per-input-value fit over `rawAA00N`/`AA00N`, but median-binning
+yields ~-187, not -248.
+
+And `measure()` fits THIS PORT's slope **per-pixel** while comparing it against
+a constant derived by **median-binning** -- two different estimators, which on
+the vendor's own data differ by 17-38 %.
+
+### 155.3 What this invalidates, and what it does not
+
+**Invalidated as an absolute target:** "3/3 channels within tolerance". The
+shape criterion cannot be met, and the slope criterion compares incompatible
+estimators against unreproducible constants. Every "N/3 passing" claim in
+§117-§154 -- including this session's -- is a score against a mis-specified
+test, not a measure of agreement with the vendor.
+
+**NOT invalidated:** the RELATIVE progression. The same test applied
+consistently still ranks configurations, and the improvements it tracked were
+corroborated independently -- §147's same-roll span match (2 %), §154's measured
+reduction in R's cross-channel scatter (29.97 -> 20.40), and §153's channel
+separations now matching the vendor exactly (G-R 441, B-G 392, residual 0). Those
+are direct vendor comparisons and stand on their own.
+
+**Also not invalidated:** the washed-out defect was real. §133's black-point
+comparison (ours 36/86/68 against the vendor's 10/11/10) is a direct
+output-to-output measurement that does not depend on the golden at all.
+
+### 155.4 Consequence
+
+The goal "produce the same output as the vendor" needs an instrument that
+measures exactly that. The golden as written does not: it scores a port against
+constants that its own reference cannot reproduce, using an estimator it does
+not apply to both sides.
+
+Fixing the test is now a prerequisite for finishing the port, not a detour --
+otherwise further tuning optimises against an artefact. The direct comparisons
+that DO work (black point, channel separation, same-roll span) should form the
+basis, since each compares this port and the vendor on the same quantity by the
+same method.
+
+## 156 — A corrected instrument, and what it reveals: the tuning was chasing
+wrong constants
+
+§155 showed the old golden cannot be satisfied by the vendor's own output.
+`tools/ansel/python-pipeline/pakon_transfer_golden2.py` (new) fixes the two
+defects: it applies ONE estimator to BOTH sides, and reports deviation from the
+vendor's OWN measured values rather than from unreproducible constants.
+
+Correlation is reported as a difference from the vendor's own correlation
+(tolerance 0.03), because an absolute 0.97 bar is unmeetable -- the vendor
+scores -0.95/-0.96/-0.94.
+
+Level is deliberately NOT compared: slope-per-decade is scale-invariant so a
+cross-roll slope comparison is valid, but absolute level is not (§146.5
+withdrew a conclusion for exactly that reason). Level is covered by §133's
+black point and §153's channel separations.
+
+### 156.1 The reversal
+
+```
+                        R err     G err     B err
+  rk_plain (baseline)   30.4 %    26.1 %     4.0 %   <- B ALREADY near-vendor
+  rk_sep  (tuned best)   3.1 %    12.2 %    35.5 %   <- B made 9x WORSE
+```
+
+The old golden's B constant was `-229.31`; the vendor's own per-pixel B slope is
+**-157.5**. Every configuration since §148 was tuning B toward a target that does
+not exist, and B's baseline was already within 4 % of the vendor.
+
+R genuinely improved (30.4 % -> 3.1 %) and G improved (26.1 % -> 12.2 %). So the
+tuning was not worthless -- but its B component was actively harmful, and that
+was invisible while the reference constants were wrong.
+
+### 156.2 Correlations, read correctly
+
+```
+             ours     vendor    d
+  R        -0.907    -0.952   -0.046
+  G        -0.985    -0.960   +0.024
+  B        -0.986    -0.943   +0.043
+```
+
+G and B now EXCEED the vendor's own correlation; only R sits below it, and by
+0.046. Under the old absolute 0.97 bar all three "failed"; measured against what
+the vendor actually achieves, two are already better than the reference and R is
+close.
+
+### 156.3 Deltas derived from the CORRECT slopes
+
+Interpolating each channel between its measured `delta 0` and `delta tuned`
+points to the vendor's own slope:
+
+```
+  R: -156.9 -> -232.5 over delta 250;  vendor -225.5  => delta 227
+  G: -156.0 -> -236.9 over delta 398;  vendor -211.1  => delta 271
+  B: -151.2 -> -213.4 over delta 268;  vendor -157.5  => delta  27
+```
+
+`PAKON_FPO_DELTA3="227 271 27"`. Note B's delta collapses to ~27, confirming
+§156.1: B never needed the correction.
+
+**Still a fitted configuration**, not a derivation -- but now fitted to the
+vendor's own measured behaviour with a consistent estimator, rather than to
+constants the vendor cannot reproduce.
+
+## 157 — The first content-matched comparison: the offset is real, uniform, and NOT in the invert anchor
+
+Every comparison from §117 to §156 is **cross-roll**: this port renders roll X,
+the vendor rendered roll Y, and the two are scored through a fitted transfer
+slope. §155 and §156 fixed the estimator, but not the confound. A fitted slope
+and its residual scatter depend on scene **content** as well as on the transfer,
+so "our slope is 25 % off" could be the roll rather than the port. §146.5
+already withdrew one conclusion for exactly this reason.
+
+`rawAA001.tif` and `AA001.tif` are the vendor's own input and output for **one
+frame, pixel-aligned** (both 1960x2941, verified). Feeding that raw through this
+port's chain gives a per-pixel, content-matched comparison with no fitting and
+no roll confound. Harness: `tools/ansel/python-pipeline/pakon_sameframe_port.py`
+(evidence tier 4 -- empirical end-to-end against a real vendor reference; it is
+**not** tier 1 and does not claim to be).
+
+### 157.1 A methodological trap this hit first, recorded because it is silent
+
+The first revision of the harness called `pakon_decode.render_rpd` and scored a
+perfectly **inverted** image: `raw -> rpd12` correlation **+1.000**, port vs
+vendor **-0.95**. On the F-135 path `render_rpd` is stage 2 only and preserves
+polarity (poly diagonal +0.289/+0.276/+0.278, docs/58 §12); the logarithm in
+`f135_rom12_to_rpd12` is what turns the negative the right way up.
+`pakon_render.scene_rpd12`'s own docstring already warns that a chain skipping
+it "emits the negative" and that **nothing downstream notices**. It was right.
+Any new analysis entry point must go through `scene_rpd12`, not `render_rpd`.
+
+### 157.2 The offset reproduces cleanly, and it is uniform
+
+Port vs vendor on the vendor's own frame, no correction applied:
+
+```
+ ch    bias    mae    resid(bias removed)
+  R   +66.4   66.4          23.4
+  G   +60.4   60.5          23.2
+  B   +58.0   58.0          25.1
+```
+
+This is the standing uniform-brightness mystery, measured for the first time
+without a roll confound: **+58..+66 sRGB codes, spread only 8 codes across
+channels.** It is a genuinely *uniform* offset, not a per-channel one.
+
+It is also **near-invariant to input scale.** `rawAA001.tif` is an 8-bit export
+(195 levels, max 204), so the scale back to the linear domain is unknown; it was
+**swept, not chosen** (scales 16..80; 96 and 128 fail FindDmin on clipping). R's
+bias moves 66.4 -> 64.8 across a 5x change in input scale. An offset that
+ignores its own input by that margin is not arriving from gain, exposure, or the
+invert.
+
+### 157.3 A single uniform post-tone constant reconciles them
+
+`Rpd2Pcs_HR200_QS_v5s10.pf` has no B2A tables, so the ICC pair cannot be run
+backward to recover the vendor's pre-ICC codes (PIL: "cannot build transform").
+Searching instead for the constant per-channel offset `d` with
+`ICC(ours_pre_icc - d)` closest to the vendor's render:
+
+```
+best d = [15, 15, 17] u8  =  [241, 241, 273] rpd12 codes
+MAE 61.7 -> 16.35     R bias +0.01, G -2.35, B -4.45
+```
+
+Near-uniform, and it **preserves fpo's per-channel spread** -- which is what the
+invert's own comment says is load-bearing. It also independently reproduces
+§156.3's cross-roll fit (227/271), by a completely different instrument on
+different data: **241-273 vs 227-271.**
+
+### 157.4 The negative result that matters: the anchor is the wrong knob
+
+Applying that same magnitude through the real pipeline knob (`PAKON_FPO_DELTA`,
+which subtracts a constant from every channel's fpo) does **not** reproduce it:
+
+```
+delta    0:  R bias +66.4   TOTAL mae 61.63
+delta  241:  R bias +38.7   TOTAL mae 36.75      <- fit predicted bias ~0
+delta  350:  R bias +18.2   TOTAL mae 19.33
+```
+
+Delta 241 removes 28 of the 66 codes, not all of it. The reason is mechanical:
+`real_auto_tone` is percentile-adaptive, so a uniform density shift applied
+*before* it is largely re-normalised away; the same constant applied *after* it
+(§157.3) lands 1:1.
+
+Confirmed directly -- with `PAKON_PAPER_ALIGN` on, an fpo delta does **nothing
+at all** (R mae 23.8 with `FPO_DELTA3="0 0 -120"` vs 23.9 without). A percentile
+rescale absorbs any pre-tone shift completely.
+
+**Consequence: the offset does not live in the invert anchor.** The entire
+§111-§156 family of anchor/fpo tunings is tuning a stage whose effect the tone
+chain removes. Those configurations are not wrong arithmetic -- they are the
+wrong location. This does not retract §147's span match or §145's bit-exact
+pedestals; it retracts the premise that the *brightness offset* is fixable there.
+
+### 157.5 §129.2's retraction of `PAKON_PAPER_ALIGN` is itself withdrawn
+
+Scored content-matched per-pixel:
+
+```
+config          R bias   G bias   B bias   TOTAL mae
+none             +66.4    +60.4    +58.0      61.63
+black_point     -102.9   -115.1   -132.4     116.83   (overshoots badly)
+black_white      -26.5    -26.6    +52.2      36.23
+paper_align       -5.3     -5.6    -16.4      24.94   <- best
+```
+
+`PAKON_PAPER_ALIGN` was retracted in §129.2 on the grounds that it "rescaled
+span and moved the slope only 3 %". That judgement was made with the cross-roll
+fitted instrument. Measured per-pixel on the vendor's own frame it is the best
+correction tested: **MAE 61.63 -> 24.94, R and G bias down to -5 codes.**
+
+Against the reference points: the perfect post-tone constant reaches 16.35, and
+the vendor's own irreducible residual against a log model is mean |err| 8.9-10.2
+(§157.6). So paper_align closes roughly two thirds of the gap, and B's -16.4 is
+the one channel it does not fix.
+
+**Caveat, stated plainly:** paper_align is a per-image percentile stretch. It
+targets a *fixed* value (`dra-*.dpi` paperMin/paperMax = 1200/2000), not the
+reference, so it is not circular -- but a percentile stretch will flatter any
+well-exposed reference, and this is a **single frame**. Only `rawAA001` has a
+matching raw; `AA002..AA039` are renders with no raw, so there is no second
+frame to validate against. This result should not be promoted to a default until
+a second vendor raw/render pair exists.
+
+### 157.6 What the metric can and cannot see
+
+Fitting the vendor's own render from the vendor's own raw with a per-channel
+log-affine model (`pakon_sameframe_golden.py`) leaves:
+
+```
+ ch   slope    corr     scatter   mean|err|   p95
+  R  -265.8  -0.9792     13.08       10.17   24.30
+  G  -268.8  -0.9869     11.07        8.88   20.58
+  B  -244.7  -0.9856     11.88        9.78   21.80
+```
+
+**A per-channel log curve cannot reproduce the vendor's output from the vendor's
+own input.** ~11-13 codes of scatter is real per-pixel structure the metric
+cannot represent. So a meaningful part of what §150-§156 scored as "our excess
+scatter" is signal, not error, and no port scored against a log fit can beat
+these numbers. The 8-bit quantisation of `rawAA001` is a further floor this test
+cannot see past -- a small residual here is **not** evidence of bit-exactness.
+
+### 157.7 Status
+
+Regression suite green after this work (`pakon_gate.py selftest` PASS,
+`test_calib.py` 200/200, `test_render_f135.py` PASS). Nothing in the default
+render path changed: §157 adds two analysis harnesses, and every knob it
+exercises was already opt-in and remains off by default.
+
+### 157.8 The mechanism, not the fit: DRA maps LUMINANCE, not channels
+
+§157.5 left `PAKON_PAPER_ALIGN` fixing R and G to -5 codes but leaving B at
+-16.4. That asymmetry is explained by the stage it is imitating.
+
+`PAKON_PAPER_ALIGN` maps **each channel independently** onto 1200..2000. That is
+not what DRA does. `dra-*.dpi` carries paperMin/paperMax and DRA maps
+**luminance** onto them, letting the channels follow -- this port's own §129
+comment says so. Forcing all three channels individually destroys the
+per-channel separation §153 measured, which is why one channel is left out.
+
+`PAKON_PAPER_ALIGN_LUMA` applies **one** luminance-derived affine map to all
+three channels, preserving their separation. Scored on the same frame:
+
+```
+config      R bias   G bias   B bias   TOTAL mae
+none         +66.4    +60.4    +58.0      61.63
+paper_align   -5.3     -5.6    -16.4      24.94
+pa_luma       -1.6     -6.1     -6.1      22.46   <- best
+```
+
+It wins on total error **and** fixes the specific channel the per-channel
+variant could not -- B's bias -16.4 -> -6.1. The prediction was made from the
+mechanism before the measurement, and the measurement confirmed it. The uniform
+brightness offset drops from ~62 codes mean to ~5.
+
+Reference points: a perfect post-tone constant reaches 16.35 (§157.3), and the
+vendor's own irreducible residual against a log model is 8.9-10.2 (§157.6). So
+~22.5 is roughly 2.3x the floor the metric itself imposes, not 6x.
+
+**What this is and is not.** It is tier 4 (empirical, against a real vendor
+reference) on **one frame**, with the 8-bit and single-frame caveats of §157.5
+unchanged -- only `rawAA001` has a matching raw. It is *not* a port of DRA's
+actual arithmetic: the 1/99 percentiles and the 0.299/0.587/0.114 luma weights
+are conventional choices, not values read out of `dra-*.dpi` or recovered from
+the DLL. A tier-1 port of DRA's own luminance construction and its own
+percentile selection is the outstanding work this points at. Off by default.
+
+### 157.9 Wiring DRA's own verified bounds — a negative result worth keeping
+
+§157.8's luma variant guessed both halves: sRGB luma weights and 1st/99th
+percentiles. DRA uses neither. Its luminance is the **flat mean**
+`(R + G + B + 1) / 3` with signed truncation -- the literal `inc ecx` at
+`0x1022b1ae` and the `0x55555556` magic-multiply at `0x1022b1b6`
+(`dra.lum_histogram`, Unicorn-verified). Its bounds come from `dra.cum_bounds`
+(`0x10228bc0`, Unicorn-verified), driven by the shipped `dra-*.dpi`:
+
+```
+startingMinCumPoint 1.0     startingMaxCumPoint 90.0    <- 90th, not 99th
+cumPctBelowMin      0.1     cumPctAboveMax       0.2
+binFactor           4       paperMin/paperMax 1200/2000
+minSlope            0.8     maxSlope             1.5
+lowFixedPoint    1550       highFixedPoint      1550
+```
+
+**Both leaves were already ported and Unicorn-verified, and nothing on the
+render path called them.** `pakon_ansel.py` contains no reference to
+`lum_histogram` or `cum_bounds`. The DRA bounds stage is ported but unwired.
+
+Wiring it (`PAKON_DRA_BOUNDS=1`) and mapping `lo..hi` onto paperMin..paperMax
+gives **MAE 28.29** -- far better than the 61.63 baseline but **worse** than
+§157.8's guessed heuristic (22.46), leaving a uniform +26 residual. On this
+frame `cum_bounds` returns lo=1308 hi=2172, a gain of 0.9259 which is inside
+`[minSlope, maxSlope]` and therefore not clamped.
+
+The mechanism-correct version losing to the heuristic is the useful part: it
+says the affine `lo..hi -> paperMin..paperMax` reading of DRA is **wrong**. The
+same file sets `bDoAverage=true` with `lumWeighting=0.5, edgeWeighting=0.5`, so
+real DRA blends luminance with an **edge** measure, and applies a TTC curve.
+Only the bounds scan is wired here.
+
+### 157.10 The fixed point: three independent estimates converge on 1550
+
+`dra-*.dpi` carries `lowFixedPoint == highFixedPoint == 1550`, and the CN
+Preference opening line reports the same number as `NBP=1550`. On the vendor's
+own frame this port's toned luminance median sits at **1810** -- 260 above that
+fixed point.
+
+260 is the offset that two unrelated instruments had already fitted:
+
+```
+§156.3  cross-roll slope fit, different roll, different estimator   227..271
+§157.3  post-tone constant fitted in ICC space, this frame          241..273
+§157.10 toned luminance median vs the DPI's own fixed point              260
+```
+
+Three estimates, two of them fits and one of them a **number read out of the
+vendor's own config file**, landing on the same value. That is the reason to
+test the pivot as a mechanism rather than keep fitting a constant.
+
+`PAKON_DRA_PIVOT=1` centres the toned image's luminance median on the fixed
+point. Scored on the vendor's own frame:
+
+```
+config        R bias  G bias  B bias   TOTAL mae
+none           +66.4   +60.4   +58.0     61.63
+dra_bounds     +27.9   +24.1   +26.0     28.29
+paper_align     -5.3    -5.6   -16.4     24.94
+pa_luma         -1.6    -6.1    -6.1     22.46
+pivot+slope     -4.3    -6.9    -3.2     17.87
+pivot           -5.4    -7.2    -2.1     16.57   <- best
+--------------------------------------------------------
+best possible post-tone constant (§157.3)          16.35
+vendor's own irreducible residual (§157.6)         ~9-10
+```
+
+**The pivot reaches 16.57 against a fitted ceiling of 16.35** -- i.e. it
+captures essentially all of what any post-tone constant can achieve, but does it
+with the vendor's own fixed point and the vendor's own luminance formula rather
+than a fitted number. All three channel biases fall inside 7 codes.
+
+Adding DRA's bounds-derived slope about the pivot makes it slightly **worse**
+(17.87), consistent with §157.9: the slope needs the edge-weighted luminance
+that is not ported, so the pure pivot is currently the better model.
+
+**Reading.** The uniform brightness offset is this port's tone stage not
+centring the image on DRA's fixed point. That is a different stage from where
+§111-§156 looked (the invert anchor), and §157.4 showed why those could never
+have fixed it -- the adaptive tone stage re-normalises anything applied ahead of
+it.
+
+**Status: tier 4, one frame, off by default.** The single-frame and 8-bit
+caveats of §157.5 are unchanged -- only `rawAA001` has a matching raw, so there
+is no second frame to validate against, and none of this is tier 1. What it
+earns is a specific, mechanism-shaped target for tier-1 work: port DRA's
+edge-weighted luminance (`lumWeighting`/`edgeWeighting` 0.5/0.5), its TTC
+application, and its fixed-point handling from the DLL, then re-score here.
+Regression suite green (`pakon_gate.py selftest`, `test_calib.py` 200/200,
+`test_render_f135.py`); the default render path is byte-identical (baseline MAE
+still 61.63 with no knob set).
+
+### 157.11 RETRACTION of §157.10's mechanism claim — the vendor does not centre on the fixed point
+
+§157.10 read the pivot as a **mechanism** because three estimates converged on
+260 and one of them was a number in the vendor's own config. That reasoning was
+wrong, and the test that breaks it needs no raw at all.
+
+If the vendor centred every frame's luminance on `lowFixedPoint`, its **output**
+luminance median would be tightly clustered across a roll regardless of content
+(the ICC is a fixed map, so a pinned RPD median implies a near-constant sRGB
+median). Measured over all 39 vendor renders in `0new/`, using DRA's own
+`(R+G+B+1)/3`:
+
+```
+                       mean     sd     min     max   range
+VENDOR (39 frames)    151.3   36.4    78.0   232.3   154.3
+port rk_plain (20)    148.4   45.9    57.7   201.0   143.3
+port render_faithful   132.2   50.8    58.7   182.0   123.3
+```
+
+**The vendor's spread is not tight.** sd 36.4 over a 154-code range, comparable
+to this port's own uncentred output. The vendor plainly preserves scene-to-scene
+brightness variation -- as any correct renderer should.
+
+`PAKON_DRA_PIVOT` forces every frame's median onto 1550. On a roll that would
+**flatten legitimate scene variation the vendor demonstrably keeps.** It cannot
+be the vendor's mechanism.
+
+**Why it still scored 16.57.** On a single frame a mechanism and a fitted
+constant are indistinguishable: any correction removing approximately the right
+constant reaches the fitted ceiling. §157.3's ceiling was 16.35 and the pivot
+hit 16.57 -- that is not corroboration, it is the same quantity measured twice.
+The 39-frame spread test was the only available way to separate the two, and it
+separates them against the pivot.
+
+**What survives.** The *measurement* stands: on the vendor's own frame this port
+is uniformly +58..+66 sRGB codes bright (§157.2), the discrepancy is a single
+near-uniform post-tone constant (§157.3), and it is **not** fixable at the
+invert anchor because the adaptive tone stage re-normalises anything ahead of it
+(§157.4). Those are content-matched measurements, not fits. What does **not**
+survive is any claim to know the mechanism that produces the constant, or that
+1550 is it. The convergence on 260 remains unexplained rather than explained.
+
+**Standing caution, restated.** §157.5, §157.8 and §157.10 each scored better
+than their predecessor on one frame, and §157.9 -- the only variant built from
+Unicorn-verified vendor arithmetic -- scored *worse* than the guesses. A ranking
+on one frame is not evidence about mechanism. None of these knobs should be
+promoted to a default on this evidence; what is needed is a second vendor
+raw/render pair, which requires hardware.
+
+## 158 — What DRA actually does, at tier 1: a one-way clamp, with no expansion branch
+
+§157.9 and §157.10 both guessed at DRA's behaviour from its parameters and
+scored the guesses empirically. Both guesses are now positively refuted against
+the real DLL, not merely out-scored.
+
+DLL: `PakonIMAu.dll`, MD5 `eea9dcf78ee21d4f7c515a6c2512242d` — the same copy
+every prior section cites. New checks in `pakon_dra_golden.py`; harness reports
+ALL OK, and `pakon_gate.py selftest` / `test_calib.py` (200/200) /
+`test_render_f135.py` are green alongside it.
+
+### 158.1 `generateLut` (0x1022ab50), asserted against the DLL
+
+```
+(a) effective range INSIDE [paperMin=1200, paperMax=2000] -> IDENTITY LUT
+    hist~N(1600,60)  eff=(1444,1744)   identity=True
+    hist~N(1550,90)  eff=(1328,1752)   identity=True
+    hist~N(1400,40)  eff=(1288,1504)   identity=True
+    hist~N(1750,50)  eff=(1616,1876)   identity=True
+(b) range WIDER than the paper range -> COMPRESSION, pivoting on 1550
+    hist~N(2000,900)   eff=(0,3144)   LUT[1550]==1550  highs-pulled-in=True
+    hist~N(1900,1200)  eff=(0,3436)   LUT[1550]==1550  highs-pulled-in=True
+(c) minSlope/maxSlope swept 0.0..100.0 -> BYTE-IDENTICAL LUT
+```
+
+**If the frame's effective range already lies inside the paper range, the DraLut
+is exactly the identity — all 4096 entries, `lut[i] == i`. DRA does nothing at
+all.** Only a range spilling outside is touched, and then the offending side is
+compressed *inward* about 1550, each side independently.
+
+**There is no expansion branch.** Nothing stretches a narrow range out to fill
+the paper range. DRA is a one-way clamp-and-compress, not an auto-level.
+
+### 158.2 Consequences — two of this port's knobs are wrong, not just unhelpful
+
+**`PAKON_DRA_BOUNDS` (§157.9) implements a branch DRA does not have.** It maps
+`lo..hi -> paperMin..paperMax` affinely, i.e. it *expands* a narrow range. That
+is precisely the operation the real `generateLut` never performs. §157.9
+recorded it scoring worse than a guess and inferred "the affine reading is
+wrong"; that inference is now confirmed directly.
+
+**`PAKON_DRA_PIVOT` (§157.10) clamps a slope to two dead parameters.**
+`0x1022ab50` contains no x87 instructions at all, and `keepMidPtLut`
+(`0x102290b0`) reads only params `+0x00/+0x02/+0x04/+0x06/+0x08/+0x28` and the
+six `.ttc` blocks — never `+0x0c`/`+0x10`. Confirmed *positively* rather than
+from absence: sweeping both across their full valid range leaves the real DLL's
+DraLut byte-identical on a frame where DRA is genuinely working (c above).
+`minSlope`/`maxSlope`'s only consumer is `validate_params` (bad-index 6).
+
+**DRA cannot be the source of the §157 offset.** Its mean shift is 0 for
+in-range frames and *negative* (−175..−424 measured) for anything wider than the
+paper range. It brightens only a shadow-clipped frame. A uniform +241..+273
+rpd12 brightening is not in its repertoire.
+
+This corroborates §157.11's retraction from an independent and stronger
+direction: §157.11 refuted the pivot empirically (the vendor does not centre
+frames on a fixed point); §158 refutes its mechanism at tier 1.
+
+### 158.3 Two real port bugs found in the `.dpi` parser
+
+`DRA_PARAMS_LAYOUT` — which sets the numeric value of every parameter feeding
+every already-verified DRA stage — was tier-3 only (read off the strcmp/sscanf
+chain by eye). It is now Unicorn-verified: the real per-line body
+`0x102283d5..0x10228965` executes and the 0x40-byte scalar params image is
+diffed byte-for-byte against the port's, over 68 cases. Two divergences, both
+fixed:
+
+1. **The three bools are not `strcmp(value,"true")`.** The DLL does
+   `sscanf(value,"%c",&c)` then `cmp byte,0x74; sete` (`0x102285c4`/`0x102285d8`
+   plus two twins) — a lowercase `'t'` FIRST-CHARACTER test. `"True"`/`"TRUE"`
+   are FALSE; `"t"`/`"tomato"` are TRUE.
+2. **The tokeniser is `sscanf("%s = %s")`, not a split on `'='`.** `key=value`
+   with no spaces yields 1 conversion and is *rejected* at `0x10228423`; the
+   port accepted it. The comment test at `0x102283d5` is likewise a
+   first-character test, not "strip from the first `#`".
+
+**Neither changes any currently-loaded value** — the shipped `.dpi` uses
+canonical `key = value` with lowercase `true`/`false`. This is port-vs-vendor
+correctness, not a found render bug, and is recorded as such.
+
+Also newly bit-exact: all six `*TTC` key→block-offset mappings
+(`0x40, 0x4f4, 0x9a8, 0xe5c, 0x1310, 0x17c4`) captured at the real
+`push esi; call 0x10227c60`, and the path rule `dpiPath.rfind('\\')` →
+`substr(0,idx+1) + value`, including the real edge case that a `.dpi` path with
+no backslash silently loads NO curves (`0x102288ea` jumps past the call).
+
+**Not covered, stated plainly.** MSVCR71 `sscanf` is hooked, not emulated (CRT,
+not vendor code); what executes for real is the `repe cmpsb` key chain, the
+destination offsets and the format-string selection. The `.ttc` reader
+`0x10227c60` remains verified only at its slope snippet `0x10227e93`.
+
+### 158.4 Open, and worth auditing
+
+The harness's shared `write_msvc_string` lays `basic_string` out as
+`{union +0x00, _Mysize +0x10, _Myres +0x14}`. This DLL disagrees: the string
+ctor'd at `esp+0x20` is read back at `0x1022893a` as `_Myres` = base+0x18 and
+`_Ptr`/`_Buf` = base+0x04 — the VC7.1 `_String_val` shape where the empty
+allocator still occupies the first 4 bytes. Confirmed positively (with +0x00 the
+DLL hands `0x10227c60` an empty path; with +0x04 it hands over the correct one).
+A correct local `write_msvc_string_v71` was added for the new check rather than
+changing shared code 13 passing checks depend on. **`check_lighting`'s
+`find("lighting")` MISS should be audited** — it would "pass" either way, so it
+may be an artefact of the wrong layout rather than a genuine miss.
+
+## 159 — The upstream boundary: the vendor's shift is PER-FRAME ADAPTIVE, this port's is one fixed triple per roll
+
+§158 and the full-chain harness left the colour gap localised upstream of
+`real_auto_tone`: the tone chain and ICC are bit-exact against the real DLL on a
+full frame (`mean=0.000 p99=0.00 max=0.0`, 6.1M pixels), and DRA cannot produce
+a positive uniform shift. This section chases that upstream boundary.
+
+### 159.1 The invert is not a port, by the code's own admission
+
+`pakon_decode.py` states it plainly:
+
+```
+F135_INVERT_PORTED = False
+"No DLL call site computes what f135_rom12_to_rpd12 computes. ...
+ Every constant used below is the vendor's; the arrangement is ours.
+ Rendered F-135 colour is provisional."
+```
+
+docs/58 §16 leaves *where* the F-135 inverts open. So the last unverified stage
+upstream of a now-proven-exact tone chain is also the one that sets the tonal
+anchor.
+
+### 159.2 What `area_image_apply_lut` actually applies — measured, tier 2
+
+The `area_image_apply_lut` hook row dumps `r_lut`/`g_lut`/`b_lut` at 8192 bytes
+each: 4096 entries of int16, a complete 12-bit transfer table, captured on real
+hardware. `tools/re/extract_area_luts.py` reads them
+(`live_hooks_20260819-121153.jsonl`, 117 calls carrying all three planes,
+**40 distinct triples**).
+
+Note the record shape: the capture emits ONE JSON record per dump
+(`{"kind":"buffer_dump","label":"r_lut","hex":...}`), so the three planes are
+three lines sharing a `call_id`, not one record with three fields.
+
+Checked over **every one of the 4096 entries of all 40 distinct triples**:
+
+```
+planes deviating from clip(i + k, 0, 4095): 0
+worst deviation over ALL entries of ALL tables: 0
+```
+
+**Every captured table is EXACTLY `clip(i + k, 0, 4095)`.** It is a pure
+per-channel ADDITIVE offset in RPD space -- not a curve, not a gamma, and
+emphatically not the inversion. (The first captured triple is the exact
+identity, which is why a first-record-only reading of this evidence says
+nothing; the classification must run over all distinct triples.)
+
+### 159.3 The mismatch
+
+```
+vendor offsets across 40 distinct calls (RPD codes)
+  R: min     0  median   680  max  1332  mean  709.5  sd 240.2
+  G: min   -21  median   307  max   886  mean  325.9  sd 215.5
+  B: min  -263  median    73  max   668  mean   79.2  sd 205.4
+
+this port's setShifts OUT (CN Preference path):  (683, 297, 151)
+```
+
+Two things follow.
+
+**(a) The stage is correctly identified.** This port's R (683) and G (297) match
+the vendor's own medians (680, 307) to within 3 and 10 codes. That is not a
+coincidence across two independently derived quantities; the port is computing
+the right kind of number in the right units at the right place. B is the
+exception -- 151 against a median of 73.
+
+**(b) The vendor's value is ADAPTIVE and this port's is not.** The vendor's
+offsets span R 0..1332, G −21..886, B −263..668, with a standard deviation of
+205..240 RPD codes across calls. This port computes `setshifts_out` **once, in
+`AnselEngine.load()`**, from `preference_shift_words(sba)` -- static SBA/DPI
+config, no frame content -- and applies that single triple to the whole roll.
+
+`setshifts_12` itself is bit-exact (`pakon_setshifts_golden` PASSES,
+`SETSHIFTS_12_PORTED=True`), so this is not an arithmetic error. It is a
+**scope** error: correct arithmetic evaluated once per roll where the vendor
+evaluates it per frame.
+
+### 159.4 Why this explains the observations §157 could not
+
+* §157's ~241..273 rpd12 offset on a single frame sits comfortably inside a
+  205..240 code standard deviation. A per-frame term we do not compute will look
+  exactly like a constant when measured on one frame.
+* §157.4's finding that an fpo delta gets absorbed by the adaptive tone stage,
+  while a post-tone constant lands 1:1, is what a MISSING adaptive term looks
+  like -- the compensation only survives if applied where the adaptation cannot
+  re-normalise it.
+* §157.11's refutation of the fixed-point pivot -- the vendor's output luminance
+  median varies widely across 39 frames (sd 36.4) -- is precisely what a
+  per-frame shift produces and a per-roll constant cannot.
+* The roll harness's frame-to-frame bias scatter (R sd 43.4, G 35.8, B 43.7 in
+  sRGB codes over 38 frames) is the sRGB-domain shadow of the same missing term.
+
+Four independent observations that each looked like separate puzzles are one
+puzzle: **the shift is per-frame and we compute it per roll.**
+
+### 159.5 Status and what is NOT claimed
+
+Tier 2 (live hardware hook capture) for the LUT contents; the additive model is
+verified exhaustively over every entry rather than sampled. **Not** tier 1: this
+reads a table the DLL was about to apply, which establishes WHAT is applied but
+not which code builds it or when.
+
+Specifically NOT established:
+* That the 40 distinct triples are one-per-frame. The capture holds 117 such
+  calls and 78 distinct raw frames; 40 matches neither, so the cadence is
+  unknown and "per frame" is shorthand for "varies with content", not a
+  measured mapping. `area_image_apply_lut` may also serve preview and final
+  paths differently, and some calls apply the exact identity.
+* That making this port's shift adaptive would close the gap. That is the
+  hypothesis this section produces, not a result.
+* Anything about B's 151-vs-73 discrepancy beyond its existence.
+
+No default behaviour changed by this section. Regression suite green
+(`pakon_gate.py selftest`, `test_calib.py` 200/200, `test_render_f135.py`,
+`pakon_dra_golden.py` ALL OK).
+
+## 160 — What the shift adapts to: `shift = C - preference`, evaluated per frame
+
+§159 established that the vendor's per-channel additive RPD offset varies with
+content while this port computes one triple per roll, and left "what does it
+adapt to" open. Measured from `live_hooks_20260819-121153.jsonl` (tier 2).
+
+### 160.1 The cadence is per frame — counted, not assumed
+
+```
+sba_set_shifts  @ 0x10100260    78 calls
+distinct raw frames in the same capture   78
+```
+
+§159.5 explicitly declined to claim "per frame" because 40 distinct LUT triples
+matched neither 117 calls nor 78 frames. The `sba_set_shifts` count settles it:
+**78 calls, 78 distinct frames.** The shift is computed once per frame.
+
+### 160.2 The law
+
+`sba_get_shifts` (0x10124000) dumps `shifts_3a38` and `pref_out_3a30`, 6 bytes
+each = 3 x int16, 117 dumps of each. Summing the shift against the preference
+word:
+
+```
+shifts_R + pref_out[1]:  1549 x96,  1550 x21                 (117 calls)
+shifts_G + pref_out[2]:  1549 x96,  1550 x18,  1551 x3
+```
+
+**`shift = 1549 - preference`, exact on 96/117 (82 %) for both channels, and
+within +2 on the remainder.** This port's own CN Preference log line prints
+`NBP=1550`. The measured constant is 1549, so the law is `NBP - 1 - pref` or
+`NBP - pref` with a truncation — a real off-by-one that should be pinned by
+emulation rather than rounded away. The 1550/1551 tail is not noise in the
+capture; it is structure this section has not explained.
+
+### 160.3 A misaligned hook row — `pref_out_3a30` is one word short
+
+`pref_out_3a30`'s FIRST word is `0` on all 117 dumps, while `shifts_3a38`
+carries three real values. The row dumps 6 bytes from `+0x3a30`, but the real
+preference triple starts at **`+0x3a32`**: the law above pairs `shifts_R` with
+`pref_out[1]` and `shifts_G` with `pref_out[2]`, i.e. the array is read one word
+late, and the triple's third element at `+0x3a36` **was never captured**.
+
+Predicted from the law (`C - shifts_B`), first six calls:
+`1454, 1596, 1799, 1536, 1765, 1681`.
+
+Fixing the row to dump `+0x3a32..+0x3a37` would capture the full triple and let
+the third element be checked against those predictions. That needs a new scan,
+i.e. hardware.
+
+### 160.4 Unresolved: the applied offset is NOT simply `shifts_3a38`
+
+The set comparison against §159.2's per-call `apply_lut` offsets:
+
+```
+non-identity apply_lut triples : 39 (39 distinct)
+shifts_3a38 triples            : 117 (39 distinct)
+distinct triples in BOTH sets  : 8
+apply_lut distinct NOT in shifts: 31
+```
+
+Only 8 of 39 coincide — **yet the per-channel extremes match exactly**
+(R max 1332; G −21..886; B −263..668, §159.3 vs the same figures here). Two
+quantities drawn from the same range but disagreeing call-by-call.
+
+Stated as open rather than forced: `shifts_3a38` is captured at
+`sba_get_shifts` ENTRY and may lag or lead the value `apply_lut` eventually
+receives, or the two may be different projections of the same per-frame
+computation. §159's claim that apply_lut's `k` "IS the setShifts result" was
+inferred from the matching ranges and is **not** supported at call granularity;
+it is downgraded here to "same range, same generator, correspondence unproven".
+
+### 160.5 Where this points
+
+The adaptation is not in `setShifts` — that is a fixed affine law
+(§160.2) over an input that itself varies. **It is the Preference output that
+adapts per frame.** This port computes `preference_shift_words(sba)` from static
+SBA/DPI config in `AnselEngine.load()`, so it produces one preference value for
+the whole roll and therefore one shift.
+
+The tier-1 target is now specific: `sba_preference` (469 calls in this capture,
+with `pref_data`, `blob` and `pref_scene_big` input dumps already in the hook
+table). Emulating it against those captured inputs would establish what scene
+quantity drives it. Nothing here needs hardware except the §160.3 row fix.
+
+**Not claimed:** that `shift = 1549 - pref` is the complete law (18 % of calls
+deviate by 1-2); that the Preference input set is fully captured; or that making
+this port's preference per-frame would close the §157 gap. Regression suite
+green; no default behaviour changed.
+
+## 161 — The producer: `balance_area_image` computes the per-frame shift, and that is why it writes no pixels
+
+§160 traced the adaptation to the Preference output and named `sba_preference`
+as the tier-1 target. Following the data one step further moves the target
+again, and resolves §22 on the way.
+
+### 161.1 The vendor runs two passes, and this changes what can be correlated
+
+```
+pref_data     call_id   420 .. 21249     (ANALYSIS pass)
+poly_input_r  call_id    37 .. 29094     (one early, the rest AFTER 21249)
+```
+
+`poly_input_r` frames come from the RENDER pass; Preference runs during
+ANALYSIS. **The two never see the same image.** A first attempt to correlate the
+Preference input against per-frame statistics of the captured raw frames paired
+all 78 preference calls to a single frame and produced an empty result table --
+not a subtle bug, a structural fact about the vendor's ordering. Any future
+analysis that pairs an analysis-pass quantity against `poly_input_r` is invalid
+for the same reason.
+
+So the scalar driving Preference is not derived from those pixels; it is
+computed upstream and handed in.
+
+### 161.2 Where the scalar comes from
+
+Searching every other captured dump for a field carrying the
+`pref_data+0x0000` scalar (`tools`-side script; 78 preference calls):
+
+```
+label               n    offset     corr
+cn_shift_before    39   +0x04b8   -0.9962
+balance_shift_4b6  39   +0x0000   -0.9867
+bai_arg3           39   +0x000a   -0.9867
+arg1_big_filled    78   +0x0b78   +0.9730
+pref_scene_big     78   +0x0000   +1.0000   <- trivial: same struct, larger dump
+```
+
+The `pref_scene_big` hit is self-matching and carries no information. The real
+hits are all **the same memory**:
+
+* `balance_shift_4b6` is `balance_area_image` arg3 + 0x0a
+* which the hook table's own comment records as **`cn_driver` arg1 + 0x4b6**
+* `cn_shift_before` is `cn_enhanced_driver` arg1 (0x500 bytes), so its
+  `+0x04b8` is the next word of that same triple
+
+`balance_shift_4b6` is 6 bytes = 3 x int16 = **the shift triple itself.**
+
+### 161.3 §22's open thread, resolved
+
+docs/74 §22 left open "whether `balanceAreaImage` mutates the shared pixel
+buffer directly, in place, before `cna` reads it". The full-chain harness
+(§158 pass) ran its real body under Unicorn against the real pixel buffer,
+watching every write to that address range, and reported **zero pixel-buffer
+writes** on both the entry-guard-throw path and the real body.
+
+That was recorded as a negative result. In light of §161.2 it is a positive one:
+**`balance_area_image` writes no pixels because its output is not pixels.** It
+produces the per-frame per-channel shift triple at `cn_driver arg1 + 0x4b6`,
+which drives Preference (§161.2), which sets the shift by `shift = 1549 - pref`
+(§160.2), which `area_image_apply_lut` applies as a pure additive RPD offset
+(§159.2, exactly `clip(i + k)` over every entry of all 40 tables).
+
+The whole chain, end to end:
+
+```
+balance_area_image  -> shift triple @ cn_driver arg1 + 0x4b6   [per frame]
+  -> Preference     -> pref scalar (corr -0.99 with the triple)
+  -> setShifts      -> shift = 1549 - pref  (exact on 96/117)
+  -> apply_lut      -> RPD' = clip(RPD + k)
+  -> FUGC / analyzeAutoTone / ICC   [already bit-exact, §158 + full-chain]
+```
+
+### 161.4 Why this is the whole remaining gap
+
+Every stage downstream of the shift is already verified: the tone chain and ICC
+are bit-exact against the real DLL on a real full frame
+(`mean=0.000 p99=0.00 max=0.0`), DRA is a no-op for in-range frames (§158.1),
+and 31/37 harnesses pass. The invert is admittedly unported
+(`F135_INVERT_PORTED = False`, §159.1) but it is fed by, and its output
+corrected by, this same shift.
+
+`balance_area_image` is the one stage that (a) runs per frame, (b) produces a
+quantity this port does not compute at all, and (c) sits upstream of everything
+already proven correct.
+
+**A Wine host for it already exists** -- `tools/re/live_hooks/wine_host/bai_host.c`,
+written because the function needs real runtime state (it deadlocked under naive
+emulation until its CRITICAL_SECTION was re-inited). That is the vehicle for a
+tier-1 port.
+
+### 161.5 Not claimed
+
+* That `balance_area_image` is the ORIGINAL producer rather than a relay -- the
+  correlation shows the triple is present in its arg3 at entry, and
+  `LogExtraDumps` fires on ENTRY only, so the value may be computed by its
+  caller. Distinguishing these needs an exit-side capture or emulation.
+* That the correlation (39 calls) is as solid as §160.2's exact arithmetic
+  (117 calls, exact on 96). It is strong but it is a correlation, not a law.
+* That porting it would close the gap. That remains the hypothesis.
+
+No default behaviour changed. Regression suite green.
+
+## 162 — Where the F-135 inverts: UPSTREAM of PolyPixel, not downstream — this port has the order reversed
+
+docs/58 §16 and §159.1 both record "where the F-135 inverts" as an open
+question, and `pakon_decode.py` says plainly that
+`F135_INVERT_PORTED = False` / "the arrangement is ours". This bounds it.
+
+### 162.1 The measurement
+
+`tlb_polypixel`'s `poly_input_r` row captures the plane PolyPixel reads at
+ENTRY. Correlating that against the vendor's own render of the same frame, over
+every confidently-paired frame in `live_hooks_20260819-121153.jsonl`:
+
+```
+signed corr(poly_input_r, vendor render)
+  mean +0.9201   min +0.7124   max +0.9850
+  POSITIVE on 38/38 frames
+
+control: the PSI 8-bit "raw" TIFF export, known same-frame pair
+  corr(rawAA001, AA001) = -0.9303
+```
+
+The two "raws" are in **opposite domains**. The PSI export behaves like a
+negative; the data at PolyPixel entry behaves like a positive.
+
+Since PolyPixel preserves polarity on this unit (its diagonal is
++0.289/+0.276/+0.278, docs/58 §12 — already cited by
+`f135_rom12_to_rpd12`'s own docstring), data that is positive at its entry is
+positive at its exit. **The inversion has therefore already happened before
+`0x1000d880`.**
+
+### 162.2 A sign error in this session's earlier work, corrected
+
+§157's frame pairing scored `abs()` of the signature correlation. That is
+correct for identifying WHICH frame matches, and the 0.965 mean pairing figure
+stands. But it discards sign, and this session earlier read that figure as
+showing the vendor inverted the hook data. It does not. The signed measurement
+above is the correct one.
+
+The same sign error produced the "roll harness renders inverted (-0.92)" defect
+reported alongside §159/§160. There is no such defect: the harness's polarity
+chain is correct end to end
+(`raw -> rpd12` −0.929, the log inverting as intended; `raw -> sRGB` −0.988).
+Our render is a proper positive **of a negative** — it is simply that the input
+was not a negative.
+
+### 162.3 What this implies
+
+This port's order is:
+
+```
+raw14 -> stage 2 poly (_rpd16) -> log invert (f135_rom12_to_rpd12) -> tone
+```
+
+The vendor's, by §162.1, is:
+
+```
+raw -> invert (somewhere upstream) -> stage 2 poly -> tone
+```
+
+**Stage 2 is a non-linear 3x10 polynomial, so these two orders are not
+interchangeable.** `poly(log(x))` is not `log(poly(x))` for any non-trivial
+polynomial. This is an architectural difference, not a parameter difference, and
+it sits upstream of everything §158/§161 proved bit-exact.
+
+It also explains why every anchor-domain experiment from §111 to §157 behaved
+oddly: they were tuning constants inside an invert applied at the wrong point in
+the chain.
+
+### 162.4 Evidence tier, and what is NOT established
+
+Tier 4 (empirical, against a real vendor reference), on 38 real frames with a
+control that comes out the opposite sign — strong, but an inference from
+correlation SIGN propagated through a monotone chain, not a disassembly result.
+
+Specifically NOT established:
+* **Which** function inverts, or where exactly. This bounds it to "before
+  `0x1000d880`" and no further.
+* That simply reordering this port's two stages would fix the colour. The
+  invert's constants (`OWNER_PEDESTALS` c9 = 159.594/444.750/635.535) are the
+  POLYNOMIAL's own per-channel constants; an invert applied before the
+  polynomial cannot use them unchanged. Reordering is not a one-line change and
+  has not been tried.
+* Anything about the F-235/F-335 paths, which were never in this measurement.
+
+No default behaviour changed by this section. Regression suite green.
+
+## 163 — The inversion site: `fcn.10022a60`, a runtime LUT applied immediately before PolyPixel
+
+§162 bounded the F-135 inversion to "upstream of `0x1000d880`" and no further.
+This narrows it to a specific function. TLB.dll, MD5
+`193d9b2ce0a4b77ae9b78262bd06c0fc`.
+
+### 163.1 Ruling out the obvious mechanisms first
+
+```
+TLB.dll        fyl2x x3, all at 0x100508dd..0x10050995, no r2-resolved
+               function -> the statically linked CRT log/log10
+PakonIMAu.dll  fyl2x x1 (0x10643eac), likewise CRT-region
+```
+
+**Neither DLL computes a logarithm in vendor code.** Further, none of the seven
+callees that run before PolyPixel in `fcn.10026c90` touch x87 at all, and a scan
+of both DLLs for a monotone-decreasing, log-shaped uint16 table found nothing
+convincing (best |corr vs log10(index)| = 0.54 in each). So the inversion is
+neither an inline float computation nor a table shipped in the binary.
+
+### 163.2 The site
+
+`fcn.10026c90`'s last call before `call fcn.1000d880` is `fcn.10022a60`.
+Real `af`+`pdf` boundary disassembly (never `pD`):
+
+```
+fcn.10022a60 (arg_4h dst, arg_8h src, arg_ch count, arg_14h table); 44 bytes
+  0x10022a76  movzx edi, word [ecx]        ; load uint16 source pixel
+  0x10022a79  mov   di, word [esi+edi*4]   ; TABLE LOOKUP, stride 4
+  0x10022a7d  mov   word [eax], di         ; store uint16 result
+  0x10022a80  add eax,2 / add ecx,2 / dec edx / jne 0x10022a76
+```
+
+`out[i] = *(uint16 *)(table + in[i] * 4)`, element-wise over `count` pixels: a
+16-bit -> 16-bit transfer table with a 4-byte stride (4096 entries = 16 KB for
+12-bit input, the low word of each dword taken).
+
+This is a per-pixel transform applied to the pixel data at exactly the point
+§162's measurement bounded the inversion to, and **the table arrives as an
+argument** -- which is precisely why §163.1 found no such table in either
+binary. It is built at runtime.
+
+### 163.3 What this does and does not establish
+
+Tier 3 (static disassembly, real function boundary). It establishes that a
+per-pixel LUT transform runs on the plane immediately before PolyPixel and that
+its table is constructed at runtime. It does **not** establish that this LUT is
+the inversion -- the table's contents have never been captured, and a
+same-shaped loop would serve equally well for a gamma, a calibration transfer,
+or a dead identity pass. This project's own history has several
+suggestively-placed functions that turned out to be dead code, so the naming
+here is deliberately neutral.
+
+**Confirming it requires dumping `arg_14h` on real hardware.** A hook row of the
+form
+
+```c
+{ "tlb_lut_apply", "lut_table", EXTRA_DUMP_STACK_PTR, 5, 0, 0, 0x4000 },
+```
+
+on `0x10022a60` would capture the 16 KB table (stack index for `arg_14h`, to be
+confirmed against the entry convention). If the captured table is monotone
+decreasing and linear against `log10(index)`, the inversion is found and can be
+ported bit-exactly; if it is the identity, this function is a no-op on the CN
+path and §162's inversion lies elsewhere upstream.
+
+That is a scan, i.e. hardware. Everything up to that point is done.
+
+### 163.4 Consequence for the port, if confirmed
+
+This port applies its log invert AFTER stage 2
+(`_rpd16` -> `f135_rom12_to_rpd12`). The vendor would be applying a LUT BEFORE
+stage 2. Since stage 2 is a non-linear 3x10 polynomial the two orders are not
+interchangeable (§162.3), and the port's `OWNER_PEDESTALS` c9 constants are the
+polynomial's own, so they cannot move ahead of it unchanged. Reordering is a
+real change, not a parameter tweak, and remains untried.
+
+### 163.5 Recovering the LUT's behaviour from captures already in hand
+
+The table is passed to `fcn.10022a60` as an argument and no 16 KB buffer exists
+in any capture (checked across every `*.jsonl`: the largest dumps are
+`poly_input_r` 540672, `pixel_data` 524288, `arg0_big` 12288, the `*_lut` triple
+8192). So the table itself was never captured.
+
+It does not have to be. `poly_input_r` IS that loop's output -- the buffer
+PolyPixel reads at entry -- and a LUT constrains its output to the table's
+entries. The spacing between ATTAINABLE output values therefore traces the
+table's local slope.
+
+Pooled over all 78 frames (7,013,370 pixels), mean gap between consecutive
+observed values, by octile of the range:
+
+```
+        oct0  oct1  oct2  oct3  oct4  oct5  oct6  oct7
+  R     1.03  1.00  1.00  1.03  1.60  2.90  5.28  27.33
+  G     1.12  1.00  1.00  1.01  1.42  2.55  4.57   8.83
+  B     1.22  1.00  1.00  1.09  1.93  3.74  7.27  17.60
+```
+
+**The control that makes this evidence rather than an artefact.** Gaps between
+*observed* values also grow wherever pixels are scarce, and the top of the range
+is the histogram's tail -- so the profile above could be pure sampling. Testing
+that null directly, with pixels-per-code and the Poisson expectation
+`1/(1-exp(-density))`:
+
+```
+  B oct4: 1103 px/code -> expected gap 1.00, observed 1.93
+  B oct5:  397 px/code -> expected gap 1.00, observed 3.74
+  G oct6:   29 px/code -> expected gap 1.00, observed 4.57
+  R oct7:  0.9 px/code -> expected gap 1.68, observed 27.33   <- sampling-limited
+```
+
+With hundreds of pixels per code every code should be hit. Octiles 4-6 show gaps
+2-7x the sampling expectation, so those missing values are genuinely
+**unattainable**: real quantisation imposed by the table. Only the last octile
+is sampling-limited and carries no information.
+
+**Established:** the table is COMPRESSIVE at high output values -- its slope
+exceeds one output code per input code there, thinning the attainable set.
+
+**NOT established, and an over-claim made and withdrawn during this work:** that
+the table is a plain logarithm. Fitting the exponential-gap model implied by
+`out = A - B*log10(in)` (for which `ln(gap)` is linear in `out`) gives pooled
+R^2 of only 0.48-0.58 with B disagreeing across channels (5375/6650/5933), and
+per-frame fits are far worse (median R^2 0.087). The mapping compresses highs,
+but it is not a plain log and **no density scale can be claimed from this
+evidence** -- in particular the "~3290 codes/decade, ~2.3D span" reading
+sketched mid-analysis does not survive its own fit and is withdrawn.
+
+The qualitative result is nonetheless real, controlled, and obtained without new
+hardware: whatever `fcn.10022a60` applies is a non-linear compressive transfer,
+which is consistent with (but does not prove) an inversion, and inconsistent
+with an identity or a dead pass.
+
+## 164 — Segment test: §162 confirmed directly, and a correction to what §158 proved
+
+### 164.1 A correction: the full-chain harness never tested the ICC
+
+§158 and several later summaries state that "the tone chain AND ICC are
+bit-exact against the real DLL". That overstates what Stage 3 measures. Its two
+sides are:
+
+```
+python           = OUR OutToneLut + our apply_citras + our to_srgb
+dll_ground_truth = DLL OutToneLut + our apply_citras + our to_srgb
+```
+
+Only the LUT's SOURCE differs (`dll_ground_truth_srgb`'s own docstring says so:
+"only the LUT's source changes"). So `max=0.0` proves **this port's OutToneLut
+construction is bit-exact with the DLL's** -- a real tier-1 result -- but
+`apply_citras` and `to_srgb` are identical on both sides by construction, cancel
+out, and are **not tested by it**.
+
+The ICC step (`Rpd2Pcs_HR200_QS_v5s10.pf -> Srgb_v2.pf` through PIL/littleCMS)
+has therefore never been checked against the vendor's own CMM, and it sits
+directly in the byte-for-byte path. The capture's `icc_xform_apply` /
+`icc_effect_op` hooks (7566 calls each) record CALLS ONLY, with no buffer dumps,
+so this cannot be closed from existing captures -- it needs dump rows and a
+scan.
+
+### 164.2 The segment test
+
+Rather than chase stages, use the one complete input->output pair available:
+`poly_input_r` is the vendor's own buffer at PolyPixel entry and `0new/AA0xx`
+is the vendor's own render of that frame. Everything between is the segment
+[stage 2 -> tone -> ICC -> sRGB].
+
+Run both ways, as a TEST of §162 rather than an assumption of it:
+
+```
+                       MAE      corr        (mean over 10 paired frames)
+A  with this port's invert    89.37    -0.930
+B  without it                 24.68    +0.923
+```
+
+B beats A on **every** frame, flips the correlation from -0.93 to +0.92, and
+cuts error 3.6x.
+
+**§162 is confirmed by direct end-to-end measurement**, not merely inferred from
+correlation sign: the vendor's data is already positive at PolyPixel, and this
+port double-inverts it. This also independently re-confirms §162.2's withdrawal
+of the "roll harness renders inverted" defect -- the harness was fine; the input
+was not a negative.
+
+### 164.3 What the residual says
+
+Fed the vendor's own input, this port's whole downstream segment reproduces the
+vendor's render to **MAE ~24.7** with correlation +0.92. For scale, §157.6 put
+the vendor's own irreducible residual against a log model at mean |err| 8.9-10.2,
+and §157.3's best-possible post-tone constant reached 16.35 on a single frame.
+
+So the downstream segment is broadly correct and the remaining error is of the
+same order as the per-frame shift this port does not compute (§159-§161). That
+is consistent with -- though it does not prove -- the shift being the bulk of
+what is left.
+
+### 164.4 Standing risk register
+
+Tier-1 solid: 31/37 harnesses; OutToneLut construction; DRA's behaviour;
+`apply_lut` as exactly `clip(i+k)`; setShifts arithmetic.
+Tier-2 solid: per-frame shift cadence (78 calls = 78 frames);
+`shift = 1549 - pref` (96/117 exact).
+Tier-2 correlational: the scalar tracing to `balance_area_image` (39 calls).
+Tier-3/4 and speculative: `fcn.10022a60` as the inversion site (static
+disassembly, never confirmed on the live path); the LUT's shape (compressive,
+but NOT a plain log -- §163.5).
+**Unverified entirely: the ICC.**
+
+### 164.5 The fix, in the production path, over the whole roll
+
+§164.2's segment test open-coded the no-invert path inside the test script,
+which measures the script rather than the port. The skip is now a real flag in
+`pakon_render.scene_rpd12` (`PAKON_NO_INVERT`), so the production call path is
+exercised both ways. Re-run over every confidently-paired frame:
+
+```
+                                     MAE      corr     (38 frames)
+A  invert ON  (current default)     95.29    -0.916
+B  invert OFF (the fix)             33.33    +0.915
+
+B better on 37/38 frames
+B: min 15.91  median 27.10  max 91.09  sd 16.30
+```
+
+Correlation flips sign and error drops 2.9x. This is the same conclusion as
+§164.2 but measured through production code on 38 frames rather than a bypass on
+10.
+
+**The flag is OFF by default and must stay that way for now.** This port's own
+captures are genuine negatives and do need the invert — the default-path score
+on the §157 frame is unchanged at MAE 61.63, and `pakon_gate.py selftest`,
+`test_calib.py` (200/200) and `test_render_f135.py` are all green. The flag is
+for chains fed vendor-domain data and for measuring the downstream segment in
+isolation. Making the ORDER correct for this port's own scans (invert before
+stage 2, §162.3) is a different and larger change that is still untried,
+because the invert's `c9` constants are the polynomial's own and cannot move
+ahead of it unchanged.
+
+**The residual's shape is informative.** Median 27.10 against a spread of
+15.91..91.09 (sd 16.30) — the error is not uniform across frames. §157.6 puts
+the vendor's own irreducible residual at mean |err| 8.9-10.2, so the median
+frame sits at ~2.7x the metric's floor while the worst (AA020, 91.1) is far
+outside it. A per-frame term that this port does not compute (§159-§161) would
+produce exactly this signature: most frames close, some badly off, depending on
+how far the vendor's own per-frame shift sat from the single static triple this
+port applies to the whole roll.
+
+That is a prediction, not a result: confirming it means pairing each frame's
+captured vendor shift against its residual here, which the analysis-pass /
+render-pass split (§161.1) makes non-trivial.
+
+## 165 — The per-frame shift accounts for most of the remaining residual
+
+§164.5 predicted that the segment test's uneven residual (median 27.10, range
+15.91..91.09) was the shadow of the per-frame shift this port does not compute.
+Tested directly.
+
+### 165.1 Pairing, and why the result validates its own assumption
+
+`call_id` pairing is unavailable: `r_lut` spans 76..21596 while most
+`poly_input_r` frames sit at 21642+, so `area_image_apply_lut` runs in the
+ANALYSIS pass and the raw frames come from the RENDER pass (§161.1).
+
+What is available: exactly **39 non-identity `apply_lut` triples and 39 vendor
+renders**. They were paired BY ORDER, assuming both passes walk the roll in
+frame order. That is an assumption — but a self-testing one: a wrong ordering
+shuffles the shifts against the residuals and yields ~0 correlation. The
+correlations below are far from zero, so the ordering is very likely correct.
+
+### 165.2 Result
+
+Segment-test residual per frame (invert OFF, §164.5 configuration) against the
+vendor's own per-frame shift, 38 usable pairs:
+
+```
+metric                                corr with residual
+vendor shift magnitude (L2)                     +0.809
+|dR|  (vendor R  - this port's 683)             +0.704
+|dG|  (vendor G  - this port's 297)             +0.644
+|vendor shift - ours| (L2)                      +0.540
+|dB|  (vendor B  - this port's 151)             +0.115
+
+residual                 median 27.10   range 15.91..91.09
+|vendor shift - ours|    median  285    range   60..1018 RPD codes
+```
+
+**r = +0.809 on shift magnitude means roughly 65 % of the residual's variance is
+explained by the vendor's per-frame shift.** The frames this port renders worst
+are precisely the frames on which the vendor applied the largest shift — which
+is what a missing per-frame term looks like when a fixed triple is substituted
+for it.
+
+Note the ordering: magnitude (+0.809) correlates BETTER than deviation from this
+port's own triple (+0.540). If this port's static triple were doing the work of
+the vendor's, deviation should dominate. That it does not suggests the static
+triple is contributing less usefully than its nominal value implies — worth
+following up, and not explained here.
+
+B is the exception (+0.115), consistent with §159.3's observation that B is
+where this port's static triple diverges most from the vendor's median
+(151 vs 73).
+
+### 165.3 What this does and does not establish
+
+It establishes that the per-frame shift is the DOMINANT identified contributor
+to what remains after the invert-ordering fix — quantified, on real captured
+vendor shifts, over 38 frames.
+
+It does not establish that computing the shift correctly would close the gap to
+byte-exact: ~35 % of the residual variance is unexplained by it, the ICC remains
+unverified (§164.1), and the pairing rests on the order assumption above. Nor
+does it identify what the vendor's shift is computed FROM — §161 traced it to
+`balance_area_image`'s triple at `cn_driver arg1 + 0x4b6`, which is where the
+outstanding tier-1 port sits.
+
+## 166 — Applying the vendor's own per-frame shift: 33.33 -> 21.76 MAE
+
+§165 established a correlation (r=+0.809). This is the demonstration:
+substitute each frame's ACTUAL captured vendor shift for this port's static
+(683, 297, 151) and re-measure the segment test.
+
+```
+configuration                          mean MAE   median      max   (38 frames)
+this port's static (683,297,151)          33.33    27.10    91.09
+vendor per-frame shift, +sign             21.76    20.03    42.32
+vendor per-frame shift, -sign             86.93    86.90   131.37
+```
+
+**35 % improvement, and the worst frame falls 91.09 -> 42.32.** The sign test is
+the control: the wrong sign more than doubles the error, so the convention
+between `apply_lut`'s `k` and this port's `setshifts_out` is confirmed
+compatible rather than assumed.
+
+The per-frame shift is therefore established as a real fix, not merely a
+correlate, and 21.76 bounds what a correct per-frame shift buys on this
+instrument. For scale: §157.6 puts the vendor's own irreducible residual against
+a log model at mean |err| 8.9-10.2.
+
+## 167 — Corrections to §160 and §161 from the tier-1 `balance_area_image` work
+
+A dedicated tier-1 pass over `balance_area_image` (`PakonIMAu.dll`, md5
+`eea9dcf78ee21d4f7c515a6c2512242d`) overturns several claims in §160/§161. They
+are corrected here rather than edited in place, so the error and its correction
+both stay on the record.
+
+### 167.1 Frame count: 39, not 78 (§160.1 miscounted)
+
+The capture logs `enter` AND `leave` as `kind:"call"`. Counting both:
+
+```
+sba_set_shifts      enter=39  leave=39   (I reported 78 calls)
+balance_area_image  enter=39  leave=39
+cn_enhanced_driver  enter=39  leave=39
+analyze_area        enter=39  leave=39
+sba_preference      enter=78  leave=78   = 2 per frame
+sba_get_shifts      enter=117 leave=117  = 3 per frame
+```
+
+**There are 39 frames in this capture, not 78.** §160.1's "78 calls, 78 distinct
+frames" was two independent double-counts that happened to agree — the call
+count included `leave` events, and the 78 distinct `poly_input_r` dumps are two
+per frame. **The per-frame conclusion survives**, at 39/39, but the coincidence
+cited as evidence for it was an artefact.
+
+### 167.2 §160.4 resolved — the applied `k` IS `balance_shift_4b6`
+
+§160.4 reported "only 8 of 39 distinct `apply_lut` triples coincide" with
+`shifts_3a38` and left the correspondence open. The correct statement: the
+applied `k` equals **`balance_shift_4b6` = `cn_driver arg1 + 0x4b6` on 39/39
+frames, exactly**, with the `apply_lut` call_id exactly 3 before that frame's
+`balance_area_image` every time.
+
+§160.4's failure had two causes: it lumped in the 78 identity calls from the
+OTHER caller, and it compared against `shifts_3a38`, which is a different
+triple. The `shifts_3a38 -> +0x4b6` transform remains open —
+`setshifts_12(shifts_3a38, shifts_3a38)` matches 0 of 39 as a set, and no clean
+uniform-offset permutation exists.
+
+### 167.3 §161 is wrong: `balance_area_image` RELAYS, and is a no-op here
+
+§161 named `balance_area_image` the producer of the per-frame shift. It is not.
+
+* **Tier 3.** `fcn.10102b20` (4020 B, 1379 instrs, 295 bbs) touches `arg3` at
+  exactly three instructions — `0x10102c8d`, `0x10102dfc`, `0x10102f6e` — and
+  all three are LOADS. Nothing writes through `arg3`; the pointer is never
+  passed on. The triple at `+0x0a` is an INPUT to the shift-LUT builder.
+* **Tier 2.** Per frame the order is `area_image_apply_lut` -> `fugc_analyze`
+  -> `fugc_set_lut_info` -> `balance_area_image` -> `analyze_area`. The shift is
+  applied to pixels **three call_ids before `balance_area_image` runs**, and
+  `sba_set_shifts` completes before `cn_enhanced_driver` is even entered. A
+  producer cannot run after its own consumer.
+* **Tier 1.** Sentinel-filling `arg3+0x0a` with `0x5A5A` leaves it `0x5A5A`
+  after the real function returns. (Limit: the Wine replay exits early at
+  `AnsError` 8, "Area capability not found", because `arg1`'s capability nodes
+  are absent from the captures — so this covers the entry/lookup region only and
+  corroborates rather than carries the conclusion.)
+
+Moreover, on all 39 frames `balance_area_image` **applied no LUT to any pixel**:
+every one of the 117 `area_image_apply_lut` calls carries a retaddr outside
+`[0x10102b20, 0x10103ad4]` (39 from `0x100fe87a`, 78 from `0x101b291d`).
+
+**The real per-frame builder is `ColorNegativePath::analyzePostBalance`
+(`fcn.100fe4f0`)**, which calls the same builder `0x1006c4f0` at `0x100fe807`
+and `area_image_apply_lut` at `0x100fe875`. The corrected chain:
+
+```
+sba_preference -> sba_set_shifts -> ... -> scene+0x4b6
+  -> analyzePostBalance builds LUTs via 0x1006c4f0
+  -> area_image_apply_lut  -> FUGC / analyzeAutoTone / ICC
+```
+
+### 167.4 §22 reverts to a negative result
+
+§161.3 re-read the full-chain harness's "zero pixel writes" as a positive
+finding ("it writes no pixels because its output is not pixels"). That reading
+is withdrawn. `balance_area_image` writes no pixels because **it exited before
+doing any work** on this scan — its body does build and apply three 4096-entry
+LUTs when reached (`"Can't create shift LUTS"` is its own error string, four
+apply sites at `0x10103561/0x1010386a/0x101038f7/0x10103965`). §22's original
+negative result stands as a negative result.
+
+### 167.5 §159.2 upgraded from tier 2 to tier 1
+
+`fcn.1006c4f0`, the shift-LUT builder, is now ported and bit-exact verified
+(`pakon_sba_apply.shift_luts`, `SHIFT_LUTS_PORTED = True`; harness
+`pakon_shift_luts_golden.py` with Wine host `shiftlut_host.c`):
+
+```
+master table span -32768..32767, 65536 entries: 0 deviate from clip(i, 0, 4095)
+12 cases, 147456 int16 compared bit-exact vs the real DLL: all OK
+```
+
+Wine rather than Unicorn deliberately: the master table lives in uninitialised
+`.data`, appears in no capture, and is built by the DLL's own initialisers, so
+an emulator would have to be handed a fabricated table.
+
+So §159.2's "the tables are exactly `clip(i+k, 0, 4095)`" is no longer an
+empirical observation over 40 captured tables — it is a **derivation**: the
+builder computes `out[i] = master[i + shift]` over a clamped identity ramp.
+
+**Documented divergence outside the vendor's domain:** the builder's indexing is
+unguarded. At count 4096 its valid domain is shift in `[-32768, 28672]`; at
+shift 32767 the DLL reads past its own 0x20002-byte allocation and disagrees
+with `clip(i+k)` on 4095/4096 entries. The port clamps instead. Measured shifts
+are 0..1332, far inside the valid domain.
+
+## 168 — The last unexplained link is a single uniform per-frame scalar
+
+With §167's corrected chain and `0x1006c4f0` ported bit-exact, one link remains
+between what this port can compute and what the vendor applies.
+
+### 168.1 The rewrite is uniform across channels
+
+`cn_shift_before` captures `cn_driver arg1` (0x500 bytes) at cn_enhanced_driver
+ENTRY; `+0x4b6` is the shift triple. It equals the applied `k` on 21 of 39
+frames. On the other 18 the difference is **the same scalar on all three
+channels, every time**:
+
+```
+   entry +0x4b6            applied k                delta
+  (691, 366,  95)      (718, 393, 122)      ( 27,  27,  27)
+  (658, 289,  14)      (612, 243, -32)      (-46, -46, -46)
+  (549, 120,-133)      (504,  75,-178)      (-45, -45, -45)
+  (398,  41,-152)      (472, 115, -78)      ( 74,  74,  74)
+  (878, 483, 214)      (885, 490, 221)      (  7,   7,   7)
+  (945, 559, 279)      (890, 504, 224)      (-55, -55, -55)
+```
+
+So `applied_k = entry_4b6 + delta`, with **delta a single per-frame scalar** --
+0 on 21 frames, non-zero on 18, range -55..94, 19 distinct values, mean 19.9,
+sd 45.5.
+
+This is structurally the uniform brightness offset that has run through this
+investigation since §157: not a per-channel colour term but one number added
+equally to all three channels, varying per frame.
+
+### 168.2 Its driver is not identified from existing captures
+
+Searched, all negative:
+
+* **Carried verbatim in a captured field** — no. Every per-frame dump was
+  scanned for a field equal to delta; none matches.
+* **Predicted by a captured field** — best |corr| 0.26 (`cn_shift_before+0x0026`,
+  `img_desc+0x0022`), i.e. nothing.
+* **Computed from the frame's own pixels** — `pixel_data` (arg4+0x20, 0x80000
+  bytes) was read as int16/uint16/uint8 and reduced to mean/median/p10/p90/sd.
+  Best |corr| **0.302**, and that is the best of twenty combinations tried, so it
+  is noise. On 39 points with 20 attempts a correlation of that size is expected
+  by chance.
+* **A function of the entry triple** — no: |corr| 0.02..0.05 against each
+  channel of `+0x4b6`.
+
+**Conclusion: delta is computed inside `cn_enhanced_driver`, between its entry
+and `analyzePostBalance`'s read of `+0x4b6`, from something not present in any
+capture.**
+
+### 168.3 What it would take
+
+A hook capturing `+0x4b6` at a second point — after the rewrite, before
+`analyzePostBalance` — plus the state the rewriting code reads. That is a scan.
+
+The ask is now precise, which it was not before: **one scalar per frame**, known
+to be zero on ~54 % of frames, known range -55..94. That is a far smaller target
+than "the per-frame shift", and any candidate mechanism can be checked against
+19 known values immediately.
+
+### 168.4 Where this leaves the gap, quantified
+
+```
+segment test, vendor's own input -> vendor's own render, 38 frames
+  this port, static shift (current)                MAE 33.33
+  this port, vendor's real per-frame shift (§166)  MAE 21.76
+  vendor's own irreducible residual (§157.6)       mean |err| 8.9-10.2
+```
+
+Of the 33.33, roughly 11.6 is the per-frame shift -- of which `entry_4b6`
+explains most and this delta the remainder -- and roughly 12 remains beyond it,
+unattributed. The ICC is still entirely unverified (§164.1) and is the largest
+untested stage sitting inside that remainder.
+
+## 169 — §157's single-frame caveat lifted: six vendor pairs, and the §164 control passes
+
+§157.5 was explicit that no knob should be promoted on single-frame evidence,
+because only `rawAA001` had a matching raw. Six pairs (`AA001`..`AA006` with
+their `rawAA00x`) are now in hand.
+
+### 169.1 The offset is a property of the port, not of one frame
+
+```
+frame   corr(raw,render) |  invert ON: R bias  G bias  B bias    MAE | invert OFF MAE
+AA001            -0.930  |        +66.4   +60.4   +58.0   61.63 |        126.08
+AA002            -0.975  |        +42.1   +37.3   +30.8   37.68 |        137.35
+AA003            -0.973  |        +62.7   +52.5   +51.1   57.15 |        122.20
+AA004            -0.991  |        +68.1   +58.6   +53.9   61.41 |        117.27
+AA005            -0.902  |       +101.8   +83.7   +72.6   86.05 |        128.80
+AA006            -0.968  |        +57.0   +49.8   +42.0   50.08 |        142.18
+MEAN             -0.957  |        +66.4   +57.1   +51.4   59.00 |        128.98
+SD                       |         18.0    14.1    13.0   14.62 |
+```
+
+§157.2 measured +66.4/+60.4/+58.0 on AA001 alone. Over six frames the mean is
+**+66.4/+57.1/+51.4 with SD 18.0/14.1/13.0** — the offset is systematic, not an
+artefact of one frame. **§157.2's finding stands.**
+
+One refinement §157 could not see: the channel ORDER is **R > G > B on every one
+of the six frames**, a consistent tilt of ~15 codes from R to B. So the offset is
+*near*-uniform with a systematic per-channel component, not purely uniform as
+§157.2's single frame suggested.
+
+### 169.2 The §164 control passes
+
+This is the important one. §164 concluded, from the hook's `poly_input_r`, that
+this port double-inverts already-positive data — skipping the invert took the
+segment test from 95.29 to 33.33 MAE and flipped correlation −0.916 → +0.915.
+
+If that were a harness artefact rather than a fact about the vendor's domains,
+skipping the invert would help here too. It does not:
+
+* `corr(raw, render)` is **NEGATIVE on all six** (−0.902..−0.991, mean −0.957):
+  the PSI export IS a negative.
+* **invert ON wins on 6/6 frames** (mean MAE 59.00 vs 128.98).
+
+The opposite result on the opposite domain, both by large margins. The PSI
+"raw" TIFF export and the buffer at PolyPixel entry are genuinely in different
+domains (§162), and the port's invert is correct for the former and wrong for
+the latter. **§162/§164 confirmed by control.**
+
+### 169.3 Status
+
+No default behaviour changed. Regression suite green. `PAKON_NO_INVERT` remains
+off by default, which §169.2 now justifies directly rather than by caution: on
+genuine negatives — which this port's own captures are — the invert must stay.
+
+## 170 — FOUND: the F-135 inversion, in closed form
+
+docs/58 §16 has carried "where the F-135 inverts" as open since it was written,
+and `pakon_decode.py` states plainly that `F135_INVERT_PORTED = False` /
+"the arrangement is ours". Both are now answered.
+
+`tlb_lut_apply` (TLB.dll `fcn.10022a60`, md5 `193d9b2ce0a4b77ae9b78262bd06c0fc`)
+applies `out[i] = *(uint16 *)(table + in[i]*4)` to the plane immediately before
+PolyPixel (§163). The v42 capture dumped that table with the corrected argument
+index (arg4 = stack index 3; v41's index 5 read past the argument list and
+returned 68 non-zero entries of 4096 — the signature of a wrong address, and the
+reason §163 could not be closed then).
+
+### 170.1 The table
+
+```
+4096/4096 non-zero, 100.0 % monotone decreasing, ONE fixed table for the roll
+
+  log fit   value = 14749.9 - 3500.0*log10(index)     R^2 = 1.00000
+  power fit value = 10^4.6223 * index^-0.3437         R^2 = 0.94392
+```
+
+R^2 = 1.00000 is not "log-like". Checked against the closed form directly:
+
+```
+  t[1]    = 14750   = A
+  t[10]   = 11250   = A - 3500      (one decade)
+  t[100]  =  7750   = A - 7000      (two decades)
+  t[1000] =  4250   = A - 10500     (three decades)
+  t[0]    = 16383   = ceiling clamp (2^14 - 1; log10(0) undefined)
+
+  max |err| over all 4095 entries: 0.52 codes  (pure rounding)
+```
+
+**The F-135 inversion is:**
+
+```
+    out = clamp(round(14750 - 3500 * log10(in)), 0, 16383)
+```
+
+Tier 2 (live hardware capture of the table the DLL was about to apply) for the
+contents; the closed form is then exact arithmetic over those contents, not a
+fit in the loose sense — every entry is reproduced to within rounding.
+
+### 170.2 What this port does instead, and every way it differs
+
+```
+this port   rpd12 = fpo + 1000*(log10(base - c9) - log10(lin - c9))   [12-bit]
+vendor      out   = 14750 - 3500*log10(in)                            [14-bit]
+```
+
+1. **Scale.** 3500 codes per decade, not 1000. In a common domain the vendor's
+   14-bit output is 3500/4 = 875 codes/decade at 12-bit against this port's
+   1000 — the port's inversion is ~14 % steeper than the vendor's.
+2. **No film-base term.** The vendor's curve has NO `base`, no Dmin, no
+   FindDmin dependency whatsoever. It is a FIXED table, identical across every
+   frame of the roll.
+3. **No pedestal.** No `c9` subtraction; the raw index is the argument.
+4. **No fpo.** The additive constant is a fixed 14750, not the per-roll
+   `dpi-fpo` (879/1250/1386).
+5. **Placement.** Before stage 2, not after (§162/§164, confirmed by control in
+   §169.2).
+6. **Per-channel.** One table was captured, applied to the plane — this port
+   carries three per-channel constants.
+
+### 170.3 Why this explains so much of §111-§157
+
+The entire anchor-tuning family — `PAKON_UNIFORM_ANCHOR`, `PAKON_FPO_DELTA`,
+`PAKON_FPO_DELTA3`, every per-channel fpo experiment from §111 to §157 — was
+tuning terms that **do not exist in the vendor's inversion.** §157.4 found that
+an fpo delta applied before the tone stage is largely re-normalised away and
+concluded the anchor was "the wrong knob"; §170 explains why. There is no anchor
+there to tune.
+
+It also explains §169.1's residual structure: with the invert's shape wrong by
+~14 % in slope and its constant unrelated to the vendor's, a systematic
+per-channel bias of the observed size (+66.4/+57.1/+51.4, SD <= 18) is the
+expected consequence.
+
+The per-frame adaptation this port lacks is NOT in the invert (which is fixed)
+— it is entirely in the shift (§159-§168), which is exactly where §166 measured
+it worth 11.6 MAE.
+
+### 170.4 What this does NOT settle
+
+* **The port is not fixed by this.** Substituting the vendor's curve means
+  moving the inversion ahead of stage 2 as well as changing its constants, and
+  stage 2 is a non-linear 3x10 polynomial whose `c9` constants are its own
+  (§162.4). This is a re-architecture of the front of the chain, not a constant
+  swap, and it has not been attempted.
+* **One roll.** The table was fixed across this roll; whether 14750/3500 are
+  universal or come from a config file for this film type is untested.
+* **One capture.** Tier 2, not tier 1: this is the table the DLL was about to
+  apply, not an emulation of the code that built it.
+
+Regression suite green; no default behaviour changed by this section.
+
+## 171 — The ICC, verified at last: not bit-exact, and fixing it makes the composite metric WORSE
+
+§164.1 recorded that the full-chain harness never tested the ICC, leaving it the
+largest unverified stage in the byte-for-byte path. It needed no hardware after
+all: `kodakcms.dll` (md5 `e4c8064a9dd3c3a5541d74b00a730e53`) ships with the
+product, so the vendor's own CMM can be driven under Wine.
+
+### 171.1 SpEvaluate, and the verdict
+
+`kodakcms!SpEvaluate` = `0x1002ecf0`, `ret 0x14`, five stdcall args:
+
+```c
+KpInt32_t __stdcall SpEvaluate(SpXform_t xform, SpImage_t *src, SpImage_t *dst,
+                               PTProgress_t progFn, void *progData);
+
+typedef struct {           /* 0x18 + 4*nChan, all stack locals in apply() */
+  KpInt32_t dataType;      /* +0x00  1 = 8-bit; 4/5 = 16-bit              */
+  KpInt32_t nPixels;       /* +0x04 */   KpInt32_t nLines;    /* +0x08 */
+  KpInt32_t pixelStep;     /* +0x0c */   KpInt32_t lineStep;  /* +0x10 */
+  KpInt32_t nChannels;     /* +0x14 */   void *chan[N];       /* +0x18 */
+} SpImage_t;
+```
+
+The layout was verified by EXECUTION, not by reading: the same 359,660-pixel
+buffer described as `nPixels=359660, nLines=1, lineStep=1078980` and as
+`nPixels=980, nLines=367, lineStep=2940` produced byte-identical output, which a
+swapped-field reading could not.
+
+Driven on 359,660 real toned pixels from this port's own production path, with a
+control confirming both engines received byte-identical u8 input:
+
+```
+ours - vendor, 1,078,980 channel samples
+  identical pixels  0 / 359,660  (0.00 %)
+  identical samples 33,957 / 1,078,980  (3.15 %)
+  mean signed -2.729   mean|d| 2.739   max|d| 33
+    R  mean -4.078  max 33      G  mean -2.365  max 4      B  mean -1.744  max 3
+```
+
+**This port's ICC is not bit-exact, and it is systematically DARKER than the
+vendor's CMM by ~2.7 sRGB codes.**
+
+### 171.2 What is NOT the cause
+
+* **Not the intent, and not the configuration.** The vendor's own
+  `profile-Rpd2Srgb.dpi` confirms this port's setup independently:
+  `profile1 = Rpd2Pcs_HR200_QS_v5s10.pf`, `profile2 = Srgb_v2.pf`,
+  `dataType = U8`, `renderIntent = P`, `colorSpaceMax = 255` — the last of
+  which also validates `rpd12_to_icc_u8`'s `u8 = code*255/4095`. Both profiles
+  carry only `A2B0`/`B2A0`, and vendor intents 0-3 give byte-identical output.
+* **Not PCS quantisation.** Driving the two xforms as an explicit two-step with
+  an 8-bit Lab intermediate differs from the vendor's own `SpCombineXforms`
+  result by ~1 code.
+* **Partly lcms's device-link precalculation.** `cmsFLAGS_NOOPTIMIZE` cuts the
+  gap from mean|d| 2.739 to 1.836; `LOWRESPRECALC` is worse (-5.11). The port
+  was using default flags — the worst of the three.
+* **A real engine difference remains** at NOOPTIMIZE (-1.83, still one-signed),
+  and it is not a per-channel remap: fitting the best monotone
+  `g(vendor)->ours` per channel leaves up to 3 codes on G/B and 23 on R across
+  21-30 % of samples. That is a 3-D CLUT interpolation difference, and closing
+  it needs the vendor CMM or a port of its interpolator.
+
+### 171.3 The fix applied, and the result that matters
+
+`NOOPTIMIZE` is now the default in `AnselEngine.to_srgb`. Confirmed on this
+port's own path before adopting: it moves output +0.92/+0.88/+0.91 per channel
+on real toned pixels — brighter, toward the vendor, matching the ~0.9 the Wine
+comparison predicted.
+
+**And the segment test got slightly WORSE: 33.33 -> 33.55 MAE.**
+
+That is not a reason to revert it, and the reason it happens is worth recording.
+This port's render is already too BRIGHT against the vendor's final render
+(§157: +66 sRGB bias) while its ICC was too DARK. The two errors were partially
+cancelling. Removing one in isolation removes the cancellation.
+
+Keeping a known-wrong ICC because it flatters a composite metric would be
+fitting, not porting — and this project's standard (CLAUDE.md) is bit-exactness
+against the vendor, not minimisation of an aggregate. The change stands on the
+tier-1-style comparison against the real CMM, not on the segment test.
+
+**Warning for future work:** any stage tuned by watching the end-to-end number
+alone can be tuned in the WRONG direction, because at least two errors in this
+chain have opposite sign. Stages must be verified against the vendor
+individually, as §158/§170/§171 now do.
+
+### 171.4 Limits
+
+4 frames, not 39 — the bias is stable across all four and across a synthetic
+ramp, but this is not a whole-roll measurement. `ImaICCXForm`'s `this+0x28`/
+`+0x2c` (fed to `SpXformGet`) could not be statically pinned without the
+constructor; moot here, since all valid intents give identical vendor output.
+Regression suite green; `test_render_f135.py` passes with the new default.
+
+## 172 — The standing offset, explained and largely fixed: use the vendor's own inversion, in the vendor's own place
+
+CLAUDE.md describes "a real, uniform ~88-89 sRGB code brightness offset between
+this port's automatic render and the real Pakon PSI software's own automatic
+render of the same frame" as **the** live standing mystery, with "14+ specific
+hypotheses independently verified and ruled out". §170 recovered the vendor's
+actual inversion. This applies it.
+
+### 172.1 The change
+
+`PAKON_VENDOR_INVERT=1` (`pakon_render.scene_rpd12`, off by default) replaces
+
+```
+    this port:  stage 2  ->  fpo + 1000*(log10(base-c9) - log10(lin-c9))
+    vendor:     clamp(round(14750 - 3500*log10(in)), 0, 16383)  ->  stage 2
+```
+
+i.e. both the FORM of the inversion and its POSITION. `_vendor_invert_lut()`
+builds the 4096-entry table from §170's closed form (index 0 = 16383, the
+ceiling clamp, since log10(0) is undefined).
+
+### 172.2 Result, on the six PSI raw/render pairs
+
+Those exports are genuine negatives (§169.2, corr -0.957), i.e. pre-invert data
+— exactly what the vendor's table consumes. The 8-bit export's absolute scale is
+unknown, so it is SWEPT, not chosen (§157's discipline):
+
+```
+ rgb14 scale  idx median      MAE      bias      % pixels clipped
+        32          491     88.60    +88.44
+        64.24       985     64.14    +61.54
+        96         1472     45.04    +37.67
+       128         1963     30.70    +19.05       8.96
+       160         2453     27.86     +6.50      22.32   <- minimum
+       200         2991     29.66     -3.93      35.72
+       255         3532     35.43    -14.19
+-----------------------------------------------------------------
+ this port's own invert (scale 32):  59.14 MAE, bias +58.90
+```
+
+**MAE halves (59.14 -> 27.86) and the bias collapses from +58.90 to +6.50.**
+
+Two independent corroborations that this is not a fitted coincidence:
+
+* The sweep has a **clean interior minimum** — 30.70 / 27.86 / 29.66 either side
+  — not a boundary artefact.
+* At the winning scale the median index is **2453**, which matches the vendor's
+  OWN measured `poly_input_r` medians (1912..2536) from a completely separate
+  capture. The scale that wins is the scale that puts our indices where the
+  vendor's actually are.
+
+**Caveat, stated rather than buried:** at scale 160, 22.3 % of pixels clip at
+index 4095, and clipping acts as a highlight roll-off that may flatter the
+optimum. The finding survives it — at scale 128, with 8.96 % clipping, the
+vendor invert still gives 30.70 MAE / +19.05 bias against this port's
+59.14 / +58.90 — and it wins across the whole plausible range 128..255.
+
+### 172.3 What this closes, and what it does not
+
+**Closes:** the standing brightness-offset mystery is no longer unexplained. It
+is this port inverting with the wrong function (1000 codes/decade, plus fpo,
+film base and pedestal terms the vendor does not have) in the wrong place (after
+stage 2 rather than before it). §111-§157's anchor experiments could never have
+fixed it because they were tuning terms that do not exist in the vendor's
+inversion (§170.3).
+
+**Does not close:** 27.86 MAE is still ~2.8x the vendor's own irreducible
+residual (§157.6, mean |err| 8.9-10.2), and a +6.50 bias remains. The per-frame
+shift (§159-§168, worth 11.6 MAE by §166) and the ICC's ~1.8-code one-signed
+residual (§171) are both still outstanding, and neither is addressed here.
+
+**Still off by default.** This is one roll, one captured table, and a scale that
+had to be swept; and adopting it means re-architecting the front of the chain
+for every caller, not setting a constant. Promotion needs a second captured
+table (is 14750/3500 universal or per-film-type?) and a decision about the
+clipping domain. Regression suite green with the flag off; the default path is
+unchanged.
+
+## 173 — Two corrections to §170, from the capture's own input plane
+
+§170 characterised the inversion table from the `lut_table` dump alone. The
+`lut_src` row in the same capture (13,219 dumps of the loop's INPUT plane)
+allows both the formula and the dump's own adequacy to be checked. Both need
+correcting.
+
+### 173.1 The table is BIGGER than what was captured
+
+`lut_src`'s value range on real frames is **404..11681**. The loop indexes
+`table + in[i]*4` with `in[i]` a full 16-bit value (`movzx edi, word [ecx]`), so
+the table may hold up to 65536 entries. The v42 row dumped 0x4000 bytes = **4096
+entries**, i.e. only the first quarter of the range actually used.
+
+**§170 therefore described a quarter of the table.** Its formula happens to
+extrapolate plausibly — at index 11681 it predicts 514, against a measured
+`poly_input_r` minimum of 501 — but that is a consistency check, not a
+verification. The region actually exercised by most pixels was never captured.
+
+A future row needs at least `11682*4 = 46,728` bytes; 0x10000 (16,384 entries)
+covers the observed range with headroom.
+
+### 173.2 The formula is a +/-1 APPROXIMATION, not bit-exact
+
+§170 stated "max |err| 0.52 codes (pure rounding)". That figure was the error of
+the continuous fit BEFORE rounding, and it overstates what the formula achieves
+against the integer table:
+
+```
+                              exact entries / 4095
+  np.rint (half-to-even)             3554   (86.8 %)
+  floor(x + 0.5)                     3554
+  float32 arithmetic, rint           3556
+  trunc / floor                      2565
+  ceil                               1534
+  constant search A in 14748..14752, B in 3499..3502:
+      best is exactly A=14750, B=3500 -> 3554
+```
+
+Max |err| is 1 code on the ~13 % that differ, and **no rounding mode, float32
+precision, or nearby constant pair closes the gap.** So the vendor's table is
+log-shaped to within +/-1 code but is not generated by
+`round(14750 - 3500*log10(i))` — it is built by something slightly different (a
+different log approximation, or interpolation through control points, as the
+`.ttc` curves elsewhere in this DLL are).
+
+**Consequence for the goal.** §172's improvement stands — it does not depend on
+the last code, and halving MAE while collapsing bias +58.90 -> +6.50 is not a
++/-1 effect. But **byte-exactness cannot come from this formula.** It needs the
+real table, which means a capture with a large enough dump.
+
+§170's "exact to rounding" claim is withdrawn; the constants A=14750 and B=3500
+stand (they are the best pair by search, and t[1]=14750, t[10]=11250,
+t[100]=7750, t[1000]=4250 are exact on the decade points).
+
+## 174 — §172 corrected: the index is not shifted, and the result improves again
+
+§172 fed the vendor's table `rgb14 >> 2`, on the reasoning that a 4096-entry
+table must take a 12-bit index. §173.1 refutes that reasoning — 4096 was the
+DUMP's size, not the table's, and the loop indexes with a full 16-bit `in[i]`
+whose real range is 404..11681.
+
+The shift was doing real damage: with `>>2` in place the index could never
+exceed 4095 no matter how large the LUT, so §172's "22.3 % of pixels clip at
+index 4095" was an artefact of that line rather than a property of the vendor's
+domain. Widening the LUT alone changed nothing (the sweep returned byte-identical
+numbers) because the ceiling was upstream of it — which is what exposed the bug.
+
+Indexing directly, over the same six PSI pairs and the same swept scale:
+
+```
+ rgb14 scale      MAE      bias     clipped at 14-bit ceiling
+        32      28.51    +17.79        0.00 %
+        48      24.10     -4.52        0.00 %      <- minimum
+        64.24   28.25    -17.36        0.00 %
+        96      40.36    -37.95
+       160      62.73    -61.77
+------------------------------------------------
+ this port's own invert (scale 32):  59.14 MAE, bias +58.90
+```
+
+**MAE 59.14 -> 24.10 (2.5x) and bias +58.90 -> -4.52**, with a clean interior
+minimum and **zero clipping** at the winning scale. Both of §172's numbers
+(27.86 / +6.50) and its clipping caveat are superseded.
+
+For scale: the vendor's own irreducible residual against a log model is mean
+|err| 8.9-10.2 (§157.6), so this sits at ~2.4x that floor, down from ~6x.
+
+**Still off by default, and still not byte-exact.** §173.2 stands: the closed
+form is a +/-1 approximation matching the captured table on 86.8 % of entries,
+so the last code cannot come from it. The remaining path is the real table over
+its real range — the v44 dump (0x10000 = 16384 entries) — plus the per-frame
+shift (§159-§168) and the ICC's ~1.8-code residual (§171).
+
+## 175 — The real inversion table, captured; and what it does and does not buy
+
+v44 widened the `lut_table` row to 0x10000 and captured the table over its real
+range. `tools/re/live_hooks/wine_host/check_v44.py` gates the capture (the v41
+check was stale and would have rejected it for a removed row).
+
+### 175.1 The table
+
+```
+16384 entries, 100.0 % monotone decreasing, ONE fixed table for the roll
+  [1]=14750  [10]=11250  [100]=7750  [1000]=4250  [8000]=1089
+  [11724]=508  (top of the real lut_src range)  [16383]=0
+  12,277 entries beyond index 4095 -- the region v42 never captured
+  lut_src range 470..11724, again exceeding the old dump's ceiling (§173.1)
+```
+
+Saved to `tools/ansel/python-pipeline/vendor_invert_table.npy` and loaded by
+`pakon_render._vendor_invert_lut()` in preference to the closed form.
+
+### 175.2 No closed form is exact — settled
+
+Against the full 16384-entry table:
+
+```
+  round(14750 - 3500*log10(i))          14329/16384 exact (87.5 %), max |err| 1
+  error values present                  {+1} only -- ALWAYS high, never low
+  disagreement by decade                12.1 % / 11.6 % / 13.7 % / 12.3 %
+  fine search A in 14749.0..14750.5,
+    B in 3499.6..3500.5, 3 rounding modes    best 16001/16383 (97.7 %, A=14749.9)
+```
+
+The error is uniformly ~12 % in every decade and one-signed, so it is a
+systematic construction difference, not rounding noise. **Byte-exactness cannot
+come from any closed form; it comes from shipping the table.** §170's
+constants remain the correct description of the curve's shape and the decade
+points are exact, but §173.2's withdrawal of "exact to rounding" stands and now
+applies over the full range.
+
+### 175.3 The table was not the bottleneck
+
+Swapping the real table in for the closed form, on the six PSI pairs:
+
+```
+  closed form (±1)   24.10 MAE   bias -4.52
+  real table         24.14 MAE   bias -4.60
+```
+
+**Indistinguishable.** A +/-1 table difference cannot move a 24-code residual,
+so the remaining error is dominated by the per-frame shift (§166: worth 11.6
+MAE), the ICC (§171: ~1.8 codes one-signed), and the unknown absolute scale of
+the PSI export. Having the exact table is necessary for byte-exactness and is
+not, on its own, close to sufficient.
+
+### 175.4 Delta: replicated on a fresh roll, source still not captured
+
+`analyze_post_balance` was hooked at its real entry this time and fired. But
+`apb_arg0` is CONSTANT across calls and `apb_arg1`, though it varies on all six,
+does **not** contain the applied k at any offset, nor any offset whose
+difference from k is uniform. So the triple is reached through a pointer inside
+that argument and needs a deref dump — another scan.
+
+What the capture does give is an independent replication of §168.1 on a new
+roll:
+
+```
+        entry +0x4b6            applied k             delta
+      (733, 316,  49)      (692, 275,   8)   (-41, -41, -41)
+      (785, 366, 127)      (820, 401, 162)   ( 35,  35,  35)
+      (851, 454, 183)      (864, 467, 196)   ( 13,  13,  13)
+      (955, 553, 291)      (990, 588, 326)   ( 35,  35,  35)
+      (655, 255,  19)      (583, 183, -53)   (-72, -72, -72)
+      (764, 353, 110)      (776, 365, 122)   ( 12,  12,  12)
+
+  uniform across channels on 6/6 frames (18/18 on the previous roll)
+```
+
+Delta is confirmed as a uniform per-frame scalar on a second, independent roll.
+Its source remains uncaptured.
+
+## 176 — The ICC is now BIT-EXACT: the vendor's CLUT interpolator, ported and proven over its whole domain
+
+§171 established this port's ICC was not bit-exact — 0 of 359,660 real pixels
+matched the vendor CMM, systematically 2.7 codes dark — and §171.2 narrowed the
+residual to a 3-D CLUT interpolation difference that `NOOPTIMIZE` could only
+halve (2.739 -> 1.836). That residual is now zero.
+
+kodakcms.dll md5 `e4c8064a9dd3c3a5541d74b00a730e53`.
+
+### 176.1 Finding the live routine WITHOUT trusting a name
+
+`SpEvaluate -> PTEvalDT -> fcn.100410a0 -> fcn.10026d20 -> fcn.10012b30 ->
+fcn.10012bc0`, which is a pure dispatcher returning one of **35** function
+pointers; the tile loop `fcn.10027410` calls it as `call dword [ebx+4]`.
+
+The live one was not chosen by name or by which case looked plausible — the
+harness overwrites each candidate's first byte with `0xC3` (`POKE_RVA`) and
+re-runs the whole transform:
+
+```
+  0x10018160   *** DIFFERS ***        (the other 34: byte-identical output)
+```
+
+Live-execution evidence, and it is re-run inside the golden harness on every
+invocation so it is never taken on trust. This is the discipline CLAUDE.md asks
+for: the project's history of suggestively-named dead code is exactly why a
+name was not allowed to decide it.
+
+### 176.2 The scheme
+
+**Tetrahedral, not trilinear**, sorted-increment form, 14-bit:
+
+```
+offR,wR = idx[0][r];  offG,wG = idx[1][g];  offB,wB = idx[2][b]
+base = offR + offG + offB                                   # BYTE offset
+sort {wR,wG,wB} descending -> (w0,w1,w2)                    # picks 1 of 6 tetrahedra
+for ch in 0..2:
+    c = base + 2*ch
+    A=clut[c]  C=clut[c+Pa]  B=clut[c+Pb]  D=clut[c+offRGB]
+    t = (D-B)*w2 + (C-A)*w0 + (B-C)*w1                      # signed 32-bit
+    out[ch] = otab[ch][ 4*A + (t >> 14) ]                   # SAR: floor, not round
+```
+
+Four details differ from lcms and each is load-bearing:
+
+* Grid index and fraction are **precomputed**, not per-pixel — a 3x256 table of
+  `{i32 offset, i32 weight}` at `grid+0x8c` that also absorbs the profile's
+  input curve. Weights run 0..65535 and `idx[c][255].weight == 65535`, **not**
+  65536, so the top of the range never reaches the last node.
+* Interpolation is **14-bit** with an **arithmetic** shift — truncation toward
+  −∞, not round-to-nearest.
+* The 14-bit result passes through a per-channel **16384-entry u8 table**, so
+  the output transfer is exact rather than interpolated.
+* Grid is 31^3, u16 values 256..4039, output-channel-interleaved (stride 6).
+
+Negative controls on a 32^3 lattice (98,304 samples), each changing exactly one
+thing:
+
+```
+  as disassembled                      0 / 98304 differ
+  round-to-nearest instead of SAR   1200 / 98304   max |d| 1
+  truncate toward zero               151 / 98304   max |d| 1
+  trilinear instead of tetrahedral  2037 / 98304   max |d| 3
+```
+
+### 176.3 Bit-exact, over the entire input domain
+
+`pakon_kcms_clut_golden.py`, against the real DLL under Wine (verified
+independently at integration, exit 0):
+
+```
+  ret-poke sweep over 35 candidates    changed output: 0x10018160 only    OK
+  shipped tables == live DLL tables    6144 + 178746 + 49152 bytes        OK
+  detour transparency                  output identical with/without      OK
+
+                 8x8x8 lattice   rc 0        1536 samples   bit-exact
+        real toned (359660 px)   rc 0     1078980 samples   bit-exact
+          exhaustive u8 domain   rc 0    50331648 samples   bit-exact
+```
+
+**51,412,164 u8 channel samples, zero differences** — and the exhaustive case is
+all 16,777,216 possible u8 RGB triples, i.e. a proof over the whole input domain
+rather than a sample. All six tetrahedra are exercised (13.5/13.7/19.0/13.7/
+19.0/21.1 %).
+
+### 176.4 The residual, closed
+
+```
+359,660 real toned pixels        ident px     mean signed   mean|d|   max|d|
+  lcms default                 0 (0.00 %)        -2.7288    2.7390       33
+  lcms NOOPTIMIZE              0 (0.00 %)        -1.8328    1.8359       20
+  kodakcms port           359660 (100 %)          0.0000    0.0000        0
+```
+
+The two lcms rows reproduce §171's published figures to four decimals, which
+independently replicates that measurement.
+
+End-to-end on the six PSI pairs (vendor invert ON, scale 48):
+
+```
+  lcms NOOPTIMIZE (was)   24.14 MAE   bias -4.60      (= §175.3 exactly)
+  kodakcms port (now)     23.59 MAE   bias -3.18
+```
+
+Unlike §171.3, this moves the composite metric in the RIGHT direction — which is
+what removing a one-signed too-dark error should do. The remaining 23.59 is
+dominated by the per-frame shift and the unknown absolute PSI export scale.
+
+### 176.5 Side finding, and a real inconsistency introduced
+
+**The combined xform's input table saturates every channel at u8 192**:
+`pos = v*(30/192)` clamped at grid 30, so `out[192,g,b] == out[255,g,b]`
+exactly, verified against the real CMM over the whole domain. The top 25 % of
+the u8 input range is dead. This does not affect current renders — real toned
+pixels top out at u8 157, 0.00 % reach 192 — but it puts a hard ceiling at
+RPD ~3083 that would matter if anything later brightens the toned RPD.
+
+**Inconsistency to fix:** `to_srgb` now uses the ported CLUT by default
+(`PAKON_ICC_LCMS=1` falls back to lcms, and it falls back automatically if the
+npz or the vendor profile pair is absent). The **Go pipeline**
+(`tools/ansel/pipeline/`) and the **C ICC path** (`tools/pakon_icc_c.c`, used by
+`pakon_pipeline_cli.c` / `pakon_raw_decoder.c`) still do their own ICC and now
+differ from the Python default. That divergence is real and outstanding.
+
+Regression green: `pakon_gate.py selftest`, `test_calib.py` 200/200,
+`test_render_f135.py`.
+
+## 177 — Consequences of §176 for the other two pipelines, and a stale CLAUDE.md corrected
+
+### 177.1 `pakon_icc_c.c` uses the algorithm §176 disproved
+
+`tools/pakon_icc_c.c` describes itself as an "ICC v2 mft1/mft2 CLUT parser +
+**trilinear** evaluator", and `icc_mft2_eval` confirms it — `/* Step 2:
+trilinear CLUT */` calling `trilinear_clut()`, in **double precision**, with
+`(uint32_t)(v + 0.5)` round-to-nearest on output.
+
+§176.2 established the vendor is **tetrahedral**, at **14-bit** integer
+precision, with an **arithmetic shift** (floor). Its negative controls measured
+exactly what each of those substitutions costs, on a 32^3 lattice:
+
+```
+  trilinear instead of tetrahedral   2037 / 98304 differ   max |d| 3
+  round-to-nearest instead of SAR    1200 / 98304          max |d| 1
+```
+
+So the C path is wrong in two independent ways, both now quantified rather than
+suspected. It is used by `pakon_pipeline_cli.c` and `pakon_raw_decoder.c`.
+
+The Go pipeline (`tools/ansel/pipeline/`) is separately affected: CLAUDE.md
+already records that it uses `ShastaToneRpd` with `AutoTonePorted = false`, i.e.
+an explicit placeholder rather than the verified tone chain.
+
+**Net: `to_srgb` in the Python path is now bit-exact against the vendor CMM
+(§176.3) and the Go and C paths are not.** That divergence was introduced by
+§176 and is outstanding. Porting `pakon_kcms_clut.py` to those paths is
+mechanical — the tables ship as `vendor_kcms_rpd2srgb.npz` and the
+interpolator is ~30 lines — but it has not been done, and until it is, the
+three pipelines do not agree.
+
+### 177.2 CLAUDE.md's "standing mystery" section was stale and is corrected
+
+CLAUDE.md described the ~88-89 sRGB offset as the live standing mystery with
+"root cause not yet found", and instructed future readers not to re-litigate
+ruled-out hypotheses. That text predates §170-§175 and would have sent the next
+reader down the same dead end the 14+ hypotheses came from.
+
+Replaced with the actual finding (the invert's form and position), the three
+stages now bit-exact, what genuinely remains (the per-frame shift, and δ within
+it), and §171.3's methodological warning that at least two errors in this chain
+have opposite sign — so tuning a stage by the end-to-end number alone can move
+it the wrong way.
+
+## 178 — Delta measured directly at its consumer
+
+§168 inferred Delta from the applied LUTs and §175.4 could not capture its
+source: `analyzePostBalance`'s arg0 is constant and arg1 does not contain the
+applied k at any offset, so the triple sits behind a pointer. Chasing that
+pointer is how the v41 and v44 rows went wrong (r2 names different esp-relative
+slots identically; the one that looked right is a `std::string`, destructed ten
+instructions later).
+
+v45 hooks the **consumer** instead — `fcn.1006c4f0`, the shift-LUT builder,
+which is handed the three post-rewrite shifts as plain stack arguments. From the
+call site:
+
+```
+  0x100fe7d0  mov dx, word [eax + 4]      ; eax -> the triple
+  0x100fe7e9  mov dx, word [eax]
+  ... push edx / push ecx / push edx      ; the three shifts
+  0x100fe7f6  push 0x1000                 ; count
+  0x100fe802  mov ecx, 0x106b5f74         ; master table (__thiscall)
+  0x100fe807  call 0x1006c4f0
+```
+
+so `stack_dwords[3]` must read `0x1000` and `[4..6]` are the shifts. **The
+0x1000 is a self-check**: the analyser reports it first and refuses to read
+`[4..6]` if it is absent, rather than interpreting whatever happens to sit
+there. It passed on 6/6 calls.
+
+```
+        entry +0x4b6          builder shift              delta
+      (742, 326,  60)        (702, 286,  20)    (-40, -40, -40)
+      (788, 371, 134)        (822, 405, 168)    ( 34,  34,  34)
+      (852, 457, 188)        (867, 472, 203)    ( 15,  15,  15)
+      (957, 556, 297)        (992, 591, 332)    ( 35,  35,  35)
+      (658, 259,  24)        (599, 200, -35)    (-59, -59, -59)
+      (766, 357, 116)        (779, 370, 129)    ( 13,  13,  13)
+
+  uniform across channels on 6/6 frames;  delta = -40, 34, 15, 35, -59, 13
+```
+
+**Delta is now measured at its consumer rather than inferred**, and its
+uniform-per-frame character is confirmed for a third time on a third roll
+(§168.1: 18/18; §175.4: 6/6; here 6/6).
+
+Still NOT established: what computes it. `shifts_3a38` and `pref_out_3a30` come
+back constant against these six calls, but that is a pairing artefact -- every
+builder call falls after those records, so the nearest-preceding match picks the
+same one -- not evidence that they do not vary.
+
+### 178.1 A process correction
+
+§175.4's companion analysis and an earlier report of this capture concluded "the
+PakonIMAu colour path never ran", based on every PakonIMAu hook showing only its
+install record. That was wrong. **The file had been downloaded while it was
+still uploading** -- 0.51 GB of an eventual 2.47 GB -- and ended truncated
+mid-record. The colour path ran normally; only the first fifth of the run was
+present. A follow-on theory that the 0x10000 table dumps had swamped the log
+was likewise an artefact of the same partial file.
+
+Both were avoidable: `Content-Length` was available and was not compared against
+the local size before diagnosing. Any future analysis of a capture should check
+that first — a truncated capture fails in ways that look exactly like a hook
+that did not fire.
+
+### 178.2 What computes Delta: searched thoroughly, still not found
+
+With Delta now measured directly (§178) and the full 2.47 GB v45 capture in
+hand — six frames with `scp_lut_worker` (`scpw_plane_r/g/b`, `scpw_ctrl`),
+`sba_preference` (`pref_data`, `blob`, `pref_scene_big`, `pref_arg2`),
+`analyze_area`, `analyze_scp_lut_balance`, `fugc_cap_e0`, `icc_scales`,
+`img_desc`, `shifts_3a38`, `pref_out_3a30` — every one of them was searched for
+a field carrying or predicting Delta.
+
+**A pairing correction first.** The analysis-pass dumps all complete BEFORE the
+first builder call (`shifts_3a38` 6641..6693, `pref_data` 6640..6690,
+`scpw_plane_r` 6653..6668, against builders 6696..6751), so nearest-preceding
+pairing hands every frame the same record and reports everything as "constant".
+Re-paired by frame index instead. This is the same trap as §161.1 and it will
+recur — analysis-pass quantities can never be paired to render-pass ones by
+call_id proximity.
+
+Result, index-paired:
+
+```
+  exact matches on all six frames:  NONE, in any dump
+  best correlations:  |0.49| (scpw_ctrl +0x0006, scpw_out +0x0020)
+                      |0.44| (r_lut/g_lut interiors)
+                      |0.30| (pref_data +0x002c, pref_scene_big +0x007a)
+```
+
+On six points |0.49| is worth nothing. Frame-content statistics from
+`pixel_data` and `poly_input_r` were also tested and are reported as **not
+evidence**: their per-frame values come back repeating (1167, 923, 1167, 923…),
+i.e. the stride assumption fails for those buffers too, so the -0.765 that falls
+out of them is an artefact of the pairing, not a relationship.
+
+**Delta's source is not present in any captured buffer.** It is computed inside
+`cn_enhanced_driver` between its entry and `analyzePostBalance`'s read, from
+state this hook set does not see, and it is not a function of the entry triple
+(§168.2, |corr| 0.02..0.05).
+
+**What would actually find it,** given no static write to `+0x4b6` exists (the
+write is indirect through a pointer, §168-era scan): run `cn_enhanced_driver`
+itself under Wine with the captured inputs and watch the address — the same
+technique `bai_host.c` and `kcms_clut_host.c` already use, and §176's ret-poke
+sweep shows how decisive that approach is. That is hardware-free work, and it is
+the remaining route.
+
+## 179 — §177.1 closed: all three pipelines now run the vendor's CLUT, bit-exact
+
+§176 made the Python `to_srgb` bit-exact against the vendor CMM and §177.1
+recorded the divergence that created: the C path (`pakon_icc_c.c`, used by
+`pakon_pipeline_cli.c` and `pakon_raw_decoder.c`) was **trilinear in double
+precision with round-to-nearest**, and the Go path had no vendor CLUT at all.
+Both now run the ported evaluator.
+
+### 179.1 Verification
+
+C and Go each streamed over **all 16,777,216 u8 triples = 50,331,648 channel
+samples** and diffed against `pakon_kcms_clut.evaluate`: **zero differences**,
+exhaustive rather than sampled. Re-verified at integration here, plus
+`go build ./... && go test ./...` green.
+
+That is transitivity, so the other half was re-established rather than cited:
+`pakon_kcms_clut_golden.py` re-ran against the real DLL under Wine — the
+ret-poke sweep again picked out `0x10018160` and nothing else of 35 candidates,
+the shipped tables came back byte-identical to the live `SpCombineXforms`
+output, and 51,412,164 channel samples were bit-exact.
+
+**The harness has teeth** — two deliberate mutations, each caught over the whole
+domain:
+
+```
+  SAR -> round-to-nearest             496,553 / 50,331,648 differ, max |d|  1
+  one tetrahedron -> wrong corner   2,358,914 / 50,331,648 differ, max |d| 71
+```
+
+The first matches §176's 32^3 control in character (1.22 % there, 0.99 % here).
+All six tetrahedra are visited in the golden proportions
+(13.54/13.73/18.96/13.73/18.96/21.09 vs §176's 13.5/13.7/19.0/13.7/19.0/21.1).
+
+Bounds were measured over the whole domain rather than assumed: CLUT word index
+0..89372 of 89373, `t` in -10,513,533..41,730,541 (never overflows i32), otab
+index 1024..16152 (never negative, so numpy could not have been silently
+wrapping a negative index and agreeing by luck). Neither port clamps anywhere.
+
+### 179.2 Two real bugs fixed on the way
+
+* `pakon_raw_decoder.c`: if either hardcoded `/Users/guy/Downloads/...` profile
+  path failed to load, `srgb_buf` was **never written** and the BMP was emitted
+  from unwritten `malloc`. Pre-existing, unrelated to this work.
+* `pakon_pipeline_cli.c`: a `pow(1-x, 1/2.2)` gamma fallback, now unreachable,
+  was deleted — it produced plausible-looking but wrong colour, which is the
+  worst failure mode for this project.
+
+Also: `pakon_icc_c.c`'s header now states plainly that the trilinear chain below
+it is not the vendor's arithmetic. `PAKON_ICC_TRILINEAR=1` keeps the old path
+available for comparison; `test_icc_c.c` prints both side by side and all six
+sample RPD triples differ.
+
+### 179.3 Table delivery, and what is still NOT done
+
+Tables ship as generated source (~1.4 MB of C/Go for 234 KB of table), because
+both consumers are standalone binaries with no data-path resolution — baking
+them in adds no runtime failure mode and no npz/zlib parser in either language.
+Cost: both copies must be regenerated when the npz changes, so
+`gen_kcms_clut_tables.py` refuses to run unless the npz md5 is
+`28d5812832f1e5a0a4af4139732c722c`, and the harness regenerates and fails on any
+difference.
+
+**Go's tone chain is untouched.** `AutoTonePorted = false`, `ShastaToneRpd` is
+still the stand-in, and the provenance banner still prints
+`F135InvertPorted=false AutoTonePorted=false ShastaAnalyzePorted=false`. Only
+the ICC hop was ported. §177.1's other half — the Go pipeline's tone chain — is
+a separate and larger job, and remains open.
+
+## 180 — Delta identified: it is the FLESH (skin-tone) shift
+
+§178.2 could not find what computes Delta and proposed a Wine watchpoint. The
+static read answered it first, and the answer explains every property Delta has.
+
+PakonIMAu.dll md5 `eea9dcf78ee21d4f7c515a6c2512242d`. Tier 3 (`af`+`pdf`, full
+bodies read) unless stated otherwise.
+
+### 180.1 Why §178's disp32 scan found nothing
+
+`analyzePostBalance` (`fcn.100fdc40`) never names `0x4b6`:
+
+```
+0x100fdc89  mov ebp, dword [arg1]     ; same object as balance_area_image arg3
+0x100fdc90  lea eax, [ebp + 0xa]      ; the shift triple
+0x100fdca9  mov dword [esp+0x3c], eax
+```
+
+The triple is **`analyzePostBalance_arg1 + 0x0a`**. `+0x4b6` exists only in
+`cn_enhanced_driver`'s frame of reference. There was no pointer-indirection
+mystery — just a different base. §178.2's "the write is indirect through a
+pointer" is superseded.
+
+### 180.2 The writer
+
+Of the five 16-bit writes in the whole of `fcn.100fdc40`, exactly three go
+through that pointer:
+
+```
+0x100fe471  66 01 17     add word [edi], dx      ; edi = the triple
+0x100fe479  66 01 47 02  add word [edi+2], ax
+0x100fe47d  66 01 4f 04  add word [edi+4], cx
+```
+
+`dx/ax/cx` come from `AnsFleshCapability::getShifts` (`fcn.100f7560`, its own
+string `\Atc\ansel\src\libFlesh.ansel\AnsFleshCapability.cpp`), which copies
+`FleshImpl+0x0c` — `m_fleshAdjust`, named in the DLL's own debug strings.
+
+Order in `analyzePostBalance`: gate -> get the `"flesh"` dataPathItem -> find the
+Flesh capability (else `"Flesh capability not found."`) -> per-capability enable
+byte -> `AnsFleshCapability::analyze` -> `getShifts` -> **the three `add`s** ->
+ColorAdjust -> `0x100fe807 call 0x1006c4f0` (the builder §178 hooks).
+
+### 180.3 Why Delta is one scalar, and zero half the time — structurally forced
+
+`m_fleshAdjust` is filled from the adjust calculator `fcn.10270280`, which writes
+the triple at exactly three sites — and **all three channels come from one
+register**:
+
+```
+0x10271718  mov word [edi+0x30], ax      0x1027172a  mov word [edi+0x30], cx  (cx = 0)
+0x1027171c  mov word [edi+0x32], ax      0x1027172e  mov word [edi+0x32], cx
+0x10271720  mov word [edi+0x34], dx      0x10271732  mov word [edi+0x34], cx
+              (dx := ax at 0x10271715)
+```
+
+So the uniformity observed 18/18, 6/6 and 6/6 is **not** an empirical
+coincidence — it is the only value the code can write. And two guards jump
+straight to the zero-write, which is §168.1's "zero on 21 of 39 frames".
+
+The non-zero branch:
+
+```
+delta = ftol( ftol( D * P[+0x5098] * 0.5773672055427251 ) - P[+0x5080] )
+X     = flesh statistic * (flag ? 1/1.732 : 1/3) / N   (or P[+0x5088] if empty)
+D     = -(X - P[+0x5088]) * (X >= P[+0x5088] ? P[+0x5070] : P[+0x5078])
+```
+
+`0.5773672…` at `0x105a4c90` is a typed-in 1/1.732 — the same truncated root-3
+already seen in the SCPLut worker (`pakon_scp_worker_golden.py` asserts
+`0x105a69e0 == 1.7320508`). Guards forcing zero: flesh-area fraction
+`Q = fleshCount / ((W-2b)*(H-2b)) < P[+0x5090]`; an incoming float
+`< P[+0x50a0]`; and `byte[Impl+0x60aa]` set with `D > 0`.
+
+### 180.4 The ColorAdjust path is an identity — a clean negative
+
+`0x100fe7a1 -> fcn.101b76d0` also rewrites the triple in place, computing
+`out_c = round(scale_c*(2*A_c - A_a - A_b)/3 + scale_D*A_D + base_c)`. Every
+write to `A` (`+0x1c..+0x28`) in the image was enumerated: the ctor
+(`fcn.101b9070`) and the reset (`fcn.101b77f0`), both zero, each with exactly one
+caller, in no vtable and nowhere in `.data`/`.rdata`. So **A = 0**, both terms
+vanish, and the apply is `out = base`. It cannot be Delta.
+
+### 180.5 The parameters were NOT missing — they are on this machine
+
+The RE pass reported the port blocked because
+`vendor/ansel/anselinstalldir/dataPathItems/` has no `flesh` directory. It does
+not — but the real install does:
+
+```
+/Users/guy/pakon-windows-repair/COM-SERVER/anselinstalldir/dataPathItems/flesh/
+  FleshDPI/flesh-srcType-metric-default-default.dpi
+  FleshDPI/flesh-srcType-metric-DIGITAL_CAMERA-ANS_ROM12.dpi
+  FleshDPI/3dLut, ROMM_LST_SkinProb_041403_v5_pack, skinSBA.bn
+  CondProbTables/condProbTbl-{l,s,t}.tbl (+ .orig)
+```
+
+Copied to `vendor/ansel/anselinstalldir/dataPathItems/flesh/` (9 files, 520 KB).
+The DPI carries exactly the constants the formula needs:
+
+```
+fleshNeutralAim  = 2740        fleshCountThresh = 0.00625
+beta = frontLitBeta = backLitBeta = 0.69            fleshPrefAdj = 0
+axialProb = 0.25   clipAmount = 0.30   regionThreshold = 0.05
+loff/soff/toff = 1626/-85/-600     lscale/sscale/tscale = 189/17/30
+3dLutKey = ROMM_LST_SkinProb_041403_v5_pack   bayesianNetKey = skinSBA.bn
+tSpace = 1 (required for ColorNegative paths)   oneDTable = 1, useAdvanced = 0
+```
+
+`fleshCountThresh` is the flesh-area guard; `fleshNeutralAim` is the aim Delta
+drives toward; `beta` is the scale. **So Delta is a skin-tone correction**: a
+Bayesian flesh detector measures the frame's flesh statistic in ROMM LST space
+and nudges the whole balance toward the flesh neutral aim. Per-frame, uniform
+across channels, and zero whenever too little flesh is found — every observed
+property, explained.
+
+**Porting it is now unblocked and needs no hardware.** What remains open: no
+tier-1/tier-2 confirmation that the flesh block executes on these scans (the
+static read answered it before the Wine work ran), and the write set is proven
+complete only *within* `fcn.100fdc40`.
+
+## 181 — PUNCH LIST: everything not ported or not byte-exact
+
+Compiled from the code (every `_PORTED` flag, checked for whether anything
+actually branches on it), not from memory. Current end-to-end on the six PSI
+pairs: **23.59 MAE, bias −3.18**, against the vendor's own irreducible ~9-10.
+
+### A. Bit-exact against the real vendor DLL — done
+
+| stage | evidence |
+|---|---|
+| OutToneLut construction | max diff 0.0, real full frame (§158) |
+| Shift-LUT builder `fcn.1006c4f0` | 147,456 int16 + 65,536 master entries (§167.5) |
+| ICC / CLUT interpolator | **51.4 M samples inc. all 16.7 M u8 triples** (§176) |
+| ICC in C and Go | 50.3 M samples each, exhaustive (§179) |
+| DRA (behaviour + params) | §158, and ruled out as a contributor |
+| 31 of 37 golden harnesses | §sweep |
+
+### B. THE BLOCKERS — in the live path, not byte-exact
+
+**B1. The per-frame Preference triple. The single largest item.**
+The vendor recomputes the shift triple per frame; this port computes one in
+`AnselEngine.load()` for the whole roll. Measured over six frames:
+
+```
+  entry triple spread   R 299, G 297, B 273 codes
+  mean |vendor − ours|, static triple            121.0 codes
+  ... with delta perfect but triple still static  99.3
+  ... with the triple right but no delta          32.7
+```
+
+So the triple is ~73 % of the shift error and delta ~18 %. §160 established the
+law `shift = 1549 − preference` (exact on 96/117) and traced preference to a
+scalar at `pref_data+0x0000` — **but what computes that scalar is unknown.**
+
+**B2. Delta (flesh).** Identified (§180) as `AnsFleshCapability`'s skin-tone
+shift; parameters now in-tree. Port in progress. Worth ~18 % of B1's error.
+
+**B3. `F135_INVERT_PORTED = False`.** The vendor's inversion is recovered
+(§170) and wired, but `PAKON_VENDOR_INVERT` is **opt-in**, not the default —
+adopting it re-architects the front of the chain for every caller. Also the
+captured table is one roll / one film type; whether 14750/3500 are universal is
+untested.
+
+### C. Not reachable in the live path — raise-guards, not silent stand-ins
+
+These are `False` but nothing silently substitutes: the code **raises** if the
+path is reached, so a live render cannot be quietly wrong through them.
+
+```
+  TONEHELPER_ACQUIRE_IMAGE_PORTED   pakon_autotone.py:1180  -> _unported() raises
+  PFD_ANALYZE_PORTED                pakon_autotone.py:1324  -> _unported() raises
+  F135_REVERSAL_PORTED              pakon_decode.py:902     -> guarded
+  SCP_LUT_BALANCE_PORTED            asserted False in its own golden
+```
+
+### D. Documentation markers only — no code branches on them
+
+`ANALYSE_ROLL_PORTED`, `TONEHELPER_IMAGE_HISTOGRAM_PORTED`,
+`CONTRAST_SELECT_DPI_TREE_PORTED`, `AST_DPI_PORTED`, `AST_EXPORT_PORTED`,
+`SRA_MAKE_LUTS_PORTED`, `FILM_BASE_WINDOW_PORTED`, `CITRAS_APPLY_VALIDATE_PORTED`
+(print only). Unused entirely: `SBA_CORE_PORTED`, `FUGC_EXPORT_PORTED`,
+`SHASTA_TWO_ANCHOR_PORTED`, `CCD_DESKEW_PORTED`.
+
+They mark real gaps in coverage, but they are not defects in the current render
+path.
+
+### E. Cross-pipeline divergence
+
+* **Go tone chain**: `AutoTonePorted = false`, `ShastaToneRpd` stand-in still
+  live; banner still prints `F135InvertPorted=false AutoTonePorted=false
+  ShastaAnalyzePorted=false`. Only the ICC hop was ported (§179).
+* Go and C now match Python on ICC exactly; nothing else about them is
+  verified together.
+
+### F. Measurement limitations — cannot be closed by porting
+
+* **The PSI export's absolute scale is unknown.** Every end-to-end figure in
+  §157-§180 sweeps it and quotes the minimum, so all of them are *best-case*,
+  not bit-exact comparisons. A clean test needs raw sensor data paired with a
+  vendor render of the same frame; no capture provides that.
+* **The inversion closed form is ±1** on 12.5 % of entries (§175.2); byte-exact
+  needs the shipped table, which is only captured for one roll.
+* No capture pairs analysis-pass and render-pass quantities directly (§161.1) —
+  they must be index-paired, which has produced wrong conclusions three times.
+
+### G. Standing methodological warning
+
+§171.3: at least two errors in this chain have **opposite sign** — fixing the
+ICC correctly made the composite metric slightly worse. Any stage tuned by
+watching the end-to-end number alone can be tuned in the wrong direction.
+Verify stages against the vendor individually.
+
+## 182 — Three parallel ports; and CLAUDE.md was wrong about which engine is the default
+
+### 182.1 The correction that reframes every measurement in §157–§181
+
+`pakon_render.colour_engine()` defaults to **`"go"`**, and its own docstring calls
+Python *"deprecated, explicit only"*. CLAUDE.md stated the opposite — that the
+Python engine was "currently the app's default, as an interim measure".
+
+**Consequence: every colour figure in §157–§181 was measured on the Python
+path, which is not what the app runs by default.** The measurements are sound
+for what they measure; the framing was wrong. CLAUDE.md corrected.
+
+This also raises the Go pipeline from a secondary concern to the primary one:
+its tone ANALYSIS half is unported, so the default render path has been running
+the `ShastaToneRpd` stand-in.
+
+### 182.2 `sba_preference` ported whole and bit-exact
+
+`fcn.1028c780`, transcribed instruction by instruction with the DLL's own float
+association order. `pakon_sba_preference.preference_full`,
+`PREFERENCE_FULL_PORTED = True`; harness `pakon_preference_shift_golden.py`.
+
+```
+modes seen                  {0: 882}
+port == real DLL (Unicorn)  882/882   bit-exact
+DLL  == vendor hardware     882/882   paired by POINTER IDENTITY, not order
+mutation self-test          ftol->round, ftol->floor, wrong G basis: all caught
+```
+
+Pairing by pointer identity rather than call order is what makes the second row
+trustworthy — §161.1/§178.2's ordering trap has produced wrong conclusions three
+times, and it cannot bite here.
+
+**The 1549/1550/1551 "off-by-one" does not exist.** `anchor` and `shift` are
+`inv(lim46−s')` and `inv(s')` about the same axis, so their exact real sum is
+`lim46/√3`, with `lim46 = round(NBP·√3) = 2685` giving **1550.18547** — not an
+integer. Two independent `_ftol` (truncate-toward-zero) stores then yield 1550
+when `frac(anchor) < 0.1855`, 1549 otherwise, and 1551 when the shift lands in
+`(−1, 0]` and truncation toward zero rounds it UP (all three 1551 cases have
+`shift == 0` exactly). Sweep: `1549×1894, 1550×700, 1551×52`. `NBP = 1550` is
+correct; §160.2's "real off-by-one to pin" is withdrawn.
+
+**§167.2 closed.** `shifts_3a38 → +0x4b6` is the identity: exact on 14/39,
+within ±1 on 39/39, the ±1 being the render pass re-evaluating Preference rather
+than port error.
+
+**A live defect found by the port:** `mode == 0` on all 882 real calls, but
+`pakon_ansel.preference_shift_words()` uses the `0x11` fragment. Mode 0 takes
+`aimU/aimV` from `pref_data+2/+4`, so `dU`/`dV` are non-zero — which the `0x11`
+fragment structurally cannot express.
+
+**Declined on thin evidence, correctly:** dropping the `setshifts_12(A, A)` step
+(which the vendor's path does not appear to take) moves R and G toward the
+vendor's mean but B further away, so it was left in place and flagged rather
+than flipped.
+
+### 182.3 Go's tone APPLY half, bit-exact
+
+`ImaCitrasOpBase::virtual_40` (`0x10169350`) — 203 lines, 17 functions, the
+compute-heavy half (block average, Gaussian blur, upsample, per-pixel gradient).
+
+```
+full frame 3000x2000        66,411,449 samples   bit-exact   (13 stages diffed)
+750x500, non-exact padding   4,166,681 samples   bit-exact
+negative controls   lum +1 bias 33.00 % · reflect mode 20.10 %
+                    sample-centred upsample 10.64 % · -idx fold 100 %   all caught
+```
+
+Architecture: `cabi.go` runs Go-as-dylib-called-from-Python, so "call Python
+from Go" would have meant embedding CPython. Instead the LUT crosses the ABI as
+`RenderRequest.OutToneLut`, filled by the side that already has the verified
+chain — the same shape as §179 shipping the CLUT as generated tables.
+
+**Not claimed:** `gauss_blur` is Go == Python bit-exact but *neither* is provably
+== the DLL (80-bit x87 accumulation vs float64). Inherited from the Python
+module and stated in both the harness and the package comment.
+
+**The banner stays honest:** `AutoTonePorted` is now
+`AutoToneApplyPorted && AutoToneAnalysisPorted`, so the apply half landing cannot
+silently upgrade it.
+
+**Two traps recorded for whoever measures next.** Three "obvious" rounding
+controls are non-distinctions on real data, measured rather than assumed
+(block-average signed bias == half-up for non-negative sums; blur write-back ==
+`rint` except at exact .5; and **0 exact halves in 18,000,000 real values** — a
+comment claiming the frame was "full of exact halves" was disproved and
+corrected). And **Go and Python diverge upstream of tone**: Go inverts against
+the FRAME's dmin where Python uses the ROLL's (`req.FilmBase` is never read by
+the render), FUGC `ebp18` provenance differs, and Go truncates the FUGC index
+where Python `rint`s. A perfect tone port alone will not make them agree.
+
+### 182.4 The flesh ADJUST arithmetic, bit-exact
+
+`pakon_flesh.py` + `pakon_flesh_golden.py`, executing the real DLL bytes
+`0x102714e1…0x10271760` under Unicorn with nothing patched:
+
+```
+153 curated cases (90 non-zero Delta) + 400 swept (278 non-zero): ALL BIT-EXACT
+deliberate bugs: _ftol32->round caught on 83; guard '<'->'<=' caught on 1
+```
+
+Full `P[+0x50xx]` → DPI mapping recovered from the reader driver `fcn.10272380`.
+Two corrections to §180.3, both from the instruction stream: the
+`1/1.732 : 1/3` selector is **`tSpace`** (`0x102714ed`, `ebp`-relative), and
+`+0x60aa` (`darkenOnly`) belongs to the **params** struct, not `FleshImpl`.
+
+The **detector** is not ported, so Delta cannot yet be computed forward from
+pixels. Inverting the bit-exact arithmetic from the six measured Deltas implies
+X in 2635..2913 against `fleshNeutralAim = 2740` — all within 6.3 %, with the
+sign convention §180 predicts. That is **tier 4, a consistency check only**, and
+the harness says so itself.
+
+
+## 183 — Go's tone ANALYSIS chain ported, bit-exact; and the analysis half is smaller than believed
+
+§182.3 left Go's analysis half unported and sized it at ~3,800 lines across six
+modules. That estimate was wrong in a useful direction.
+
+### 183.1 Only four of the six subsystems determine the output
+
+Reading `pakon_autotone.analyze_auto_tone`'s shell: stages 5 and 7 (**ast**,
+**citras-analyze**) *read* the finished `OutToneLut` and **never write it back**
+-- `ctx.tone_object` is last assigned at stage 4 (`0x100fc798`) -- and stage 6
+(pfd) is force-disabled at `0x100f9da2`.
+
+**So the analysis half's output is fully determined by cna -> dra -> toneHelper
+-> contrast**: ~3,060 code lines (comments stripped), not 3,800+.
+
+### 183.2 Bit-exact, per subsystem
+
+Each against its Python reference on real frames from real captures, with the
+post-FUGC RPD-12 intercepted at `real_auto_tone`'s own call boundary:
+
+```
+  anscna         AnsCnaCapabilityImpl::analyze  0x1022ea50   12,012,024 samples
+  ansdra         AnsDraCapabilityImpl::analyze  0x1022b530       20,526
+  anstonehelper  AnsToneHelper...::analyze      0x101dd1b0          205
+  anscontrast    AnsContrastAdjust...           0x101d8240       16,492
+  ansautotone    the shell's threading          0x100fb730       27,294
+```
+
+The chain harness diffs `OutToneLut` **twice** -- against its own wiring, and
+against the LUT production `real_auto_tone` actually hands `apply_citras`. Both
+bit-exact.
+
+Bit-exactness against the vendor **by transitivity, subsystem by subsystem**,
+since each Python module is separately Unicorn-verified. **Not** an end-to-end
+DLL diff of the assembled chain, which remains open on both sides
+(`pakon_autotone_assembled_golden.py`).
+
+### 183.3 The performance result that changes what is practical
+
+**Go runs the full-frame analysis chain in 0.6 s against Python's 19.6 s.**
+
+§182's companion pass declined to auto-populate `outToneLut` partly because the
+Python chain costs ~21 s on a full frame -- "a slider drag can't absorb it". At
+0.6 s that objection no longer applies to the Go path. Wiring it in is now a
+decision about correctness, not cost.
+
+### 183.4 Five choices this evidence cannot prove, and two divergences
+
+Measured, not assumed -- each mutation was run and produced **zero**
+differences, so the harness has no teeth on it and says so:
+
+```
+  cna trunc(x+0.5) vs floor(x+0.5)          0/6000  (negatives clamped to 0 first)
+  dra float32 0.01 at 0x1059f5f0            0/8202
+  dra _ftol_round direction                 0/8202
+  toneHelper asymmetric workSumHigh         0/63    (both extents)
+  contrast float32 offset in constrainSlope 0/8192  (on a frame where it executes)
+```
+
+Each carries only the Python module's own Unicorn verification.
+
+Two deliberate Go/Python divergences, documented in `anscna.go`, neither
+reachable on any frame tested: a zero histogram total (Python raises, Go
+produces the x87 value the DLL does), and an out-of-range luminance hitting the
+vendor's unchecked histogram store (Go errors rather than emulating Python's
+negative-index wrap).
+
+### 183.5 The banner stays honest
+
+`AutoToneAnalysisPorted` remains **false**, so `AutoTonePorted` remains false.
+Stated reasons: ast and citras-analyze are two of the six and are not ported;
+and the assembled chain has never been diffed against the DLL end to end.
+`ansautotone` is **not wired into the render path** -- a separate, deliberate
+decision. Absent a supplied `RenderRequest.OutToneLut`, Go still reports
+`tone: ShastaToneRpd stand-in`.
+
+
+## 184 — `fcn.1029ec50` ported: every STAGE of the flesh block is now bit-exact
+
+§180 identified Delta as the flesh shift; §182.4 ported its arithmetic; a
+companion pass ported the detector. The last stage, `fcn.1029ec50` (3575 B),
+produced the integer threshold the reduction needs and was the remaining
+blocker. It is now bit-exact.
+
+### 184.1 Two arguments kill most of the function
+
+`useAdvanced == 0` (`0x1029f056`/`0x1029f067`) skips the 3x3 connected-neighbour
+morphology at `0x1029f06d..0x1029f1c4` **and** the second refinement pass at
+`0x1029f6cb..0x1029f817`; `mode == 2` (`fcn.102a1500`'s own `push 2` at
+`0x102a1e1b`) selects the search at `0x1029f619`. What survives:
+
+```
+mag  = |corr(P, [[1,0,-1],[2,0,-2],[1,0,-1]])| + |corr(P, [[1,2,1],[0,0,0],[-1,-2,-1]])|
+edge = mag >= 400 ? 255 : 0                (0x1029c2c0, decoded from its bytes)
+edge = fcn.1029cad0(edge)                  4-neighbour cleanup, border zeroed
+hist[v>>2] += 1.0f  where edge == 255      64 float bins, unchecked index
+smooth[i] = mean(hist[i-7 .. i+7] within [0,64));  smooth[0] = smooth[1] = 0
+bin  = first i in 2..61 that is a local MIN over +-2, gated by a STICKY
+       "a local MAX was seen at or before i" flag; else 64
+*arg4 = bin * 4                            (0x1029f8d1)
+```
+
+### 184.2 Bit-exact, whole-function
+
+The harness runs the *entire* `fcn.1029ec50` under Unicorn — GDT for `fs:[0]`,
+all 471 imports trapped, `malloc`/`free`/`operator new[]`/`std::string`
+serviced in Python, three `.data` type singletons fabricated with their element
+strides **asserted rather than assumed**:
+
+* the 3x3 correlation `0x104dd9d0` -> `fcn.104dcbc0`, **including its border
+  policy** — reflection that does NOT repeat the edge sample (−1 reads 1, n
+  reads n−2). 20 plane x kernel cases.
+* `fcn.1029cad0` in full, 10 planes including negatives. Its zero branch tests
+  `== 0` and its non-zero branch tests `> 0`; that asymmetry is the vendor's and
+  is reproduced.
+* the mask, all 64 histogram bins, all 64 smoothed bins, the threshold and the
+  returned binary plane, read out of the vendor's own buffers at `0x1029f4c3` /
+  `0x1029f819`. 10 planes, all bit-exact.
+* bonus: `0x104e2960` is x255.0; `0x104de680`'s float->int16 cast truncates
+  toward zero with **no clamping** (300.0 -> 300).
+
+19 deliberate mutations, 17 caught. **Two are genuinely unobservable
+end-to-end and reported as such**: flipping a Sobel kernel's sign, and swapping
+X<->Y — because `0x1029ef08` takes `|gx|` before `0x1029ef50` adds `|gy|`. Both
+are caught at the convolution level instead.
+
+Tier 3 only: that `fcn.102a1500` flat-copies the re-cleaned binary output into
+its arg2 (`0x102a1e13..0x102a215e`). Read, not executed.
+
+### 184.3 A structural consequence
+
+On the V1 path the plane the reduction walks is **binary 0/255**, so the
+0/10/20/255 clamp map is nearly an identity there, and the threshold's
+operational effect reduces to "does 255 beat it" — true for every bin the search
+can return (2..61 -> 8..244), false only for the no-valley default (64 -> 256),
+which is exactly the "no flesh" case that forces `X = fleshNeutralAim` and
+`Delta = 0`.
+
+### 184.4 What still blocks Delta: two INPUTS, not stages
+
+1. **The analysis image** — `0x104e8360` / `0x1014cc20` plus the 1-D LUT
+   pre-passes at `0x10270920` / `0x10270b10`.
+2. **The reduction's weight plane** — newly identified: `0x1027127e` builds it
+   via `0x104e7880` (a resampler) from `fcn.10270280`'s own argument at
+   `[esp+0x1ca8]`. Earlier passes filed `0x104e7880` under "analysis-image
+   construction" without noticing it feeds `flesh_accumulate`'s `w`.
+
+Run forward on a **synthetic** analysis image with `w = 1` (flagged as a
+placeholder in the harness): threshold 72, fleshCount 328, X = 2906 against aim
+2740, **Delta = −56** — the right sign and magnitude against §178's −59..+35.
+Tier 4 corroboration, not a reproduction. §178's inversion is unchanged: X in
+2635..2913, mean L 4564..5045, l-bins 15.5..18.1.
+
+
+## 185 — Delta computes forward from pixels; and the flesh detector measures the frame AS THE SHIFT WOULD LEAVE IT
+
+§184 left two inputs blocking Delta. Both are now ported bit-exact, and the
+architecture they reveal is the most interesting result of the flesh work.
+
+### 185.1 Three corrections to §184.4's framing, all from the instruction stream
+
+**`0x104e7880` is not a resampler.** It is `.\IemPad.cpp` — the DLL names itself
+at `0x104e79ca` (*"Output rows/cols must be equal to or greater than input
+rows/cols"*). `0x1027127e` uses it to PAD the weight plane to the analysis
+image's size. The weight plane is built by **`fcn.10271bc0`**, called once from
+`AnsFleshCapabilityImpl::analyze` at `0x101c99f0` — the call whose failure path
+prints *"Could not generate weight map; status ="*. It is a 2-D Gaussian:
+
+```
+G   = sqrt(-8 * ln(axialProb))                       -8.0 @ 0x10596dc0
+sx  = ((1-clipAmount) * cols) / G     sy = ((1-clipAmount) * rows) / G
+w[y][x] = ftol( 1000 * exp( -0.5 * ( ((x-cols/2)/sx)^2 + ((y-rows/2)/sy)^2 ) ) )
+```
+
+peak 1000 at centre, over the same `flesh_border` inset.
+
+**`0x104e8360` is dead code on the shipped DPI.** All four call sites sit under
+`0x102704a9 test cl,cl` on `params+0x60a9` = `useSmallAnalysisImage`, which the
+shipped DPI sets to 0. What runs is `fcn.102701e0` (a clone via `vtbl+0x1c`) and
+`fcn.1014cc20` = `IemTImage<T>::IemTImage(const IemImage&)`, a type-checked
+handle wrapper whose only failure mode is a throw. Neither touches a pixel.
+**The flesh block does not construct its analysis image at all** — arg3/arg4
+arrive from `AnsImageData::copyToIemImage` (`fcn.100db520`) at
+`0x101c9bac`/`0x101c9beb`. A boundary, not a missing stage.
+
+**r2's `arg_1ca8h` label is misleading**: at `0x1027126d` the ESP is 0x10 low,
+so the pad's source is **arg5**, not arg9. Confirmed against the call site's
+`add esp,0x30`.
+
+### 185.2 The architectural finding
+
+`0x102707a7` builds a 12-bit clamp table (`fcn.1026fed0(0xc, 0, 0xfff)`);
+`0x102707e8` calls `fcn.10270050` with **`fcn.10270280`'s own arg6 — the shift
+triple `analyzePostBalance` is about to add Delta to** — producing
+`lut_c[i] = clamp(i + shift_c, 0, 4095)`; `0x10270920` applies them to the
+analysis image in place.
+
+**So the flesh detector measures the frame as the candidate balance would leave
+it. Delta is a correction evaluated at the shift it corrects.**
+
+A harness control makes the dependency concrete: with the second pre-pass
+disabled (the LST image NOT passed through the shift LUTs), the detector finds
+no flesh on 14/14 real frames and on the synthetic — threshold 256, fleshCount
+0, Delta 0. arg8 is not a cosmetic switch.
+
+### 185.3 Ported, bit-exact
+
+```
+flesh_weight_map        fcn.10271bc0        19,236,251 samples, 0 diffs
+                                            (5 param variants x 24 shapes)
+flesh_pad_replicate     fcn.104e7880 op 1        3,191 samples, 0 diffs
+flesh_shift_lut(s)      fcn.1026fed0 +
+                        fcn.10270050       393,216 entries x 32 triples, 0 diffs
+flesh_apply_shift_luts  0x102708ba.. and
+                        0x10270ab9..             1,770 samples, 0 diffs
+```
+
+Tier 3 only: the weight plane's *composition* (`fcn.10271bc0` takes dims from an
+object outside the capability while the pad uses the analysis image's own — only
+the equal case is constructible here), and `flesh_forward_delta`'s assembly
+(`fcn.10270280` has never been run as one function).
+
+### 185.4 Delta now computes forward — and why it still does not reproduce the six
+
+**The machinery runs end to end.** On a synthetic frame placed on the shipped
+tables' own peak: threshold 32, fleshCount 927, Q 0.381, X 2903, Delta −55 —
+inside §178's −59..+35.
+
+**On real frames it does not reproduce the six values, and the reason is
+measurable and NOT in the flesh block.** 14 frames through `scene_rpd12`:
+
+* Delta = 0 on 12/14; the two non-zero are −206 and −203.
+* The port's mean L at the flesh block is **4948..6174**, against the
+  **4564..5045** that inverting the bit-exact arithmetic from the six measured
+  Deltas implies (§182.4). So the probability plane peaks at 26..170 of 255
+  instead of saturating, the Sobel mask (threshold 400) comes back nearly empty,
+  the valley search returns its no-valley default 64 -> threshold 256 -> "no
+  flesh" -> Delta 0.
+* With the RPD scaled so mean L lands on the implied 4745, Delta on the same 14
+  frames is `0, −24, 0, −18, −132, 0, 0, −18, −27, −18, −54, −43, −67, +14`,
+  X in 2696..3132 against aim 2740 — the right family, biased negative, 10/14
+  non-zero against the vendor's 18/39 (§168.1).
+
+**The residual gap is upstream:** this port's RPD-12 arriving at
+`analyzePostBalance` is ~20-28 % brighter than the level §178's Deltas imply —
+the same family as §170's inversion finding — and no capture pairs a measured
+Delta to the frame that produced it.
+
+### 185.5 Method notes worth keeping
+
+Three modelling errors caught by measurement rather than review, each now a
+harness mutation: modelling `1/sigma` as a divide (the DLL divides once and
+multiplies by the reciprocal — 14 of 3,078,017 pixels off by one); modelling the
+pad as constant-zero fill when operation 1 is **edge replicate** (1,472/3,191
+wrong, and the `double` fill argument is *provably inert*); and a `_sar1`
+centre-rounding mutation that was initially **MISSED** because every probe shape
+was even-dimensioned — odd shapes were added rather than the claim downgraded,
+and it now catches 9,070/18,302.
+
+One chase was abandoned deliberately: matching x87 `f2xm1` bit-for-bit under
+Unicorn would bake a QEMU artefact into the port, since that opcode is the
+emulator's rather than a Pentium's. `math.exp` gives 0 diffs on 19.2 M samples;
+the harness states that this is evidence about the algebra around the
+exponential, not about the last ULP on silicon.
+
+12 mutations: 11 caught, 1 provably inert with its reason, **0 NOT CAUGHT**.
+
+
+## 186 — The "upstream brightness excess" was a double inversion in the test, not a defect in the port
+
+§185.4 reported that Delta collapses to 0 on 12/14 real frames because the
+port's mean L at the flesh block is 4948..6174 against the 4564..5045 implied by
+inverting the bit-exact arithmetic from §178's six Deltas, and attributed the
+20-28 % excess to "the same upstream family as §170's inversion finding".
+
+That attribution was wrong, and the cause is simpler.
+
+### 186.1 The frames were double-inverted
+
+Those frames come from `pakon_roll_golden.load_raws()` — **hook frames**, which
+§162/§164 established are ALREADY POSITIVE at PolyPixel entry (signed corr with
+the vendor render +0.92 on 38/38, against −0.93 for the PSI export; skipping the
+port's invert took the segment test from 95.29 to 33.33 MAE). Run through
+`scene_rpd12` at its DEFAULT they are inverted a **second** time.
+
+Mean L measured three ways on the same 14 frames, before the pre-passes (which
+add the shift triple's sum, 683+297+151 = 1131):
+
+```
+  config                    L before    L after    in band 4564..5045?
+  default (invert ON)           4271       5402    no      (= §185.4's report)
+  PAKON_NO_INVERT               3853       4984    YES
+  PAKON_VENDOR_INVERT           3495       4626    YES
+```
+
+The default's 5402 reproduces §185.4's figure exactly, which confirms the
+diagnosis rather than merely fitting it. **Both correct configurations land in
+the band.**
+
+### 186.2 Delta run forward under each configuration
+
+```
+                        non-zero      range       in family −59..+35
+  vendor (measured)     46 % (18/39)  −59..+35    —
+  default (invert ON)   29 %          −275..0     11/14
+  PAKON_NO_INVERT       14 %          −48..0      14/14
+  PAKON_VENDOR_INVERT  100 %          −40..+117    7/14
+```
+
+With the correct config for hook data, **every Delta now falls inside the
+vendor's measured family**, and the default's −275/−171 outliers disappear. The
+brightness half of §185.4 is closed.
+
+### 186.3 What remains is NOT brightness
+
+The failure mode has changed from wrong magnitude to **under-triggering**: 14 %
+of frames non-zero against the vendor's 46 %. `PAKON_VENDOR_INVERT` overshoots
+the other way (100 %, running to +117).
+
+That points at a structural item §185.1 already identified: **the flesh block
+does not construct its analysis image.** arg3 and arg4 arrive across a boundary
+from `AnsImageData::copyToIemImage` (`fcn.100db520`) at
+`0x101c9bac`/`0x101c9beb`, and they are **two different images** — arg3 is what
+`fcn.102a1500` measures skin probability on, arg4 is what the reduction sums
+`L = R+G+B` over and whose dimensions set the weight plane's. Every measurement
+above feeds the SAME planes as both, which is what the harness does for its
+smoke test and is explicitly not what the vendor does.
+
+So the next question is not "why is the port too bright" — it is **what arg3
+actually is**. Candidates: a different resolution (the `useSmallAnalysisImage`
+path is dead on this DPI, so it is the full analysis image), or a different
+point in the chain than the RPD-12 that reaches the tone stage.
+
+Nothing was changed in the port for this section; it is a measurement result.
+The flesh harnesses' own framing ("the assembly is tier 3; `fcn.10270280` has
+never been run as one function") is unaffected and still correct.
+
+
+## 187 — arg3 IS arg4; and the flesh detector's under-triggering is the per-frame shift defect
+
+§186.3 attributed the flesh detector's low trigger rate (14 % of frames against
+the vendor's 46 %) to feeding the same planes as both `fcn.10270280` arguments,
+on the grounds that arg3 and arg4 are "two different images". **That hypothesis
+is dead.**
+
+### 187.1 On the colour-negative path, arg3 and arg4 are the same image
+
+Tier 3, `af`+`pdf`, full bodies. Caller enumeration was a whole-image
+`E8`/`E9 rel32` byte scan PLUS a dword scan for vtable entries — complete for
+direct and virtual dispatch, and it found zero vtable references to any function
+in the chain, so none is ever dispatched indirectly.
+
+```
+AnsCnEnhancedPath::analyzeOrder      fcn.10069d80
+ -> CnEnhanced_analyzeSceneSpecific  fcn.10069490 @ 0x10069e75
+      0x100694d3  lea eax,[esi+4]        -> analyzePostBalance arg4
+      0x100694db  lea ebx,[esi+0x4ac]    -> analyzePostBalance arg3
+ -> ColorNegativePath::analyzePostBalance fcn.100fdc40 @ 0x10069503
+      0x100fe396  push ebp
+      0x100fe397  push ebp               ; BOTH image args, SAME pointer
+```
+
+Two independent cross-checks validate the esp arithmetic — either would fail if
+the argument indexing were off. The triple `analyzePostBalance` adds Delta to is
+`arg3+0x0a` = `scene+0x4ac+0x0a` = **`scene+0x4b6`**, exactly §168/§178's known
+offset; and `fcn.10270280`'s arg6 traces to that same `A+0x0a`, exactly as
+§185.2 requires.
+
+`AnsImageData::copyToIemImage` (`fcn.100db520`), read in full, is a plain int16
+deinterleave into `nBands` planes — **no resampling, no colour transform, no
+scaling**. The image is `AnsScene::getImage("StandardAnalysisImage")`, and
+`apuCheckAnalysisImage` independently confirms nBands = 3, depth = 12, minimum
+107x107.
+
+Three caveats upgrade to facts: feeding the same planes as both arguments **is
+what the vendor does**, not a harness shortcut; the weight plane's pad is
+**provably an identity** here (§185.3's "only the equal case is constructible"
+becomes "only the equal case occurs"); and **arg8 is the literal 1**
+(`0x100fe392`), so the second pre-pass always runs — `second_prepass` now
+defaults True.
+
+The one site where arg3 != arg4 is `AnsDcPremiumPath::analyzeScene`
+(`fcn.1006fa90`), which also passes arg6 = NULL and arg7/arg8 = 0. A different
+path, not the F-135's.
+
+### 187.2 The real cause: `S = R - B` collapses
+
+`condProbTbl-s.tbl` peaks at bin 19, i.e. `S = 19*17 - 85 = 238`. This port's
+post-shift mean `S` on the 14 hook frames is **-325..-67**, pinning **60-99 % of
+pixels at `s` bin 0**, where skin probability is ~0. The `l` and `t` axes land
+near their tables' peaks; only `s` collapses. The guard that fires is either
+"no valley" (6/14) or `Q < fleshCountThresh` (6/14, Q 7e-05..0.0035 against
+0.00625).
+
+**And the deficit is exactly the per-frame shift defect.** §178's six measured
+entry triples have `R - B` in **634..682, mean 657**; this port's per-roll
+triple gives `683 - 151 = 532`. Deficit **125 codes**. Sweeping a split that
+moves `S` without touching `L` (`shift' = (R+k, G, B-k)`):
+
+```
+  k          0    40    60    68    80   100   120   200   300   400
+  non-zero  14%   21%   50%   50%   50%   64%   86%   93%   79%   29%
+                              ^^^^^^^^^^^^ vendor measured: 46 %
+```
+
+The 60-80 plateau brackets the deficit the measured triples independently imply
+— **the trigger rate is reproduced from an input it was not fitted to.**
+
+### 187.3 What this means for the punch list
+
+**B2's remaining gap IS B1.** The flesh block is fully ported and bit-exact at
+every stage and input; it under-triggers because it is fed a shift triple whose
+`R - B` separation is 125 codes short, and that triple is the per-roll
+approximation §181's B1 is about. One defect, two symptoms.
+
+Still missing, stated plainly: the Delta **range**. At k = 68 it is -146..+85
+against the vendor's -59..+35 (8/14 in family, against 14/14 at k = 0). A
+uniform `k` is not a per-frame balance — the overshooting frames are those whose
+own balance error is largest. Closing the range needs the real per-frame triple,
+not a global correction. **Tier 4 and cross-roll**: the triples come from the
+v45 capture and the frames from `live_hooks_20260819-121153.jsonl`.
+
+A plane-order flip (BGR) was tested and **ruled out**: 93 % non-zero at
+-203..+67, overshooting and leaving the family. The port's own order is the
+better hypothesis.
+
+
+## 188 — The porting-state ledger, and a convention: generate it, never narrate it
+
+Two failures this session came from state being recounted from memory rather
+than read from the tree. §182.1 found CLAUDE.md asserting the Python engine was
+the app's default when `colour_engine()` has always returned `"go"` — which
+meant every colour figure in §157-§181 described a path the app does not run.
+§173.2 found an "exact to rounding" claim that was 86.8 % exact. Both were
+statements about state that had drifted from the code.
+
+`tools/porting_state.py` reads every `*_PORTED` flag in the tree and prints its
+value. It is regenerated, not maintained. **From here on, any document making a
+claim about what is ported should paste its output rather than describe it.**
+
+### 188.1 Current state
+
+```
+212 flags across 27 modules
+TRUE  (189)  verified bit-exact against the vendor DLL
+```
+
+Earlier sections in this document cite "31 of 37 harnesses" and similar — those
+count *harnesses*, not flags, and the flag count is the larger and more precise
+number. It had not been counted before.
+
+### 188.2 A False flag is not automatically a defect
+
+The ledger groups them, because a bare list of False flags overstates the
+problem badly — and this document has done exactly that:
+
+* **stand-in** — something substitutes silently. A real gap in a render.
+* **assembly** — every constituent stage is bit-exact but the whole has never
+  been run as one function.
+* **unproven** — a specific link read on one side only.
+* **raise-guard** — the code *raises* if that path is reached, so a live render
+  cannot be quietly wrong through it.
+* **unreachable** — the branch cannot execute with the shipped config.
+* **boundary** — not this port's code; the value arrives from elsewhere.
+* **doc-only** — nothing branches on it at all.
+* **superseded** — replaced by a verified path; the flag predates it.
+
+**Only [stand-in], [assembly] and [unproven] can affect a render.** Today that
+is three flags: `FRAMING_PORTED`, `FLESH_DETECTOR_PORTED`, and
+`FLESH_COND_PROB_SLOT_ASSIGNMENT_PORTED`.
+
+### 188.3 Generated output
+
+```
+FALSE (23) — grouped by WHY, because 'False' alone overstates the problem
+
+  [stand-in]
+     FRAMING_PORTED
+       4 vendor helpers bit-exact; phases 2-5, the threshold search and the film-edge validator unported, and the input domain differs (vendor 8-bit inverted)
+
+  [assembly]
+     FLESH_DETECTOR_PORTED
+       every stage inside fcn.10270280 is bit-exact; the function has never been run as ONE function
+
+  [unproven]
+     FLESH_COND_PROB_SLOT_ASSIGNMENT_PORTED
+       consumer side is tier 1; the loader side was not read
+
+  [raise-guard]
+     F135_REVERSAL_PORTED
+       guarded in pakon_decode.py:902
+     PFD_ANALYZE_PORTED
+       _unported() raises if reached
+     SCP_LUT_BALANCE_PORTED
+       asserted False in its own golden
+     TONEHELPER_ACQUIRE_IMAGE_PORTED
+       _unported() raises if reached
+
+  [unreachable]
+     FLESH_3DLUT_PATH_PORTED
+       oneDTable = 1 in the shipped DPI
+     FLESH_ADVANCED_PATH_PORTED
+       useAdvanced = 0 in the shipped DPI
+
+  [boundary]
+     FLESH_ANALYSIS_IMAGE_PORTED
+       arg3/arg4 are not built in the flesh block; §187 showed they are the same pointer, from copyToIemImage
+
+  [doc-only]
+     ANALYSE_ROLL_PORTED
+       nothing branches on it; module states it carries no balance, FPO or Preference maths
+     AST_DPI_PORTED
+       nothing branches on it
+     AST_EXPORT_PORTED
+       nothing branches on it
+     CITRAS_APPLY_VALIDATE_PORTED
+       printed only, never branched on
+     CONTRAST_SELECT_DPI_TREE_PORTED
+       modelled as a host-side registry, as the Python does
+     FILM_BASE_WINDOW_PORTED
+       nothing branches on it
+     FUGC_EXPORT_PORTED
+       unused
+     SRA_MAKE_LUTS_PORTED
+       makeSRALUTS @ 0x10594b78; the SRA forward table is no longer applied at all (docs/58 §16)
+     TONEHELPER_IMAGE_HISTOGRAM_PORTED
+       nothing branches on it
+
+  [measured]
+     CCD_DESKEW_PORTED
+       deskew is measured here rather than read from a vendor table; nothing branches on it
+
+  [superseded]
+     F135_INVERT_PORTED
+       vendor's own inversion recovered (docs/74 §170) and wired as PAKON_VENDOR_INVERT; opt-in, not default
+     SBA_CORE_PORTED
+       preference_full is ported bit-exact (§182.2); this flag predates it and nothing branches on it
+     SHASTA_TWO_ANCHOR_PORTED
+       the two-anchor stand-in is replaced by real_auto_tone; unused
+
+Only [stand-in], [assembly] and [unproven] are gaps that can affect a render.
+[raise-guard] fails loudly rather than substituting; [unreachable] cannot execute with the shipped config;
+[boundary] is not this port's code; [superseded] has been replaced by a verified path.
+```
+
+
+## 189 — v46: the trace DLL, a silently truncated hook table, and a DLL that was there all along
+
+### 189.1 The hook table had been silently dropping its last four hooks
+
+`hookcore_real_table.c` declared `HookDef table[HOOKCORE_MAX_HOOKS]` with
+`HOOKCORE_MAX_HOOKS 32`. The v41-v45 passes inserted four new hooks *mid-table*
+without bumping the constant, taking it to 36 entries. C does not error on this:
+GCC emitted four `excess elements in array initializer` **warnings** and dropped
+the last four hooks from every DLL built in that window --
+`color_adjust_shift`, `sba_order_fpo_calc`, `sba_order_fpo_helper` and
+`sba_vm_interp`.
+
+`check_table_sync.py` passed throughout, because it compares the source text of
+`table[]` against `agent.js` and never looked at `HOOKCORE_MAX_HOOKS`. A
+consistency checker that reads the initialiser cannot see the compiler
+discarding part of it.
+
+**Blast radius: none, verified rather than assumed.** Every reference to those
+four hooks in this document maps to a section at or below SS95, all from
+pre-v41 captures built when the table still fit. No conclusion drawn in
+SS157-SS188 rests on those rows. The committed HEAD is also clean --
+exactly 32 entries in a 32-slot array -- so the defect existed only in the
+uncommitted working tree of this session.
+
+Fixed: `table[]` is now unsized, `eng->count` derives from `sizeof`, a
+compile-time assert fails the *build* if it ever outgrows the engine arrays,
+`HOOKCORE_MAX_HOOKS` is 40, and `check_table_sync.py` gained the count check
+that would have caught it.
+
+Two further points worth keeping. `selftest.c`'s `g_extraDumps` had been
+**sentinel-only**, so the dump machinery had never executed anywhere except on
+real hardware; it now has a real `__stdcall` buffer-mutating target with
+log-reading assertions. And `sba_vm_interp` was carrying `hotPathDisabled` --
+it was silently off *anyway* through the truncation, so fixing the truncation
+would have re-introduced ~1.5 GB of log unasked.
+
+### 189.2 v46 adds exit-side dumps, which is what makes stage output capturable
+
+`LogExtraDumps` fired **on entry only** (SS157). Since the vendor's chain is a
+series of in-place transforms, entry-only cannot capture *any* stage's output,
+which makes "test each stage at both its input and its output" unreachable by
+construction. v46 adds `when` (ENTRY / EXIT / BOTH) and `maxDumps`.
+
+The exit path's one real hazard is handled: for a `ret N` callee, ESP at the
+return thunk is already past the arguments, and the thunk's own frame is
+written straight through them. So **exit dumps resolve their pointers from an
+entry-time snapshot**, never by re-reading the stack. Buffers are heap, so the
+contents are exit-time and correct. The selftest asserts exactly this --
+entry hex `00...`, exit hex `10...`, both reporting the same real buffer
+address through a `ret 8`.
+
+### 189.3 A correction to SS168
+
+SS168's `apb_arg0` / `apb_arg1` rows do not dump what that section assumed.
+`analyze_post_balance`'s pushes are
+`[esi+0x2c] | esi+4 | esi+0x4ac | holder | &status`, so those two rows are a
+caller status local and an in-place smart-pointer holder -- **neither is the
+scene**. The shift triple is at index 2 + 0x0a. Corrected rows were added
+*alongside* the old ones rather than replacing them, so the same capture
+proves the correction.
+
+### 189.4 TLB.dll was on this machine the whole time
+
+The v46 pass shipped its three TLB.dll framing hooks disabled
+(`approximate=1`) on two stated premises. **Both were false.**
+
+**Premise 1: "TLB.dll is not on this machine."** It is, at
+`/tmp/pakon_re/TLB.dll`, md5 `193d9b2ce0a4b77ae9b78262bd06c0fc` -- the hash
+`pakon_framing_golden.py` expects, in the scratch directory CLAUDE.md itself
+designates for RE work, and the **first** entry in that harness's own
+`DEFAULT_DLL_CANDIDATES`. The `find` behind the claim was scoped to the repo,
+and `mdfind` does not index `/tmp`.
+
+This is SS178.1's lesson in a new costume. There, a conclusion was drawn from a
+capture that was still uploading. Here, a conclusion was drawn from a search
+that did not cover the target. **"I could not find X" is a claim about the
+search, not about X**, and it needs verifying exactly as carefully as a
+positive finding.
+
+**Premise 2: "the entry may be interior to `fcn.10006e70`."** The reasoning was
+that the four warning-bit `or` sites span 0x1000708b..0x10007d35, a range
+containing 0x100072c0. Reading the DLL dissolves it:
+
+```
+fcn.10006e70   0x10006e70 - 0x100072b5   1093 bytes   the driver
+                        11 bytes of padding
+fcn.100072c0   0x100072c0 - 0x100079b1   1777 bytes   the entry
+```
+
+Adjacent, not nested. Three of the four `or` sites (0x1000708b, 0x10007193,
+0x1000729f) are inside the *driver*; the fourth (0x10007d35) is in
+`fcn.100079c0`, the outer caller. The sites never spanned the entry at all.
+
+> **CORRECTION — see §199.2. There are FIVE sites, not four.** This section's
+> count was taken from the earlier pass and never re-derived. `fcn.10006e70`
+> ORs three *different* bits — 0x100 / 0x200 / 0x400 — and **0x800 has two
+> sites, BOTH in `fcn.100079c0`**: 0x10007d35, recorded here, and
+> **0x10007b1b**, which was not. Re-verified: `0x10007b1b  81cf00080000
+> or edi, 0x800`. The missing one is the site a real F-135 takes whenever
+> `this->0xc98 == 0`, i.e. the common path — so the omission mattered. It does
+> not disturb the conclusion above: both 0x800 sites are in the outer caller,
+> so nothing spans the entry either way.
+The feared repeat of `sba_set_shifts_12` and v41's mid-instruction 0x100fe4f0
+is not present.
+
+**All three re-derived and enabled** (r2 `af`+`afi`+`axt` against that md5):
+
+| hook | function | extents | prologue safety |
+|---|---|---|---|
+| `tlb_framing_entry` | `fcn.100072c0` | 0x100072c0-0x100079b1 | single 6-byte `sub esp, 0x44c`; a 5-byte patch cannot split it; `axt` finds no jump target at +1..+4 |
+| `tlb_framing_driver` | `fcn.10006e70` | 0x10006e70-0x100072b5 | `sub esp,0x1c` + `mov eax,[0x1007554c]` = 8 bytes before any branch |
+| `tlb_framing_line_reduce` | `fcn.10006870` | 0x10006870-0x10006925 | three single-byte pushes, relocate trivially |
+
+All three are one call tree: the entry calls the driver at 0x100078d9 and the
+reduce at 0x100073b3. The entry is `__thiscall` (`mov esi, ecx` @ 0x100072d0),
+so `EXTRA_DUMP_THIS_OFFSET` is the correct dump kind.
+
+The **0x6CC0 dump size was checked rather than assumed**: the highest
+this-relative offset the entry touches is `esi+0x6cbc`, whose last byte is
+0x6cbf. 0x6CC0 is exact. And 0x1000729f disassembles to precisely
+`or dword [ebp + 0x6ca8], 0x400`, confirming the warning-word offset the size
+was chosen to cover.
+
+`tlb_framing_line_reduce` remains off by default, on **log volume alone** --
+it is per-line, and a ~9,000-line roll with a re-running threshold search adds
+tens of MB even with dumps capped. That is a cost decision and the only one of
+the three; its citation says so, because `hotPathDisabled`'s usual meaning
+("static disassembly already answered the question") is *not* true here.
+Capturing the vendor's own 8-bit inverted line array is exactly the
+measurement the framing domain gap still needs.
+
+One inconsistency found while syncing: `agent.js`'s three framing rows never
+carried an `approximate: true` field at all, despite its block comment
+asserting all three were off by default. `check_table_sync.py` compares
+`(dll, va, id)` and would not have caught it.
+
+### 189.5 What v46 cannot capture
+
+Stated plainly, because the reference trace will be read as complete otherwise:
+
+* **A once-per-frame hook on the pre-invert raw plane.** `tlb_lut_apply` is
+  per-*strip*: 52,877 calls / 39 frames is ~1,356 per frame. `maxDumps` bounds
+  the first N calls, which all fall in frames 0-1; it cannot manufacture
+  one-per-frame.
+* **The pre-ICC u8 buffer.** `icc_xform_apply` reaches pixels only through
+  virtual band accessors (`call [eax+0x28]`, `[edx+0x24]`, `[eax+0x14]`
+  feeding `SpEvaluate`). No static `ExtraDumpSpec` can reach them.
+* **The tone LUT as a standalone buffer.** Built in callees into sub-objects;
+  bracketed by the `tone_scene` entry/exit pair instead.
+* **Post-FUGC RPD as a distinct plane** -- no hooked function takes it as an
+  argument.
+
+### 189.6 Verification
+
+Everything in this section was re-run independently rather than taken from the
+building pass's report:
+
+```
+bash build.sh                  clean, KERNEL32-only, subsystem 5.1, 0 excess-element warnings
+check_table_sync.py            OK: 39 hooks, identical order, 39/40 slots
+build.sh selftest (Wine)       ALL PASS (0 failures), incl. all 11 v46 assertions
+pakon_gate.py selftest         SELFTEST PASS
+pakon_framing_golden.py        all 252 checks bit-exact against the real DLL
+md5 /tmp/pakon_re/TLB.dll      193d9b2ce0a4b77ae9b78262bd06c0fc  (expected)
+```
+
+The trace itself is **~175 MB (~45 MB gzipped)** and **needs the real scanner
+on the XP box** -- all 39 frames for every scalar and scene row, 6 frames for
+the full-frame pixel planes. The scene struct is the centrepiece: 0x64DC
+(25,820) bytes, confirmed three ways -- SS95's live pointer stride is exactly
+25820, `analyze_auto_tone` writes `[arg4+0x64d0]` as that struct's last dword,
+and the proven `balance_shift_4b6` row reads `esi+0x4b6`. One 52 KB dump per
+side per frame subsumes every narrow per-frame row (+0x4b6, +0x3a38, +0x3a30,
++0x5074, +0x38a2, +0x290c, +0x64d0), and diffing adjacent stage brackets
+attributes each per-frame scalar change to the stage that made it -- the
+measurement SS168 could not make.
+
+
+## 190 — The flesh block is closed: the loader found twice, and `fcn.10270280` run as one function
+
+SS187 left two flags open. Both are now closed, and running the whole function
+found a real port bug that no stage-level harness could have.
+
+### 190.1 The loader: found, by two independent witnesses
+
+The earlier pass looked in the wrong function.
+`AnsFleshCapability::initialize` (`fcn.100f5da0`) takes a **local copy** of the
+DPI, checks all three keys exist in the CondProbTables cache
+(*"Can't find condProbTbl key ... in cache."*) and throws the copy away. It
+binds nothing.
+
+The binding is in the impl's constructor,
+`AnsFleshCapabilityImpl::AnsFleshCapabilityImpl` = `fcn.101c84f0` (3031 B, read
+as a full `af`+`pdf` body). It reaches the key strings through `this`, **not**
+through a DPI pointer -- which is exactly why the earlier
+`+0x68 / +0x1068 / +0x2068` displacement search came up empty. They appear as
+`impl+0x80 / +0x1080 / +0x2080`:
+
+```
+0x101c8c86  lea ebp,[esi+0x80]      ; impl+0x80   = DPI+0x68    lCondProbKey
+0x101c8cb2  call 0x10089af0         ; cache find -> handle @ esi+0x6110
+0x101c8dd5  mov [esi+0x50], eax     ; impl+0x50   = DPI+0x38
+0x101c8dca  lea ebp,[esi+0x1080]    ; impl+0x1080 = DPI+0x1068  sCondProbKey
+0x101c8edf  mov [esi+0x54], eax     ; impl+0x54   = DPI+0x3c
+0x101c8ed4  lea ebp,[esi+0x2080]    ; impl+0x2080 = DPI+0x2068  tCondProbKey
+0x101c9000  mov [esi+0x58], eax     ; impl+0x58   = DPI+0x40
+```
+
+DPI sits at `impl+0x18`, agreed by three independent sites.
+
+**The second witness is the stronger one.** `fcn.1026f5a0` (1336 B) is the
+vendor's *own* `FleshParams` dump routine. It prints `[ebx+0x38]` as
+**`lCondProb`**, `[ebx+0x3c]` as **`sCondProb`**, `[ebx+0x40]` as
+**`tCondProb`** -- and alongside them `loff/soff/toff`,
+`lscale/sscale/tscale`, `useAdvanced +0x44`, `stOnly +0x58`, `tSpace +0x5c`,
+`oneDTable +0x60`, `bn +0x64`. That is a field-by-field confirmation of the
+module's entire `FleshParams` layout, in the vendor's own words.
+
+Assignment: **l -> +0x38, s -> +0x3c, t -> +0x40** -- what the port already
+assumed. Both witnesses are tier 3, but they are independent of each other and
+they agree with the tier-1 consumer (`fcn.102a1500`, where `+0x38` is precisely
+the slot `stOnly` skips). Given SS187 showed the `s` axis is where the
+detector's behaviour is decided, this was worth the certainty.
+
+### 190.2 `fcn.10270280` executed as one function -- 58,462 values, zero differences
+
+`pakon_flesh_whole_golden.py` calls the function at its own entry with its own
+twelve arguments and lets it run to its own `ret`, under Unicorn. **No
+fabricated objects:** arg3/arg4 come from the vendor's own
+`AnsImageData::copyToIemImage`, arg5 from the vendor's own `fcn.10271bc0`, and
+the four `IemType` statics are built by the vendor's own constructor with
+arguments read out of the static initialisers at `0x10570dc0...0x10570e60` --
+`("unspecified",1) ("byte",2) ("short",3) ("float",4)`. That last detail
+independently confirms the element-type tags `pakon_flesh_threshold_golden.py`
+previously had to assert from row strides.
+
+Compared: the results struct (X, nsum, Q, -D/130, maxProb/255, threshold, all
+three `m_fleshAdjust` words) plus four internal buffers -- the post-pre-pass
+colour planes, the padded weight plane, the int16 probability plane at
+`0x102a1e25`, and the clamped plane at `0x102712ac`. Nine parameter/frame
+cases plus an arg3!=arg4 case. Negative control: retyping the image to
+`unspecified` makes the DLL return `0xfffa`, so the type guard is live.
+
+`FLESH_DETECTOR_PORTED` is now tier 1, not tier 3.
+
+### 190.3 Running the whole function found a real bug
+
+`maxProb` is seeded to -1 at `0x1027123e`, but the **no-flesh branch overwrites
+it with 0** (`0x1027122c xor eax,eax` / `0x10271607`), so `results+0x20` is
+`0.0` there and not `-1/255`. **This port had -1.** Every stage harness passed
+throughout, because the defect lives in the seam between stages -- which is the
+entire argument for the `[assembly]` category existing in the ledger.
+
+Two smaller facts settled the same way: `results+0x18/+0x20` are *multiplies*
+by the doubles nearest 1/130 and 1/255 (`0x105a4c88` / `0x105a1778`), not
+divisions -- dividing by `130.0` differs by 1 ulp on some frames -- and `D` is
+spilled to a qword at `0x1027164b`, so no x87 extended precision leaks into
+Delta.
+
+### 190.4 A mutation that was NOT CAUGHT, and what fixed it
+
+Eight deliberate mutations: **7 caught, 1 provably inert, 0 not caught.**
+
+```
+shift LUTs built from -shift instead of +shift   caught on 823 differing values
+second pre-pass (arg8) skipped                   caught on 823
+s and t conditional-probability tables swapped   caught on 637
+l and s conditional-probability tables swapped   caught on 351
+stOnly ignored (l table always multiplied in)    caught on 203
+weight plane flat 1000 instead of the Gaussian   caught on 2
+exposureLimit guard removed                      caught on 1
+darkenOnly ignored                               PROVABLY INERT
+```
+
+`darkenOnly` is inert *on this path* and the claim is checked rather than
+asserted: on this frame `D < 0`, so `darkenOnly && D > 0` cannot fire -- and
+the DLL's own Delta is unchanged too.
+
+The methodologically important one is **l<->s, which was initially NOT
+CAUGHT.** Scored on the thresholded mask alone it passed, because the
+peak/valley search only sees the *order* of probability levels, and a
+two-region frame preserves that order. It became visible only once the
+harness captured the **pre-threshold** int16 plane at `0x102a1e25`. A
+downstream comparison that quantises can hide an upstream swap; that buffer is
+now a permanent part of the harness.
+
+### 190.5 The ledger after both closures
+
+Per SS188's convention -- generated, not narrated:
+
+```
+PORTING STATE — 221 flags across 27 modules
+TRUE (200)
+
+FALSE (21) — grouped by WHY, because 'False' alone overstates the problem
+
+  [stand-in]
+     FRAMING_PORTED
+       4 vendor helpers bit-exact; phases 2-5, the threshold search and the film-edge validator unported, and the input domain differs (vendor 8-bit inverted)
+
+  [raise-guard]
+     F135_REVERSAL_PORTED
+       guarded in pakon_decode.py:902
+     PFD_ANALYZE_PORTED
+       _unported() raises if reached
+     SCP_LUT_BALANCE_PORTED
+       asserted False in its own golden
+     TONEHELPER_ACQUIRE_IMAGE_PORTED
+       _unported() raises if reached
+
+  [unreachable]
+     FLESH_3DLUT_PATH_PORTED
+       oneDTable = 1 in the shipped DPI
+     FLESH_ADVANCED_PATH_PORTED
+       useAdvanced = 0 in the shipped DPI
+
+  [boundary]
+     FLESH_ANALYSIS_IMAGE_PORTED
+       arg3/arg4 are not built in the flesh block; §187 showed they are the same pointer, from copyToIemImage
+
+  [doc-only]
+     ANALYSE_ROLL_PORTED
+       nothing branches on it; module states it carries no balance, FPO or Preference maths
+     AST_DPI_PORTED
+       nothing branches on it
+     AST_EXPORT_PORTED
+       nothing branches on it
+     CITRAS_APPLY_VALIDATE_PORTED
+       printed only, never branched on
+     CONTRAST_SELECT_DPI_TREE_PORTED
+       modelled as a host-side registry, as the Python does
+     FILM_BASE_WINDOW_PORTED
+       nothing branches on it
+     FUGC_EXPORT_PORTED
+       unused
+     SRA_MAKE_LUTS_PORTED
+       makeSRALUTS @ 0x10594b78; the SRA forward table is no longer applied at all (docs/58 §16)
+     TONEHELPER_IMAGE_HISTOGRAM_PORTED
+       nothing branches on it
+
+  [measured]
+     CCD_DESKEW_PORTED
+       deskew is measured here rather than read from a vendor table; nothing branches on it
+
+  [superseded]
+     F135_INVERT_PORTED
+       vendor's own inversion recovered (docs/74 §170) and wired as PAKON_VENDOR_INVERT; opt-in, not default
+     SBA_CORE_PORTED
+       preference_full is ported bit-exact (§182.2); this flag predates it and nothing branches on it
+     SHASTA_TWO_ANCHOR_PORTED
+       the two-anchor stand-in is replaced by real_auto_tone; unused
+
+Only [stand-in], [assembly] and [unproven] are gaps that can affect a render.
+[raise-guard] fails loudly rather than substituting; [unreachable] cannot execute with the shipped config;
+[boundary] is not this port's code; [superseded] has been replaced by a verified path.
+```
+
+`[assembly]` and `[unproven]` are **both empty**. Of 21 False flags, exactly
+one can still affect a render: **`FRAMING_PORTED`**, the sole remaining
+stand-in.
+
+Regression suite green: `pakon_gate.py selftest` PASS,
+`test_calib.py` 200/200, `test_render_f135.py` PASS, all five flesh harnesses
+exit 0.
+
+
+## 191 — Phase 6.1 is closed, and four places still said it was open
+
+### 191.1 The finding
+
+`pakon_autotone_assembled_golden.py` was run this pass. **It passes, all seven
+scenarios:**
+
+```
+== Phase 6.1: assembled analyzeAutoTone, real DLL vs real Python chain ==
+  6x6 flat image                                   OK
+  8x8 gradient                                     OK
+  8x6 high-contrast bands                          OK
+  24x24 pseudo-random                              OK
+  48x48 pseudo-random (larger)                     OK
+  8x8 gradient, sceneType=1 (epilogue zeroes tone) OK
+  8x8 gradient, sceneType=4                        OK
+ALL OK
+```
+
+That is the real `0x100fb730` called **once**, with **no subsystem entry points
+hooked or stubbed** -- the real Cap wrappers falling through into the real
+cna/dra/toneHelper/contrast/ast/citras Impl bodies in one Unicorn address
+space -- compared field-by-field against the assembled Python chain: every
+`AUTOTONE_WORK_LAYOUT` scalar, every subsystem result object, every
+LUT/histogram, dword for dword.
+
+The pass is meaningful rather than vacuous because
+`pakon_autotone.AutoToneSubsystems` **raises** on any False flag rather than
+substituting a pattern stub ("Every method is gated on its `*_PORTED` flag and
+raises"). A silent stub could not have produced this result.
+
+`pakon_autotone.py`'s own Phase 6.1 block records the verification, including
+an integration-class bug it caught that no leaf test could: a perfectly flat
+image legitimately makes cna's real `EdgeHist` all-zero, and
+`toneHelper.compute_metrics` divides by that histogram's total
+unconditionally. The real DLL does not trap -- FPCW `0x027f` masks the x87
+zero-divide -- and this port did. That is precisely the class of defect
+docs/66 predicted the assembled step exists to catch, and the reason
+subsystem-by-subsystem bit-exactness is not the same claim as end-to-end
+bit-exactness.
+
+### 191.2 Four places still described it as open
+
+| file | stale claim |
+|---|---|
+| `tools/ansel/pipeline/autotone.go` | reason 2: "the ASSEMBLED chain has never been diffed against the real DLL end to end, on EITHER side ... it is still open" |
+| `tools/ansel/pipeline/main.go` | "the ANALYSIS half that builds that curve is still Python-only" |
+| `tools/ansel/python-pipeline/pakon_ansel.py` | `real_auto_tone`: "a separate, still in-progress verification ... Phase 6.1" |
+| `CLAUDE.md` | "Its ANALYSIS half -- cna/dra/toneHelper/contrast/ast/citras, ~3,800 lines across 6 modules -- is **not** ported" |
+
+All four corrected in place, each carrying a dated note saying what it used to
+say. **This is the third distinct drift incident this session**, after SS182.1
+(CLAUDE.md naming the wrong default render engine) and SS189.4 (a DLL declared
+absent that was present). Three in one session is not bad luck; it is the
+argument for SS188's convention, and the reason `tools/porting_state.py`
+generates state rather than restating it.
+
+The CLAUDE.md correction is the one that mattered most, because it is loaded
+into every session and so seeds the same wrong belief indefinitely.
+
+### 191.3 The accurate statement: not ported -> not wired
+
+Four of the six analysis subsystems are in Go under
+`tools/ansel/pipeline/ans*/` -- `anscna`, `ansdra`, `anstonehelper`,
+`anscontrast` -- plus `ansautotone`, the shell that threads them. Each is
+verified bit-exact against its Python reference, and those references are
+themselves Unicorn-verified against the DLL.
+
+**`ansautotone.Analyze()` returns the `OutToneLut` directly.** Go can compute
+the curve for itself today.
+
+The two unported subsystems, ast (`0x100fc79e`) and citras-analyze
+(`0x100fc9c3`), both only *read* the finished LUT and neither writes it back
+(pakon_autotone's stage-5 and stage-7 notes), so their absence cannot change
+the curve.
+
+So the render path's fallback to `ShastaToneRpd` is **not** a missing port. It
+is Phase 6.2, an un-taken deliberate step:
+
+```go
+if req.HasToneLut() {                     // caller supplied it (Python fills this)
+    toned = applyVendorTone(fugcOut, req.OutToneLut)
+} else if model == "f135" {
+    shasted = ShastaToneRpd(...)          // the openly-labelled stand-in
+}
+```
+
+Everything the missing branch needs is already in reach: `Engine.AnselRoot` is
+threaded through `OpenEngine`, `ansautotone.LoadParams` consumes it, and the
+analysis input is the same post-FUGC RPD-12 frame `applyVendorTone` already
+takes, quantised by the same `np.rint` (`citrasdriver.QuantiseRPD12`) that
+`real_auto_tone` uses.
+
+### 191.4 What wiring it would and would not buy
+
+**Would:** replace an openly-labelled stand-in with the vendor's own tone chain
+on the **default, product** render path. Today the F-135's default engine does
+not run the vendor's curve at all unless a caller hands it one.
+
+**Would not:** make the Go and Python engines agree. SS182.3 stands -- they
+diverge *upstream* of tone: Go inverts against the FRAME's dmin where Python
+uses the ROLL's, FUGC `ebp18` provenance differs, and Go truncates the FUGC
+index where Python `rint`s. Wiring the analysis in would have Go computing a
+correct curve **from different input**, so the two engines would still
+disagree.
+
+That distinction is worth stating explicitly because SS171.3's warning applies
+directly: errors in this chain have opposite signs, and a stage judged by the
+end-to-end number alone can be tuned the wrong way. Phase 6.2 should be
+evaluated as "does Go now run the vendor's chain", not "did the composite
+metric improve".
+
+Recommendation: land it behind an opt-in env flag, as `PAKON_VENDOR_INVERT=1`
+already precedents, with the provenance banner naming the third branch -- not
+as a silent default change.
+
+
+## 192 — The SBA statistics vector: its writer ported, its producer mapped, and three corrections to SS76.6
+
+### 192.1 SS76.6 was wrong about `fcn.102aece0` in three ways
+
+All three re-verified here independently of the pass that reported them, `af`+`pdf`
+against `PakonIMAu.dll` md5 `eea9dcf78ee21d4f7c515a6c2512242d`.
+
+**(a) Its body does not end at the first `ret`.** SS76.6 says the "real body is
+`0x102aece0...0x102afac8` (the first `ret` at frame delta 0)" and that r2 had
+merged later functions into one blob. `afi` gives **24,516 bytes,
+`0x102aece0-0x102b4ca4`** -- 6,643 instructions, 1,766 basic blocks. It is one
+function. All four `ret`s carry the *identical* epilogue
+(`pop edi; pop esi; pop ebp; mov eax,<code>; pop ebx; add esp,0xfac; ret`),
+i.e. the same `0xfac` frame:
+
+| exit | eax | meaning |
+|---|---|---|
+| `0x102afac8` | `0x18a0` | `calloc` failure -- an **early error return** |
+| `0x102b48f3` | `0x189d` | no qualifying samples |
+| `0x102b4c93` | `0` | **success** |
+| `0x102b4ca3` | `0x189c` | bad mode (arg6 not in {1,2,4,8}) |
+
+The decisive check: `0x102afa8a` is `je 0x102afac9` -- the byte immediately
+*after* the `ret` SS76.6 took for the tail is itself a jump target, so control
+provably continues past it.
+
+**(b) It does not "contain exactly one call (`calloc`)".** Three:
+`calloc` @ `0x102afa46`, `call ebx` -> `free` @ `0x102b4c7c`, and
+`call 0x102b7440` @ `0x102b4c5e`.
+
+**(c) It does dereference arg1** -- six sites: `0x102afbc4`, `0x102b0a24`,
+`0x102b1414`, `0x102b1473`, `0x102b1bb0`, `0x102b1c06`.
+
+### 192.2 What the function is
+
+Ten cdecl args, read off its three call sites in `fcn.1028b8d0`
+(`0x1028be1f`, `0x1028be72`, `0x1028c41e`, all `add esp,0x28`). arg1 is the
+sample image; arg2 is six `int32` subtracted from every band sample; arg10 is
+the SBA object itself.
+
+**The sample grid is derived, not assumed:** six plane bases computed as
+`(9r + k)*4` for `k = 0, 0xd8, 0x1b0, 0x288, 0x360, 0x438`, with the row loop
+bounded by `cmp eax,0x18` (24). That is **24 rows x 36 columns = 864 samples x
+6 bands**, and `0x102aeda3` seeds the count table with `0x360` = 864 outright
+-- the same 864 as SS76.4's "864 dens samples".
+
+It writes an **864-byte per-sample selection mask** at `arg10+0xc20`
+(confirming SS76.7), ten header words, and -- via its tail call -- the whole
+720-entry `int32` statistics vector at `+0x3c`.
+
+It also **reads** `[arg10+0x7b8]` (vector slot 479) at `0x102b0da5`, inside the
+per-sample pass. Since `fcn.1028b8d0` calls it three times, a later invocation
+consumes a statistic an earlier one wrote. Recording that as a real cross-call
+dependency; it has not been chased.
+
+**The actual writer of the vector is the tail callee `fcn.102b7440`**
+(`0x102b7440-0x102b81c7`, 3,457 B, `afi` reports `is-pure: true`,
+`out-degree: 0`). Its last store is `[ecx+0xb78]` = index **719**, and
+`fcn.1028b8d0`'s own top level writes indices **720...732**. The ranges abut
+exactly.
+
+### 192.3 `fcn.102b7440` is bit-exact -- and was ported twice, independently
+
+Run whole, at its own entry, to its own `ret`, nothing stubbed (it is pure):
+
+```
+52/52 cases bit-exact; 24,771 compared vendor-written dwords
+```
+
+The object is poison-filled (`0xA5`) first and the comparison is a byte-level
+`memcmp` over the whole `obj+0x3c ... obj+0xbbc` vector, the header word
+`+0x18`, **and** the two scratch buffers the vendor mutates in place -- so a
+store either side misses shows as surviving poison.
+
+**Two agents ported this same function concurrently and neither saw the
+other**, because both files were untracked. The redundant deliverable is
+`pakon_sba_stats.py`; the earlier and more complete one is
+`pakon_orderfpo_vecpack.py`, which also ports the `720...732` tail (verified:
+its `vecpack_tail`). Keep that one.
+
+The accident bought something real, though, and it is now a standing section
+`[5]` of the golden: **two implementations written independently from the same
+910 instructions agree byte-for-byte on all 52 cases.** That is a stronger
+statement than either port could make alone.
+
+### 192.4 Corroboration that was not fitted
+
+SS88.6 -- written long before this layout existed -- lists the vector slots
+non-zero at `fcn.1028b8d0` *entry* as `3-23, 476-499, 550-561, 612, 730`.
+
+Under the layout recovered here (7 zones x 68 slots, stride `0x110`; slots
+476-611 four whole-frame banks gated on `en[0xe]`; 612-615 header echoes;
+616-690 verbatim `arg3[0:75]`; 691-709 `arg4[0:19]`; 710-718 `arg5[0:9]`; 719
+one divided scalar), **476 is exactly where the whole-frame group begins, and
+612 is exactly `obj+0x9cc`** -- one of only four scalar echoes in the entire
+720-slot vector. Neither was fitted to the capture.
+
+### 192.5 A mutation that was NOT CAUGHT
+
+Eleven mutations: 10 caught, 1 provably inert. But `>` -> `>=` on the long-side
+test was **NOT CAUGHT on the first run** -- the inputs never put `obj+0x06`
+exactly on `par+0x0e`, so the boundary went untested. Fixed by adding two
+`long_side="eq"` cases, after which it is caught 2/52.
+
+Two others are caught on only 19/52 and are invisible in the object entirely --
+they are caught *only* because the harness diffs the in-place scratch buffers.
+
+This is the same lesson as SS190.4's l<->s swap, from a different direction: a
+comparison that does not reach the right buffer, or does not reach the right
+*input*, will pass a wrong port. Both were found by deliberately breaking the
+port, not by it failing.
+
+### 192.6 What this does and does not buy B1
+
+**Does:** it unifies B1's three variable terms under **one** producer. The
+864-byte mask at `obj+0xc20` is what SS76.4's weighted-mean chroma residual
+walks to make **U** and **V**; the vector at `obj+0x3c` is the p-code VM's
+`in[]`, which SS90 used to reproduce **L** -- `orderFpo.Y`'s entire per-frame
+variation -- 12/12 bit-exact. B1's remaining blocker is therefore a single
+function, not three.
+
+**Does not:**
+
+* **`fcn.102aece0` itself is still unported.** It was mapped, not ported.
+  Every number `fcn.102b7440` packs is computed there, so a bit-exact packer
+  computes nothing on its own.
+* **The golden is tier 1 for equivalence, not for provenance.** The v28 capture
+  carrying a real `in[]` is not on this machine -- only a 40 KB
+  `sba_get_shifts`-only extract -- and no capture in hand hooks `0x102aece0` or
+  `0x102b7440`. Inputs are pseudo-random over the exact buffer extents with the
+  exact structural constraints. That settles *"does this arithmetic match"*; it
+  does not settle *"are these the values a real frame produces"*.
+* **δ is untouched.** Nothing here bears on the uniform per-frame scalar.
+
+**Next step, now well-bounded:** `fcn.102aece0` has 10 args, three calls (two
+of them `calloc`/`free`, trivially stubbable; the third now bit-exact), a known
+24x36x6 input grid and a known output set. That makes a whole-function Unicorn
+run feasible in the `pakon_flesh_whole_golden.py` style -- which is exactly the
+technique that found the `maxProb` seam bug in SS190.3.
+
+
+## 193 — Phase 6.2: the Go render path can now compute the vendor's tone curve
+
+### 193.1 The transitivity closes
+
+Two legs, each measured, neither a per-subsystem claim standing in for an
+end-to-end one:
+
+```
+Go chain  == Python chain   27,294 samples on a real frame, OutToneLut included
+                            (tools/test_autotone_chain.py)
+Python    == real DLL       7 scenarios, 0x100fb730 called ONCE, no subsystem
+                            entry points hooked
+                            (pakon_autotone_assembled_golden.py, SS191)
+------------------------------------------------------------------
+Go chain  == real DLL       by transitivity
+```
+
+ast (`0x100fc79e`) and citras-analyze (`0x100fc9c3`) are absent from the Go
+chain. Both only READ the finished `OutToneLut` and neither writes it back, so
+the curve is unaffected. `AutoToneAnalysisPorted` stays False because that flag
+names six subsystems and Go has four -- **not** because the chain is
+unverified. That distinction is the whole of SS191.
+
+### 193.2 What was wired
+
+`computeGoToneLut` in `tools/ansel/pipeline/autotone.go`, reached from
+`processImage`'s tone branch:
+
+```go
+if req.HasToneLut() {                        // caller supplied one (unchanged)
+} else if goAutoTone && model == "f135" {    // NEW, opt-in
+    lut, err := computeGoToneLut(fugcOut, eng.AnselRoot)
+} else if model == "f135" {                  // ShastaToneRpd stand-in (unchanged)
+}
+```
+
+**Opt-in via `PAKON_GO_AUTOTONE=1`, off by default**, following
+`PAKON_VENDOR_INVERT`'s precedent. Changing what the product render path
+computes is the owner's call, not a side effect of a port becoming available.
+The provenance banner distinguishes all three branches; a `nil` LUT from
+sceneType 1's epilogue (`0x100fcb29`) is reported as its own outcome rather
+than silently falling back to the stand-in.
+
+`sceneType 0` / `exposure 0.0` are the shell's own documented defaults, the
+same ones `real_auto_tone` uses -- a real per-frame scene-type classification
+is a separate unported capability (docs/64).
+
+### 193.3 One quantiser, not two matching loops
+
+The analysis half builds an `anscna.Image` and the apply half a
+`citrasdriver.ImageI16`, both from the same frame. **If those quantisations
+ever diverged, the chain would measure one image and transform another** --
+producing a plausible picture and no error at all, which is the worst failure
+mode this pipeline has.
+
+They now share one `quantiseFrameRPD12`. A test asserting the two agree cannot
+establish this, because it can only compare what the two call sites do today;
+sharing one function makes the divergence unrepresentable instead.
+
+### 193.4 The self-test caught the author twice
+
+Worth recording, because both are the same error this document has now logged
+three times from three directions.
+
+**First:** the original `TestPhase62QuantisationMatchesApply` built two buffers
+-- both by calling `citrasdriver.QuantiseRPD12` in a loop -- and asserted they
+matched. **A tautology. It could not fail.** Replaced by a test of the
+quantiser's actual contract (round-half-to-EVEN: 0.5 -> 0, 1.5 -> 2, 2.5 -> 2)
+against independently stated values.
+
+**Second:** with that fixed, a deliberate mutation giving the analysis half its
+own private truncating quantiser was still **NOT CAUGHT**. The reason was the
+test data: `synthFrame` was entirely integer-valued, so truncation and
+round-half-to-even produced identical output and the mutation was inert. Fixed
+by putting quarter-code fractions and exact `.5` ties into the frame -- exactly
+where the two roundings disagree.
+
+That is SS192.5's `>` vs `>=` (inputs never reached the boundary) and SS190.4's
+l<->s swap (the comparison quantised the difference away), a third time. The
+generalisation is worth stating plainly:
+
+> **A passing test proves nothing until it has been shown to fail on a wrong
+> implementation.** Every one of these three was found by deliberately breaking
+> the port, never by the suite going red on its own.
+
+Final state, source restored byte-for-byte after each:
+
+```
+caught   quantiser truncates instead of round-half-even
+caught   Phase 6.2 defaults ON
+caught   LUT narrowing drops the last entry
+caught   analysis half gets its own private quantiser loop again
+0 NOT CAUGHT
+```
+
+### 193.5 What this does and does not buy
+
+**Does:** the F-135's default engine can now run the vendor's own tone chain
+instead of an openly-labelled stand-in. Until now the Go path computed the
+vendor's curve only if a caller handed it one.
+
+**Does not:** make the two engines agree. SS182.3 stands -- they diverge
+*upstream* of tone: Go inverts against the FRAME's dmin where Python uses the
+ROLL's, FUGC `ebp18` provenance differs, and Go truncates the FUGC index where
+Python `rint`s. Go now computes a correct curve **from different input**.
+
+SS171.3 applies directly: errors in this chain have opposite signs, so judge
+this change by "does Go run the vendor's chain", not by whether a composite
+end-to-end metric improved. Those upstream divergences are the next thing to
+close if the goal is Go == Python.
+
+### 193.6 Verification
+
+```
+go build ./...          clean
+go vet ./...            clean
+go test ./...           all packages ok
+go test -run Phase62    5/5 pass, incl. the real chain producing a 4096-entry LUT
+mutation self-test      4 caught, 0 NOT CAUGHT, source restored byte-for-byte
+pakon_gate.py selftest  SELFTEST PASS
+test_render_f135.py     PASS with the flag OFF and again with it ON
+test_calib.py           200/200
+```
+
+
+## 194 — The framing cascade is bit-exact end to end; what remains is a hardware capture
+
+### 194.1 252 -> 1429 checks
+
+`pakon_framing_golden.py` now proves **1429 checks bit-exact** against the real
+TLB.dll (md5 `193d9b2ce0a4b77ae9b78262bd06c0fc`, at `/tmp/pakon_re/TLB.dll` --
+the file SS189.4 records as wrongly declared absent). Eleven new vendor
+functions, on top of the four already done:
+
+| function | what | coverage |
+|---|---|---|
+| `fcn.100063d0` | phase 2 `FramingLookInBetweenEnds` | 51 cases, 1430 slots |
+| `fcn.10006720` | phase 5 `FramingBlindlyPlacePictures` | 42 cases, 2262 slots |
+| `fcn.10006ae0` | phase 3 `LookAtEnd` | 45 cases, 2024 slots |
+| `fcn.10006ca0` | phase 4 `LookAtBeginning` | 45 cases, 2024 slots |
+| `fcn.10006310` | film-edge validity test | 48 candidates |
+| `fcn.10013960` | edge-mark accessor | 283 lookups |
+| `fcn.10006630` | gap-admissible predicate | 132 cases |
+| `fcn.100064e0` | sliding-window search | 36 cases, 2582 sums |
+| `fcn.10005d20` | **threshold choice + binarise**, incl. the x87 branch | 93 cases, 59,974 lines |
+| `fcn.10006e70` | **the four-phase cascade driver** | 33 whole cascades |
+| `fcn.100072c0` | **the entry, threshold search included** | 38 whole rolls |
+
+The last two are the point. `fcn.100072c0` is one call from a per-line RGB
+summary to a placed frame list: both threshold rules, the two-legged search,
+all four phases and the `SCAN_WARNINGS` word. It is not a shape argument --
+the search genuinely exercises, with **741 threshold evaluations** across the
+corpus, 16 rolls doing a real multi-step search (up to 95 evaluations), and the
+percentile fallback firing on 7.
+
+**The threshold search, confirmed:** modal-peak rule first; if it yields fewer
+than 2 runs, recompute with the 2nd-percentile rule. Then step **+2 while
+t < 250 and bins[1] > 0**, return to the **initial** threshold (not the best),
+step **−2 while t < 256 and (bins[2] > 0 or n <= 1)**, stopping at 25. So this
+document's earlier "25..256, +-2" is right, and the 250-vs-256 asymmetry is
+real rather than a transcription slip.
+
+### 194.2 A real bug in the existing port, invisible to the old harness
+
+`fcn.10006140`'s refusal limb returns **without writing** the caller's `bins`
+block or `*pp`. The port returned a fresh `[0, 0, 0]`.
+
+The old harness could not see this: it allocated a fresh zeroed block per call,
+so "not written" and "written as zero" were indistinguishable. The entry's
+threshold search **reuses one block** across evaluations, which is what makes
+the difference observable and load-bearing. Fixed, with a shared-block check
+that would catch a regression.
+
+This is the SS190.3 pattern again -- a defect that lives in the seam between
+stages and that only assembling them exposes.
+
+### 194.3 The mutation suite had been giving false confidence
+
+Most rows were reporting CAUGHT because the bump allocator ran dry mid-run and
+raised `MemoryError`, **not** because the mutated port produced a different
+answer. `run_all` now rewinds the allocator.
+
+With that fixed, four rows were genuinely **NOT CAUGHT** -- real corpus gaps in
+`gapok`'s forward limb and three entry-search decisions. Discriminating inputs
+were found and added, and all four now measure CAUGHT against the DLL.
+
+Full 34-row run: **32 CAUGHT, 2 PROVABLY INERT, 0 NOT CAUGHT.** The two inert
+rows are an unreachable malloc-failure limb and the phase-1 edge test under
+`ca4 == 0`. One honest caveat recorded with it: `atend: stop clipping` is
+caught by an `IndexError` rather than a value difference -- the mutation runs
+phase 3 off the slot array. A genuine behavioural difference, but the signal is
+a crash rather than a diff.
+
+### 194.4 Two vendor behaviours worth knowing
+
+**Phase tags are 1, 2, 4, 3.** `LookAtEnd` stamps 4 and `LookAtBeginning`
+stamps 3; blind placement stamps 9. Reading the tag as a phase ordinal silently
+swaps phases 3 and 4.
+
+**On some rolls the vendor has no single answer.** The `bins` block is a *stack
+local*, and the refusal limb never writes it. When the first extraction refuses
+-- a flat or near-flat strip -- the search steers on whatever the caller left on
+the stack: **0, 11 and 12 frames were measured on three otherwise identical
+runs.** The harness now zeroes the stack per call so the reference is defined,
+and both the port and its docstring state that this is a *choice*, not a
+discovered invariant.
+
+Related: `fcn.100064e0` reads up to `pitch` int32s past the end of its `ones`
+buffer, safe only because `VirtualAlloc` zero-fills whole pages. The emulator
+stub is now page-granular for that reason.
+
+### 194.5 `FRAMING_PORTED` stays False -- and the reason has completely changed
+
+**The arithmetic is no longer the gap.** Two things block a true `True`, and
+neither is a porting question:
+
+1. **Nothing calls it.** `find_frames` / `frame_cascade` are untouched -- still
+   Otsu, still this port's own placement, verified byte-identical to before.
+2. **Nothing can feed it.** The entry consumes the object's **8-bit per-line
+   RGB summary** at `this+0x6c`; this port holds **float 14-bit non-inverted**.
+   Guessing the quantisation would move every boundary *invisibly to the
+   harness*, because the harness feeds both sides the same synthetic bytes.
+
+Point 2 is the important one, and it is a genuine hardware dependency: the
+capture that resolves it is the `tlb_framing_line_reduce` hook (`fcn.10006870`)
+enabled in SS189.4, which needs the real scanner. Until then, flipping the flag
+would be exactly the kind of unfalsifiable claim this project refuses.
+
+Also still unported: `fcn.100079c0` (1,362 B), the roll-level caller that
+chooses cascade-vs-blind and ORs `0x800`. Phase 5 is bit-exact; the *decision*
+to run it is not.
+
+`pakon_framing.py --self-test` now includes a guard asserting
+`FRAMING_PORTED is False and find_frames still uses Otsu`, so the flag cannot
+drift True by accident.
+
+### 194.6 The ledger
+
+```
+PORTING STATE — 223 flags across 27 modules
+TRUE (202)
+
+[stand-in]
+     FRAMING_PORTED
+       the whole vendor chain IS bit-exact now — 15 functions up to and including fcn.100072c0, the entry, threshold search included. Still a stand-in because find_frames does not call it: it needs the vendor's own 8-bit per-line RGB summary, which is not captured from hardware yet, so Otsu + this port's placement still run
+```
+
+`FRAMING_PORTED` remains the only entry that can affect a render, but it has
+changed category in substance if not in label: it is no longer *"we have not
+ported this"*, it is *"we have ported all of it and cannot yet feed it real
+input."*
+
+### 194.7 Verification
+
+```
+pakon_framing_golden.py     1429/1429 bit-exact
+pakon_framing_golden.py --mutate   32 CAUGHT / 2 INERT / 0 NOT CAUGHT
+pakon_framing.py --self-test       all pass (+9 new invariant checks)
+pakon_gate.py selftest             SELFTEST PASS
+test_calib.py                      200/200
+test_render_f135.py                PASS
+```
+
+
+## 195 — The vendor inversion reaches the Go engine, and a flag nobody had ever tested
+
+### 195.1 The divergence that mattered was not one of SS182.3's three
+
+SS182.3 lists three ways Go and Python diverge upstream of tone: frame-vs-roll
+dmin, FUGC `ebp18` provenance, and truncate-vs-`rint` on the FUGC index. Going
+looking for those turned up a fourth that dominates all of them:
+
+**The Go engine had no vendor inversion at all.** `PAKON_VENDOR_INVERT` existed
+only in `pakon_render.py`. Grepping the Go tree for it found exactly one hit —
+a comment this session had written citing it as a precedent.
+
+Go is the **default, product** render path (SS191). So the product path could not
+reach the single largest colour improvement this project has found: 59.14 MAE /
++58.90 bias down to 23.59 / -3.18 (SS170-SS175). Reconciling the three smaller
+divergences while that stood would have been tuning the trim on a different
+aircraft.
+
+### 195.2 The table crosses as generated source
+
+`tools/gen_vendor_invert_table.py` emits
+`tools/ansel/pipeline/vendorinvert/tables.go` from
+`vendor_invert_table.npy` — the same shape SS179 used to ship the KCMS CLUT, and
+for the same reason: the Go engine gets no run-time dependency on the Python
+tree. The generator has a `--check` mode that fails if the .go file is stale or
+hand-edited.
+
+Verified in three independent ways, because a generated table is exactly the
+kind of artefact that goes quietly wrong:
+
+```
+tools/test_vendor_invert_parity.py
+  generator --check       tables.go current (npy md5 3b851705ab0d4d54a7a395a6ceb49551)
+  python  16384 entries, 0..16383
+  go      16384 entries, 0..16383
+  all 16384 entries identical
+  vs closed form: 14328/16383 exact (87.46 %)
+```
+
+That last line is a deliberate guard rather than a statistic. If Python had
+silently fallen back to the closed form, the two engines would still agree with
+each other and both be wrong. 87.46 % matches SS173.2's measured ~87.5 %, so the
+captured table is what is loaded. The Go package's own test asserts the same
+from the other side — it **fails if the closed form is exact everywhere**,
+which would mean the approximation had replaced the capture.
+
+### 195.3 The wiring, and the vendor's position
+
+Pass 1 now inverts the RAW code before `PolyPixel`; pass 2 is skipped. That is
+the vendor's own architecture: no film base, no Dmin, no pedestal, no fpo.
+
+The index is the **full** raw code, clamped — not `code >> 2`. SS173.1/SS174: that
+shift was inferred from a dump having 4096 entries ("so the index must be
+12-bit"), and it is wrong; with it in place the index could never exceed 4095
+however large the table, which is what made SS172's clipping caveat look
+intrinsic when it was an artefact of one line. A Go test now fails if it
+returns.
+
+### 195.4 Two silent failure modes, made unrepresentable rather than tested
+
+The mutation self-test found the wiring's tests were covering the *helper* and
+not the *wiring*. Two mutations were NOT CAUGHT:
+
+* **letting pass 2 run alongside the vendor inversion** — every frame inverted
+  twice, a plausible picture, no error raised;
+* **inverting G with R's value** — a channel transposition, likewise silent.
+
+Both are now structural. `inversionMode(model, vendorInvert)` returns
+`"vendor"` / `"legacy"` / `"none"` and is the single source of truth both
+passes read, so inverting twice cannot be expressed; and the per-channel map
+has one call site, `applyVendorInvertRGB`, that a test can reach. The pass-2
+loop moved into `applyLegacyInversion`, which checks the mode **inside**
+itself — that is what made it testable at all.
+
+This is the same fix as SS193.3's shared quantiser, and the third time today
+that the right answer was to make a defect unrepresentable rather than to add a
+test for it.
+
+### 195.5 The mutation harness lied about its own coverage
+
+Worth recording separately. Two mutations reported NOT CAUGHT that were in fact
+*never tested*: the harness ran `go test -run "VendorInvert|Phase62"`, and the
+test that catches them is `TestInversionModeIsExclusive`, which matches neither
+pattern. **A mutation harness with a name filter is a mutation harness that
+lies about its own coverage.** It now runs the whole package.
+
+This is SS194.3's allocator artefact in a different costume — there, rows
+reported CAUGHT for the wrong reason; here, rows reported NOT CAUGHT for the
+wrong reason. Both directions are possible and both are invisible unless the
+harness itself is checked.
+
+Final: **7 caught, 1 provably inert, 0 unexplained.** The inert row is
+`clamp to Entries-2 instead of Entries-1`, and the inertness is measured, not
+argued: the table is zero from index 16373 onward, so both clamp targets return
+0.
+
+### 195.6 `PAKON_VENDOR_INVERT` had never been run through the regression suite
+
+Running `test_render_f135.py` with the flag set failed:
+`scene_rpd12 is not pakon_decode's own step (max delta 560.495)`.
+
+**Not a regression.** The assertion hard-coded the *legacy* reference — it built
+its expected value through `_rpd16` + `f135_rom12_to_rpd12` and compared it to
+whatever `scene_rpd12` returned. Under the flag those are two different
+architectures, so it could never pass. The flag has been opt-in since the
+vendor inversion landed, and `test_render_f135.py` is unmodified from HEAD:
+nothing had ever run this file with it on.
+
+Fixed by asserting each architecture against **its own** reference rather than
+skipping the check, so both paths stay covered. Both now pass.
+
+The general point: an opt-in flag that no test exercises is not "off by
+default", it is **untested**. `PAKON_GO_AUTOTONE` (SS193) was written with its
+own tests from the start; this one had none for months.
+
+### 195.7 Verification
+
+```
+go build ./... · go vet ./...        clean
+go test ./...                        all packages ok, incl. new vendorinvert
+mutation self-test                   7 caught / 1 provably inert / 0 unexplained
+                                     both sources restored byte-for-byte
+test_vendor_invert_parity.py         16384/16384 identical; generator current
+pakon_gate.py selftest               SELFTEST PASS
+test_calib.py                        200/200
+test_render_f135.py                  PASS default, PASS with PAKON_VENDOR_INVERT=1,
+                                     PASS with PAKON_GO_AUTOTONE=1
+pakon_framing.py --self-test         all checks passed
+```
+
+**Still not claimed:** that the Go vendor path produces the same *image* as the
+Python vendor path. The table and the per-pixel mapping are proven identical;
+the end-to-end result is not, because SS182.3's other three divergences survive
+untouched and because no capture is on this machine to compare on. What is
+established is that the product engine can now run the vendor's inversion in
+the vendor's position at all, which it could not before.
+
+
+## 196 — `fcn.102aece0` executes as one function; the U/V half of B1 is bit-exact
+
+### 196.1 It runs
+
+74/74 cases reach the success exit `0x102b4c93` (eax = 0), **26,034,359
+instructions**, 1,898 `calloc` / 1,898 `free` balanced. Only `calloc` (IAT
+`0x10573430`) and `free` (`0x1057343c`) are stubbed; `call 0x102b7440` at
+`0x102b4c5e` **runs for real**, so the object write path is genuine.
+
+Harness: `tools/ansel/python-pipeline/pakon_sba_measure_golden.py`.
+Port (partial, and it says so): `pakon_sba_measure.py`.
+
+Object poison-filled `0xA5`, whole `0x2000` diffed: **3,766 B written, 4,426 B
+surviving poison**, at exactly `+0x6..+0x1c`, `+0x3c..+0xb7c`, `+0xc20..+0xf80`.
+SS192's three claims about what it writes are now confirmed by execution rather
+than by reading.
+
+Bad-mode (`0x189c`) and calloc-fail (`0x18a0`) exits were both reached
+deliberately. **`0x102b48f3` (`0x189d`) was NOT reached** — a block hook shows
+`0x102b48c0` is entered by no case. Recorded as a **coverage gap, not a passed
+control**. Basic-block coverage across the case set is **522 of 1,766 (30 %)**.
+
+### 196.2 The mask is bit-exact
+
+**63,936/63,936 bytes over 74 cases** (64,010/64,010 including the return
+value). Both stages: the 3x3 local-contrast test on plane 3
+(`0x102b09fc...0x102b0ab7`) and the hue/chroma window that ORs in bit 1
+(`0x102b0e75...0x102b0ded`).
+
+Per SS192.6 that mask is the input to the weighted-mean chroma residual that
+makes **U** and **V**. So B1's chroma half is done.
+
+Not ported: the 0xb00 bank block, A3/A4/A5, A7 beyond its `0x360` seed, the 26
+histograms and every percentile from them, and the header words.
+
+Unfitted corroboration: tracking ESP through the ten pushes at
+`0x102b4c0e...0x102b4c5e` gives `fcn.102b7440`'s argument lengths as
+`0x12c`/`0x4c`/`0x24`, and those equal `pakon_orderfpo_vecpack_golden.py`'s
+`A3_LEN`/`A4_LEN`/`A5_LEN` — derived from the *callee* side months earlier,
+without this frame.
+
+### 196.3 The first version was 100 % "bit-exact" and 90 % untested
+
+Worth recording in full, because it is the sharpest instance yet of a pattern
+this document has now logged five times.
+
+The first harness reported **26,784/26,784 bytes bit-exact** with **9 of 10
+mutations NOT CAUGHT.**
+
+The cause was the test data, not the comparison. Uniform 0..4095 noise
+saturates `0x102b0a94` — every 3x3 range is far above the threshold — and the
+stage-2 guards then rejected every sample, so **the entire hue wheel and the
+window geometry never executed**. A fully-passing harness was exercising
+almost none of the function it claimed to prove.
+
+Fixed by constructing inputs that reach the boundaries: ramp frames whose
+local range is exactly 16 with `thr` at 15/16/17; a frame sweeping all six
+sextants; sextant-5 shapes driving the quotient to 20 so `0x65+20 == 0x79`
+exercises the wrap; Pythagorean band-4/5 pairs putting `chroma^2` exactly on a
+limit; and the one that mattered most — **seeding `obj+0x7b8` and `obj+0x7bc`
+with different values**, because a uniform poison fill cannot tell those two
+apart and made both the slot offset and the `par+0x56` bias invisible.
+
+Final: **17 caught, 2 provably inert, 0 NOT CAUGHT.**
+
+The two inert rows come with their argument rather than a shrug: `idiv`->floor
+and `sar`->`shr` are inert because every sextant's own guard forces numerator
+>= 0 and denominator > 0 (the equal case exits at `0x102b0ea0`), so truncation
+and floor coincide by construction, and the only `sar reg,1` operand is that
+positive denominator.
+
+### 196.4 Two findings
+
+**A dead arm.** `0x102b0b08 mov eax,[0x106bc820]` reads a dword that is 0 in
+the shipped image, and a byte scan of the whole 24 MB image finds **exactly
+one** occurrence of that address — the read itself. On direct-reference
+evidence the white-balanced hue arm `0x102b0b15...0x102b0d95` is dead and the
+raw-band arm at `0x102b0e75` is what runs. The caveat is stated in the harness
+rather than buried: a byte scan excludes direct references only, not a
+computed pointer or a write from another module, and the port **raises rather
+than guesses** if handed a non-zero value.
+
+**SS192's "unchased" read is live.** The cross-call read of `[obj+0x7b8]`
+(vector slot 479) at `0x102b0da5` is reached from the `0x102b0e75` arm, not
+only from the dead one. It is now a first-class harness input, and the
+mutation moving it to `+0x7bc` is caught on 1,496 mask bytes.
+
+Also recorded: **`arg5 == 1` skips the calloc block entirely** (`0x102af83a
+je`), leaving all 26 histogram pointers NULL — so the caller *must* clear
+`en[0x10..0x13]` in that mode or the DLL dereferences null. A real caller
+invariant, not a harness convenience.
+
+### 196.5 This closes about half of B1
+
+**It does not close it, and it reveals no new dependency.** SS192.6 named two
+things: the mask (U, V) and the vector (L). The mask is now ported and
+bit-exact. The vector is not — every number `fcn.102b7440` packs is still
+computed in the ~70 % of `fcn.102aece0` that remains unported.
+
+And the whole thing is **tier 1 for equivalence, tier 4 for provenance**. No
+capture hooks `0x102aece0`. Synthetic inputs settle *"does this arithmetic
+match"*; they do not settle *"are these the values a real frame produces"* —
+which is the question B1 actually asks. SS197 is what fixes that.
+
+## 197 — The capture package: everything the next scan needs
+
+Built, self-tested and validated on the build machine. **Nothing here has
+touched the scanner.**
+
+### 197.1 A new hook: the statistics engine itself
+
+`sba_measure` = `fcn.102aece0`, added as hook 40. The already-hooked
+`sba_order_fpo_calc` (`0x1028b8d0`) is its **caller** — SS192.1 corrected the
+earlier reading that named it the producer; it is 2,958 B and this is 24,516 B.
+
+**One entry+exit pair on the object covers everything**, because
+`fcn.102b7440` writes the same object before this function returns. A `0x1000`
+dump from the object base subsumes all three measured written extents with
+nothing assumed about where any begins — v46's rule, and the lesson of
+v22/v24/v26.
+
+The ENTRY side is not redundant: SS196.4 showed the cross-call read of
+`[obj+0x7b8]` is live, so call N consumes what call N-1 wrote, and only the
+entry side shows what it read.
+
+Safety re-derived: single 6-byte `sub esp, 0xfac` prologue, so a 5-byte patch
+cannot split an instruction, and `axt` finds no jump target at +1..+4.
+
+`HOOKCORE_MAX_HOOKS` 40 -> 48, with `Thunk_40..47` declared, `DEFTHUNK`-ed and
+listed — all four edits in one pass, as the compile-time assert from SS189.1
+requires.
+
+### 197.2 Two configs, and a checker that reads the real defaults
+
+`hooks.cfg.framing` (3 hooks, tens of MB) and `hooks.cfg.reference` (28 hooks,
+~175 MB), plus `CAPTURE-PLAN.md`.
+
+`check_hooks_cfg.py` validates a config against the real table and prints
+exactly which hooks will fire, resolving built-in defaults. **A misspelt hook
+id is silently ignored on the box**, and you would find out after the scan.
+
+Writing it found two real defects immediately:
+
+**(a) Its own first version was wrong**, in the dangerous direction. The
+trailing flags sometimes share a line with the closing citation string
+(`"r2 af/axt 2026-08-15", 0, 1, 0, 1, 0 },`), and a line-anchored regex missed
+those rows and fell back to a permissive default — so it reported the four
+`notCallReachable` hooks, the ones that reintroduce the v41 stack-corruption
+mechanism, as **enabled**. A checker that mis-reports which hooks are live is
+worse than no checker. It now takes the last five integers before each row's
+own closing brace, and **refuses to guess** if it cannot parse a row.
+
+**(b) `tlb_polypixel` is not disabled by default, and never has been.**
+`hooks.cfg.example` has claimed for a long time that it is. Its flags are
+`0,1,0,0,0` (HEAD: `0,0,0,0,0`) — `hotPathDisabled` is not set on it, unlike
+`sba_vm_interp`, which really does carry it. The intent was clearly that it
+should be off and the stated reasoning still holds, but the flag was never
+added. It is a **per-pixel** hot path, so the documented default and the real
+default disagreeing would have quietly swamped the framing capture.
+
+Both configs now set it off explicitly. The comment in `hooks.cfg.example` is
+corrected rather than the table changed: altering a built-in default is a
+consequential edit, and being explicit at the point of use achieves the same
+end without changing behaviour for anyone else.
+
+### 197.3 A stale binary, removed
+
+`hookdll_v46.dll` (07:51) predated the framing hooks being enabled;
+`hookdll.dll` (08:01) had them. Anyone following the v46 report's own
+instructions would have copied the stale one and captured nothing. The `_v46`
+duplicates are deleted; there is now one pair, and `CAPTURE-PLAN.md` says
+**hash what you copy** — PE timestamps make these non-reproducible across
+rebuilds, so a hash from a previous session proves nothing.
+
+Current: `hookdll.dll` `bc5264538e54778ec369860671d76f13`,
+`injector.exe` `5bdfcccbb3a316b485dc736bcfb3bf98`.
+
+### 197.4 Verification
+
+```
+bash build.sh              clean, KERNEL32-only, subsystem 5.1, 0 excess-element warnings
+check_table_sync.py        OK: 40 hooks, identical order, 40/48 slots
+bash build.sh selftest     ALL PASS (0 failure(s))
+check_hooks_cfg.py         framing: records exactly 3;  reference: records 28 incl. sba_measure
+pakon_gate.py selftest     SELFTEST PASS
+```
+
+
+## 198 — First hardware captures: the framing domain gap is measured, not guessed
+
+Three real scans on the F-135, 2026-08-21. The XP box's clock runs a day
+behind, so the files are stamped `20260820`.
+
+| capture | size | what it is |
+|---|---|---|
+| `live_hooks_20260820-212108.jsonl` | 283 KB | framing, v47 — the object, but not the array |
+| `live_hooks_20260820-212611.jsonl` | 107.6 MB | the reference trace, v47 |
+| `live_hooks_20260820-213341.jsonl` | 340 KB | framing, v48 — **the array** |
+
+Every one had its `Content-Length` compared against the file on disk before
+anything was read from it (SS178.1). All three matched exactly.
+
+### 198.1 THE RESULT: the ported cascade agrees with the vendor on real film
+
+The vendor's own per-line summary is now captured: **7,152 bytes = 2,384 lines
+x 3 bytes RGB, 8-bit, values 19..255, 167 distinct**. The line count is
+independently corroborated by the object's own header (`+0x14` = 0x950 =
+2384) and by `ebx` at the reduce's entry (0x94d = 2381).
+
+Feeding it to `pf.vendor_framing_entry` with the arguments read off the same
+call — `n_slots=11 pitch=401 width=375 first=0 tail_margin=0 skip_gapok=0`:
+
+```
+VENDOR returned            6 frames,  warning word 0x00000000
+PORT   returned            6 frames,  warning word 0x00000000
+       threshold 120, 6 runs
+       slots: left=10, 408, 804, 1200, 1599, 1997   len=375 each, phase tag 1
+```
+
+Frame spacing 398/396/396/399/398 against a pitch of 401, every frame exactly
+`width` wide. That is real 35 mm geometry, and **this is the first time the
+ported cascade has ever been given the vendor's own input.** Every prior check
+in SS194 handed the same synthetic bytes to both sides, which is precisely what
+the domain gap meant.
+
+**What this does NOT yet establish: the positions.** The entry writes its
+frame list into the CALLER's buffer (arg3, `slots`), not the object — the
+capture shows the object changed at only four bytes, `+0x6c..+0x6f`, the array
+pointer and nothing else. So the count and the warning word are compared
+against the vendor; the six left/len values above are the port's, unconfirmed.
+A v49 row dumps arg3 at exit. **`FRAMING_PORTED` stays False until then**, and
+this section is not a claim that it should flip.
+
+### 198.2 Two of my own dump rows were wrong, in opposite ways
+
+Both worth recording, because the failure modes are complementary and only one
+of them is loud.
+
+**(a) `+0x6c` is a POINTER, not the array.** The v47 framing row dumped
+`this+0x6c` for 0x6CC0 bytes and got 27 KB of object — 99.7 % zeros, because
+that region is padding. The hook's own description says the reduce "reads
+three bytes per line from `this+0x6c`", which I read as *the array is at
++0x6c*. It is the *pointer* to the array that is at +0x6c (measured:
+0x07890714, a heap address above the object at 0x07878630).
+
+This is the v22/v24/v26 rule **inverted**, and the old rule actively pointed
+the wrong way: "dump from the base at a size that subsumes the field, so you
+cannot be wrong about where it starts" defends against a wrong OFFSET, and is
+no defence at all when the field is a POINTER — subsuming a pointer just
+captures the pointer. Fixed with `EXTRA_DUMP_THIS_DEREF_OFFSET`; the base dump
+is kept, because the two answer different questions.
+
+**(b) The `sba_measure` rows were off by one.** `stack_dwords[0]` is **arg1**,
+not the return address — `hookcore.h`'s `HookRegs` comment says `argsPtr`
+points at the stack-passed args that "immediately follow" `retAddr`. So argN
+is index N-1, and v47's 10/1/2 for arg10/arg1/arg2 should have been 9/0/1.
+
+The instructive part is how each half failed:
+
+* `measure_bandsub` resolved to `0x0000fffe` and was **UNREADABLE on all 18
+  calls** — loud, and the clue.
+* `measure_obj` resolved to a readable buffer **full of plausible
+  mask-shaped and vector-shaped data**. It was a different, nearby object.
+
+What exposed it was a cross-check, not an inspection: `measure_obj_pre` and
+`measure_obj_post` were byte-identical on all 18 calls, while
+`scene_in`/`scene_out` differed on 6 of 6 and `lut_src`/`lut_dst` on 23 of 24.
+So the exit mechanism was working and the thing being dumped simply never
+changes — because `sba_measure` does not write it. The real object is `esi`
+(SS192: arg10 == esi), and the capture shows `esi == stack_dwords[9]`.
+
+**The general lesson, and it is the sharper one:** an *unreadable* dump is a
+gift. A readable dump full of plausible bytes is the dangerous case, and no
+amount of looking at it will reveal the error — only a cross-check will. Here
+the cross-check was "did the buffer this function is documented to write
+actually change?".
+
+### 198.3 A cost warning that was simply wrong
+
+`tlb_framing_line_reduce` was documented as per-LINE and "genuinely hot", with
+a warning to budget tens of MB. **On a real 6-frame scan it fired exactly
+ONCE**, and the whole capture was 283 KB. It loops over the lines internally
+rather than being called per line. `hotPathDisabled` is no longer justified by
+cost on this row; it is left set only because flipping a shipped default is a
+separate decision.
+
+### 198.4 The reference trace is real, and mostly good
+
+28 hooks installed, **0 failed**, 135,020 call records, 1,636 dump rows.
+
+`scene_in`/`scene_out` at **25,820 bytes** (0x64DC, as SS189.6 predicted three
+ways) differing on all 6 frames; `lut_src`/`lut_dst` at 32,768 differing on 23
+of 24; `lut_table` at 65,536. That is the byte-for-byte reference, captured at
+both ends of each stage, which has never existed before — SS189.2's entry-only
+limitation is genuinely lifted.
+
+`measure_samples` came back at exactly **10,368 bytes**, which is
+6 planes x 864 x int16 — independent confirmation of SS192.2's 24x36x6 grid,
+derived there from plane bases and a `cmp eax,0x18` row bound. That the size
+is right while the *index* was wrong is a good illustration of why a plausible
+dump proves nothing on its own.
+
+Only the three `sba_measure` rows need re-running. Everything else in the
+107.6 MB capture stands.
+
+
+## 199 — The roll caller ported, and the vendor inversion confirmed on fresh hardware
+
+### 199.1 `fcn.100079c0`, the last framing function
+
+Ported and bit-exact. The golden goes **1429 -> 1500 checks**; the new section
+is `fcn.100079c0 roll caller (all) — 71 rolls, 467 pictures compared`. Every
+observable is diffed: return value, the whole `CiPicLoc` list in order with all
+six fields per node, `this->0xc9c`, `this->0x6ca8`, and the error-reporter call
+count. `CiPicLoc` construction, list insertion and teardown are **not stubbed**
+— `fcn.100245e0` / `fcn.100244d0` / `fcn.100244a0` run for real and the
+pictures are read back out of the list the vendor itself linked. Both
+allocation-failure limbs are driven by failing the vendor's own allocator
+rather than declared unreachable.
+
+Mutations: **49 CAUGHT / 3 PROVABLY INERT / 0 NOT CAUGHT** over 52 rows. Four
+rows were NOT CAUGHT on the first pass — all real corpus gaps, all closed by
+hunting discriminating inputs. Two rows are caught by an `IndexError` rather
+than a value difference (both shrink the slot array so the cascade indexes off
+the end): a genuine behavioural difference, but the signal is a crash, and it
+is recorded as such rather than counted as a clean catch.
+
+**The cascade-vs-blind decision is not in this function.** Argument 2 alone
+selects the branch. The *policy* is one level up in `fcn.1002a900`: call once
+with `(…, 0, 0)`; if that returns **exactly zero**, call again with `(1, 1, 0)`.
+"Blind if the cascade found nothing" is a two-call protocol, not a heuristic
+inside the caller.
+
+`VENDOR_ROLL_PICTURES_PORTED = True`. **`FRAMING_PORTED` stays False** and its
+self-test guard still passes — neither of its two reasons is touched by this.
+
+### 199.2 SS194.5 undercounted the warning sites
+
+This document said four `or` sites, three in the driver and one in the caller.
+**There are five, and 0x800 has two sites, both in `fcn.100079c0`:**
+
+```
+fcn.10006e70   0x1000708b  or eax, 0x100
+               0x10007193  or eax, 0x200
+               0x1000729f  or dword [ebp+0x6ca8], 0x400
+fcn.100079c0   0x10007b1b  or edi, 0x800     <-- WAS NOT RECORDED
+               0x10007d35  or edi, 0x800
+```
+
+Re-verified independently: `0x10007b1b  81cf00080000  or edi, 0x800`. The
+missing site is the one a real F-135 takes whenever `this->0xc98 == 0` — the
+common path — so the omission was not academic. It does not disturb SS189.4's
+conclusion: both 0x800 sites are in the outer caller, so nothing spans the
+entry either way. A correction banner is inserted at SS189.4 itself.
+
+### 199.3 A real vendor double count, reproduced rather than fixed
+
+`fcn.10006720` bumps `this->0xc9c` once per slot it places; `fcn.100079c0`
+then bumps it again once per `CiPicLoc` built from those slots. **A blind
+roll's return value is therefore twice the number of pictures in the list.**
+`fcn.100072c0` never touches `0xc9c`, so the cascade path is honest, and
+`fcn.1002a900` only tests the result for zero/negative — so nothing inside
+TLB.dll ever notices. A port that consumed the count would.
+
+The port reproduces the double count, deliberately. Also new:
+`fcn.100245e0` is `CiPicLoc::CiPicLoc`, and its switch maps the phase tag to a
+grade at `obj+0x20` — 2-4 -> 1, 5-6 -> 2, 7-8 -> 3, 9 -> 4, else 0. Since the
+cascade only ever stamps 1, 2, 3, 4, 9, **phase-1 frames grade 0** and blind
+frames grade 4.
+
+### 199.4 The vendor inversion table, confirmed on a second capture
+
+SS170-SS175 recovered the F-135's inversion table; SS195 shipped it into the Go
+engine. Its provenance was **one roll and one capture** — CLAUDE.md says so,
+and it is why `PAKON_VENDOR_INVERT` is off by default in both engines.
+
+The 2026-08-21 reference scan captured `lut_table` again, four times:
+
+```
+lut_table x4   65,536 bytes = 16,384 int32, range 0..16383, addr 0x07850048
+               *** IDENTICAL to the shipped table, all 16,384 entries, x4 ***
+```
+
+That is an independent observation of the same table on a fresh scan. It does
+not by itself make the table roll-independent — all four dumps are from one
+session, and the one-roll caveat stands until a genuinely different film type
+is scanned — but the table is no longer a single unrepeated measurement.
+
+**And the applied identity holds on real pixels.** For each
+`tlb_lut_apply` call, `dst[i] == table[src[i]]` on **245/245 written elements,
+across all 12 calls checked**, with the first mismatch falling at exactly index
+245 where `dst` is still zero.
+
+That last detail is worth keeping, because the naive aggregate said the
+opposite. Scoring the whole 32,768-byte dump reports "980 hold, 64,556 fail"
+— and every one of those failures is an **uninitialised buffer slot**, not a
+wrong value. The dump is sized 16,384 elements; the strip actually written is
+245. A comparison that does not know where the real data ends will report a
+perfect stage as broken, which is the mirror image of SS198.2's plausible-but-
+wrong dump: there, garbage looked like data; here, absence looked like error.
+Both are caught by asking what the buffer's live extent actually is.
+
+
+## 200 — δ decomposed and quantified on a third, independent roll
+
+SS168 describes δ as "a uniform per-frame scalar, confirmed on two rolls, whose
+source is still uncaptured". SS187 measured the vendor's six triples as having
+`R−B` = 634..682 against this port's 532. Both were measured on the SAME
+earlier capture. The 2026-08-21 scan is an independent roll, and it lets the
+claim be stated as a number rather than a shape.
+
+### 200.1 The vendor's six per-frame triples
+
+From `area_shift_4b6` and `balance_shift_4b6` — which agree exactly, entry and
+exit, on all six frames:
+
+```
+frame 0: R= 690 G= 274 B=   8    R-B=682  G-B=266   mean 324.0
+frame 1: R= 820 G= 402 B= 164    R-B=656  G-B=238   mean 462.0
+frame 2: R= 867 G= 472 B= 199    R-B=668  G-B=273   mean 512.7
+frame 3: R= 988 G= 587 B= 326    R-B=662  G-B=261   mean 633.7
+frame 4: R= 597 G= 199 B= -35    R-B=632  G-B=234   mean 253.7
+frame 5: R= 781 G= 371 B= 129    R-B=652  G-B=242   mean 427.0
+```
+
+`R−B` spans **632..682** here against SS187's **634..682** on a different
+capture — the chroma structure reproduces across rolls. This port's
+`683 − 151 = 532` leaves a deficit of **~126 codes**, independently
+reconfirmed rather than re-derived from the same data.
+
+### 200.2 The decomposition, measured
+
+If the triple is *(stable chroma shape) + (per-frame uniform scalar)*, then
+subtracting each frame's own mean must leave a constant shape. It does:
+
+```
+                 R          G          B
+frame 0      366.0      -50.0     -316.0
+frame 1      358.0      -60.0     -298.0
+frame 2      354.3      -40.7     -313.7
+frame 3      354.3      -46.7     -307.7
+frame 4      343.3      -54.7     -288.7
+frame 5      354.0      -56.0     -298.0
+
+per-channel sd BEFORE centring:  124.7  126.3  120.0
+per-channel sd AFTER  centring:    6.7    6.4    9.6
+variance removed by ONE scalar:   94.6 %  94.9 %  92.0 %
+```
+
+**One number per frame accounts for 92–95 % of the per-frame variation in all
+three channels.** That is δ, and this is the first time it has been given a
+magnitude rather than a description. The residual shape is
+`R ≈ +354, G ≈ −51, B ≈ −304`, stable to a standard deviation of 6–10 codes
+across six frames.
+
+The δ values themselves are `324.0, 462.0, 512.7, 633.7, 253.7, 427.0` — a
+spread of 380 codes, which is why getting it wrong costs so much and why SS168
+put 11.6 MAE on applying the vendor's own values.
+
+### 200.3 What this changes, and what it does not
+
+**Changes:** the per-frame problem is now explicitly *one scalar plus a
+near-constant offset triple*, with the constant part measured. A port that
+reproduced only the stable shape and got δ from somewhere would already be
+most of the way there. It also means the remaining unknown is
+one-dimensional, not three.
+
+**Does not change:** δ's *source* is still uncaptured. Nothing here says where
+the vendor gets 324 rather than 462 for a given frame. The natural candidate
+is the statistics vector `sba_measure` produces — SS196 ported its mask
+bit-exactly and SS192 established the vector is the p-code VM's `in[]`, which
+reproduces L. **The capture that would test that is the one still outstanding**:
+the `sba_measure` rows in the 2026-08-21 reference scan were off by one
+(SS198.2) and dumped a neighbouring object, so the vector that produced these
+six δ values was not recorded. A corrected re-run pairs them directly.
+
+Also worth stating plainly: six frames on one roll is a small sample for a
+claim about structure. The 92–95 % figure is what these six frames show; it is
+not a fitted model and it has not been cross-validated on another roll.
+
+
+## 201 — δ caught in the act, and localised to three calls
+
+SS168 has called δ "a uniform per-frame scalar ... whose source is still
+uncaptured" since it was named. It is now captured, measured exactly, and
+narrowed to a window containing three functions.
+
+### 201.1 The measurement
+
+v46's exit dumps made it possible to diff each stage's own entry against its
+own exit. The shift triple lives at `scene+0x4b6`. Across the 2026-08-21
+scan's six frames:
+
+```
+stage                    frames whose triple it changed
+fugc_analyze                     0 / 6
+analyze_attributes               0 / 6
+analyze_falloff                  0 / 6
+analyze_auto_tone                0 / 6
+```
+
+**None of the bracketed stages touches it.** But the triple at
+`cn_enhanced_driver`'s entry is not the triple `fugc_analyze` sees:
+
+```
+frame   driver entry          fugc entry            delta R,G,B      uniform?
+  0    (729, 313,  47)      (690, 274,   8)      (-39, -39, -39)      YES
+  1    (790, 372, 134)      (820, 402, 164)      ( 30,  30,  30)      YES
+  2    (850, 455, 182)      (867, 472, 199)      ( 17,  17,  17)      YES
+  3    (951, 550, 289)      (988, 587, 326)      ( 37,  37,  37)      YES
+  4    (649, 251,  17)      (597, 199, -35)      (-52, -52, -52)      YES
+  5    (771, 361, 119)      (781, 371, 129)      ( 10,  10,  10)      YES
+```
+
+**Exactly uniform on all three channels, six frames of six.** Not
+approximately, not a fit, not a least-squares residual — the same integer on
+R, G and B every time. δ per frame is `-39, +30, +17, +37, -52, +10`, range
+−52..+37.
+
+That is δ, observed directly rather than inferred.
+
+### 201.1a Reproduced on a second scan
+
+The `212611` capture — a separate scan of the same roll, taken minutes earlier
+— shows the identical structure:
+
+```
+frame   driver entry          fugc entry            delta R,G,B      uniform?
+  0    (773, 360,  91)      (718, 305,  36)      (-55, -55, -55)      YES
+  1    (782, 367, 128)      (817, 402, 163)      ( 35,  35,  35)      YES
+  2    (845, 451, 177)      (861, 467, 193)      ( 16,  16,  16)      YES
+  3    (950, 550, 288)      (983, 583, 321)      ( 33,  33,  33)      YES
+  4    (647, 251,  15)      (583, 187, -49)      (-64, -64, -64)      YES
+  5    (760, 351, 106)      (773, 364, 119)      ( 13,  13,  13)      YES
+```
+
+**12 frames of 12 uniform, across two independent scans.** The driver-entry
+triples differ between the two (frame 0: 773/360/91 vs 729/313/47), so the
+analysis genuinely re-ran rather than being replayed from a cache — and δ came
+out exactly uniform both times.
+
+Stated precisely: this is the **same physical roll** scanned twice, so it is a
+reproducibility check, NOT a different-roll cross-validation. δ's *values*
+differ between scans ([-55,35,16,33,-64,13] vs [-39,30,17,37,-52,10]) while
+tracking the same sign pattern. A genuinely different roll is still wanted
+before treating the magnitudes as characteristic of anything.
+
+### 201.2 A correction to SS200
+
+SS200, written an hour earlier in this same session, decomposed the *final*
+triples into "a stable chroma shape plus a per-frame scalar" and reported the
+scalar as explaining 92-95 % of the variance. That decomposition is arithmetic
+on the endpoint and it is not wrong, but **it is not δ**, and reading it as δ
+would mislead:
+
+* SS200's per-frame means are `324.0, 462.0, 512.7, 633.7, 253.7, 427.0`
+  (spread 380) — a *statistical* summary of where each frame's triple sits.
+* δ is `-39, +30, +17, +37, -52, +10` (spread 89) — the *actual adjustment*
+  the vendor applies, exactly uniform, in a known window.
+
+The 92-95 % figure describes how much of the endpoint variation a single
+number can absorb. It does not identify the number the vendor uses. SS200's own
+closing caveat — "six frames on one roll ... not a fitted model and not
+cross-validated" — applies to it and not to this section, which measures a
+difference rather than fitting one.
+
+### 201.3 Three candidates, and why δ was invisible until now
+
+Exactly three hooked calls run between the driver's entry and fugc's, on all
+six frames:
+
+```
+analyze_post_balance  ·  shift_lut_builder  ·  area_image_apply_lut
+```
+
+`analyze_post_balance` is the obvious candidate — it is literally the
+post-balance stage, and SS159-SS168's whole investigation was about it.
+
+**The reason δ was never seen is mundane: `analyze_post_balance` has no scene
+bracket.** Its existing rows dump arg0, arg1 and an image descriptor, and
+SS189.3 already found that two of those were a caller status local and an
+in-place smart-pointer holder rather than the scene at all. Every other stage
+in the chain got a `*_scene` row at 0x64DC; this one did not, so the one place
+δ could be caught was the one place nobody was looking.
+
+v50 adds `apb_scene`, entry and exit, 0x64DC — the same bracket every other
+stage has. Note the index: arg1 is `stack_dwords[1]`, per SS198.2's off-by-one
+correction, and SS189.3's reading of the pushes puts the scene there.
+
+**Either answer is decisive.** If the triple changes across
+`analyze_post_balance`, δ is its and the search ends. If it does not, δ belongs
+to `shift_lut_builder` or `area_image_apply_lut` and the field narrows to two.
+That is the argument for bracketing rather than reasoning about which is
+likeliest.
+
+### 201.3a The static route was tried, and has a structural blind spot
+
+Before waiting on another scan, the whole image was searched for a `0x4b6`
+displacement: **16 sites**. None of them is a store to `+0x4b6` inside any of
+the three window candidates.
+
+What the search did find is worth keeping:
+
+```
+0x1005faa6  fcn.1005f700          lea ecx, [esi + 0x4b6]
+0x100641e8  fcn.10063ed0          lea ecx, [esi + 0x4b6]
+0x10069898  fcn.10069490          lea ecx, [esi + 0x4b6]   <- cn_enhanced_driver
+0x10106d77  fcn.10106780          mov ax, word [edi + 0x4b6]
+```
+
+`cn_enhanced_driver` itself takes the address of the triple at 0x10069896 and
+pushes it as an argument into `analyze_area` (`fcn.100e16d0`, 0x100698b1).
+That is a **consumer, not the writer**: `analyze_area` runs at call 6756, after
+`fugc_analyze`'s entry at 6753, and its own `area_shift_4b6` bracket shows the
+triple unchanged on 6 frames of 6.
+
+**Why the search cannot answer the question.** `lea ecx, [esi+0x4b6]` followed
+later by `mov [ecx], ax` writes the triple while containing no `0x4b6`
+displacement at the store at all — the offset is consumed by the `lea` and the
+store addresses a register. A displacement search finds the `lea` and misses
+the write by construction. Every one of the four `lea` sites above has exactly
+that shape.
+
+So this is a negative result with a known cause rather than an inconclusive
+one: static displacement search is the wrong instrument for a field that is
+addressed through a computed pointer. The `apb_scene` bracket remains the
+right one, and its virtue is that it needs no assumption about how the write
+is addressed — it compares the buffer before against the buffer after.
+
+### 201.4 What is still not known
+
+Where the *value* comes from. Localising δ to a window says which code applies
+it, not what it is computed from. The standing candidate remains the
+statistics vector `sba_measure` produces (SS192, SS196) — and the capture that
+would pair a real vector with these six δ values is the corrected reference
+re-run, still outstanding.
+
+
+## 202 — Measured against a real vendor frame: the TONE STAND-IN is the largest remaining defect, not δ
+
+### 202.1 The instrument
+
+`rawAA001.tif` / `AA001.tif` are the vendor's own RAW export and its own
+finished render of the same frame, **pixel-registered** — `best_shift` returns
+dy=0 dx=0 at |corr| 0.9297. So the vendor's complete end-to-end result is
+available for direct per-pixel comparison without instrumenting anything.
+
+Our render goes through the production entry (`scene_rpd12` → `render_scene` →
+`to_srgb`) with `PAKON_VENDOR_INVERT=1`, and the unknown export scale swept.
+Full frame, 1960 x 2941 x 3, every pixel, every channel.
+
+### 202.2 The result
+
+```
+                              MAE    % of scale  within20  within10   cast R/G/B
+tone STAND-IN (production)   20.97      8.2 %     59.8 %    35.3 %   -17.6/-2.9/+25.2
+REAL analyzeAutoTone chain   12.51      4.9 %     78.7 %    52.6 %    -9.3/-3.1/+10.2
+```
+
+**Swapping the tone chain removes 40 % of the total error.** Pixels agreeing
+within 10 codes go from about a third to over half. It also **halves the
+colour cast**: the R−B imbalance falls from ~43 codes to ~19.
+
+The `shasta_stand_in` flag is exactly the switch Phase 6.2 would flip in
+production, so this is a preview of the real change rather than a synthetic
+best case.
+
+### 202.3 This corrects §201's emphasis, and mine
+
+SS201 localised δ and I described it, more than once, as **the** remaining
+colour defect. That was wrong in proportion. About half the blue cast that
+motivated the claim is the tone stand-in, not δ. δ is real, measured and
+exactly uniform — SS201 stands as a *measurement* — but as a share of the
+end-to-end error it is the **second** term, not the first.
+
+The corrected order:
+
+1. **The tone-chain swap** — 40 % of the error, and it needs **no hardware**.
+   The six subsystems are individually Unicorn-verified, the assembled Python
+   chain is verified against the real DLL end to end (SS191), and
+   `AUTO_TONE_PORTED = False` means *"the render path has not been swapped"*,
+   not *"the chain is unverified"*. This is a wiring decision.
+2. **δ / the per-frame shift** — the residual ~19-code R−B imbalance.
+3. Everything below those.
+
+How the error was misattributed is worth recording, because the mechanism is
+general: a tone curve that is wrong produces errors that **track brightness**,
+and a channel-balance term that is wrong produces a **flat cast**. Both look
+like "the image is too blue" in a downscaled view. Separating them needed the
+signed per-channel mean (the cast) held apart from the residual after removing
+it (the structure) — and the residual was 80 % of the total, which is what
+pointed at tone.
+
+### 202.4 A note on how the error was presented
+
+The first difference image published for this frame was amplified 3x, which
+made a typical 20-code error read as 60 and looked far worse than the measured
+figures. Only **0.3 %** of pixels are at or above the 85-code value where that
+map saturates; **57.9 %** are below 20. The amplification was not wrong as a
+detection aid — it is what made the warm/cool split visible at all — but it is
+a poor way to communicate magnitude, and the true-scale version is the honest
+one to lead with.
+
+### 202.5 What this measurement is not
+
+* **One frame, one roll.** 12.51 is indicative, not certified.
+* **Rendered from the 8-bit vendor RAW**, so tonal steps are coarser than a
+  real capture would give. The direction and the ratio are trustworthy; the
+  absolute figure carries that caveat.
+* **The export scale is swept**, i.e. fitted. Best was 56 for both arms, so
+  the comparison between them is fair, but the absolute number is not
+  scale-free.
+* It says nothing about whether the *export* is byte-for-byte — that still
+  needs a vendor TIFF paired with a trace from the same scan.

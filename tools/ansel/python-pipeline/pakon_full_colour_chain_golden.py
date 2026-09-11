@@ -71,6 +71,7 @@ Usage
 from __future__ import annotations
 
 import hashlib
+import os
 import struct
 import sys
 import time
@@ -117,10 +118,17 @@ DEFAULT_DLL = shellg.DEFAULT_DLL
 # captures used by earlier docs/74 sections at the user's own explicit
 # direction this pass, to exercise the current (not pre-recalibration)
 # hardware state.
-CAPTURE = Path(
+#: Overridable so the harness can run against whatever capture is actually on
+#: the box. The default below is the capture this section was written against;
+#: it is NOT present on every machine, and a missing file made this harness --
+#: the only one that tests the stages COMPOSED rather than in isolation -- the
+#: single silent gap in an otherwise 31/37 bit-exact sweep. Composition is
+#: exactly where byte-exactness tends to break, so a skip here is expensive.
+CAPTURE = Path(os.environ.get(
+    "PAKON_CHAIN_CAPTURE",
     "/Users/guy/Library/Caches/PakonScan/captures/"
-    "fresh-calibration-scan-20260814-065421.bin"
-)
+    "fresh-calibration-scan-20260814-065421.bin",
+))
 FRAME_INDEX = 1   # the one "good"-confidence frame on this roll (of 5)
 
 BALANCE_AREA_IMAGE = 0x10102B20   # pakon_analyse_roll.PATH_BALANCE_AREA_IMAGE

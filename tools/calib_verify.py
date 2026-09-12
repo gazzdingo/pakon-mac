@@ -97,6 +97,8 @@ import struct
 import sys
 from pathlib import Path
 
+import pakon_eeprom_check as eeprom_check
+
 PAGE = 256
 
 # ---- layout, verified against backups/eeprom-i2c/eeprom_52.bin -------------
@@ -199,36 +201,82 @@ def read_matrix(data: bytes, base: int) -> list[list[float | None]]:
     return rows
 
 
-def crc_status(_data: bytes) -> dict:
-    """Deliberately not a verdict -- but no longer a mystery. See docs/69 s5.3.
+def crc_status(data: bytes) -> dict:
+    """A real CRC verdict when `data` is long enough to hold it; honestly
+    "not checked" otherwise. See docs/69 s5.3 and s5.6.
 
-    The CRC is now fully identified: standard reflected zlib/PKZIP CRC-32
+    The CRC layout is fully identified: standard reflected zlib/PKZIP CRC-32
     (init 0xFFFFFFFF, final NOT), built at runtime in TLB.dll's fcn.10015d30
     from the forward polynomial 0x04C11DB7. Each section is
     {u32 length; u32 crc32; payload}, and the CRC covers the PAYLOAD ONLY --
-    bytes [offset+8 .. offset+length-1], header excluded.
+    bytes [offset+8 .. offset+length-1], header excluded. That layout is
+    implemented once, in tools/pakon_eeprom_check.py, and used here rather
+    than reimplemented -- this function used to carry a second,
+    hand-written copy of the same offsets (0x000/0x400/0x800/0xA00,
+    398/36), which is exactly the kind of drift this project has already
+    been burned by (see tools/eeprom_backup.py's own comment on the same
+    subject).
 
-    Section A is 398 bytes at EEPROM offset 0x000 (backup at 0x400), so its CRC
-    covers 0x008..0x18D. It still cannot be checked here, for two reasons that
-    are now precise rather than vague:
+    docs/69 s5.6 asked for "the read" that would make this checkable at
+    all; that read now exists, but not the way s5.6 assumed. s5.6 proposed
+    new FX2 firmware for a raw-I2C single-pass read. What actually landed
+    (PR #51) is a corrected implementation of the VENDOR's own protocol
+    (0xA4 select + 0xA9 read) in tools/eeprom_backup.py, verified on this
+    project's own hardware 2026-08-18 --
+    backups/eeprom-i2c/eeprom_52_VERIFIED-20260818.bin, 3072 bytes, three
+    of four sections CRC-valid. The on-chip bytes and their CRC layout are
+    the same regardless of which mechanism read them, so that file (or any
+    buffer this long) gets a real verdict here.
 
-      1. this image holds 255 of those 390 payload bytes; and
-      2. this image is OFF BY ONE -- eeprom_52.bin[k] == EEPROM[k+1] -- so even
-         the bytes we have are misaligned against the CRC's own addressing.
-
-    That is why the earlier 7-variant, all-offsets search found nothing: it was
-    searching for a CRC over data that is neither complete nor aligned.
-
-    Once the read described in docs/69 s5.6 exists this becomes checkable, and
-    it is worth far more than the six structural checks -- a validating CRC is
-    the vendor's own verdict on its own data, and it costs no extra read.
+    What this does NOT change: the LIVE auto-load path
+    (calib_device.read_bus(), the caller of verify() this crc_status()
+    normally serves) still reads only 256 bytes per device -- short of
+    even section A's 398-byte payload, let alone section B at 0x800.
+    Extending that read needs new FX2 firmware, which is exactly what
+    s5.6 described and remains real, separate, not-yet-done work. So a
+    live auto-load read still honestly reports "not checked" below; only
+    a longer buffer (the new backup file, or a future longer live read)
+    gets evaluated.
     """
+    # Section A's own extent (not check_section()'s r.present, which only
+    # needs the 8-byte header): "checked" must mean "long enough to reach
+    # the whole payload", not "long enough to see a length field and then
+    # fail on it" -- a genuinely truncated 256-byte live read and a
+    # genuinely bad-but-fully-present section (the real "A len=346 BAD
+    # (short primary)" seen live 2026-08-18, where A-backup still covers
+    # for it) are different verdicts, not the same "not checked" one.
+    _, a_off, a_len = eeprom_check.SECTIONS[0]
+    if len(data) < a_off + a_len:
+        return {
+            "checked": False,
+            "reason": f"buffer is {len(data)} bytes; section A's CRC covers "
+                      f"EEPROM 0x008..0x18D and needs the read to reach at "
+                      f"least byte {a_off + a_len:#x} ({a_off + a_len}) to "
+                      f"be evaluated at all. calib_device.read_bus() reads "
+                      f"256 bytes per device today -- extending it needs "
+                      f"new FX2 firmware (docs/69 s5.6), not done here.",
+        }
+    good, results, warnings = eeprom_check.verify(data)
+    if not results:
+        return {
+            "checked": False,
+            "reason": "buffer looks like a bus-idle read (every byte the "
+                      "same), not real EEPROM content -- see "
+                      "pakon_eeprom_check.looks_like_bus_idle.",
+        }
+    bad = [r.name for r in results if not r.ok]
+    if warnings:
+        reason = "; ".join(warnings)
+    elif bad:
+        reason = (f"every logical section has a CRC-valid copy, but "
+                  f"{', '.join(bad)} itself failed -- its backup covered it")
+    else:
+        reason = "every section, including both backups, is CRC-valid"
     return {
-        "checked": False,
-        "reason": "zlib CRC-32 over EEPROM 0x008..0x18D (section A payload), "
-                  "stored at 0x004. This image holds 255 of those 390 bytes "
-                  "and is offset by one (file[k] = EEPROM[k+1]), so the CRC "
-                  "cannot be evaluated. See docs/69 s5.3 and s5.5.",
+        "checked": True,
+        "ok": bool(good),
+        "sections": {r.name: r.ok for r in results},
+        "reason": reason,
     }
 
 

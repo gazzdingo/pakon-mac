@@ -122,14 +122,139 @@ ok(check.suspected_off_by_one(shifted),
    "a dump shifted by one is recognised (docs/69 sec5.5)")
 ok(not check.verify(shifted)[0], "and is still rejected, not auto-repaired")
 
+print("\na read that never reaches section B is not a valid backup")
+# Section A is 0x000-0x18E, its backup 0x400-0x59E -- both well inside a
+# truncated read that stops before section B (0x800). Before this fix,
+# `good` only needed ONE of the four copies (of anything) to pass CRC, so a
+# read that stopped here -- e.g. read_one() cut short by a real USB error, or
+# --length passed too small -- was reported USABLE despite section B (a
+# different, non-redundant payload, not a spare copy of A) never having been
+# read at all.
+truncated_before_b = IMAGE[:0x600]
+good_trunc, results_trunc, warn_trunc = check.verify(truncated_before_b)
+ok(not good_trunc,
+   "a read covering only section A (+ its backup) is rejected")
+ok(any(r.ok for r in results_trunc if r.name.startswith("A")),
+   "section A itself still verifies fine -- it's B that's the problem")
+ok(any("section(s) B" in w for w in warn_trunc),
+   f"and the reason names section B specifically ({warn_trunc})")
+
+print("\nread_one surfaces a mid-read USB error instead of masking it")
+import usb.core                              # noqa: E402
+
+
+class FlakyDev(FakeDev):
+    """Like FakeDev, but the data phase throws after `fail_after` chunks."""
+
+    def __init__(self, image, fail_after):
+        super().__init__(image)
+        self.fail_after = fail_after
+        self.reads_done = 0
+
+    def ctrl_transfer(self, bmrt, req, wval, widx, data_or_len, timeout=None):
+        if req == B.READ:
+            if self.reads_done >= self.fail_after:
+                raise usb.core.USBError("simulated mid-read stall")
+            self.reads_done += 1
+        return super().ctrl_transfer(bmrt, req, wval, widx, data_or_len, timeout)
+
+
+guard._selected_device = None
+flaky = FlakyDev(IMAGE, fail_after=3)
+partial = B.read_one(flaky, 2, len(IMAGE))
+ok(isinstance(partial, B.PartialRead),
+   "a mid-read USBError comes back as PartialRead, not plain bytes")
+ok(bool(getattr(partial, "error", "")),
+   f"and carries the error text ({getattr(partial, 'error', None)!r})")
+ok(len(partial) == 3 * B.CHUNK,
+   "and keeps exactly the bytes read before the error, not padded/discarded")
+
 print("\nthe guard permits the whole sequence")
 guard._selected_device = None
 try:
-    guard.check(0x40, B.SELECT, ((2 | 0x50) << 1) | 1, 0x1234, True)
-    guard.check(0xC0, B.READ, 0x000, 0x1234, False)
+    guard.check(0x40, B.SELECT, ((2 | 0x50) << 1) | 1, 0x1234)
+    guard.check(0xC0, B.READ, 0x000, 0x1234)
     ok(True, "select + data phase both pass the allow-list")
 except guard.TransferDenied as e:
     ok(False, f"denied: {e}")
+
+print("\nlooks_like_populated only rejects the junk shapes actually seen live")
+ok(not B.looks_like_populated(b"\xff" * 32), "bus idle (all 0xFF) rejected")
+ok(not B.looks_like_populated(bytes([0xC0, 0x05, 0x0F, 0x35] + [0] * 28)),
+   "the FX2 boot-personality junk shape (length 0x350F05C0) rejected")
+ok(not B.looks_like_populated(bytes(range(32))),
+   "the unpopulated-address ramp (length 0x03020100) rejected")
+ok(B.looks_like_populated(IMAGE[:32]),
+   "a real section header (length 398) accepted")
+ok(B.looks_like_populated((346).to_bytes(4, "little") + b"\x00" * 28),
+   "a short/corrupted-but-real primary (length 346, seen live) still "
+   "accepted -- probing must never be why a real chip gets skipped")
+
+print("\n_read_all's probe skips known junk without a full read, "
+      "never skips anything that looks real")
+import argparse                              # noqa: E402
+import tempfile                              # noqa: E402
+
+
+class MultiDev(FakeDev):
+    """One real image at 0x52, junk-ramp everywhere else -- like the live
+    2026-08-18 run (docs/69): every unpopulated address answered with the
+    same 00 01 02 03... ramp regardless of which one was selected."""
+
+    def ctrl_transfer(self, bmrt, req, wval, widx, data_or_len, timeout=None):
+        if req == B.READ and self.selected != 0x52:
+            n = data_or_len
+            return bytearray((i & 0xFF) for i in range(n))   # the ramp
+        return super().ctrl_transfer(bmrt, req, wval, widx, data_or_len,
+                                     timeout)
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    guard._selected_device = None
+    dev = MultiDev(IMAGE)
+    args = argparse.Namespace(out=tmp, length=len(IMAGE), force=False,
+                              full_scan=False)
+    rc = B._read_all(dev, args)
+    ok(rc == 0, f"a real 0x52 among seven junk addresses still succeeds "
+                f"(rc={rc})")
+    saved = os.listdir(tmp)
+    ok(saved == ["eeprom_n2_i2c52.bin"],
+       f"only the real device's backup was saved ({saved})")
+    # 1 select + 1 read for the probe, times 8 addresses, plus the full
+    # double-read (select-per-chunk) for just the one real one -- nowhere
+    # near 8 addresses' worth of full double-reads.
+    full_double_read_selects = 8 * 2 * ((len(IMAGE) + B.CHUNK - 1) // B.CHUNK)
+    ok(dev.selects < full_double_read_selects,
+       f"far fewer selects than reading all 8 in full twice each "
+       f"({dev.selects} vs {full_double_read_selects})")
+
+with tempfile.TemporaryDirectory() as tmp:
+    guard._selected_device = None
+    dev = MultiDev(IMAGE)
+    args = argparse.Namespace(out=tmp, length=len(IMAGE), force=False,
+                              full_scan=True)
+    B._read_all(dev, args)
+    full_double_read_selects = 8 * 2 * ((len(IMAGE) + B.CHUNK - 1) // B.CHUNK)
+    ok(dev.selects == full_double_read_selects,
+       f"--full-scan bypasses the probe and reads every address in full "
+       f"({dev.selects} vs {full_double_read_selects})")
+
+print("\nwrite_backup never silently overwrites a prior file")
+import tempfile                              # noqa: E402
+
+with tempfile.TemporaryDirectory() as tmp:
+    target = os.path.join(tmp, "eeprom_n2_i2c52.bin")
+    B.write_backup(target, b"first capture")
+    ok(open(target, "rb").read() == b"first capture",
+       "first write lands at the plain path")
+    B.write_backup(target, b"second capture")
+    ok(open(target, "rb").read() == b"second capture",
+       "second write still lands at the plain path")
+    siblings = [f for f in os.listdir(tmp) if f != "eeprom_n2_i2c52.bin"]
+    ok(len(siblings) == 1 and siblings[0].startswith("eeprom_n2_i2c52.bin.pre-"),
+       f"the first capture was kept as a timestamped file, not lost ({siblings})")
+    ok(open(os.path.join(tmp, siblings[0]), "rb").read() == b"first capture",
+       "and it still holds exactly the first capture's bytes")
 
 print(f"\n{PASS}/{PASS + FAIL} checks passed")
 sys.exit(0 if FAIL == 0 else 1)

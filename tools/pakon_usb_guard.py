@@ -30,6 +30,12 @@ WHAT THIS MODULE ENFORCES
 -------------------------
 **No transfer routed through here can write EEPROM 0x52.**
 
+"Routed through here" is load-bearing, not throat-clearing: ``i2c_raw_scan.py``
+and the stage-1-loader download (``Fx2.vendor_out``, used by every EEPROM tool
+before any guarded call) are NOT routed through here and this module gives
+them no protection at all -- see "LIMITS" below before treating this
+guarantee as covering the whole codebase.
+
 Stated as what the code does, not as a claim about the hardware: this wrapper
 refuses every write-direction request on the device-addressed path, for every
 caller, with no override. What the *firmware* would do with a request that
@@ -61,8 +67,9 @@ exactly that asymmetry:
 THE REQUEST PATHS
 -----------------
 Recovered from ``TLB.dll`` (md5 ``193d9b2ce0a4b77ae9b78262bd06c0fc``)
-``fcn.100160a0`` = ``FN_bEEPromRead``, and re-confirmed by disassembly when
-this allow-list was reviewed:
+``fcn.100160a0`` = ``FN_bEEPromRead`` by static disassembly -- triage-tier
+evidence (CLAUDE.md's evidence hierarchy), re-read when this allow-list was
+last reviewed but not independently confirmed bit-exact against a live run:
 
 1. **Device-addressed path** -- ``wIndex 0x1234``, and it takes *two*
    requests, not one::
@@ -96,7 +103,14 @@ LIMITS -- what this does NOT yet cover
   to download the stage-1 loader over ``0xA0``. The three EEPROM tools all
   import it, so the ``0xA0`` denial here is a good default but does **not**
   yet close the route that did the original damage. Routing ``Fx2`` through
-  this module would.
+  this module would NOT simply close it as-is: ``check()`` denies every
+  ``0xA0`` transfer unconditionally (see "the raw-I2C route" above), and
+  ``0xA0`` is also how ``Fx2.reset_8051()``/``download()`` legitimately push
+  the CPUCS reset and stage-1 loader that every EEPROM tool run starts with.
+  Routing ``Fx2`` through here today would deny that too. Actually closing
+  this gap needs the allow-list to tell a known-good stage-1 firmware image
+  apart from an arbitrary ``0xA0`` payload (e.g. by hash), which is real,
+  separate work -- not done here.
 * Chip selection is firmware-held state (that is what the ``0xA4`` select
   *is*), so which chip a later boot-path request lands on could in principle
   depend on what was selected earlier in the same power cycle -- possibly by
@@ -199,14 +213,22 @@ def _log(msg: str) -> None:
         print(line, file=sys.stderr)
 
 
-def check(bm_request_type: int, b_request: int, wvalue: int, windex: int,
-          is_write: bool) -> None:
+def check(bm_request_type: int, b_request: int, wvalue: int,
+          windex: int) -> None:
     """Raise ``TransferDenied`` unless this exact transfer is allow-listed.
 
     Separated from :func:`ctrl_transfer` so it can be unit-tested without a
-    device attached -- see ``tools/test_usb_guard.py``.
+    device attached -- see ``tools/test_usb_guard.py``. Direction is derived
+    here, once, from ``bm_request_type`` (bit 7, per the USB spec) rather
+    than accepted as a second, separately-computed parameter: an earlier
+    version took both and cross-checked them, but ``ctrl_transfer`` is the
+    only production caller and it always derives the same way one line
+    before calling this, so the two could never actually disagree -- a
+    single source of truth for direction is simpler and equally safe.
     """
     global _selected_device
+
+    is_write = not (bm_request_type & 0x80)
 
     where = (f"bRequest=0x{b_request:02X} wValue=0x{wvalue:04X} "
              f"wIndex=0x{windex:04X}")
@@ -226,6 +248,16 @@ def check(bm_request_type: int, b_request: int, wvalue: int, windex: int,
 
     # --- the chip select: direction lives in bit 0 of wValue --------------
     if b_request == REQ_SELECT:
+        # The select itself is always a host-to-device (OUT) control
+        # transfer -- that's `is_write` here, the USB transfer direction,
+        # NOT the I2C read/write intent encoded in wValue bit 0 below. An
+        # IN-direction 0xA4 is not the vendor's protocol shape at all and
+        # was previously allowed through unchecked.
+        if not is_write:
+            _log(f"DENIED (chip select must be host-to-device): {where}")
+            raise TransferDenied(
+                f"bRequest 0xA4 (chip select) must be a host-to-device "
+                f"(OUT) transfer: {where}")
         dev = device_from_wvalue(wvalue)
         if windex != WINDEX_DEVICE or dev is None:
             _log(f"DENIED (malformed chip select): {where}")
@@ -292,7 +324,6 @@ def check(bm_request_type: int, b_request: int, wvalue: int, windex: int,
 def ctrl_transfer(dev, bm_request_type: int, b_request: int, wvalue: int,
                   windex: int, data_or_length, timeout: int | None = None):
     """``dev.ctrl_transfer`` with the allow-list in front of it."""
-    is_write = not (bm_request_type & 0x80)
-    check(bm_request_type, b_request, wvalue, windex, is_write)
+    check(bm_request_type, b_request, wvalue, windex)
     return dev.ctrl_transfer(bm_request_type, b_request, wvalue, windex,
                              data_or_length, timeout)

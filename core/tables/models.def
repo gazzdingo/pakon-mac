@@ -1,0 +1,57 @@
+/* The model table (Task 6). One PK_MODEL row per pk_model_id, in enum order. Expanded three times: into the const
+ * pk_model[] table (models.c), into build-time assertions over every role address (PKL_ADDR_OK, Task 4), and by the link
+ * (pkl_roles_for_model). Const data only.
+ *
+ *   PK_MODEL(ID, NAME, SUPPORT, FIRMWARE, LINK, USB_FAMILY, LOADED_PID, ROLES, BASES, GEOM35, GEOM24, CAPS, ST0, ST1)
+ *
+ * ROLES   PK_ROLES(light, motor, host, dx, lamp235, motor235, dx235, aps235, guide). On the TLB models (F-135, Plus) dx is
+ *         the LIGHT-board address (the DX board answers there, TLB +0x131; RE 29 sec 7), so the guard sees DX rows at the
+ *         light address. Beta models carry beta roles only (every board packet is refused until Task 21 maps them).
+ * GEOM    PK_GEOM3(base4, base8, base16), each PK_G(hires_px, frame_lines, window_lines, lores_decim, lores_px, dmin_base)
+ *         (CCD window unknown: left 0) or PK_GC(the same six, ccd_px_offset, ccd_px_height) or PK_G0 (the model lacks that base).
+ *         CCD window of the F-135 / Plus (Task 7, DISASSEMBLED, RE 29 sec 12): TLB FN_bBeforeScan 0x1002DBD0 calls FUN_1002C340
+ *         (the CCD window / integration setter) with height = base object +0x64 and offset = base object +0x20, set by the
+ *         constructor FUN_10011A60: base 4 offset 31 height 1000 (binned), base 8 offset 62 height 2000, base 16 offset 62 height
+ *         2000. The height is the CCD window. Words per line are channels x hires_px (RE 42 sec 1.1: base 8 is 4500 although the window is 2000
+ *         pixels; the window-to-line mapping at base 8 is UNRESOLVED, RE 42 sec 12 item 3). The offset is only the DEFAULT: FUN_10010430
+ *         overwrites it from the unit's per-base "Offset" setting (clamped 6..0x28A, 3..0x145 binned). Beta rows: 0 (TLA/TLC
+ *         were not read for this; pk_words_per_line uses hires_px for every row).
+ * CAPS    F-135 / Plus: 0 is the finding, not a gap: TLB has no guides, rollers, focus, lamp levels, lamp saver, splice or APS
+ *         (spec sec C: "TLB has no lamp-saver or manual-lamp site"; sec D: guides and rollers are F-235/F-335 only; the F-135
+ *         has no cartridge). The beta rows carry the capabilities the spec derives from TLA/TLC.
+ *
+ * F-135 / Plus firmware is the 2006 FX35Driver/Pakon7.hex that PSI 3.0.4.27 loads (S-R14: F235Ldr.sys builds F235_AA07 -> INF -> Pakon7.hex).
+ * Sources. F-135 / Plus: TLB FUN_10011a60 geometry (spec J, windows 1603/2405/3206), light/motor addresses from v1
+ * tools/pakon_commands.py (AD_PICL 0x20 / AD_PICM 0x24 base, AD_LIGHT 0x40 / AD_MOTOR 0x44 Plus), HOST 0x10 (AD_HOST).
+ * F-235 / F-335: TLA FUN_10015480 (geometry), TLC.dll.c:17205-17290 (TLC geometry), addresses AD_LAMP 0xF6, AD_MOTOR 0xF4,
+ * AD_DX_READ 0xFA, AD_APS_READ 0xFE (TLA), guides on 0xF4 (TLA FUN_1000ffb0), scanner types 7/8 and 0xD16/0xD17 from the
+ * spec (section device). Every beta value is unverified on hardware (support = BETA).
+ * The C variants (cartridge models) are INFERRED to share the geometry and firmware of the non-C model; Task 21 settles it.
+ */
+PK_MODEL(F135, "F-135", PK_SUPPORT_VERIFIED, PKV_PAKON7_HEX_2006, PK_LINK_F135, F135, 0xF135,
+         PK_ROLES(0x20, 0x24, 0x10, 0x20, 0, 0, 0, 0, 0), 0x3,
+         PK_GEOM3(PK_GC(1000, 1500, 1603, 4, 250, 23700, 31, 1000), PK_GC(1500, 2250, 2405, 6, 250, 23700, 62, 2000), PK_G0), PK_GEOM3(PK_G0, PK_G0, PK_G0),
+         0, 0x546, 0)
+PK_MODEL(F135_PLUS, "F-135 Plus", PK_SUPPORT_VERIFIED, PKV_PAKON7_HEX_2006, PK_LINK_F135_PLUS, F135, 0xF135,
+         PK_ROLES(0x40, 0x44, 0x10, 0x40, 0, 0, 0, 0, 0), 0x7,
+         PK_GEOM3(PK_GC(1000, 1500, 1603, 4, 250, 23700, 31, 1000), PK_GC(1500, 2250, 2405, 6, 250, 23700, 62, 2000), PK_GC(2000, 3000, 3206, 8, 250, 23700, 62, 2000)),
+         PK_GEOM3(PK_G0, PK_G0, PK_G0),
+         0, 0x547, 0)
+PK_MODEL(F235, "F-235", PK_SUPPORT_BETA, PKV_PAKON5_HEX, PK_LINK_F235, F235, 0x35F2,
+         PK_ROLES(0, 0, 0, 0, 0xF6, 0xF4, 0xFA, 0xFE, 0xF4), 0x7,
+         PK_GEOM3(PK_G(1000, 1500, 1603, 4, 250, 23700), PK_G(1400, 2100, 2244, 8, 175, 23700), PK_G(2000, 3000, 3206, 8, 250, 23700)),
+         PK_GEOM3(PK_G(857, 1500, 1676, 4, 0, 16200), PK_G(1200, 2100, 2348, 8, 0, 16200), PK_G(1714, 3000, 3353, 8, 0, 16200)),
+         PK_CAP_GUIDES | PK_CAP_ROLLERS | PK_CAP_FOCUS | PK_CAP_APS_24MM, 7, 0)
+PK_MODEL(F235C, "F-235C", PK_SUPPORT_BETA, PKV_PAKON5_HEX, PK_LINK_F235, F235, 0x35F2,
+         PK_ROLES(0, 0, 0, 0, 0xF6, 0xF4, 0xFA, 0xFE, 0xF4), 0x7,
+         PK_GEOM3(PK_G(1000, 1500, 1603, 4, 250, 23700), PK_G(1400, 2100, 2244, 8, 175, 23700), PK_G(2000, 3000, 3206, 8, 250, 23700)),
+         PK_GEOM3(PK_G(857, 1500, 1676, 4, 0, 16200), PK_G(1200, 2100, 2348, 8, 0, 16200), PK_G(1714, 3000, 3353, 8, 0, 16200)),
+         PK_CAP_GUIDES | PK_CAP_ROLLERS | PK_CAP_FOCUS | PK_CAP_APS_24MM | PK_CAP_APS_CARTRIDGE, 8, 0)
+PK_MODEL(F335, "F-335", PK_SUPPORT_BETA, PKV_PAKON8_HEX, PK_LINK_F335, F335, 0xF335,
+         PK_ROLES(0, 0, 0, 0, 0xF6, 0xF4, 0xFA, 0xFE, 0xF4), 0x6,
+         PK_GEOM3(PK_G0, PK_G(1400, 2100, 2244, 8, 175, 23700), PK_G(2000, 3000, 3206, 8, 250, 23700)), PK_GEOM3(PK_G0, PK_G0, PK_G0),
+         PK_CAP_GUIDES | PK_CAP_ROLLERS | PK_CAP_FOCUS, 0xD16, 0)
+PK_MODEL(F335C, "F-335C", PK_SUPPORT_BETA, PKV_PAKON8_HEX, PK_LINK_F335, F335, 0xF335,
+         PK_ROLES(0, 0, 0, 0, 0xF6, 0xF4, 0xFA, 0xFE, 0xF4), 0x6,
+         PK_GEOM3(PK_G0, PK_G(1400, 2100, 2244, 8, 175, 23700), PK_G(2000, 3000, 3206, 8, 250, 23700)), PK_GEOM3(PK_G0, PK_G0, PK_G0),
+         PK_CAP_GUIDES | PK_CAP_ROLLERS | PK_CAP_FOCUS | PK_CAP_APS_CARTRIDGE, 0xD17, 0)

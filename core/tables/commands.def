@@ -1,0 +1,259 @@
+/* core/tables/commands.def -- X-macro table of scanner packets (Task 3: forbidden rows; Task 7: the allowed rows, at the end).
+ *
+ * PK_CMD(NAME, TYPE, ROLE, REG, LEN, FORBID, TIER, SRC)
+ *   TYPE   1 read, 2 write, 3 poll, 4 command (REG is then the command byte)
+ *   ROLE   LIGHT | MOTOR | HOST | DX | LAMP235 | MOTOR235 | DX235 | APS235 | GUIDE   (resolved to an address by models.def;
+ *          several roles can share one address: DX = the light-board address on TLB models, GUIDE and MOTOR235 share 0xF4;
+ *          the guard checks the FORBID rows of every role mapped to a packet's address)
+ *   LEN    payload bytes (writes), count (reads), -1 = any
+ *   FORBID 1 = WRITE_FORBIDDEN: link refuses it with PK_E_WRITE_FORBIDDEN
+ *   TIER   VERIFIED | DISASSEMBLED | INFERRED  (v1's tags kept)
+ *   SRC    string: Kodak address or v1 doc citing the row
+ *
+ * Evidence for every row: docs/re/29-write-guard-audit.md.
+ *
+ * Every forbidden register has three rows (read, write, command). The PIC firmware dispatches on the register byte alone
+ * and never looks at the packet type (nl050A cumulative-xorlw chain 0x371E..0x3892 reads RAM 0xCD only), so a read or a
+ * command packet for the register runs the same handler as a write. NAME suffix: none = type 2, _RD = type 1, _CMD = type 4.
+ * Poll packets (type 3) carry no register byte and are not listed.
+ * LEN is -1 on every forbidden row: the register is refused whatever the length.
+ *
+ * Tier rule: DISASSEMBLED = the handler was read in the shipped PIC image and reaches an EEPROM-write sequence.
+ * INFERRED = conditional write, a reset or bootloader-entry command, a by-analogy row for a board whose image was not mapped
+ * in full, or a role-to-image mapping. INFERRED rows are guarded all the same: the guard errs towards refusing.
+ *
+ * Housekeeping: the boards' own EEPROM writes during normal use (hour meters, power-on counter, lamp-strike fault log,
+ * DX self-tune) are allowed by the owner (decision 2026-10-15, RE 29 sec 3.5). They are not host packets and not in this
+ * table; the driver still never sends a memory-writing command.
+ *
+ * Beta roles (LAMP235, MOTOR235, DX235, APS235, GUIDE): their rows below are by-analogy evidence only. The link refuses
+ * these roles wholesale for types 1, 2 and 4 until Task 21 maps their boards (S-R5); a denylist alone would allow every
+ * register of an unmapped board.
+ *
+ * NOT in this table (not board packets; the guard is split across layers, RE 29 sec 7.5, rulings S-R5 and S-R7):
+ *   - TRANSPORT ALLOWLIST (matched on bRequest and direction, whatever the type bits). Allowed, and nothing else:
+ *       A0 only inside a LOAD WINDOW opened by pk_device_load_firmware with the hash-verified images: CPUCS 0xE600 hold/release
+ *         values only, bytes equal to the stage-1 or firmware image records, the LJMP 0x0100 stub, the 0xE000..0xE00F zeroing,
+ *         staging-gap writes consistent with the image, copier mailbox writes only when the staged bytes equal fw[dst..dst+len] and dst stays
+ *         inside the image's external range (never >= 0xE000), and C0/A0 reads; a CPUCS release after internal fw writes is refused
+ *         until every external chunk read back VERIFY_OK and every internal record was written since the last hold (S-R8). The staged bytes are
+ *         re-checked at the release that runs the copier, 0xE001/0xE004 are re-zeroed before each run, and a chunk is confirmed only
+ *         by a status read taken after that run (S-R9); a copier-run release needs stage1 and the stub
+ *         written in the same window;
+ *         outside the window every A0 is refused, always;
+ *       40/A4 only with wValue 0xA5 (calibration chip 0x52) or 0xA3 (FX2 config EEPROM 0x51, read-only personality);
+ *       C0/A9 only after such an A4 on the same guarded transport (per-instance state, cleared by any other transfer and by any
+ *         A0/CPUCS write), offset + wLength <= 0x2000 and wLength <= 0x40.
+ *     Refused: A2 and A3 both ways, A9 OUT (TLB's own EEPROM write is 40/A4 0xA5 then 40/A9 wValue=offset), A4 with any other
+ *     wValue, A9 IN without a preceding A4, A5..A8, AA..AC, A0 outside the window, any other bRequest.
+ *   - LINK ADDRESS RULE: refuse every packet whose address is not exactly an address mapped to a role (odd addresses,
+ *     0xA0..0xAF, PIC bootloader addresses 0x22 0x26 0x42 0x46 and the F-235/F-335 boot addresses, the focus board 0x28 on
+ *     models without it); models.def must contain no odd address and none in 0xA0..0xAF (build-time assertion). The FORBID
+ *     rows of every role at the address then apply for types 1, 2 and 4. Beta roles are refused wholesale for types 1-4
+ *     (polls included) until Task 21.
+ */
+/* ---- allowed, recorded for the audit (FORBID = 0): owner answer 5, the DX board's own threshold self-tune ---- */
+PK_CMD(DX_STOP, 4, DX, 0x92, 0, 0, DISASSEMBLED, "owner-allowed DX self-tune")
+
+
+/* ---- LIGHT ---- */
+PK_CMD(LIGHT_REG_97_RD, 1, LIGHT, 0x97, -1, 1, DISASSEMBLED, "nl050A 0x3E46 / pl050A 0x3E48 -> 0x369C: data mask bits 0..3 write EE[0x0A..0x0D] via writer 0x148C; TLB bAdjustDxPots 0x1002ACE0 sends 0x97=0xFF at its end (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_97, 2, LIGHT, 0x97, -1, 1, DISASSEMBLED, "nl050A 0x3E46 / pl050A 0x3E48 -> 0x369C: data mask bits 0..3 write EE[0x0A..0x0D] via writer 0x148C; TLB bAdjustDxPots 0x1002ACE0 sends 0x97=0xFF at its end (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_97_CMD, 4, LIGHT, 0x97, -1, 1, DISASSEMBLED, "nl050A 0x3E46 / pl050A 0x3E48 -> 0x369C: data mask bits 0..3 write EE[0x0A..0x0D] via writer 0x148C; TLB bAdjustDxPots 0x1002ACE0 sends 0x97=0xFF at its end (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_10_RD, 1, LIGHT, 0x10, -1, 1, DISASSEMBLED, "nl050A 0x38AE / pl050A same: EE[0x12] = (data != 0) via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_10, 2, LIGHT, 0x10, -1, 1, DISASSEMBLED, "nl050A 0x38AE / pl050A same: EE[0x12] = (data != 0) via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_10_CMD, 4, LIGHT, 0x10, -1, 1, DISASSEMBLED, "nl050A 0x38AE / pl050A same: EE[0x12] = (data != 0) via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_DC_RD, 1, LIGHT, 0xDC, -1, 1, DISASSEMBLED, "nl050A 0x42BC (pl050A 0x4308): EE[0x17..0x20] via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_DC, 2, LIGHT, 0xDC, -1, 1, DISASSEMBLED, "nl050A 0x42BC (pl050A 0x4308): EE[0x17..0x20] via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_DC_CMD, 4, LIGHT, 0xDC, -1, 1, DISASSEMBLED, "nl050A 0x42BC (pl050A 0x4308): EE[0x17..0x20] via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_DE_RD, 1, LIGHT, 0xDE, -1, 1, DISASSEMBLED, "nl050A 0x43DC (pl050A 0x4428): EE[0x21..0x2A] from RAM 0x112..0x115 plus checksum via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_DE, 2, LIGHT, 0xDE, -1, 1, DISASSEMBLED, "nl050A 0x43DC (pl050A 0x4428): EE[0x21..0x2A] from RAM 0x112..0x115 plus checksum via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_DE_CMD, 4, LIGHT, 0xDE, -1, 1, DISASSEMBLED, "nl050A 0x43DC (pl050A 0x4428): EE[0x21..0x2A] from RAM 0x112..0x115 plus checksum via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_DF_RD, 1, LIGHT, 0xDF, -1, 1, DISASSEMBLED, "nl050A 0x44EA (pl050A 0x4536): EE[0x2B] = idle-lamp timeout via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_DF, 2, LIGHT, 0xDF, -1, 1, DISASSEMBLED, "nl050A 0x44EA (pl050A 0x4536): EE[0x2B] = idle-lamp timeout via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_DF_CMD, 4, LIGHT, 0xDF, -1, 1, DISASSEMBLED, "nl050A 0x44EA (pl050A 0x4536): EE[0x2B] = idle-lamp timeout via writer 0x148C (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_0A_RD, 1, LIGHT, 0x0A, -1, 1, DISASSEMBLED, "nl050A 0x3972 (pl050A same): RAW EEPROM write EEADR=[0xCE] EEDATA=[0xCF], inline 55/AA at 0x3992, NOT via 0x148C; TLB 0x1001B9B0 uses it to clear the app-valid byte (RE 29 sec 3.1, 5)")
+PK_CMD(LIGHT_REG_0A, 2, LIGHT, 0x0A, -1, 1, DISASSEMBLED, "nl050A 0x3972 (pl050A same): RAW EEPROM write EEADR=[0xCE] EEDATA=[0xCF], inline 55/AA at 0x3992, NOT via 0x148C; TLB 0x1001B9B0 uses it to clear the app-valid byte (RE 29 sec 3.1, 5)")
+PK_CMD(LIGHT_REG_0A_CMD, 4, LIGHT, 0x0A, -1, 1, DISASSEMBLED, "nl050A 0x3972 (pl050A same): RAW EEPROM write EEADR=[0xCE] EEDATA=[0xCF], inline 55/AA at 0x3992, NOT via 0x148C; TLB 0x1001B9B0 uses it to clear the app-valid byte (RE 29 sec 3.1, 5)")
+PK_CMD(LIGHT_REG_94_RD, 1, LIGHT, 0x94, -1, 1, DISASSEMBLED, "nl050A 0x3D8E: 8 data bytes -> EE[0x02..0x09] via writer 0x148C; TLB FN_bDrvDxPutHardware 0x1000A8B0 (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_94, 2, LIGHT, 0x94, -1, 1, DISASSEMBLED, "nl050A 0x3D8E: 8 data bytes -> EE[0x02..0x09] via writer 0x148C; TLB FN_bDrvDxPutHardware 0x1000A8B0 (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_94_CMD, 4, LIGHT, 0x94, -1, 1, DISASSEMBLED, "nl050A 0x3D8E: 8 data bytes -> EE[0x02..0x09] via writer 0x148C; TLB FN_bDrvDxPutHardware 0x1000A8B0 (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_08_RD, 1, LIGHT, 0x08, -1, 1, INFERRED, "nl050A 0x389A -> 0x16C4 ADC sweep -> 0x192E call 0x14EA -> EE[0x13],[0x14] only if changed; conditional, not sent by TLB or v1 (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_08, 2, LIGHT, 0x08, -1, 1, INFERRED, "nl050A 0x389A -> 0x16C4 ADC sweep -> 0x192E call 0x14EA -> EE[0x13],[0x14] only if changed; conditional, not sent by TLB or v1 (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_08_CMD, 4, LIGHT, 0x08, -1, 1, INFERRED, "nl050A 0x389A -> 0x16C4 ADC sweep -> 0x192E call 0x14EA -> EE[0x13],[0x14] only if changed; conditional, not sent by TLB or v1 (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_D5_RD, 1, LIGHT, 0xD5, -1, 1, INFERRED, "nl050A 0x3A64 -> 0x2054 -> 0x21AE call 0x14EA -> EE[0x13],[0x14] only if changed; conditional, not sent by TLB or v1 (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_D5, 2, LIGHT, 0xD5, -1, 1, INFERRED, "nl050A 0x3A64 -> 0x2054 -> 0x21AE call 0x14EA -> EE[0x13],[0x14] only if changed; conditional, not sent by TLB or v1 (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_D5_CMD, 4, LIGHT, 0xD5, -1, 1, INFERRED, "nl050A 0x3A64 -> 0x2054 -> 0x21AE call 0x14EA -> EE[0x13],[0x14] only if changed; conditional, not sent by TLB or v1 (RE 29 sec 3.1)")
+PK_CMD(LIGHT_REG_01_RD, 1, LIGHT, 0x01, -1, 1, INFERRED, "nl050A 0x395A -> 0x3678: GIE off, rcall 0x3406, RESET; PIC restarts into its bootloader when the gate byte is clear; TLB 0x1001B9B0 sends command 0x01 after the gate write (RE 29 sec 5)")
+PK_CMD(LIGHT_REG_01, 2, LIGHT, 0x01, -1, 1, INFERRED, "nl050A 0x395A -> 0x3678: GIE off, rcall 0x3406, RESET; PIC restarts into its bootloader when the gate byte is clear; TLB 0x1001B9B0 sends command 0x01 after the gate write (RE 29 sec 5)")
+PK_CMD(LIGHT_REG_01_CMD, 4, LIGHT, 0x01, -1, 1, INFERRED, "nl050A 0x395A -> 0x3678: GIE off, rcall 0x3406, RESET; PIC restarts into its bootloader when the gate byte is clear; TLB 0x1001B9B0 sends command 0x01 after the gate write (RE 29 sec 5)")
+
+/* ---- DX ---- */
+PK_CMD(DX_REG_94_RD, 1, DX, 0x94, -1, 1, DISASSEMBLED, "dx0211 0x0C17: 8 calls to EE writer 0x0234 (EE[0..7]); TLB FN_bDrvDxPutHardware 0x1000A8B0 (RE 29 sec 3.3)")
+PK_CMD(DX_REG_94, 2, DX, 0x94, -1, 1, DISASSEMBLED, "dx0211 0x0C17: 8 calls to EE writer 0x0234 (EE[0..7]); TLB FN_bDrvDxPutHardware 0x1000A8B0 (RE 29 sec 3.3)")
+PK_CMD(DX_REG_94_CMD, 4, DX, 0x94, -1, 1, DISASSEMBLED, "dx0211 0x0C17: 8 calls to EE writer 0x0234 (EE[0..7]); TLB FN_bDrvDxPutHardware 0x1000A8B0 (RE 29 sec 3.3)")
+PK_CMD(DX_REG_0A_RD, 1, DX, 0x0A, -1, 1, DISASSEMBLED, "dx0211 0x0940: raw EE write EE[[0x33]]=[0x34], inline 55/AA at 0x095B; spec sec E raw-write register (RE 29 sec 3.3)")
+PK_CMD(DX_REG_0A, 2, DX, 0x0A, -1, 1, DISASSEMBLED, "dx0211 0x0940: raw EE write EE[[0x33]]=[0x34], inline 55/AA at 0x095B; spec sec E raw-write register (RE 29 sec 3.3)")
+PK_CMD(DX_REG_0A_CMD, 4, DX, 0x0A, -1, 1, DISASSEMBLED, "dx0211 0x0940: raw EE write EE[[0x33]]=[0x34], inline 55/AA at 0x095B; spec sec E raw-write register (RE 29 sec 3.3)")
+PK_CMD(DX_REG_96_RD, 1, DX, 0x96, -1, 1, DISASSEMBLED, "TLB FN_bDrvDxChangePots 0x1000A950 (4 pot bytes); dx0211 0x0C9F bit-bangs the pot, no EEPROM call; forbidden by the pot-adjust rule, pot-chip persistence unknown (RE 29 sec 3.3)")
+PK_CMD(DX_REG_96, 2, DX, 0x96, -1, 1, DISASSEMBLED, "TLB FN_bDrvDxChangePots 0x1000A950 (4 pot bytes); dx0211 0x0C9F bit-bangs the pot, no EEPROM call; forbidden by the pot-adjust rule, pot-chip persistence unknown (RE 29 sec 3.3)")
+PK_CMD(DX_REG_96_CMD, 4, DX, 0x96, -1, 1, DISASSEMBLED, "TLB FN_bDrvDxChangePots 0x1000A950 (4 pot bytes); dx0211 0x0C9F bit-bangs the pot, no EEPROM call; forbidden by the pot-adjust rule, pot-chip persistence unknown (RE 29 sec 3.3)")
+PK_CMD(DX_REG_97_RD, 1, DX, 0x97, -1, 1, DISASSEMBLED, "TLB bAdjustDxPots 0x1002ACE0 ends with 0x97=0xFF, the pot-commit; EE commit on nl050A (RE 29 sec 3.1, 3.3)")
+PK_CMD(DX_REG_97, 2, DX, 0x97, -1, 1, DISASSEMBLED, "TLB bAdjustDxPots 0x1002ACE0 ends with 0x97=0xFF, the pot-commit; EE commit on nl050A (RE 29 sec 3.1, 3.3)")
+PK_CMD(DX_REG_97_CMD, 4, DX, 0x97, -1, 1, DISASSEMBLED, "TLB bAdjustDxPots 0x1002ACE0 ends with 0x97=0xFF, the pot-commit; EE commit on nl050A (RE 29 sec 3.1, 3.3)")
+PK_CMD(DX_REG_25_RD, 1, DX, 0x25, -1, 1, DISASSEMBLED, "dx0211 0x0BD4: data CA 55 AA sets PCLATH=0x1E, PCL=0x06 = jump into the bootloader; TLB 0x1001B9B0 non-PIC18 branch (RE 29 sec 5)")
+PK_CMD(DX_REG_25, 2, DX, 0x25, -1, 1, DISASSEMBLED, "dx0211 0x0BD4: data CA 55 AA sets PCLATH=0x1E, PCL=0x06 = jump into the bootloader; TLB 0x1001B9B0 non-PIC18 branch (RE 29 sec 5)")
+PK_CMD(DX_REG_25_CMD, 4, DX, 0x25, -1, 1, DISASSEMBLED, "dx0211 0x0BD4: data CA 55 AA sets PCLATH=0x1E, PCL=0x06 = jump into the bootloader; TLB 0x1001B9B0 non-PIC18 branch (RE 29 sec 5)")
+PK_CMD(DX_REG_01_RD, 1, DX, 0x01, -1, 1, INFERRED, "dx0211 0x091C -> 0x0505: GIE off, spin until watchdog reset (RE 29 sec 5)")
+PK_CMD(DX_REG_01, 2, DX, 0x01, -1, 1, INFERRED, "dx0211 0x091C -> 0x0505: GIE off, spin until watchdog reset (RE 29 sec 5)")
+PK_CMD(DX_REG_01_CMD, 4, DX, 0x01, -1, 1, INFERRED, "dx0211 0x091C -> 0x0505: GIE off, spin until watchdog reset (RE 29 sec 5)")
+
+/* ---- MOTOR ---- */
+PK_CMD(MOTOR_REG_0A_RD, 1, MOTOR, 0x0A, -1, 1, DISASSEMBLED, "nm0506 0x1DC6 / pm0506 0x1DC4: RAW EEPROM write, inline 55/AA at 0x1DE6; TLB 0x1001B9B0 gate write (RE 29 sec 3.2)")
+PK_CMD(MOTOR_REG_0A, 2, MOTOR, 0x0A, -1, 1, DISASSEMBLED, "nm0506 0x1DC6 / pm0506 0x1DC4: RAW EEPROM write, inline 55/AA at 0x1DE6; TLB 0x1001B9B0 gate write (RE 29 sec 3.2)")
+PK_CMD(MOTOR_REG_0A_CMD, 4, MOTOR, 0x0A, -1, 1, DISASSEMBLED, "nm0506 0x1DC6 / pm0506 0x1DC4: RAW EEPROM write, inline 55/AA at 0x1DE6; TLB 0x1001B9B0 gate write (RE 29 sec 3.2)")
+PK_CMD(MOTOR_REG_10_RD, 1, MOTOR, 0x10, -1, 1, DISASSEMBLED, "nm0506 0x1D04 / pm0506 0x1D02 -> writer 0x0F70: EE[0x02] = 0/1 (RE 29 sec 3.2)")
+PK_CMD(MOTOR_REG_10, 2, MOTOR, 0x10, -1, 1, DISASSEMBLED, "nm0506 0x1D04 / pm0506 0x1D02 -> writer 0x0F70: EE[0x02] = 0/1 (RE 29 sec 3.2)")
+PK_CMD(MOTOR_REG_10_CMD, 4, MOTOR, 0x10, -1, 1, DISASSEMBLED, "nm0506 0x1D04 / pm0506 0x1D02 -> writer 0x0F70: EE[0x02] = 0/1 (RE 29 sec 3.2)")
+PK_CMD(MOTOR_REG_08_RD, 1, MOTOR, 0x08, -1, 1, INFERRED, "nm0506 0x1CEC -> 0x0FCE ADC sweep -> writer 0x0F70, conditional on a changed reading (RE 29 sec 3.2)")
+PK_CMD(MOTOR_REG_08, 2, MOTOR, 0x08, -1, 1, INFERRED, "nm0506 0x1CEC -> 0x0FCE ADC sweep -> writer 0x0F70, conditional on a changed reading (RE 29 sec 3.2)")
+PK_CMD(MOTOR_REG_08_CMD, 4, MOTOR, 0x08, -1, 1, INFERRED, "nm0506 0x1CEC -> 0x0FCE ADC sweep -> writer 0x0F70, conditional on a changed reading (RE 29 sec 3.2)")
+PK_CMD(MOTOR_REG_01_RD, 1, MOTOR, 0x01, -1, 1, INFERRED, "nm0506 0x1DA8 -> 0x1AAE: GIE off, call 0x1A60, RESET; TLB 0x1001B9B0 sends command 0x01 (RE 29 sec 5)")
+PK_CMD(MOTOR_REG_01, 2, MOTOR, 0x01, -1, 1, INFERRED, "nm0506 0x1DA8 -> 0x1AAE: GIE off, call 0x1A60, RESET; TLB 0x1001B9B0 sends command 0x01 (RE 29 sec 5)")
+PK_CMD(MOTOR_REG_01_CMD, 4, MOTOR, 0x01, -1, 1, INFERRED, "nm0506 0x1DA8 -> 0x1AAE: GIE off, call 0x1A60, RESET; TLB 0x1001B9B0 sends command 0x01 (RE 29 sec 5)")
+PK_CMD(MOTOR_REG_0D_RD, 1, MOTOR, 0x0D, -1, 1, INFERRED, "nm0506 0x1DAC -> 0x1ABE: GIE off, call 0x1A60, goto 0x0000 (reset vector / bootloader); TLB 0x1001B9B0 sends 0x0D to board 0x24 (RE 29 sec 5)")
+PK_CMD(MOTOR_REG_0D, 2, MOTOR, 0x0D, -1, 1, INFERRED, "nm0506 0x1DAC -> 0x1ABE: GIE off, call 0x1A60, goto 0x0000 (reset vector / bootloader); TLB 0x1001B9B0 sends 0x0D to board 0x24 (RE 29 sec 5)")
+PK_CMD(MOTOR_REG_0D_CMD, 4, MOTOR, 0x0D, -1, 1, INFERRED, "nm0506 0x1DAC -> 0x1ABE: GIE off, call 0x1A60, goto 0x0000 (reset vector / bootloader); TLB 0x1001B9B0 sends 0x0D to board 0x24 (RE 29 sec 5)")
+
+/* ---- LAMP235 ---- */
+PK_CMD(LAMP235_REG_0D_RD, 1, LAMP235, 0x0D, -1, 1, DISASSEMBLED, "lq010c 0x1C2C -> 0x078A: raw EEPROM write (address [0x72], data [0x73]) (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(LAMP235_REG_0D, 2, LAMP235, 0x0D, -1, 1, DISASSEMBLED, "lq010c 0x1C2C -> 0x078A: raw EEPROM write (address [0x72], data [0x73]) (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(LAMP235_REG_0D_CMD, 4, LAMP235, 0x0D, -1, 1, DISASSEMBLED, "lq010c 0x1C2C -> 0x078A: raw EEPROM write (address [0x72], data [0x73]) (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(LAMP235_REG_01_RD, 1, LAMP235, 0x01, -1, 1, INFERRED, "PIC reset command by analogy with nl/nm/dx (RE 29 sec 5); lq image not checked")
+PK_CMD(LAMP235_REG_01, 2, LAMP235, 0x01, -1, 1, INFERRED, "PIC reset command by analogy with nl/nm/dx (RE 29 sec 5); lq image not checked")
+PK_CMD(LAMP235_REG_01_CMD, 4, LAMP235, 0x01, -1, 1, INFERRED, "PIC reset command by analogy with nl/nm/dx (RE 29 sec 5); lq image not checked")
+
+/* ---- MOTOR235 ---- */
+PK_CMD(MOTOR235_REG_0A_RD, 1, MOTOR235, 0x0A, -1, 1, DISASSEMBLED, "md0006 0x13C4: raw EEPROM write, inline 55/AA at 0x13E4 (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(MOTOR235_REG_0A, 2, MOTOR235, 0x0A, -1, 1, DISASSEMBLED, "md0006 0x13C4: raw EEPROM write, inline 55/AA at 0x13E4 (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(MOTOR235_REG_0A_CMD, 4, MOTOR235, 0x0A, -1, 1, DISASSEMBLED, "md0006 0x13C4: raw EEPROM write, inline 55/AA at 0x13E4 (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(MOTOR235_REG_EB_RD, 1, MOTOR235, 0xEB, -1, 1, DISASSEMBLED, "md0006 0x16B0 -> 0x0FD0: EEPROM write sequences at 0x1050..0x1136 (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(MOTOR235_REG_EB, 2, MOTOR235, 0xEB, -1, 1, DISASSEMBLED, "md0006 0x16B0 -> 0x0FD0: EEPROM write sequences at 0x1050..0x1136 (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(MOTOR235_REG_EB_CMD, 4, MOTOR235, 0xEB, -1, 1, DISASSEMBLED, "md0006 0x16B0 -> 0x0FD0: EEPROM write sequences at 0x1050..0x1136 (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(MOTOR235_REG_01_RD, 1, MOTOR235, 0x01, -1, 1, INFERRED, "PIC reset command by analogy with nm (RE 29 sec 5); md and mc images not checked")
+PK_CMD(MOTOR235_REG_01, 2, MOTOR235, 0x01, -1, 1, INFERRED, "PIC reset command by analogy with nm (RE 29 sec 5); md and mc images not checked")
+PK_CMD(MOTOR235_REG_01_CMD, 4, MOTOR235, 0x01, -1, 1, INFERRED, "PIC reset command by analogy with nm (RE 29 sec 5); md and mc images not checked")
+
+/* ---- DX235 ---- */
+PK_CMD(DX235_REG_94_RD, 1, DX235, 0x94, -1, 1, DISASSEMBLED, "dy0002 0x126A -> 0x06C6 EE writer (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(DX235_REG_94, 2, DX235, 0x94, -1, 1, DISASSEMBLED, "dy0002 0x126A -> 0x06C6 EE writer (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(DX235_REG_94_CMD, 4, DX235, 0x94, -1, 1, DISASSEMBLED, "dy0002 0x126A -> 0x06C6 EE writer (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(DX235_REG_0A_RD, 1, DX235, 0x0A, -1, 1, DISASSEMBLED, "dy0002 0x0EBA: raw EEPROM write, inline 55/AA at 0x0EDA (RE 29 sec 3.4)")
+PK_CMD(DX235_REG_0A, 2, DX235, 0x0A, -1, 1, DISASSEMBLED, "dy0002 0x0EBA: raw EEPROM write, inline 55/AA at 0x0EDA (RE 29 sec 3.4)")
+PK_CMD(DX235_REG_0A_CMD, 4, DX235, 0x0A, -1, 1, DISASSEMBLED, "dy0002 0x0EBA: raw EEPROM write, inline 55/AA at 0x0EDA (RE 29 sec 3.4)")
+PK_CMD(DX235_REG_96_RD, 1, DX235, 0x96, -1, 1, INFERRED, "pot write, same TLA FN_bDrvDxChangePots shape as TLB 0x1000A950; dy image not checked (RE 29 sec 3.4)")
+PK_CMD(DX235_REG_96, 2, DX235, 0x96, -1, 1, INFERRED, "pot write, same TLA FN_bDrvDxChangePots shape as TLB 0x1000A950; dy image not checked (RE 29 sec 3.4)")
+PK_CMD(DX235_REG_96_CMD, 4, DX235, 0x96, -1, 1, INFERRED, "pot write, same TLA FN_bDrvDxChangePots shape as TLB 0x1000A950; dy image not checked (RE 29 sec 3.4)")
+PK_CMD(DX235_REG_97_RD, 1, DX235, 0x97, -1, 1, INFERRED, "pot-commit by analogy with TLB bAdjustDxPots (RE 29 sec 3.4)")
+PK_CMD(DX235_REG_97, 2, DX235, 0x97, -1, 1, INFERRED, "pot-commit by analogy with TLB bAdjustDxPots (RE 29 sec 3.4)")
+PK_CMD(DX235_REG_97_CMD, 4, DX235, 0x97, -1, 1, INFERRED, "pot-commit by analogy with TLB bAdjustDxPots (RE 29 sec 3.4)")
+PK_CMD(DX235_REG_25_RD, 1, DX235, 0x25, -1, 1, INFERRED, "PIC16 bootloader key by analogy with dx0211 0x0BD4 (RE 29 sec 5)")
+PK_CMD(DX235_REG_25, 2, DX235, 0x25, -1, 1, INFERRED, "PIC16 bootloader key by analogy with dx0211 0x0BD4 (RE 29 sec 5)")
+PK_CMD(DX235_REG_25_CMD, 4, DX235, 0x25, -1, 1, INFERRED, "PIC16 bootloader key by analogy with dx0211 0x0BD4 (RE 29 sec 5)")
+PK_CMD(DX235_REG_01_RD, 1, DX235, 0x01, -1, 1, INFERRED, "PIC reset by analogy with dx0211 / nl050A (RE 29 sec 5)")
+PK_CMD(DX235_REG_01, 2, DX235, 0x01, -1, 1, INFERRED, "PIC reset by analogy with dx0211 / nl050A (RE 29 sec 5)")
+PK_CMD(DX235_REG_01_CMD, 4, DX235, 0x01, -1, 1, INFERRED, "PIC reset by analogy with dx0211 / nl050A (RE 29 sec 5)")
+
+/* ---- APS235 ---- */
+PK_CMD(APS235_REG_0A_RD, 1, APS235, 0x0A, -1, 1, DISASSEMBLED, "ap0515 0x17C0: raw EEPROM write, inline 55/AA at 0x17E0 (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(APS235_REG_0A, 2, APS235, 0x0A, -1, 1, DISASSEMBLED, "ap0515 0x17C0: raw EEPROM write, inline 55/AA at 0x17E0 (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(APS235_REG_0A_CMD, 4, APS235, 0x0A, -1, 1, DISASSEMBLED, "ap0515 0x17C0: raw EEPROM write, inline 55/AA at 0x17E0 (RE 29 sec 3.4); role to image mapping INFERRED")
+PK_CMD(APS235_REG_C0_RD, 1, APS235, 0xC0, -1, 1, DISASSEMBLED, "ap0515 0x1AFE: inline EEPROM write at 0x1B16 (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C0, 2, APS235, 0xC0, -1, 1, DISASSEMBLED, "ap0515 0x1AFE: inline EEPROM write at 0x1B16 (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C0_CMD, 4, APS235, 0xC0, -1, 1, DISASSEMBLED, "ap0515 0x1AFE: inline EEPROM write at 0x1B16 (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C6_RD, 1, APS235, 0xC6, -1, 1, DISASSEMBLED, "ap0515 0x1956: inline EEPROM writes at 0x1976, 0x199E (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C6, 2, APS235, 0xC6, -1, 1, DISASSEMBLED, "ap0515 0x1956: inline EEPROM writes at 0x1976, 0x199E (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C6_CMD, 4, APS235, 0xC6, -1, 1, DISASSEMBLED, "ap0515 0x1956: inline EEPROM writes at 0x1976, 0x199E (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C7_RD, 1, APS235, 0xC7, -1, 1, DISASSEMBLED, "ap0515 0x19B4: inline EEPROM write at 0x19D2 (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C7, 2, APS235, 0xC7, -1, 1, DISASSEMBLED, "ap0515 0x19B4: inline EEPROM write at 0x19D2 (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C7_CMD, 4, APS235, 0xC7, -1, 1, DISASSEMBLED, "ap0515 0x19B4: inline EEPROM write at 0x19D2 (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_93_RD, 1, APS235, 0x93, -1, 1, INFERRED, "ap0515 0x1A8C -> 0x09C4 (param 1): EEPROM write at 0x09EC; may be a getter/setter pair, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_93, 2, APS235, 0x93, -1, 1, INFERRED, "ap0515 0x1A8C -> 0x09C4 (param 1): EEPROM write at 0x09EC; may be a getter/setter pair, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_93_CMD, 4, APS235, 0x93, -1, 1, INFERRED, "ap0515 0x1A8C -> 0x09C4 (param 1): EEPROM write at 0x09EC; may be a getter/setter pair, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C3_RD, 1, APS235, 0xC3, -1, 1, INFERRED, "ap0515 0x1AAC -> 0x09C4 (param 2): EEPROM write at 0x09EC, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C3, 2, APS235, 0xC3, -1, 1, INFERRED, "ap0515 0x1AAC -> 0x09C4 (param 2): EEPROM write at 0x09EC, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C3_CMD, 4, APS235, 0xC3, -1, 1, INFERRED, "ap0515 0x1AAC -> 0x09C4 (param 2): EEPROM write at 0x09EC, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C5_RD, 1, APS235, 0xC5, -1, 1, INFERRED, "ap0515 0x1ACC -> 0x09C4 (param 4): EEPROM write at 0x09EC, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C5, 2, APS235, 0xC5, -1, 1, INFERRED, "ap0515 0x1ACC -> 0x09C4 (param 4): EEPROM write at 0x09EC, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C5_CMD, 4, APS235, 0xC5, -1, 1, INFERRED, "ap0515 0x1ACC -> 0x09C4 (param 4): EEPROM write at 0x09EC, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_BF_RD, 1, APS235, 0xBF, -1, 1, INFERRED, "ap0515 0x1AF0 -> 0x0D26: EEPROM writes at 0x0D52.., guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_BF, 2, APS235, 0xBF, -1, 1, INFERRED, "ap0515 0x1AF0 -> 0x0D26: EEPROM writes at 0x0D52.., guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_BF_CMD, 4, APS235, 0xBF, -1, 1, INFERRED, "ap0515 0x1AF0 -> 0x0D26: EEPROM writes at 0x0D52.., guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C1_RD, 1, APS235, 0xC1, -1, 1, INFERRED, "ap0515 0x1B2C -> 0x0DC6 -> 0x0D26: EEPROM writes, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C1, 2, APS235, 0xC1, -1, 1, INFERRED, "ap0515 0x1B2C -> 0x0DC6 -> 0x0D26: EEPROM writes, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_C1_CMD, 4, APS235, 0xC1, -1, 1, INFERRED, "ap0515 0x1B2C -> 0x0DC6 -> 0x0D26: EEPROM writes, guarded conservatively (RE 29 sec 3.4)")
+PK_CMD(APS235_REG_01_RD, 1, APS235, 0x01, -1, 1, INFERRED, "PIC reset by analogy with nl/nm (RE 29 sec 5); ap image not checked")
+PK_CMD(APS235_REG_01, 2, APS235, 0x01, -1, 1, INFERRED, "PIC reset by analogy with nl/nm (RE 29 sec 5); ap image not checked")
+PK_CMD(APS235_REG_01_CMD, 4, APS235, 0x01, -1, 1, INFERRED, "PIC reset by analogy with nl/nm (RE 29 sec 5); ap image not checked")
+
+/* ---- Task 7: allowed rows (FORBID 0). Recorded for the audit and the generated docs/protocol.md; the guard keeps only FORBID=1 rows, so these change no guard behaviour.
+ *      Each is a packet v1 sent on the owner's hardware, a packet in the real-PSI wire capture (v1 docs/59 and docs/55), or one read in TLB / the PIC images (RE 29 sec 11).
+ *      No row shares (type, address, register) with a FORBID row of any role mapped to the same address (RE 29 sec 11). LIGHT and DX share one address on TLB models;
+ *      the DX-board registers 0x90 0x91 are listed under DX (0x92 DX_STOP is above). Registers v1 or PSI send that this task's code does not send are still listed, for the audit. ---- */
+
+/* ---- LIGHT (0x40 Plus / 0x20 base) ---- */
+PK_CMD(LIGHT_PING, 4, LIGHT, 0x00, 0, 0, VERIFIED, "v1 ping (FindPicController board-presence probe, command 0x00); RE 29 sec 8")
+PK_CMD(LIGHT_INTERRUPT_STATUS_RD, 1, LIGHT, 0x02, 1, 0, VERIFIED, "v1 read_interrupt_status = TLB FN_bDrvGetPpbInterruptStatus 0x1000BDD0 (reg 2 count 1); v1 DX poller on hardware, RE 29 sec 8")
+PK_CMD(LIGHT_DEVINFO_SELECT, 2, LIGHT, 0x03, 1, 0, VERIFIED, "firmware-version register, step 1: write 0x03 = 0x01; v1 devinfo_select = TLB FN_bDrvGetDevInfo 0x1000A370; PSI capture step 5 (docs/59); nl050A 0x3914 (RE 29 sec 9)")
+PK_CMD(LIGHT_DEVINFO_RD, 1, LIGHT, 0x07, 12, 0, VERIFIED, "firmware-version register, step 2: read 0x07 x12 after the select; devinfo[1] firmware version, devinfo[2] hardware version (RE 29 sec 9); v1 devinfo_read")
+PK_CMD(LIGHT_LAMP_ENABLE_RD, 1, LIGHT, 0x80, 1, 0, VERIFIED, "v1 tools/lamp_status.py REGS (read on hardware)")
+PK_CMD(LIGHT_LAMP_ENABLE, 2, LIGHT, 0x80, 1, 0, VERIFIED, "v1 lamp_set_mask, pakon_scan.py lamp_on / lamp_off (hardware); TLB FN_bDrvLampOn 0x1002C5F0, FN_bDrvLampOff 0x1000C4D0; bit 0 visible, bit 1 IR")
+PK_CMD(LIGHT_LED_LEVELS_RD, 1, LIGHT, 0x81, 5, 0, VERIFIED, "v1 read_led_levels, tools/lamp_status.py (hardware)")
+PK_CMD(LIGHT_LED_LEVELS, 2, LIGHT, 0x81, 5, 0, VERIFIED, "v1 led_levels, pakon_scan.py lamp_on (hardware); PSI capture step 81 (docs/59); payload [B, Ir, R, 0, G]")
+PK_CMD(LIGHT_LED_DUTY_RD, 1, LIGHT, 0x82, 12, 0, VERIFIED, "v1 read_led_duty_cycles, tools/lamp_status.py (hardware)")
+PK_CMD(LIGHT_LED_DUTY, 2, LIGHT, 0x82, 12, 0, VERIFIED, "v1 led_pwm, pakon_scan.py lamp_on / lamp_switch_to_scan_duty (hardware); PSI capture steps 17, 82, 100 (docs/59); six u16 LE [on_B, on_Ir, on_R, 0, on_G, N]")
+PK_CMD(LIGHT_STATUS_RD, 1, LIGHT, 0x83, 1, 0, VERIFIED, "v1 poll_lamp (hardware, once a second in every scan); bits 5 and 6 fault, bit 3 temperature valid")
+PK_CMD(LIGHT_SETPOINT_RD, 1, LIGHT, 0x84, 2, 0, DISASSEMBLED, "TLB FN_bDrvGetHardwareStatusLamp FUN_1000B890 reads 0x84 x2 (packet 01 03 40 02 84) and judges the lamp temperature against it; nl050A 0x4006 returns RAM 0x94/0x95, written only by the 0x8E case and the boot default 0x0280 = 40.0 degC: the temperature SETPOINT readback, not a measurement (Task 7 review); 1/16 degC")
+PK_CMD(LIGHT_TEMPS_RD, 1, LIGHT, 0x88, 4, 0, VERIFIED, "TLB FUN_1000B890 reads 0x88 x4; v1 pakon_scan.py REG_LIGHT_TEMPS in poll_lamp (hardware, 40.06 degC seen), tools/lamp_first_light.py: [measured lamp board u16][measured main board u16], 1/16 degC; nl050A 0x3FE4 (RAM 0x90/0x91 and 0x92/0x93)")
+PK_CMD(LIGHT_REG_87, 2, LIGHT, 0x87, 2, 0, DISASSEMBLED, "session open sends 0x87 = 00 00 first, as TLB does (S-R26; nl050A 0x3E68: a raw write of the PWM control word, a no-op from power-on state, relevant only if an earlier host left 0x87/0x89 mode bits set); PSI wire capture step 19 (v1 docs/59) writes 0x87 = 0 with 0x89 = 0; RE 29 sec 3 lists 0x87 among the allowed registers (no path to any unlock); no FORBID row at 0x87 for LIGHT or DX")
+PK_CMD(LIGHT_REG_89, 2, LIGHT, 0x89, 1, 0, VERIFIED, "TLB writes 0x89 = 0 in its init FUN_1002D3F0 (PSI wire capture step 19, v1 docs/59, with 0x87 = 0) and from FUN_1002C340 whenever the per-base flag changes (base 8 = 1, bases 4 and 16 = 0; RE 29 sec 12); v1 itself never sends it")
+PK_CMD(LIGHT_INT_ACK, 2, LIGHT, 0x06, 2, 0, DISASSEMBLED, "TLB FUN_1000BDD0 -> FUN_10009AE0(light, 0x06, [00, v], 2) after a register 0x02 read whose response status byte (resp[3]) has bit 7 (v = the 0x02 value, 0xFF if 0); real-PSI capture docs/59 (LIGHT 0x06 [2] 00 02 / 00 20, 7 times during the scan); handler in all 21 nl*/pl* images (nl050A 0x39C2 -> 0x3498) clears pending-interrupt RAM 0x12F (what 0x02 returns, 0x3688), RAM/IO only, no EECON/TBLWT/reset path (RE 29 sec 13). Only the [00, v] form is ever built: data[0] != 0 raises interrupts")
+PK_CMD(LIGHT_FIFO_RESET_CMD, 4, LIGHT, 0x8A, 0, 0, VERIFIED, "v1 light_fifo_reset, second half of bDrvResetFifos; PSI capture step 8 and 20 times in the calibration loop (docs/59). S-R26: also the reload step of every lamp-off, TLB FN_bEndScan 0x1002A900 -> FN_bDrvResetFifos FUN_1000A730 -> FUN_10009E50(light, 0x8A) = 04 03 40 00 8A (REA ev_d7709f11, ev_0d0dcb35). nl050A handler 0x3FE0 only does bsf 0xB3.6 (request a PWM-chip reload by the main loop at 0x6720 -> 0x1130), no EEPROM path; no FORBID row at 0x8A for any role at the light address (RE 29 sec 14)")
+PK_CMD(LIGHT_TEMP_MAINBOARD_WARN, 2, LIGHT, 0x8B, 4, 0, VERIFIED, "v1 lamp_init_thresholds (hardware) bytes F0 00 20 03, identical to PSI capture step 11 (docs/59); TLB FN_bDrvInitLampTemperatures")
+PK_CMD(LIGHT_TEMP_FAULT_BAND, 2, LIGHT, 0x8C, 4, 0, VERIFIED, "v1 lamp_init_thresholds bytes E0 FF 20 00, identical to PSI capture step 10")
+PK_CMD(LIGHT_TEMP_MAINBOARD_FAULT, 2, LIGHT, 0x8D, 4, 0, VERIFIED, "v1 lamp_init_thresholds bytes A0 00 70 03, identical to PSI capture step 12")
+PK_CMD(LIGHT_TEMP_WARN_BAND, 2, LIGHT, 0x8F, 4, 0, VERIFIED, "v1 lamp_init_thresholds bytes E8 FF 18 00, identical to PSI capture step 9. Register 0x8E (the TEC setpoint) has no row: neither v1 nor PSI ever sends it")
+PK_CMD(LIGHT_D0, 2, LIGHT, 0xD0, 1, 0, DISASSEMBLED, "nl050A 0x4262 sets or clears RAM flag 0xB3.0 only, no EEPROM writer (RE 29 sec 4); TLB writes 0xD0 = 0 at init; v1 lamp_init_thresholds; PSI capture step 13")
+PK_CMD(LIGHT_D1, 2, LIGHT, 0xD1, 1, 0, DISASSEMBLED, "nl050A 0x426E sets or clears RAM flag 0xB3.1 only, no EEPROM writer (RE 29 sec 4); TLB writes 0xD1 = 1 at init; v1 lamp_init_thresholds; PSI capture step 14")
+
+/* ---- DX (answers at the light-board address on TLB models) ---- */
+PK_CMD(DX_CODE_RD, 1, DX, 0x90, 30, 0, VERIFIED, "v1 read_dx_code = TLB FN_bDrvGetHardwareStatusDx 0x10009790 (reg 0x90 count 0x1E); v1 captures *.dx.jsonl")
+PK_CMD(DX_SENSOR_LEVELS_RD, 1, DX, 0x93, 4, 0, DISASSEMBLED, "TLB FN_bDrvDxGetHardware 0x1000A830 (reg 0x93 count 4: raw AN0..AN3); nl050A 0x3D6C is read-only; HW-1 DX fix (hw1-dx-debug.md sec 8). The only read of 0x93 the driver sends; no write/command row")
+PK_CMD(DX_START, 2, DX, 0x91, 3, 0, VERIFIED, "v1 dx_start (speed16 LE + format byte); PSI capture step 107 (docs/59); TLB FN_bDrvDxStart 0x1000A7B0")
+
+/* ---- MOTOR (0x44 Plus / 0x24 base; also carries the CCD / FPGA / AFE register files) ---- */
+PK_CMD(MOTOR_DEVINFO_SELECT, 2, MOTOR, 0x03, 1, 0, VERIFIED, "v1 devinfo_select(AD_MOTOR), SAFE_FIRST_PACKETS; TLB FN_bDrvGetDevInfo")
+PK_CMD(MOTOR_DEVINFO_RD, 1, MOTOR, 0x07, 12, 0, VERIFIED, "v1 devinfo_read(AD_MOTOR), SAFE_FIRST_PACKETS")
+PK_CMD(MOTOR_FPGA_WRITE, 2, MOTOR, 0x82, 3, 0, VERIFIED, "v1 write_ccd_register, pakon_scan.py ccd_configure (hardware); payload [index][lo][hi]; TLB FUN_1000A5D0 accepts only 0x82 and 0x84")
+PK_CMD(MOTOR_ADC_WRITE, 2, MOTOR, 0x84, 3, 0, VERIFIED, "v1 write_ccd_register, pakon_scan.py ccd_configure (hardware, AD9826 registers); payload [index][lo][hi]; TLB FUN_1000A5D0")
+PK_CMD(MOTOR_REG_97, 2, MOTOR, 0x97, 1, 0, DISASSEMBLED, "TLB FUN_1000B100 -> FUN_1001C3E0 writes 0x97 = 1 at session open; nm0506 0x200E sets RAM flag 0x2B.3 only (RE 29 sec 7.6). Allowed; Task 7 does not send it")
+PK_CMD(MOTOR_SPEED, 2, MOTOR, 0xA5, 2, 0, VERIFIED, "v1 set_motor_speed, tools/spin_motor.py (hardware moves film); TLB FN_bDriveMotorAdvanceFilm 0x1000B6D0; u16 LE, clamp 1000..32766 (0x44) or 400..9500 (0x24)")
+PK_CMD(MOTOR_FORWARD_CMD, 4, MOTOR, 0xA0, 0, 0, VERIFIED, "v1 motor_forward, spin_motor.py (hardware); TLB 0x1000B6D0")
+PK_CMD(MOTOR_REVERSE_CMD, 4, MOTOR, 0xA1, 0, 0, VERIFIED, "v1 motor_reverse, spin_motor.py (hardware); TLB 0x1000B6D0")
+PK_CMD(MOTOR_STOP_CMD, 4, MOTOR, 0xA2, 0, 0, VERIFIED, "v1 motor_stop, spin_motor.py (hardware); TLB FN_bDriveMotorStop 0x1000A440")
+PK_CMD(MOTOR_IRQ_RD, 1, MOTOR, 0x02, 1, 0, DISASSEMBLED, "TLB FUN_1000BDD0 reads the motor board's register 0x02 after the light board's (RE 42 sec 5, sec 9); RE 29 sec 3.2: the motor firmware's only writers are 0x08, 0x0A, 0x10 (EEPROM) and the resets 0x01 / 0x0D, all forbidden above")
+PK_CMD(MOTOR_IRQ_ACK, 2, MOTOR, 0x06, 2, 0, DISASSEMBLED, "TLB FUN_1000BDD0 acknowledges a motor interrupt with 0x06 = [00, v] (v = the value read, 0xFF if 0), the same packet as the light board's (RE 42 sec 5); RE 29 sec 3.2: no motor handler for 0x06 reaches an EEPROM writer")
+
+/* ---- HOST (0x10, the FX2 itself; handled locally, never relayed: RE 29 sec 7.2) ---- */
+PK_CMD(HOST_STATUS_RD, 1, HOST, 0x03, 2, 0, VERIFIED, "v1 read_host_status / clear_fault (hardware); status bit 5 (0x20) set = sticky fault, cleared with 0x85")
+PK_CMD(HOST_POLL, 3, HOST, 0x00, 0, 0, DISASSEMBLED, "TLB FUN_10008D70 (HOST status read): the type-3 poll 03 01 10, reply byte 0 must be 3, status = reply byte 3 (bit 7 board interrupt, bit 1 FIFO overflow); handled locally by the FX2 (RE 29 sec 7.2, RE 42 sec 5, sec 9). A poll carries no register byte: REG 0 is a placeholder")
+PK_CMD(HOST_FIFO_RESET, 2, HOST, 0x84, 1, 0, VERIFIED, "v1 reset_fifos (hardware, value 0x02), first half of bDrvResetFifos; PSI capture (20 times, docs/59). S-R26: also the first reload step of every lamp-off, TLB FUN_1000A730 -> FUN_10009F90(0x10, 0x84, 2) = 02 04 10 01 84 02 (REA ev_d7709f11); the HOST role has no FORBID rows, handled by the FX2 itself (RE 29 sec 7.2, 14)")
+PK_CMD(HOST_CLEAR_CMD, 4, HOST, 0x85, 0, 0, VERIFIED, "v1 host_clear (hardware) after host status bit 5")
+
+/* ---- Task 9: beta allowed rows (F-235 / F-335; the link refuses these roles wholesale until Task 21, so they change no guard behaviour).
+ *      TLA decompile, DISASSEMBLED, BETA until a tester trace exists. No row shares (type, address, register) with a FORBID row of any role at 0xF4 / 0xF6. The F-235 / F-335 PIC16 dispatchers are still unaudited (Task 3 UNRESOLVED): Task 21 must audit 0x80 / 0x81 / 0xEE / 0xE0 / 0xE1 against them before un-refusing the beta roles. ---- */
+PK_CMD(LAMP235_LEVEL, 2, LAMP235, 0x80, 2, 0, DISASSEMBLED, "TLA lamp level, spec sec C: u16 LE clamped to 0x3A34; standby = 0x2CEC (FUN_10033c70 standby action): 02 05 F6 02 80 lo hi")
+PK_CMD(LAMP235_OFF_CMD, 4, LAMP235, 0x81, 0, 0, DISASSEMBLED, "TLA lamp off, spec sec C: 04 03 F6 00 81")
+PK_CMD(GUIDE_ROLLER, 2, GUIDE, 0xEE, 1, 0, DISASSEMBLED, "TLA FN_bDrvMoveFilmPressureRollers FUN_1000F5A0 -> FUN_1000DB50(board 0xF4, reg 0xEE, 1 byte 0..3): 02 04 F4 01 EE v FUN_1000D6C0 begins pkt[1] = pkt[3] + 3, so the length byte is 04 (the spec's 02 05 is one byte too long; RE 29 sec 13)")
+PK_CMD(GUIDE_MOVE_35_CMD, 4, GUIDE, 0xE0, 0, 0, DISASSEMBLED, "TLA FN_bDrvMoveFilmGuides FUN_1000FFB0 -> FUN_1000DAB0(board 0xF4, command, 4-byte packet): 04 03 F4 00 E0 (35 mm, film index 0)")
+PK_CMD(GUIDE_MOVE_24_CMD, 4, GUIDE, 0xE1, 0, 0, DISASSEMBLED, "TLA FN_bDrvMoveFilmGuides FUN_1000FFB0: 04 03 F4 00 E1 (24 mm, film index 1)")

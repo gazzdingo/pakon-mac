@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "about": "Recorded hardware traces kept as replay evidence. The trace folders under corpus/traces/ are git-ignored; this file lists each one by hash so a copy can be checked. Task 24 documents the format in corpus/README.md.",
+  "entry_fields": {
+    "name": "trace folder name without .ptrace, for example hw1-motor",
+    "sha256_of_events": "SHA-256 of the trace's events.jsonl (every transfer, in order)",
+    "sha256_of_stream": "SHA-256 of the trace's stream.bin (the scan data stream; the hash of empty input when the trace has none)",
+    "model": "scanner model name recorded in the trace's meta.json, for example F-135 Plus",
+    "firmware_sha256": "SHA-256 of the firmware image the model loads (from the vendor store), empty when it was not known"
+  },
+  "entries": [
+    {"name": "hw1-eeprom", "sha256_of_events": "9998cef2172aa182198fe63369f09c7a69df638a840d02d12f307ac28e90e954", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1-ping", "sha256_of_events": "8a471c89ae5084587ee7a4f796dcc46d17dfe9fcc42a628c856fec3e6b34bc87", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135 Plus", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1-motor", "sha256_of_events": "cd0d385cd09970e18ffb86bb38b889fd60b74217d20e4c8b368a9261a4ec7ad7", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135 Plus", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1-leds", "sha256_of_events": "923be7bc00abf0619e1efcc6142cf6d736dfea34bb738901c8c9f31104c9cc76", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135 Plus", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1-leds-off", "sha256_of_events": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135 Plus", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1-lamp-idle", "sha256_of_events": "192579a7244b2fcffb9570ca097aaee325a325d6e2d63a47587e0aca7c8d80ae", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135 Plus", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1-unplug", "sha256_of_events": "8631719eb195479b8149b0a44308268a27c8f38e644b6982942523d0881a9d8f", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135 Plus", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1-load-kodak2", "sha256_of_events": "ba5757ab71382d873a5788c4a41bf8ed99580d6a37266d60bee809f117a45b9e", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1b-load", "sha256_of_events": "65bbda5be7de0bf58b6fee8ee9575e8e7798a43db6445dbe371317120b2d0d04", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1-eject2", "sha256_of_events": "7b03ae51d8c25c308b9766eb9338ed933301008b4d331e7a6ecd61cc0ad19134", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135 Plus", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1-eject3", "sha256_of_events": "102c9786e426660c3a54b976344b18f47cf1fc0c8403d421a952b78925389162", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135 Plus", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"},
+    {"name": "hw1-lamp", "sha256_of_events": "c7b0bb83608135fea4ac3ec22a8ad088221447a381edfb44f40f3d73669411bc", "sha256_of_stream": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "model": "F-135 Plus", "firmware_sha256": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4"}
+  ]
+}
